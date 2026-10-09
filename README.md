@@ -108,3 +108,6 @@ npm run test:domain
 - [PC 화면](docs/previews/desktop.png), [모바일 화면](docs/previews/mobile.png)
 
 사용자의 실제 원본 사진 `18606.jpg`와 대응 치수, 특허 전체 명세서·청구항이 다음 단계의 핵심 검증 자료입니다.
+## 가격 검토
+
+상단 **이용 요금**에서 한국어 원화 / English 달러 제안가를 확인할 수 있습니다. 광고 문구 언어와 별도이며 실제 결제는 연결 전입니다. [경쟁 가격 참고·원가 가정·출시 제안](docs/pricing-strategy.md), [팩별 계산 결과](docs/pricing-calculation.md)를 참고하세요. `npm run pricing:report`로 계산을 다시 실행할 수 있습니다.

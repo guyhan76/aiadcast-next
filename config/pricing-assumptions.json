@@ -1,0 +1,47 @@
+{
+  "status": "planning-assumptions-not-measured",
+  "date": "2026-10-09",
+  "krwPerUsd": 1400,
+  "koreanVatRate": 0.10,
+  "storeFeeRates": [0.15, 0.30],
+  "costScenarios": {
+    "standard": {
+      "outputUsdPerAttempt": 0.063,
+      "inputAndChecksUsdPerAttempt": 0.025,
+      "averageAttemptsPerJob": 1.3,
+      "infrastructureUsdPerJob": 0.02,
+      "chargedShareOfJobs": 0.90,
+      "supportReserveUsdPerChargedExport": 0.03
+    },
+    "premium": {
+      "outputUsdPerAttempt": 0.25,
+      "inputAndChecksUsdPerAttempt": 0.04,
+      "averageAttemptsPerJob": 1.4,
+      "infrastructureUsdPerJob": 0.03,
+      "chargedShareOfJobs": 0.90,
+      "supportReserveUsdPerChargedExport": 0.05
+    },
+    "stress": {
+      "outputUsdPerAttempt": 0.25,
+      "inputAndChecksUsdPerAttempt": 0.07,
+      "averageAttemptsPerJob": 1.8,
+      "infrastructureUsdPerJob": 0.04,
+      "chargedShareOfJobs": 0.75,
+      "supportReserveUsdPerChargedExport": 0.08
+    }
+  },
+  "provenance": {
+    "outputPriceReference": "Historical 2025 GPT Image 1 1024x1536 medium/high output-only prices; not reverified for current models.",
+    "fx": "Planning exchange rate, not a live or verified market quote.",
+    "otherInputs": "All input/check/retry/infrastructure/acceptance/support values are assumptions, not observed invoices.",
+    "sources": [
+      {"url":"https://openai.com/api/pricing/","retrieval":"proxy-tunnel-403"},
+      {"url":"https://platform.openai.com/docs/pricing","retrieval":"proxy-tunnel-403"},
+      {"url":"https://www.photoroom.com/pricing","retrieval":"proxy-tunnel-403"},
+      {"url":"https://www.photoroom.com/api/pricing","retrieval":"proxy-tunnel-403"},
+      {"url":"https://www.adobe.com/products/firefly/plans.html","retrieval":"proxy-tunnel-403"},
+      {"url":"https://docs.midjourney.com/hc/en-us/articles/27870484040333-Comparing-Midjourney-Plans","retrieval":"proxy-tunnel-403"},
+      {"url":"https://support.google.com/googleplay/android-developer/answer/112622?hl=en","retrieval":"proxy-tunnel-403"}
+    ]
+  }
+}

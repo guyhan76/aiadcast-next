@@ -9,6 +9,7 @@ import {exportErrors,imageFile,importProject,newProject} from './model';
 import type {Axis,Copy,Locale,Project} from './model';
 import {geometry,render} from './render';
 import {projects,saveProject} from './storage';
+import {PricingDialog} from './PricingDialog';
 const tabs=[['product','광고 정보'],['copy','문구·언어'],['background','배경'],['dimensions','규격']] as const;
 type Tab=typeof tabs[number][0];
 const presets=[['크림','#f4f0e8','dark'],['화이트','#ffffff','dark'],['차콜','#20241f','light'],['세이지','#e5e9de','dark']] as const;
@@ -45,7 +46,7 @@ export default function App(){
  const setCopy=(field:keyof Copy,value:string)=>change(p=>({...p,copy:{...p.copy,[p.locale]:{...p.copy[p.locale],[field]:value}}}));
  const updateDimension=(a:Axis,value:string)=>change(p=>({...p,dimensions:{...p.dimensions,[a]:value}}));
  return <>
-  <header className="topbar"><a className="wordmark" href="#main" aria-label="aiadcast 편집기"><b>ai</b>adcast<i/></a><span className="edition">STUDIO <span> / </span> 편집 검증판</span><button className="library-button" onClick={openLibrary}><FolderOpen size={17}/><span>저장한 작업</span></button></header>
+  <header className="topbar"><a className="wordmark" href="#main" aria-label="aiadcast 편집기"><b>ai</b>adcast<i/></a><span className="edition">STUDIO <span> / </span> 편집 검증판</span><div className="topbar-actions"><PricingDialog/><button className="library-button" onClick={openLibrary}><FolderOpen size={17}/><span>저장한 작업</span></button></div></header>
   <main id="main" className="workspace">
    <div className="page-heading"><div><div className="eyebrow">YOUR BRAND. YOUR STORY.</div><h1>{creative?<>새로운 광고를,<br className="mobile-only"/> 구상해보세요.</>:service?<>서비스의 가치를,<br className="mobile-only"/> 분명하게 전하세요.</>:<>상품은 그대로.<br className="mobile-only"/> 표현은 자유롭게.</>}</h1><p>{creative?'사진·광고 내용으로 제작 방향을 정하세요. 규격은 필요할 때만 사용합니다.':service?'규격 없이 사진·배경·문구로 광고를 구성하세요.':'원본 사진을 보존하고, 필요한 부분만 수정하세요.'}</p></div><button className="new-button" onClick={()=>{if(!dirty.current||confirm('저장하지 않은 편집을 닫고 새 작업을 시작할까요?'))load(newProject());}}><Plus size={17}/>새 작업</button></div>
    <div className="scope-note"><ShieldCheck size={18}/><span>현재는 직접 편집 검증판입니다. 자동 배경 제거·AI 생성·자동 번역·결제는 아직 연결하지 않았습니다.</span></div>

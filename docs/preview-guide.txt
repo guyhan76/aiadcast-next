@@ -81,3 +81,10 @@ aiadcast Studio — 편집 검증판 0.1
 - aiadcast-next-source.bundle: 소스 Git 변경 이력을 복원할 수 있는 파일입니다.
 - build-info.json: 소스 커밋과 파일별 SHA-256. Android 앱 빌드/등록 완료를 뜻하지 않습니다.
 - 현재는 웹 편집 검증판입니다. 실제 AI·회원·결제 서버·Android 앱과 Google Play 등록은 별도로 구현/검증합니다.
+
+이용 요금 미리보기
+- 상단 ‘이용 요금’을 열면 출시 제안가를 볼 수 있습니다. 현재 구매·차감은 하지 않습니다.
+- 한국어는 원화, English는 달러로 표시하며 요금 안내 언어를 이 기기에 저장합니다.
+- 광고 문구 언어와는 별도 설정입니다. 실제 결제는 연결 후 스토어 국가와 결제 화면의 금액·통화를 따릅니다.
+- source/docs/pricing-strategy.md: 과거 경쟁 가격 참고, 실제 청구서가 아닌 원가 가정, 가격 추천 근거.
+- source/docs/pricing-calculation.md: 재시도·실패·부가세·스토어 수수료 가정에 따른 계산.

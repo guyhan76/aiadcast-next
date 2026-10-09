@@ -11,7 +11,8 @@
     "test:domain": "node --experimental-strip-types --test tests-domain/*.test.mjs",
     "check:isolation": "node scripts/check-isolation.mjs",
     "release:status": "node scripts/release-status.mjs",
-    "release:package": "python3 scripts/package-release.py"
+    "release:package": "python3 scripts/package-release.py",
+    "pricing:report": "node --experimental-strip-types scripts/pricing-report.mjs"
   },
   "engines": {
     "node": ">=22.12.0"
