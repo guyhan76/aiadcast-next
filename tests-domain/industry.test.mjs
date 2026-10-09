@@ -6,13 +6,13 @@ import {newProject,importProject,exportErrors} from '../src/model.ts';
 import {buildGenerationRequest} from '../src/generation.ts';
 
 const physical=['packaging','food','beauty','electronics','fashion','home','industrial','other','automotive'];
-const requestedServices=['restaurant','cafe','lodging','travel','education','fitness','yoga','pilates','swimming','tennis','golf','sports','hospital','biotech','realestate','insurance','securities','stocks','crypto','finance','banking','lease','rental','services','corporate'];
+const requestedServices=['restaurant','cafe','lodging','travel','education','fitness','yoga','pilates','swimming','tennis','golf','sports','hospital','biotech','realestate','insurance','securities','stocks','crypto','finance','banking','lease','rental','services','corporate','saju','divination','fortunehouse'];
 
 test('every requested industry has one discoverable group without hiding older saved categories',()=>{
   const categoryIds=productCategories.map(([id])=>id);
   assert.deepEqual(new Set(categoryIds),new Set([...physical,...requestedServices]));
-  assert.equal(categoryIds.length,34);
-  assert.equal(industryGroups.length,10);
+  assert.equal(categoryIds.length,37);
+  assert.equal(industryGroups.length,11);
   const grouped=industryGroups.flatMap(group=>group.categoryIds);
   assert.deepEqual([...grouped].sort(),[...categoryIds].sort());
   assert.equal(new Set(grouped).size,grouped.length);

@@ -11,9 +11,10 @@ export const productCategories = [
   ['securities', '증권'], ['stocks', '주식'], ['crypto', '코인·디지털 자산'],
   ['finance', '금융'], ['banking', '은행'], ['lease', '리스'], ['rental', '렌탈'],
   ['corporate', '기업 홍보'],
+  ['saju', '사주·궁합'], ['divination', '점·무속'], ['fortunehouse', '철학관'],
 ] as const;
 export type ProductCategory = typeof productCategories[number][0];
-export type IndustryGroupId = 'products'|'dining'|'travel'|'learning'|'sports'|'health'|'property'|'finance'|'mobility'|'business';
+export type IndustryGroupId = 'products'|'dining'|'travel'|'learning'|'sports'|'health'|'property'|'finance'|'mobility'|'fortune'|'business';
 export type IndustryGroup = {id:IndustryGroupId;label:string;description:string;categoryIds:readonly ProductCategory[]};
 export const industryGroups:readonly IndustryGroup[] = [
   {id:'products',label:'상품·브랜드',description:'제품과 브랜드의 가치',categoryIds:['packaging','food','beauty','electronics','fashion','home','industrial','other']},
@@ -25,6 +26,7 @@ export const industryGroups:readonly IndustryGroup[] = [
   {id:'property',label:'부동산',description:'다음 공간을 위한 선택',categoryIds:['realestate']},
   {id:'finance',label:'금융·보험',description:'조건을 이해하는 금융',categoryIds:['insurance','securities','stocks','crypto','finance','banking']},
   {id:'mobility',label:'자동차·렌탈',description:'필요에 맞는 이용 방식',categoryIds:['automotive','lease','rental']},
+  {id:'fortune',label:'사주·운세',description:'전통 상담과 만남의 공간',categoryIds:['saju','divination','fortunehouse']},
   {id:'business',label:'기업·서비스',description:'사업과 서비스의 가치',categoryIds:['services','corporate']},
 ];
 const physicalCategories:readonly ProductCategory[] = ['packaging','food','beauty','electronics','fashion','home','industrial','other','automotive'];
@@ -210,6 +212,21 @@ const content:Record<ProductCategory,IndustryContent> = {
     ['기업 소개','기업의 방향과 브랜드 소개','우리가 만드는 일을 소개합니다','기업 소개 보기'],
     ['사업·협력 안내','사업 분야와 문의 방법','함께 만들어갈 기회를 만나보세요','협력 문의'],
     ['사업 정보','제공한 사업과 보유 역량','협력 전에 살펴보는 기업 이야기','사업 분야 보기'],
+  ]},
+  saju:{placeholder:'예: 사주·궁합 상담소 이름',audience:'사주·궁합 상담 분야와 예약 방법을 살펴보는 고객',directions:[
+    ['상담소 소개','상담 공간과 대화의 분위기','사주와 궁합, 차분히 이야기해보세요','상담소 보기'],
+    ['상담·예약 안내','상담 주제와 예약 방법','궁금한 주제로 상담을 시작하세요','상담 예약 문의'],
+    ['이용 정보','제공한 상담 방식·시간·비용','방문 전에 살펴보는 상담 안내','이용 정보 보기'],
+  ]},
+  divination:{placeholder:'예: 점·무속 상담소 이름',audience:'점·무속 상담 방식과 이용 정보를 확인하는 고객',directions:[
+    ['상담소 소개','공간과 상담 방식 소개','나의 이야기를 나누는 상담','상담소 보기'],
+    ['상담·예약 안내','상담 일정과 문의 방법','상담 일정과 예약 방법을 만나보세요','예약 문의'],
+    ['이용 정보','제공한 상담 절차와 비용','상담 전에 살펴보는 이용 안내','이용 안내 보기'],
+  ]},
+  fortunehouse:{placeholder:'예: 철학관 이름',audience:'철학관의 상담 분야와 방문 방법을 살펴보는 고객',directions:[
+    ['철학관 소개','철학관의 공간과 상담 분야','전통 명리 상담을 만나는 공간','철학관 보기'],
+    ['상담·예약 안내','상담 주제와 방문 예약','궁금한 이야기를 나눌 시간을 예약하세요','방문 예약 문의'],
+    ['상담 분야 안내','제공한 분야·상담 방식·이용 정보','방문 전에 알아보는 상담 분야','상담 분야 보기'],
   ]},
 };
 export const industryPlaceholder = (category:ProductCategory):string => content[category].placeholder;

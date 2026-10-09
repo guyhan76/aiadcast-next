@@ -20,12 +20,12 @@ async function serviceWizard(page:Page,category:string,name:string,creative=fals
  await wizard.getByRole('button',{name:'다음',exact:true}).click();return wizard;
 }
 
-test('ten visual groups reveal only their own industries and all thirty-four are searchable',async({page})=>{
+test('eleven visual groups reveal only their own industries and all thirty-seven are searchable',async({page})=>{
  test.setTimeout(60000);await page.goto('/');
- await expect(page.locator('.business-options').getByRole('button')).toHaveCount(10);
+ await expect(page.locator('.business-options').getByRole('button')).toHaveCount(11);
  await page.getByRole('button',{name:'스포츠·운동 업종으로 광고 만들기',exact:true}).click();
  const wizard=page.locator('.create-page:visible'),picker=wizard.getByRole('group',{name:'업종 선택',exact:true});
- await expect(picker.getByRole('group',{name:'업종 그룹',exact:true}).getByRole('button')).toHaveCount(10);
+ await expect(picker.getByRole('group',{name:'업종 그룹',exact:true}).getByRole('button')).toHaveCount(11);
  for(const group of industryGroups){
   await picker.getByRole('button',{name:group.label+' 업종 그룹',exact:true}).click();
   const options=picker.getByRole('group',{name:group.label+' 세부 업종',exact:true});
@@ -39,9 +39,9 @@ test('ten visual groups reveal only their own industries and all thirty-four are
  await expect(picker.getByRole('button',{name:'서비스 업종',exact:true})).toHaveAttribute('aria-pressed','true');
 });
 
-test('pilates, lodging, hospital and banking prepare ads without a photo or dimensions',async({page})=>{
+test('service industries including fortune consultations prepare ads without a photo or dimensions',async({page})=>{
  test.setTimeout(60000);
- for(const [category,name] of [['pilates','필라테스 스튜디오'],['lodging','모먼트 호텔'],['hospital','한결 의원'],['banking','은행 상담 서비스']]){
+ for(const [category,name] of [['pilates','필라테스 스튜디오'],['lodging','모먼트 호텔'],['hospital','한결 의원'],['banking','은행 상담 서비스'],['saju','사주·궁합 상담소'],['divination','점·무속 상담소'],['fortunehouse','전통 철학관']]){
   const wizard=await serviceWizard(page,category,name,category==='banking');
   await expect(wizard.getByRole('region',{name:'광고 방향과 스타일',exact:true})).toBeVisible();
   await wizard.getByRole('button',{name:'편집 시작',exact:true}).click();await expect(page).toHaveURL(/#studio$/);
