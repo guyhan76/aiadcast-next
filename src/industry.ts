@@ -1,7 +1,7 @@
 // Stable leaf IDs keep saved projects compatible while the UI groups choices visually.
 export const productCategories = [
   ['packaging', '포장재'], ['food', '식품·음료'], ['beauty', '뷰티·생활용품'],
-  ['electronics', '전자제품'], ['fashion', '의류·패션잡화'], ['home', '가구·인테리어'],
+  ['electronics', '전자제품'], ['fashion', '의류·패션'], ['home', '가구·인테리어'],
   ['industrial', '산업용 부품·장비'], ['automotive', '자동차·모빌리티'],
   ['education', '교육·강의'], ['insurance', '보험'], ['services', '서비스 업종'], ['other', '기타 실물 상품'],
   ['restaurant', '음식점'], ['cafe', '카페·디저트'], ['lodging', '호텔·숙박'], ['travel', '여행'],
@@ -12,6 +12,7 @@ export const productCategories = [
   ['finance', '금융'], ['banking', '은행'], ['lease', '리스'], ['rental', '렌탈'],
   ['corporate', '기업 홍보'],
   ['tarot', '타로'], ['astrology', '별자리'], ['myeongri', '명리학'], ['sinjeom', '신점'],
+  ['bags', '가방'], ['shoes', '신발'], ['jewelry', '주얼리'], ['accessories', '패션잡화'],
 ] as const;
 export type ProductCategory = typeof productCategories[number][0];
 const legacyCategories:Readonly<Record<string,ProductCategory>>={saju:'myeongri',fortunehouse:'myeongri',divination:'sinjeom'};
@@ -19,10 +20,11 @@ export function resolveIndustryCategory(value:unknown):ProductCategory|undefined
   const category=typeof value==='string'?(legacyCategories[value]??value):undefined;
   return productCategories.find(([id])=>id===category)?.[0];
 }
-export type IndustryGroupId = 'products'|'dining'|'travel'|'learning'|'sports'|'health'|'property'|'finance'|'mobility'|'fortune'|'business';
+export type IndustryGroupId = 'products'|'fashion'|'dining'|'travel'|'learning'|'sports'|'health'|'property'|'finance'|'mobility'|'fortune'|'business';
 export type IndustryGroup = {id:IndustryGroupId;label:string;description:string;categoryIds:readonly ProductCategory[]};
 export const industryGroups:readonly IndustryGroup[] = [
-  {id:'products',label:'상품·브랜드',description:'제품과 브랜드의 가치',categoryIds:['packaging','food','beauty','electronics','fashion','home','industrial','other']},
+  {id:'products',label:'상품·브랜드',description:'제품과 브랜드의 가치',categoryIds:['packaging','food','beauty','electronics','home','industrial','other']},
+  {id:'fashion',label:'패션·스타일',description:'의류부터 주얼리까지',categoryIds:['fashion','bags','shoes','jewelry','accessories']},
   {id:'dining',label:'음식·매장',description:'메뉴와 공간의 매력',categoryIds:['restaurant','cafe']},
   {id:'travel',label:'숙박·여행',description:'머무름과 여행의 경험',categoryIds:['lodging','travel']},
   {id:'learning',label:'교육',description:'배움과 성장의 기회',categoryIds:['education']},
@@ -34,7 +36,7 @@ export const industryGroups:readonly IndustryGroup[] = [
   {id:'fortune',label:'사주·운세',description:'나에게 맞는 상담의 시작',categoryIds:['tarot','astrology','myeongri','sinjeom']},
   {id:'business',label:'기업·서비스',description:'사업과 서비스의 가치',categoryIds:['services','corporate']},
 ];
-const physicalCategories:readonly ProductCategory[] = ['packaging','food','beauty','electronics','fashion','home','industrial','other','automotive'];
+const physicalCategories:readonly ProductCategory[] = ['packaging','food','beauty','electronics','fashion','home','industrial','other','automotive','bags','shoes','jewelry','accessories'];
 export const isPhysicalCategory = (category:ProductCategory) => physicalCategories.includes(category);
 export function industryGroupFor(category:ProductCategory):IndustryGroup {
   return industryGroups.find(group=>group.categoryIds.includes(category))!;
@@ -68,10 +70,30 @@ const content:Record<ProductCategory,IndustryContent> = {
     ['제품 안내','입력한 기능과 사용 목적','내 일상에 맞는 기술을 만나보세요','제품 보기'],
     ['기능·사양 소개','확인된 기능과 호환 정보','사용 전에 확인하는 제품 사양','사양 보기'],
   ]},
-  fashion:{placeholder:'예: 브랜드 가죽 가방',audience:'디자인과 소재를 비교하는 패션 고객',directions:[
-    ['브랜드 소개','브랜드의 스타일과 분위기','취향을 표현하는 한 가지 선택','컬렉션 보기'],
-    ['제품 안내','스타일링과 사용 장면','오늘의 스타일을 만나보세요','제품 보기'],
-    ['소재·디테일 소개','제공한 소재와 사이즈 정보','디테일로 살펴보는 나의 선택','상세 정보 보기'],
+  fashion:{placeholder:'예: 브랜드 울 재킷',audience:'디자인과 소재·사이즈를 비교하는 패션 고객',directions:[
+    ['컬렉션 소개','브랜드의 스타일과 분위기','취향을 표현하는 한 가지 선택','컬렉션 보기'],
+    ['제품·스타일링','제품과 함께하는 일상의 장면','오늘의 스타일을 만나보세요','제품 보기'],
+    ['소재·사이즈 안내','제공한 소재와 사이즈 정보','디테일로 살펴보는 나의 선택','상세 정보 보기'],
+  ]},
+  bags:{placeholder:'예: 브랜드 레더 숄더백',audience:'가방의 디자인·소재·수납 구성을 비교하는 고객',directions:[
+    ['컬렉션 소개','가방과 브랜드의 분위기','나의 취향을 담는 가방','컬렉션 보기'],
+    ['제품·스타일링','가방과 어울리는 스타일','오늘의 스타일에 더하는 한 가지','가방 보기'],
+    ['소재·디테일 안내','제공한 소재·크기·수납 정보','선택 전에 살펴보는 가방의 디테일','제품 정보 보기'],
+  ]},
+  shoes:{placeholder:'예: 브랜드 레더 스니커즈',audience:'신발의 디자인·소재·사이즈를 비교하는 고객',directions:[
+    ['컬렉션 소개','신발과 브랜드의 분위기','발끝에서 시작하는 나의 스타일','컬렉션 보기'],
+    ['제품·스타일링','신발과 일상의 스타일링','오늘의 옷차림에 어울리는 선택','신발 보기'],
+    ['소재·사이즈 안내','제공한 소재·사이즈·관리 정보','구매 전에 살펴보는 신발 정보','사이즈 안내 보기'],
+  ]},
+  jewelry:{placeholder:'예: 브랜드 실버 링',audience:'주얼리의 디자인·소재·사이즈를 살펴보는 고객',directions:[
+    ['컬렉션 소개','주얼리의 형태와 브랜드 분위기','작은 디테일에 담는 나의 취향','컬렉션 보기'],
+    ['제품·스타일링','주얼리와 함께하는 스타일','일상에 더하는 하나의 포인트','주얼리 보기'],
+    ['소재·디테일 안내','제공한 소재·크기·관리 정보','선택 전에 살펴보는 주얼리 정보','상세 정보 보기'],
+  ]},
+  accessories:{placeholder:'예: 브랜드 실크 스카프',audience:'모자·벨트·스카프 등 패션잡화를 비교하는 고객',directions:[
+    ['컬렉션 소개','잡화와 브랜드의 스타일','취향을 완성하는 작은 선택','컬렉션 보기'],
+    ['제품·스타일링','잡화와 어울리는 옷차림','오늘의 스타일에 포인트를 더하세요','제품 보기'],
+    ['소재·디테일 안내','제공한 소재·크기·관리 정보','디테일로 살펴보는 패션잡화','상세 정보 보기'],
   ]},
   home:{placeholder:'예: 원목 라운지 체어',audience:'공간과 제품의 어울림을 비교하는 고객',directions:[
     ['공간 제안','취향이 담긴 공간의 분위기','내 취향으로 채우는 공간','컬렉션 보기'],

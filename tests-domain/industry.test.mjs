@@ -6,14 +6,16 @@ import {newProject,importProject,exportErrors} from '../src/model.ts';
 import {buildGenerationRequest} from '../src/generation.ts';
 import {appendDirection} from '../src/conversation.ts';
 
-const physical=['packaging','food','beauty','electronics','fashion','home','industrial','other','automotive'];
+const physical=['packaging','food','beauty','electronics','fashion','home','industrial','other','automotive','bags','shoes','jewelry','accessories'];
 const requestedServices=['restaurant','cafe','lodging','travel','education','fitness','yoga','pilates','swimming','tennis','golf','sports','hospital','biotech','realestate','insurance','securities','stocks','crypto','finance','banking','lease','rental','services','corporate','tarot','astrology','myeongri','sinjeom'];
 
 test('every requested industry has one discoverable group without hiding older saved categories',()=>{
   const categoryIds=productCategories.map(([id])=>id);
   assert.deepEqual(new Set(categoryIds),new Set([...physical,...requestedServices]));
-  assert.equal(categoryIds.length,38);
-  assert.equal(industryGroups.length,11);
+  assert.equal(categoryIds.length,42);
+  assert.equal(industryGroups.length,12);
+  assert.equal(industryGroups[1].id,'fashion');
+  assert.deepEqual(industryGroups[1].categoryIds,['fashion','bags','shoes','jewelry','accessories']);
   assert.deepEqual(industryGroups.find(group=>group.id==='fortune').categoryIds,['tarot','astrology','myeongri','sinjeom']);
   assert.deepEqual(['tarot','astrology','myeongri','sinjeom'].map(industryLabel),['타로','별자리','명리학','신점']);
   const grouped=industryGroups.flatMap(group=>group.categoryIds);

@@ -20,12 +20,14 @@ async function serviceWizard(page:Page,category:string,name:string,creative=fals
  await wizard.getByRole('button',{name:'다음',exact:true}).click();return wizard;
 }
 
-test('eleven visual groups reveal only their own industries and all thirty-eight are searchable',async({page})=>{
+test('twelve visual groups expose fashion directly and all forty-two industries are searchable',async({page})=>{
  test.setTimeout(60000);await page.goto('/');
- await expect(page.locator('.business-options').getByRole('button')).toHaveCount(11);
- await page.getByRole('button',{name:'스포츠·운동 업종으로 광고 만들기',exact:true}).click();
+ await expect(page.locator('.business-options').getByRole('button')).toHaveCount(12);
+ await expect(page.locator('.business-options').getByRole('button').nth(1)).toHaveAccessibleName('패션·스타일 업종으로 광고 만들기');
+ await page.getByRole('button',{name:'패션·스타일 업종으로 광고 만들기',exact:true}).click();
  const wizard=page.locator('.create-page:visible'),picker=wizard.getByRole('group',{name:'업종 선택',exact:true});
- await expect(picker.getByRole('group',{name:'업종 그룹',exact:true}).getByRole('button')).toHaveCount(11);
+ await expect(picker.getByRole('group',{name:'패션·스타일 세부 업종',exact:true}).getByRole('button')).toHaveText(['의류·패션','가방','신발','주얼리','패션잡화']);
+ await expect(picker.getByRole('group',{name:'업종 그룹',exact:true}).getByRole('button')).toHaveCount(12);
  for(const group of industryGroups){
   await picker.getByRole('button',{name:group.label+' 업종 그룹',exact:true}).click();
   const options=picker.getByRole('group',{name:group.label+' 세부 업종',exact:true});
