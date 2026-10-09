@@ -4,7 +4,7 @@ import {axisLabel,defaultProfile,dimensionAxes,isServiceCategory,productCategori
 import type {ProductCategory,SpecType} from './product.ts';
 import {useEffect,useRef,useState} from 'react';
 import type {PointerEvent} from 'react';
-import {ArrowDownToLine,ArrowLeft,Check,ChevronRight,FolderOpen,ImagePlus,Layers,Maximize2,Plus,RotateCcw,Save,ShieldCheck,Upload,X} from 'lucide-react';
+import {ArrowDownToLine,ArrowLeft,Check,ChevronRight,FolderOpen,ImagePlus,Layers,Maximize2,MessageSquare,Plus,RotateCcw,Save,ShieldCheck,Upload,X} from 'lucide-react';
 import {exportErrors,imageFile,importProject,newProject} from './model';
 import type {Axis,Copy,Locale,Project} from './model';
 import {geometry,render} from './render';
@@ -12,6 +12,7 @@ import {projects,saveProject} from './storage';
 import {PricingDialog} from './PricingDialog';
 import {CampaignFields,CampaignPanel} from './CampaignPanel';
 import {ReferenceInspector} from './ReferenceInspector';
+import {CreativeDirector} from './CreativeDirector';
 const tabs=[['product','광고 정보'],['copy','문구·언어'],['background','배경'],['dimensions','규격']] as const;
 type Tab=typeof tabs[number][0];
 const presets=[['크림','#f4f0e8','dark'],['화이트','#ffffff','dark'],['차콜','#20241f','light'],['세이지','#e5e9de','dark']] as const;
@@ -53,6 +54,7 @@ export default function App({initialProject,onProjectChange}:{initialProject?:Pr
   <main id="main" className="workspace">
    <div className="page-heading"><div><div className="eyebrow">YOUR BRAND. YOUR STORY.</div><h1>{creative?<>새로운 광고를,<br className="mobile-only"/> 구상해보세요.</>:service?<>서비스의 가치를,<br className="mobile-only"/> 분명하게 전하세요.</>:<>상품은 그대로.<br className="mobile-only"/> 표현은 자유롭게.</>}</h1><p>{creative?'사진·광고 내용으로 제작 방향을 정하세요. 규격은 필요할 때만 사용합니다.':service?'규격 없이 사진·배경·문구로 광고를 구성하세요.':'원본 사진을 보존하고, 필요한 부분만 수정하세요.'}</p></div><button className="new-button" onClick={()=>{if(!dirty.current||confirm('저장하지 않은 편집을 닫고 새 작업을 시작할까요?'))load(newProject());}}><Plus size={17}/>새 작업</button></div>
    <div className="scope-note"><ShieldCheck size={18}/><span>현재는 직접 편집 검증판입니다. 자동 배경 제거·AI 생성·자동 번역·결제는 아직 연결하지 않았습니다.</span></div>
+   <button className="direction-jump" onClick={()=>document.getElementById('creative-direction')?.scrollIntoView({block:'start',behavior:'auto'})}><MessageSquare size={15}/>대화로 요청·수정하기</button>
    <div className="studio">
     <section className="preview-section" aria-label="홍보 이미지 미리보기"><div className="preview-toolbar"><span><span className="live-dot"/>{creative?'생성 전 · 참고 사진':'실시간 미리보기'}</span><label className="format-label">출력 비율<select aria-describedby="format-usage" value={project.format} onChange={e=>change(p=>({...p,format:e.target.value as Project['format']}))}>{imageFormats.map(format=><option key={format.id} value={format.id}>{format.id}</option>)}</select></label><button className="icon-button" aria-label="미리보기 확대" disabled={creative} onClick={()=>{if(canvas.current){setZoom(canvas.current.toDataURL());zoomDialog.current?.showModal();}}}><Maximize2 size={17}/></button></div>
      <div className="format-info" id="format-usage"><strong>{outputFormat.id} · {outputFormat.use}</strong><p>{outputFormat.description}</p></div>
@@ -98,6 +100,7 @@ export default function App({initialProject,onProjectChange}:{initialProject?:Pr
    </div>
    {(error||layoutErrors.length>0)&&<div role="alert" className="feedback error">{error||layoutErrors.join(' ')}</div>}
    <div role="status" className={notice?'feedback success':'status-empty'}>{notice&&<><Check size={16}/>{notice}</>}</div>
+   <CreativeDirector key={project.id} project={project} change={change}/>
    <CampaignPanel project={project} change={change} message={setNotice}/>
    <div className="backup-strip"><div><strong>다시 편집할 수 있도록.</strong><p>프로젝트 파일에는 원본 사진과 모든 편집 정보가 포함됩니다. 다른 기기로 옮기거나 백업할 때 사용하세요.</p></div><div><button onClick={backup}><ArrowDownToLine size={16}/>프로젝트 백업</button><button onClick={()=>projectFile.current?.click()}><FolderOpen size={16}/>파일 불러오기</button><input ref={projectFile} type="file" accept="application/json,.json" aria-label="프로젝트 파일 선택" className="sr-only" onChange={e=>{void restore(e.target.files?.[0]);e.target.value='';}}/></div></div>
    <footer><span>aiadcast <span>by selluplabs</span></span><p>사진과 편집 내용은 외부 서버로 전송하지 않습니다. 기기 저장 데이터는 브라우저 데이터를 지우면 삭제될 수 있습니다.</p></footer>
