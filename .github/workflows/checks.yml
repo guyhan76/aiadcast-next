@@ -1,0 +1,27 @@
+name: App checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run check:isolation
+      - run: npm run test:domain
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Browser checks
+        run: |
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(node --input-type=module -e "import {chromium} from '@playwright/test'; process.stdout.write(chromium.executablePath())")"
+          npm test
+      - name: Release readiness report (informational; does not publish)
+        run: npm run release:status -- internal

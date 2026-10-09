@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "projectId": "aiadcast-next",
+  "notes": "Release evidence is intentionally empty until the corresponding work has been completed and independently reviewed. Local web tests alone are not Android or production release evidence.",
+  "gates": {}
+}

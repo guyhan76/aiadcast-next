@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "projectId": "aiadcast-next",
+  "company": "selluplabs",
+  "repository": {
+    "name": "aiadcast-next",
+    "visibility": "private",
+    "owner": "guyhan76",
+    "remote": null,
+    "ownershipVerified": false
+  },
+  "android": {
+    "legacyApplicationId": "kr.co.beehivecorp.aiadcast",
+    "legacyIdSource": "Existing company homepage src/config.ts; Play Console not independently inspected",
+    "storeApplicationId": "com.selluplabs.aiadcast.next",
+    "developmentApplicationId": "com.selluplabs.aiadcast.next.dev",
+    "stagingApplicationId": "com.selluplabs.aiadcast.next.staging",
+    "registrationStatus": "not-created",
+    "signingOwnerVerified": false
+  },
+  "legacyPolicy": {
+    "connectToExistingBackend": false,
+    "importAccountsOrCredits": false,
+    "reuseApiKeysOrSigningMaterial": false,
+    "inventoryVerified": false,
+    "resourceIds": []
+  },
+  "environments": {
+    "local": {
+      "namespace": "aiadcast-next-local",
+      "billingMode": "disabled",
+      "apiOrigin": null,
+      "resources": {"authProject": null, "database": null, "storageBucket": null, "openaiProject": null},
+      "secrets": {"openai": "AIADCAST_NEXT_LOCAL_OPENAI_API_KEY"},
+      "companyControlVerified": false
+    },
+    "staging": {
+      "namespace": "aiadcast-next-staging",
+      "billingMode": "sandbox",
+      "apiOrigin": null,
+      "resources": {"authProject": null, "database": null, "storageBucket": null, "openaiProject": null},
+      "secrets": {"openai": "AIADCAST_NEXT_STAGING_OPENAI_API_KEY"},
+      "companyControlVerified": false
+    },
+    "production": {
+      "namespace": "aiadcast-next-production",
+      "billingMode": "disabled",
+      "apiOrigin": null,
+      "resources": {"authProject": null, "database": null, "storageBucket": null, "openaiProject": null},
+      "secrets": {"openai": "AIADCAST_NEXT_PRODUCTION_OPENAI_API_KEY"},
+      "companyControlVerified": false
+    }
+  }
+}
