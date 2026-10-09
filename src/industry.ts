@@ -21,28 +21,41 @@ export function resolveIndustryCategory(value:unknown):ProductCategory|undefined
   const category=typeof value==='string'?(legacyCategories[value]??value):undefined;
   return productCategories.find(([id])=>id===category)?.[0];
 }
-export type IndustryGroupId = 'packaging'|'products'|'fashion'|'dining'|'travel'|'learning'|'sports'|'health'|'property'|'finance'|'mobility'|'fortune'|'business';
-export type IndustryGroup = {id:IndustryGroupId;label:string;description:string;categoryIds:readonly ProductCategory[]};
+export type IndustryKind = 'product'|'service';
+export const industryKinds:readonly {id:IndustryKind;label:string;description:string;defaultCategory:ProductCategory}[] = [
+  {id:'product',label:'상품',description:'전자기기 · 패션 · 포장재 · 식품 등',defaultCategory:'other'},
+  {id:'service',label:'서비스',description:'음식점 · 교육 · 여행 · 금융 등',defaultCategory:'services'},
+];
+export type IndustryGroupId = 'packaging'|'products'|'fashion'|'electronics'|'industrial'|'food'|'beauty'|'home'|'automotive'|'dining'|'travel'|'learning'|'sports'|'health'|'property'|'finance'|'mobility'|'fortune'|'business';
+export type IndustryGroup = {id:IndustryGroupId;kind:IndustryKind;label:string;description:string;categoryIds:readonly ProductCategory[]};
 export const industryGroups:readonly IndustryGroup[] = [
-  {id:'packaging',label:'포장재',description:'박스부터 파우치까지',categoryIds:['boxes','shoppingbags','labels','containers','plasticfilm','pouches','packaging']},
-  {id:'fashion',label:'패션·스타일',description:'의류부터 주얼리까지',categoryIds:['fashion','bags','shoes','jewelry','accessories']},
-  {id:'products',label:'상품·브랜드',description:'제품과 브랜드의 가치',categoryIds:['food','beauty','electronics','home','industrial','other']},
-  {id:'dining',label:'음식·매장',description:'메뉴와 공간의 매력',categoryIds:['restaurant','cafe']},
-  {id:'travel',label:'숙박·여행',description:'머무름과 여행의 경험',categoryIds:['lodging','travel']},
-  {id:'learning',label:'교육',description:'배움과 성장의 기회',categoryIds:['education']},
-  {id:'sports',label:'스포츠·운동',description:'운동과 레슨의 경험',categoryIds:['fitness','yoga','pilates','swimming','tennis','golf','sports']},
-  {id:'health',label:'의료·바이오',description:'의료 서비스와 연구 분야',categoryIds:['hospital','biotech']},
-  {id:'property',label:'부동산',description:'다음 공간을 위한 선택',categoryIds:['realestate']},
-  {id:'finance',label:'금융·보험',description:'조건을 이해하는 금융',categoryIds:['insurance','securities','stocks','crypto','finance','banking']},
-  {id:'mobility',label:'자동차·렌탈',description:'필요에 맞는 이용 방식',categoryIds:['automotive','lease','rental']},
-  {id:'fortune',label:'사주·운세',description:'나에게 맞는 상담의 시작',categoryIds:['tarot','astrology','myeongri','sinjeom']},
-  {id:'business',label:'기업·서비스',description:'사업과 서비스의 가치',categoryIds:['services','corporate']},
+  {id:'electronics',kind:'product',label:'전자기기·가전',description:'기능과 일상의 편리함',categoryIds:['electronics']},
+  {id:'fashion',kind:'product',label:'패션·스타일',description:'의류부터 주얼리까지',categoryIds:['fashion','bags','shoes','jewelry','accessories']},
+  {id:'packaging',kind:'product',label:'포장재',description:'박스부터 파우치까지',categoryIds:['boxes','shoppingbags','labels','containers','plasticfilm','pouches','packaging']},
+  {id:'industrial',kind:'product',label:'산업재',description:'부품·장비와 기술',categoryIds:['industrial']},
+  {id:'food',kind:'product',label:'식품·음료',description:'식탁에 전하는 제품',categoryIds:['food']},
+  {id:'beauty',kind:'product',label:'뷰티·생활용품',description:'일상을 위한 제품',categoryIds:['beauty']},
+  {id:'home',kind:'product',label:'가구·인테리어',description:'공간을 채우는 취향',categoryIds:['home']},
+  {id:'automotive',kind:'product',label:'자동차·모빌리티',description:'차량과 이동의 가치',categoryIds:['automotive']},
+  {id:'products',kind:'product',label:'기타 상품',description:'그 밖의 다양한 제품',categoryIds:['other']},
+  {id:'dining',kind:'service',label:'음식·매장',description:'메뉴와 공간의 매력',categoryIds:['restaurant','cafe']},
+  {id:'travel',kind:'service',label:'숙박·여행',description:'머무름과 여행의 경험',categoryIds:['lodging','travel']},
+  {id:'learning',kind:'service',label:'교육',description:'배움과 성장의 기회',categoryIds:['education']},
+  {id:'sports',kind:'service',label:'스포츠·운동',description:'운동과 레슨의 경험',categoryIds:['fitness','yoga','pilates','swimming','tennis','golf','sports']},
+  {id:'health',kind:'service',label:'의료·바이오',description:'의료 서비스와 연구 분야',categoryIds:['hospital','biotech']},
+  {id:'property',kind:'service',label:'부동산',description:'다음 공간을 위한 선택',categoryIds:['realestate']},
+  {id:'finance',kind:'service',label:'금융·보험',description:'조건을 이해하는 금융',categoryIds:['insurance','securities','stocks','crypto','finance','banking']},
+  {id:'mobility',kind:'service',label:'리스·렌탈',description:'필요에 맞는 이용 방식',categoryIds:['lease','rental']},
+  {id:'fortune',kind:'service',label:'사주·운세',description:'나에게 맞는 상담의 시작',categoryIds:['tarot','astrology','myeongri','sinjeom']},
+  {id:'business',kind:'service',label:'기업·서비스',description:'사업과 서비스의 가치',categoryIds:['services','corporate']},
 ];
 const physicalCategories:readonly ProductCategory[] = ['packaging','food','beauty','electronics','fashion','home','industrial','other','automotive','bags','shoes','jewelry','accessories','boxes','shoppingbags','labels','containers','plasticfilm','pouches'];
 export const isPhysicalCategory = (category:ProductCategory) => physicalCategories.includes(category);
 export function industryGroupFor(category:ProductCategory):IndustryGroup {
   return industryGroups.find(group=>group.categoryIds.includes(category))!;
 }
+export function industryKindFor(category:ProductCategory):IndustryKind {return industryGroupFor(category).kind;}
+export function industryGroupsFor(kind:IndustryKind):readonly IndustryGroup[] {return industryGroups.filter(group=>group.kind===kind);}
 export function industryLabel(category:ProductCategory):string {
   return productCategories.find(([id])=>id===category)![1];
 }

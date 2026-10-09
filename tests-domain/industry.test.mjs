@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {industryGroups,industryGroupFor,industryLabel,industryPlaceholder,industryAudience,industryDirections,productCategories} from '../src/industry.ts';
+import {industryGroups,industryGroupsFor,industryKindFor,industryGroupFor,industryLabel,industryPlaceholder,industryAudience,industryDirections,productCategories} from '../src/industry.ts';
 import {dimensionAxes,isServiceCategory,parseProfile,withCategory} from '../src/product.ts';
 import {newProject,importProject,exportErrors} from '../src/model.ts';
 import {buildGenerationRequest} from '../src/generation.ts';
@@ -9,16 +9,24 @@ import {appendDirection} from '../src/conversation.ts';
 const physical=['packaging','food','beauty','electronics','fashion','home','industrial','other','automotive','bags','shoes','jewelry','accessories','boxes','shoppingbags','labels','containers','plasticfilm','pouches'];
 const requestedServices=['restaurant','cafe','lodging','travel','education','fitness','yoga','pilates','swimming','tennis','golf','sports','hospital','biotech','realestate','insurance','securities','stocks','crypto','finance','banking','lease','rental','services','corporate','tarot','astrology','myeongri','sinjeom'];
 
-test('every requested industry has one discoverable group without hiding older saved categories',()=>{
+test('product and service branches keep every saved industry in one appropriate group',()=>{
   const categoryIds=productCategories.map(([id])=>id);
   assert.deepEqual(new Set(categoryIds),new Set([...physical,...requestedServices]));
   assert.equal(categoryIds.length,48);
-  assert.equal(industryGroups.length,13);
-  assert.equal(industryGroups[0].id,'packaging');
-  assert.deepEqual(industryGroups[0].categoryIds,['boxes','shoppingbags','labels','containers','plasticfilm','pouches','packaging']);
-  assert.deepEqual(industryGroups[0].categoryIds.map(industryLabel),['박스','쇼핑백','라벨','용기','비닐','파우치','기타']);
-  assert.equal(industryGroups[1].id,'fashion');
-  assert.deepEqual(industryGroups[1].categoryIds,['fashion','bags','shoes','jewelry','accessories']);
+  assert.equal(industryGroups.length,19);
+  const products=industryGroupsFor('product'),services=industryGroupsFor('service');
+  assert.equal(products.length,9);assert.equal(services.length,10);
+  assert.deepEqual(new Set(products.flatMap(group=>group.categoryIds)),new Set(physical));
+  assert.deepEqual(new Set(services.flatMap(group=>group.categoryIds)),new Set(requestedServices));
+  assert.deepEqual(products.map(group=>group.id),['electronics','fashion','packaging','industrial','food','beauty','home','automotive','products']);
+  const packaging=industryGroupFor('boxes'),fashion=industryGroupFor('fashion');
+  assert.equal(packaging.id,'packaging');
+  assert.deepEqual(packaging.categoryIds,['boxes','shoppingbags','labels','containers','plasticfilm','pouches','packaging']);
+  assert.deepEqual(packaging.categoryIds.map(industryLabel),['박스','쇼핑백','라벨','용기','비닐','파우치','기타']);
+  assert.deepEqual(fashion.categoryIds,['fashion','bags','shoes','jewelry','accessories']);
+  assert.equal(industryKindFor('food'),'product');assert.equal(industryKindFor('restaurant'),'service');
+  assert.equal(industryKindFor('automotive'),'product');assert.equal(industryKindFor('lease'),'service');
+  assert.deepEqual(industryGroupFor('lease').categoryIds,['lease','rental']);
   assert.deepEqual(industryGroups.find(group=>group.id==='fortune').categoryIds,['tarot','astrology','myeongri','sinjeom']);
   assert.deepEqual(['tarot','astrology','myeongri','sinjeom'].map(industryLabel),['타로','별자리','명리학','신점']);
   const grouped=industryGroups.flatMap(group=>group.categoryIds);
@@ -26,6 +34,8 @@ test('every requested industry has one discoverable group without hiding older s
   assert.equal(new Set(grouped).size,grouped.length);
   for(const category of categoryIds){
     assert.ok(industryGroupFor(category).categoryIds.includes(category));
+    assert.equal(industryGroupFor(category).kind,industryKindFor(category));
+    assert.equal(industryKindFor(category),isServiceCategory(category)?'service':'product');
     assert.ok(industryLabel(category).length>0);
     assert.ok(industryPlaceholder(category).startsWith('예: '));
     assert.ok(industryAudience(category).length>5);

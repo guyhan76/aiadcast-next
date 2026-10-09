@@ -1,7 +1,7 @@
 import {test,expect,type Page} from '@playwright/test';
 import sharp from 'sharp';
 import {readFile} from 'node:fs/promises';
-import {industryDirections,industryGroups,industryLabel,productCategories} from '../src/industry';
+import {industryDirections,industryGroupsFor,industryLabel,productCategories} from '../src/industry';
 import {selectIndustry} from './helpers/industry';
 
 async function downloadJSON(page:Page,name='프로젝트 백업'){
@@ -9,7 +9,7 @@ async function downloadJSON(page:Page,name='프로젝트 백업'){
  return JSON.parse(await readFile((await (await event).path())!,'utf8'));
 }
 async function serviceWizard(page:Page,category:string,name:string,creative=false){
- await page.goto('/');await page.getByRole('button',{name:'기업·서비스 업종으로 광고 만들기',exact:true}).click();const wizard=page.locator('.create-page:visible');
+ await page.goto('/');await page.getByRole('button',{name:'서비스 광고 만들기',exact:true}).click();const wizard=page.locator('.create-page:visible');
  await selectIndustry(page,category,wizard);await wizard.getByLabel('상품·서비스 이름').fill(name);
  await wizard.getByRole('button',{name:'다음',exact:true}).click();
  await expect(wizard.getByText('사진이나 로고 추가 (선택)',{exact:true})).toBeVisible();
@@ -20,28 +20,71 @@ async function serviceWizard(page:Page,category:string,name:string,creative=fals
  await wizard.getByRole('button',{name:'다음',exact:true}).click();return wizard;
 }
 
-test('thirteen visual groups expose packaging and fashion directly and all forty-eight industries are searchable',async({page})=>{
+test('two starting choices reveal only their categories and all forty-eight industries remain discoverable',async({page})=>{
  test.setTimeout(60000);await page.goto('/');
- await expect(page.locator('.business-options').getByRole('button')).toHaveCount(13);
- await expect(page.locator('.business-options').getByRole('button').nth(0)).toHaveAccessibleName('포장재 업종으로 광고 만들기');
- await expect(page.locator('.business-options').getByRole('button').nth(1)).toHaveAccessibleName('패션·스타일 업종으로 광고 만들기');
- await page.getByRole('button',{name:'패션·스타일 업종으로 광고 만들기',exact:true}).click();
+ await expect(page.locator('.business-options').getByRole('button')).toHaveCount(2);
+ await expect(page.locator('.business-options').getByRole('button').nth(0)).toHaveAccessibleName('상품 광고 만들기');
+ await expect(page.locator('.business-options').getByRole('button').nth(1)).toHaveAccessibleName('서비스 광고 만들기');
+ await page.getByRole('button',{name:'상품 광고 만들기',exact:true}).click();
  const wizard=page.locator('.create-page:visible'),picker=wizard.getByRole('group',{name:'업종 선택',exact:true});
+ await expect(picker.getByRole('button',{name:'상품',exact:true})).toHaveAttribute('aria-pressed','true');
+ await expect(wizard.getByLabel('상품·서비스 이름')).toHaveCount(0);
+ await expect(picker.getByRole('group',{name:'업종 그룹',exact:true}).getByRole('button')).toHaveCount(9);
+ await expect(picker.getByRole('button',{name:'금융·보험 업종 그룹',exact:true})).toHaveCount(0);
+ await picker.getByRole('button',{name:'패션·스타일 업종 그룹',exact:true}).click();
  await expect(picker.getByRole('group',{name:'패션·스타일 세부 업종',exact:true}).getByRole('button')).toHaveText(['의류·패션','가방','신발','주얼리','패션잡화']);
- await expect(picker.getByRole('group',{name:'업종 그룹',exact:true}).getByRole('button')).toHaveCount(13);
+ await expect(wizard.getByLabel('상품·서비스 이름')).toHaveCount(0);
  await picker.getByRole('button',{name:'포장재 업종 그룹',exact:true}).click();
  await expect(picker.getByRole('group',{name:'포장재 세부 업종',exact:true}).getByRole('button')).toHaveText(['박스','쇼핑백','라벨','용기','비닐','파우치','기타']);
- for(const group of industryGroups){
-  await picker.getByRole('button',{name:group.label+' 업종 그룹',exact:true}).click();
-  const options=picker.getByRole('group',{name:group.label+' 세부 업종',exact:true});
-  await expect(options.getByRole('button')).toHaveCount(group.categoryIds.length);
-  for(const category of group.categoryIds)await expect(options.getByRole('button',{name:industryLabel(category),exact:true})).toBeVisible();
+ await picker.getByRole('searchbox',{name:'업종 찾기',exact:true}).fill('보험');
+ await expect(picker.getByRole('button',{name:'보험',exact:true})).toHaveCount(0);
+ await expect(picker.getByText('일치하는 업종이 없습니다.',{exact:true})).toBeVisible();
+ await picker.getByRole('searchbox',{name:'업종 찾기',exact:true}).clear();
+ for(const kind of ['product','service'] as const){
+  await picker.getByRole('button',{name:kind==='product'?'상품':'서비스',exact:true}).click();
+  const groups=industryGroupsFor(kind);
+  await expect(picker.getByRole('group',{name:'업종 그룹',exact:true}).getByRole('button')).toHaveCount(groups.length);
+  for(const group of groups){
+   await picker.getByRole('button',{name:group.label+' 업종 그룹',exact:true}).click();
+   const options=picker.getByRole('group',{name:group.label+' 세부 업종',exact:true});
+   await expect(options.getByRole('button')).toHaveCount(group.categoryIds.length);
+   for(const category of group.categoryIds)await expect(options.getByRole('button',{name:industryLabel(category),exact:true})).toBeVisible();
+  }
  }
+ await expect(picker.getByRole('button',{name:'포장재 업종 그룹',exact:true})).toHaveCount(0);
+ await picker.getByRole('searchbox',{name:'업종 찾기',exact:true}).fill('박스');
+ await expect(picker.getByRole('button',{name:'박스',exact:true})).toHaveCount(0);
+ await expect(picker.getByText('일치하는 업종이 없습니다.',{exact:true})).toBeVisible();
  for(const [category] of productCategories)await selectIndustry(page,category,wizard);
+ await picker.getByRole('button',{name:'서비스',exact:true}).click();
  await picker.getByRole('searchbox',{name:'업종 찾기',exact:true}).fill('없는업종찾기xyz');
  await expect(picker.getByText('일치하는 업종이 없습니다.',{exact:true})).toBeVisible();
  await picker.getByRole('button',{name:'기타 서비스 선택',exact:false}).click();
  await expect(picker.getByRole('button',{name:'서비스 업종',exact:true})).toHaveAttribute('aria-pressed','true');
+});
+
+test('a direct new campaign starts with two choices and waits for a specific industry',async({page})=>{
+ await page.goto('/#create');const wizard=page.locator('.create-page:visible'),picker=wizard.getByRole('group',{name:'업종 선택',exact:true});
+ await expect(picker.getByRole('button')).toHaveCount(2);
+ await expect(picker.getByRole('searchbox')).toHaveCount(0);
+ await expect(picker.getByRole('group',{name:'업종 그룹',exact:true})).toHaveCount(0);
+ await expect(wizard.getByLabel('상품·서비스 이름')).toHaveCount(0);
+ await picker.getByRole('button',{name:'서비스',exact:true}).click();
+ await expect(picker.getByRole('group',{name:'업종 그룹',exact:true}).getByRole('button')).toHaveCount(10);
+ await expect(wizard.getByLabel('상품·서비스 이름')).toHaveCount(0);
+ await picker.getByRole('button',{name:'금융·보험 업종 그룹',exact:true}).click();
+ await expect(wizard.getByLabel('상품·서비스 이름')).toHaveCount(0);
+ await picker.getByRole('button',{name:'보험',exact:true}).click();
+ await expect(wizard.getByLabel('상품·서비스 이름')).toBeVisible();
+ await wizard.getByLabel('상품·서비스 이름').fill('생활 보험 안내');
+ await picker.getByRole('button',{name:'상품',exact:true}).click();
+ await expect(wizard.getByLabel('상품·서비스 이름')).toHaveCount(0);
+ await wizard.getByRole('button',{name:'다음',exact:true}).click();
+ await expect(wizard.getByRole('alert')).toContainText('분야를 선택');
+ await picker.getByRole('button',{name:'포장재 업종 그룹',exact:true}).click();
+ await expect(wizard.getByLabel('상품·서비스 이름')).toHaveCount(0);
+ await picker.getByRole('button',{name:'박스',exact:true}).click();
+ await expect(wizard.getByLabel('상품·서비스 이름')).toHaveValue('생활 보험 안내');
 });
 
 test('service industries including all four fortune consultations prepare ads without a photo or dimensions',async({page})=>{
@@ -90,6 +133,10 @@ test('legacy fortune JSON and device projects keep their source and copy with mi
  },deviceProject);
  await page.goto('/#projects');await page.getByRole('button',{name:/이전 신점 프로젝트/}).click();
  const migrated=await downloadJSON(page);expect(migrated.productProfile).toEqual({...legacy.productProfile,category:'sinjeom'});expect(migrated.copy).toEqual(legacy.copy);expect(migrated.product).toEqual(legacy.product);expect(migrated.dimensions).toEqual(legacy.dimensions);
+ const picker=page.locator('.editor-container:visible').getByRole('group',{name:'업종 선택',exact:true});
+ await picker.getByRole('button',{name:/업종 변경/}).click();await expect(picker.getByRole('button',{name:'서비스',exact:true})).toHaveAttribute('aria-pressed','true');
+ await picker.getByRole('button',{name:'상품',exact:true}).click();await picker.getByRole('button',{name:'포장재 업종 그룹',exact:true}).click();
+ const browsing=await downloadJSON(page);expect(browsing.productProfile).toEqual(migrated.productProfile);expect(browsing.copy).toEqual(migrated.copy);expect(browsing.product).toEqual(migrated.product);expect(browsing.dimensions).toEqual(migrated.dimensions);
  await selectIndustry(page,'corporate');
  const options=page.locator('.editor-container:visible .creative-options-compact');await options.locator('summary').click();
  await options.locator('.creative-look-card').filter({hasText:'모던 테크'}).click();let updated=await downloadJSON(page);
@@ -100,6 +147,7 @@ test('legacy fortune JSON and device projects keep their source and copy with mi
 test('industry cards and premium options remain usable from 320 pixels to desktop',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/#create');
  const wizard=page.locator('.create-page:visible'),picker=wizard.getByRole('group',{name:'업종 선택',exact:true});
+ await picker.getByRole('button',{name:'서비스',exact:true}).click();
  for(const width of [320,390,768,1440]){
   await page.setViewportSize({width,height:900});await picker.getByRole('button',{name:'금융·보험 업종 그룹',exact:true}).click();
   await expect(picker.getByRole('button',{name:'코인·디지털 자산',exact:true})).toBeVisible();
