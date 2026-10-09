@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 const fixture=await sharp({create:{width:480,height:320,channels:4,background:{r:191,g:87,b:45,alpha:1}}}).png().toBuffer();
 const photo={name:'original-product.png',mimeType:'image/png',buffer:fixture};
-test.beforeEach(async({page})=>{await page.goto('/');await page.evaluate(()=>document.fonts.ready);});
+test.beforeEach(async({page})=>{await page.goto('/#studio');await page.evaluate(()=>document.fonts.ready);});
 async function backup(page:import('@playwright/test').Page){const promise=page.waitForEvent('download');await page.getByRole('button',{name:'프로젝트 백업',exact:true}).click();const download=await promise;return JSON.parse(await readFile((await download.path())!,'utf8'));}
 test('uploaded product is preserved through background, text, language and format changes',async({page})=>{
  await page.getByLabel('상품 사진 추가').setInputFiles(photo);await expect(page.getByRole('status')).toContainText('원본 사진을 추가');

@@ -10,12 +10,14 @@ import type {Axis,Copy,Locale,Project} from './model';
 import {geometry,render} from './render';
 import {projects,saveProject} from './storage';
 import {PricingDialog} from './PricingDialog';
+import {CampaignFields,CampaignPanel} from './CampaignPanel';
+import {ReferenceInspector} from './ReferenceInspector';
 const tabs=[['product','광고 정보'],['copy','문구·언어'],['background','배경'],['dimensions','규격']] as const;
 type Tab=typeof tabs[number][0];
 const presets=[['크림','#f4f0e8','dark'],['화이트','#ffffff','dark'],['차콜','#20241f','light'],['세이지','#e5e9de','dark']] as const;
 function download(blob:Blob,name:string){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
-export default function App(){
- const [project,setProject]=useState<Project>(newProject);const [tab,setTab]=useState<Tab>('product');const [axis,setAxis]=useState<Axis>('width');
+export default function App({initialProject,onProjectChange}:{initialProject?:Project;onProjectChange?:(p:Project)=>void}={}){
+ const [project,setProject]=useState<Project>(()=>initialProject??newProject());const [tab,setTab]=useState<Tab>('product');const [axis,setAxis]=useState<Axis>('width');
  const [history,setHistory]=useState<Project[]>([]);const [notice,setNotice]=useState('');const [error,setError]=useState('');const [layoutErrors,setLayoutErrors]=useState<string[]>([]);
  const [saved,setSaved]=useState<Project[]>([]);const [busy,setBusy]=useState(false);const [zoom,setZoom]=useState('');
  const canvas=useRef<HTMLCanvasElement>(null);const library=useRef<HTMLDialogElement>(null);const zoomDialog=useRef<HTMLDialogElement>(null);const projectFile=useRef<HTMLInputElement>(null);
@@ -27,6 +29,7 @@ export default function App(){
  const dimensionMode=!activeAxes.length||!project.dimensions.visible?'none':project.dimensions.lines?'annotated':'summary';
  const drag=useRef<{index:number;axis:Axis;start:Project}|null>(null);
  const dirty=useRef(false);
+ useEffect(()=>onProjectChange?.(project),[project,onProjectChange]);
  const change=(fn:(p:Project)=>Project,remember=true)=>{const old=latest.current;const next=fn(old);if(remember)setHistory(h=>[...h.slice(-19),old]);latest.current=next;setProject(next);dirty.current=true;setNotice('');setError('');};
  const message=(e:unknown)=>setError(e instanceof Error?e.message:'작업을 완료하지 못했습니다. 다시 시도해주세요.');
  const load=(stored:Project)=>{const p={...stored,generation:stored.generation??defaultGeneration(),productProfile:stored.productProfile??defaultProfile()};uploadSequence.current.product++;uploadSequence.current.background++;drag.current=null;setProject(p);latest.current=p;setHistory([]);dirty.current=false;setError('');setNotice('프로젝트를 열었습니다.');library.current?.close();};
@@ -46,7 +49,7 @@ export default function App(){
  const setCopy=(field:keyof Copy,value:string)=>change(p=>({...p,copy:{...p.copy,[p.locale]:{...p.copy[p.locale],[field]:value}}}));
  const updateDimension=(a:Axis,value:string)=>change(p=>({...p,dimensions:{...p.dimensions,[a]:value}}));
  return <>
-  <header className="topbar"><a className="wordmark" href="#main" aria-label="aiadcast 편집기"><b>ai</b>adcast<i/></a><span className="edition">STUDIO <span> / </span> 편집 검증판</span><div className="topbar-actions"><PricingDialog/><button className="library-button" onClick={openLibrary}><FolderOpen size={17}/><span>저장한 작업</span></button></div></header>
+  <header className="topbar"><a className="wordmark" href="#home" aria-label="aiadcast 홈"><b>ai</b>adcast<i/></a><span className="edition">CREATIVE STUDIO</span><div className="topbar-actions"><PricingDialog/><button className="library-button" onClick={openLibrary}><FolderOpen size={17}/><span>저장한 작업</span></button></div></header>
   <main id="main" className="workspace">
    <div className="page-heading"><div><div className="eyebrow">YOUR BRAND. YOUR STORY.</div><h1>{creative?<>새로운 광고를,<br className="mobile-only"/> 구상해보세요.</>:service?<>서비스의 가치를,<br className="mobile-only"/> 분명하게 전하세요.</>:<>상품은 그대로.<br className="mobile-only"/> 표현은 자유롭게.</>}</h1><p>{creative?'사진·광고 내용으로 제작 방향을 정하세요. 규격은 필요할 때만 사용합니다.':service?'규격 없이 사진·배경·문구로 광고를 구성하세요.':'원본 사진을 보존하고, 필요한 부분만 수정하세요.'}</p></div><button className="new-button" onClick={()=>{if(!dirty.current||confirm('저장하지 않은 편집을 닫고 새 작업을 시작할까요?'))load(newProject());}}><Plus size={17}/>새 작업</button></div>
    <div className="scope-note"><ShieldCheck size={18}/><span>현재는 직접 편집 검증판입니다. 자동 배경 제거·AI 생성·자동 번역·결제는 아직 연결하지 않았습니다.</span></div>
@@ -76,7 +79,7 @@ export default function App(){
        <label className="field">상품·서비스명<input value={project.productName} maxLength={100} placeholder="예: 신차, 영어 회화 수업, 보험 상담, 청소 서비스" onChange={e=>change(p=>({...p,productName:e.target.value}))}/></label>
        <label className="field">{service?'서비스 내용':'소재·제품 정보'}<input value={profile.material} maxLength={160} placeholder={service?'예: 수업 내용, 상담 주제, 제공하는 서비스':'예: 스테인리스, 면, 유리 또는 차량 정보'} onChange={e=>change(p=>({...p,productProfile:{...(p.productProfile??defaultProfile()),material:e.target.value}}))}/></label><p className="help small">광고 대상의 정보를 저장합니다. 가격·조건·혜택 등 공개할 내용은 문구·언어 탭에 직접 입력하세요.</p>
        <label className="field range-label" hidden={creative||!project.product}>사진 크기 <span>{Math.round(project.scale*100)}%</span><input aria-label="사진 크기" type="range" min="0.5" max="1" step="0.01" value={project.scale} onChange={e=>change(p=>({...p,scale:Number(e.target.value)}))}/></label>
-       <button className="next-panel" onClick={()=>setTab('copy')}>문구 편집하기<ChevronRight size={17}/></button></>}
+       <CampaignFields project={project} change={change}/><button className="next-panel" onClick={()=>setTab('copy')}>문구 편집하기<ChevronRight size={17}/></button></>}
       {tab==='copy'&&<><div className="panel-heading"><h2>문구와 언어</h2><span>02 / COPY</span></div><p className="help">언어별 문구를 따로 편집·저장합니다. 아래 초기 문구는 예시이며 자동 번역되지 않습니다.</p><div className="language-options" role="group" aria-label="콘텐츠 언어">{(['ko','en'] as Locale[]).map(lang=><button key={lang} aria-pressed={project.locale===lang} onClick={()=>change(p=>({...p,locale:lang}))}>{lang==='ko'?'한국어':'English'}</button>)}</div>
        <label className="field">홍보 제목<textarea rows={3} maxLength={180} value={copy.title} onChange={e=>setCopy('title',e.target.value)}/></label><label className="field">광고 설명<textarea rows={3} maxLength={240} value={copy.description} onChange={e=>setCopy('description',e.target.value)}/></label>
        <label className="field">회사명<input maxLength={80} value={copy.company} onChange={e=>setCopy('company',e.target.value)}/></label><label className="field">연락처<input maxLength={60} value={copy.contact} placeholder="010-0000-0000" onChange={e=>setCopy('contact',e.target.value)}/></label><label className="field">이메일 또는 홈페이지<input maxLength={100} value={copy.website} placeholder="hello@example.com" onChange={e=>setCopy('website',e.target.value)}/></label><p className="help small">확정한 문구를 실제 글꼴로 출력합니다. 원본 상품 사진 안에 인쇄된 글자는 그대로 유지됩니다.</p></>}
@@ -88,13 +91,14 @@ export default function App(){
        ] as const).map(([mode,title,description])=><label key={mode} className={dimensionMode===mode?'selected':''}><input type="radio" name="dimension-display" aria-label={title} checked={dimensionMode===mode} disabled={mode!=='none'&&!activeAxes.length} onChange={()=>change(p=>({...p,dimensions:{...p.dimensions,visible:mode!=='none',lines:mode==='annotated'}}))}/><span><strong>{title}</strong><small>{description}</small></span></label>)}</fieldset><p className="help small">표시를 꺼도 입력한 규격은 보관됩니다. 이미지 생성 없이 언제든 표시 방식을 바꿀 수 있습니다. 원본 사진이나 홍보 문구에 직접 적힌 숫자는 그대로 유지됩니다.</p><label className="field">규격 형식<select value={profile.specType} onChange={e=>{const type=e.target.value as SpecType;change(p=>({...p,productProfile:{...(p.productProfile??defaultProfile()),specType:type},dimensions:type==='none'?{...p.dimensions,visible:false,lines:false}:p.dimensions}));}}>{specTypes.map(([value,name])=><option key={value} value={value}>{name}</option>)}</select></label><p className="help small">병·용기는 지름과 높이, 평면 상품은 가로와 세로를 선택하세요. 자동차·교육·보험·서비스 등 규격이 필요 없는 광고는 ‘규격 정보 없음’을 선택하세요.</p>
        <div className="dimension-inputs">{activeAxes.map(a=><label className="field" key={a}>{axisLabel(a,'ko',profile)}<div className="unit-input"><input aria-label={axisLabel(a,'ko',profile)+' mm'} inputMode="decimal" value={project.dimensions[a]} maxLength={12} onChange={e=>updateDimension(a,e.target.value)}/><span>mm</span></div></label>)}</div>{activeAxes.length>0&&<p className="help">치수선은 입력값을 표시합니다. 사진을 측정하거나 상품의 입체 형상을 바꾸는 기능은 아닙니다.</p>}
        {project.dimensions.lines&&project.dimensions.visible&&activeAxes.length>0&&<><div className="axis-options" role="group" aria-label="편집할 치수선">{activeAxes.map(a=><button key={a} aria-pressed={selectedAxis===a} onClick={()=>setAxis(a)}>{axisLabel(a,'ko',profile)}</button>)}</div><p className="help small">미리보기의 주황색 점 두 개를 움직여 해당 변에 맞추세요. 아래 좌표로도 조정할 수 있습니다.</p>{project.dimensions.anchors[selectedAxis].map((pt,index)=><div className="anchor-controls" key={index}><span>{index===0?'시작점':'끝점'}</span>{(['x','y'] as const).map(coordinate=><label key={coordinate}>{coordinate.toUpperCase()}<input aria-label={`${index===0?'시작점':'끝점'} ${coordinate.toUpperCase()}`} type="range" min="0" max="1" step="0.01" value={pt[coordinate]} onChange={e=>change(p=>{const points=[...p.dimensions.anchors[selectedAxis]] as typeof p.dimensions.anchors.width;points[index]={...points[index],[coordinate]:Number(e.target.value)};return {...p,dimensions:{...p.dimensions,anchors:{...p.dimensions.anchors,[selectedAxis]:points}}};})}/></label>)}</div>)}</>}
-       <div className="preserve-note"><Layers size={18}/><p><strong>같은 데이터로 일관되게</strong>규격 요약과 치수선이 같은 숫자를 사용합니다. 출력 비율을 바꿔도 입력값은 유지됩니다.</p></div></>}
+       <ReferenceInspector project={project} change={change}/><div className="preserve-note"><Layers size={18}/><p><strong>같은 데이터로 일관되게</strong>규격 요약과 치수선이 같은 숫자를 사용합니다. 출력 비율을 바꿔도 입력값은 유지됩니다.</p></div></>}
      </div>
      <div className="editor-actions"><button className="save-button" disabled={busy} onClick={()=>void save()}><Save size={17}/>이 기기에 저장</button><button className="export-button" disabled={busy||creative} onClick={()=>void exportPng()}><ArrowDownToLine size={17}/>{busy?'처리 중…':creative?'AI 생성 연결 예정':'PNG 내보내기'}</button></div>
     </section>
    </div>
    {(error||layoutErrors.length>0)&&<div role="alert" className="feedback error">{error||layoutErrors.join(' ')}</div>}
    <div role="status" className={notice?'feedback success':'status-empty'}>{notice&&<><Check size={16}/>{notice}</>}</div>
+   <CampaignPanel project={project} change={change} message={setNotice}/>
    <div className="backup-strip"><div><strong>다시 편집할 수 있도록.</strong><p>프로젝트 파일에는 원본 사진과 모든 편집 정보가 포함됩니다. 다른 기기로 옮기거나 백업할 때 사용하세요.</p></div><div><button onClick={backup}><ArrowDownToLine size={16}/>프로젝트 백업</button><button onClick={()=>projectFile.current?.click()}><FolderOpen size={16}/>파일 불러오기</button><input ref={projectFile} type="file" accept="application/json,.json" aria-label="프로젝트 파일 선택" className="sr-only" onChange={e=>{void restore(e.target.files?.[0]);e.target.value='';}}/></div></div>
    <footer><span>aiadcast <span>by selluplabs</span></span><p>사진과 편집 내용은 외부 서버로 전송하지 않습니다. 기기 저장 데이터는 브라우저 데이터를 지우면 삭제될 수 있습니다.</p></footer>
   </main>

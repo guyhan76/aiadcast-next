@@ -3,5 +3,5 @@ import ReactDOM from 'react-dom/client';
 import '@fontsource-variable/noto-sans-kr';
 import './style.css';
 import './formats.css';
-import App from './App';
+import App from './StudioApp';
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);

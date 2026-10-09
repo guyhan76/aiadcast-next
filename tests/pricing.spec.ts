@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';
 test('pricing changes language and display currency without changing ad language or charging',async({page})=>{
- await page.goto('/');
+ await page.goto('/#studio');
  await page.getByRole('button',{name:'이용 요금',exact:true}).click();
  let dialog=page.getByRole('dialog',{name:'이용 요금',exact:true});
  await expect(dialog.getByText('₩9,900',{exact:true})).toBeVisible();
@@ -26,6 +26,8 @@ test('pricing changes language and display currency without changing ad language
  dialog=page.getByRole('dialog',{name:'이용 요금',exact:true});
  await expect(dialog.getByText('₩9,900',{exact:true})).toBeVisible();
  await dialog.getByRole('button',{name:'요금 안내 닫기'}).click();
+ await page.evaluate(()=>location.hash='home');await page.getByRole('button',{name:'이용 요금',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'English',exact:true}).click();await page.getByRole('button',{name:'Close pricing'}).click();
+ await page.evaluate(()=>location.hash='studio');await page.getByRole('button',{name:'이용 요금',exact:true}).click();await expect(page.getByRole('dialog',{name:'Pricing',exact:true}).getByText('$7.99',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Close pricing'}).click();
  for(const width of [320,390,768,1440]){
   await page.setViewportSize({width,height:900});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);

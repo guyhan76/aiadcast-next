@@ -12,7 +12,8 @@
     "check:isolation": "node scripts/check-isolation.mjs",
     "release:status": "node scripts/release-status.mjs",
     "release:package": "python3 scripts/package-release.py",
-    "pricing:report": "node --experimental-strip-types scripts/pricing-report.mjs"
+    "pricing:report": "node --experimental-strip-types scripts/pricing-report.mjs",
+    "models:discover": "node scripts/discover-models.mjs"
   },
   "engines": {
     "node": ">=22.12.0"

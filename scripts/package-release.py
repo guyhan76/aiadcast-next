@@ -30,6 +30,7 @@ for entry in filter(None, entries):
     files.append((name, object_id.decode()))
 
 subprocess.run(['npm', 'run', 'build'], cwd=root, check=True)
+subprocess.run(['node', 'scripts/export-brief.mjs'], cwd=root, check=True)
 out = root / 'release'
 bundle = out / 'aiadcast-next-source.bundle'
 subprocess.run(['git', 'bundle', 'create', str(bundle), 'HEAD', 'main'], cwd=root, check=True)
@@ -41,7 +42,7 @@ with ZipFile(archive, 'w', ZIP_DEFLATED) as zipped:
         data = git('cat-file', 'blob', object_id)
         zipped.writestr('source/' + name, data)
         manifest['files']['source/' + name] = hashlib.sha256(data).hexdigest()
-    for name in ['aiadcast-studio.html', '사용안내.txt', 'FONT-LICENSE.txt', 'THIRD-PARTY-NOTICES.txt', bundle.name]:
+    for name in ['aiadcast-studio.html', 'aiadcast-technical-brief.pdf', '사용안내.txt', 'FONT-LICENSE.txt', 'THIRD-PARTY-NOTICES.txt', bundle.name]:
         data = (out / name).read_bytes()
         zipped.writestr(name, data)
         manifest['files'][name] = hashlib.sha256(data).hexdigest()

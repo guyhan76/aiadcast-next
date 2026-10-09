@@ -1,4 +1,4 @@
-import {useRef,useState} from 'react';
+import {useId,useRef,useState} from 'react';
 import {X} from 'lucide-react';
 import {formatPrice,pricingCurrency,pricingProposal} from './pricing';
 import type {PricingLanguage} from './pricing';
@@ -14,14 +14,15 @@ function initialLanguage():PricingLanguage {
 }
 export function PricingDialog(){
  const dialog=useRef<HTMLDialogElement>(null);
+ const titleId=useId();
  const [language,setLanguage]=useState<PricingLanguage>(initialLanguage);
  const t=copy[language],currency=pricingCurrency(language);
  function select(next:PricingLanguage){setLanguage(next);try{localStorage.setItem('aiadcast-pricing-language',next);}catch{/* Display works without storage. */}}
  return <>
-  <button className="pricing-trigger" onClick={()=>dialog.current?.showModal()}>이용 요금</button>
-  <dialog ref={dialog} className="pricing-dialog" aria-labelledby="pricing-title" lang={language}>
+  <button className="pricing-trigger" onClick={()=>{try{const saved=localStorage.getItem('aiadcast-pricing-language');if(saved==='ko'||saved==='en')setLanguage(saved);}catch{/* Keep this dialog's language if storage is unavailable. */}dialog.current?.showModal();}}>이용 요금</button>
+  <dialog ref={dialog} className="pricing-dialog" aria-labelledby={titleId} lang={language}>
    <div className="pricing-head"><span>{t.eyebrow}</span><button className="icon-button" aria-label={t.close} onClick={()=>dialog.current?.close()}><X size={21}/></button></div>
-   <div className="pricing-title"><h2 id="pricing-title">{t.title}</h2><span>{t.tag}</span></div>
+   <div className="pricing-title"><h2 id={titleId}>{t.title}</h2><span>{t.tag}</span></div>
    <p className="pricing-intro">{t.intro}</p>
    <div className="pricing-language" role="group" aria-label={t.language}>
     <button aria-pressed={language==='ko'} onClick={()=>select('ko')}>한국어</button>

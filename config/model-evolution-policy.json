@@ -1,0 +1,17 @@
+{
+  "version": "release-gates-1",
+  "discoveryOnly": true,
+  "automaticPaidEvaluation": false,
+  "suiteVersion": "product-ad-regression-1",
+  "approvedDatasetHashes": [],
+  "maxReportAgeDays": 7,
+  "minimumCases": 28,
+  "minimumPerGroup": 4,
+  "requiredGroups": ["source-identity", "korean-copy", "multilingual-copy", "specification", "service-without-specs", "formats", "failure-and-billing"],
+  "maxMeanCostUsd": 0.30,
+  "maxP95LatencySeconds": 120,
+  "maxCostIncreaseRatio": 1.10,
+  "minimumCanaryJobs": 30,
+  "canaryTrafficPercent": 10,
+  "maxCanaryFailureRate": 0.03
+}
