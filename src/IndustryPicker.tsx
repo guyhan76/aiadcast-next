@@ -1,11 +1,11 @@
 import {useEffect,useId,useRef,useState} from 'react';
-import {ArrowRight,BriefcaseBusiness,Building2,Car,Check,ChevronDown,Dumbbell,GraduationCap,HeartPulse,Landmark,Package,Plane,Search,Shirt,Sparkles,UtensilsCrossed,X} from 'lucide-react';
+import {ArrowRight,BriefcaseBusiness,Building2,Car,Check,ChevronDown,Dumbbell,GraduationCap,HeartPulse,Landmark,Package,Plane,Search,Shapes,Shirt,Sparkles,UtensilsCrossed,X} from 'lucide-react';
 import type {LucideIcon} from 'lucide-react';
 import {industryGroups,industryGroupFor,industryLabel,productCategories} from './industry';
 import type {ProductCategory} from './product';
 import './industry-picker.css';
 
-export const industryGroupIcons:Record<string,LucideIcon>={products:Package,fashion:Shirt,dining:UtensilsCrossed,travel:Plane,learning:GraduationCap,sports:Dumbbell,health:HeartPulse,property:Building2,finance:Landmark,mobility:Car,fortune:Sparkles,business:BriefcaseBusiness};
+export const industryGroupIcons:Record<string,LucideIcon>={packaging:Package,products:Shapes,fashion:Shirt,dining:UtensilsCrossed,travel:Plane,learning:GraduationCap,sports:Dumbbell,health:HeartPulse,property:Building2,finance:Landmark,mobility:Car,fortune:Sparkles,business:BriefcaseBusiness};
 export function IndustryIcon({groupId,size=22}:{groupId:string;size?:number}){const Icon=industryGroupIcons[groupId]??BriefcaseBusiness;return <Icon size={size} strokeWidth={1.5} aria-hidden="true"/>;}
 type Props={value:ProductCategory;onChange:(category:ProductCategory)=>void;compact?:boolean};
 const normalize=(text:string)=>text.toLocaleLowerCase().replace(/[\s·・,\-]/g,'');

@@ -1,6 +1,6 @@
 // Stable leaf IDs keep saved projects compatible while the UI groups choices visually.
 export const productCategories = [
-  ['packaging', '포장재'], ['food', '식품·음료'], ['beauty', '뷰티·생활용품'],
+  ['packaging', '기타'], ['food', '식품·음료'], ['beauty', '뷰티·생활용품'],
   ['electronics', '전자제품'], ['fashion', '의류·패션'], ['home', '가구·인테리어'],
   ['industrial', '산업용 부품·장비'], ['automotive', '자동차·모빌리티'],
   ['education', '교육·강의'], ['insurance', '보험'], ['services', '서비스 업종'], ['other', '기타 실물 상품'],
@@ -13,6 +13,7 @@ export const productCategories = [
   ['corporate', '기업 홍보'],
   ['tarot', '타로'], ['astrology', '별자리'], ['myeongri', '명리학'], ['sinjeom', '신점'],
   ['bags', '가방'], ['shoes', '신발'], ['jewelry', '주얼리'], ['accessories', '패션잡화'],
+  ['boxes', '박스'], ['shoppingbags', '쇼핑백'], ['labels', '라벨'], ['containers', '용기'], ['plasticfilm', '비닐'], ['pouches', '파우치'],
 ] as const;
 export type ProductCategory = typeof productCategories[number][0];
 const legacyCategories:Readonly<Record<string,ProductCategory>>={saju:'myeongri',fortunehouse:'myeongri',divination:'sinjeom'};
@@ -20,11 +21,12 @@ export function resolveIndustryCategory(value:unknown):ProductCategory|undefined
   const category=typeof value==='string'?(legacyCategories[value]??value):undefined;
   return productCategories.find(([id])=>id===category)?.[0];
 }
-export type IndustryGroupId = 'products'|'fashion'|'dining'|'travel'|'learning'|'sports'|'health'|'property'|'finance'|'mobility'|'fortune'|'business';
+export type IndustryGroupId = 'packaging'|'products'|'fashion'|'dining'|'travel'|'learning'|'sports'|'health'|'property'|'finance'|'mobility'|'fortune'|'business';
 export type IndustryGroup = {id:IndustryGroupId;label:string;description:string;categoryIds:readonly ProductCategory[]};
 export const industryGroups:readonly IndustryGroup[] = [
-  {id:'products',label:'상품·브랜드',description:'제품과 브랜드의 가치',categoryIds:['packaging','food','beauty','electronics','home','industrial','other']},
+  {id:'packaging',label:'포장재',description:'박스부터 파우치까지',categoryIds:['boxes','shoppingbags','labels','containers','plasticfilm','pouches','packaging']},
   {id:'fashion',label:'패션·스타일',description:'의류부터 주얼리까지',categoryIds:['fashion','bags','shoes','jewelry','accessories']},
+  {id:'products',label:'상품·브랜드',description:'제품과 브랜드의 가치',categoryIds:['food','beauty','electronics','home','industrial','other']},
   {id:'dining',label:'음식·매장',description:'메뉴와 공간의 매력',categoryIds:['restaurant','cafe']},
   {id:'travel',label:'숙박·여행',description:'머무름과 여행의 경험',categoryIds:['lodging','travel']},
   {id:'learning',label:'교육',description:'배움과 성장의 기회',categoryIds:['education']},
@@ -36,7 +38,7 @@ export const industryGroups:readonly IndustryGroup[] = [
   {id:'fortune',label:'사주·운세',description:'나에게 맞는 상담의 시작',categoryIds:['tarot','astrology','myeongri','sinjeom']},
   {id:'business',label:'기업·서비스',description:'사업과 서비스의 가치',categoryIds:['services','corporate']},
 ];
-const physicalCategories:readonly ProductCategory[] = ['packaging','food','beauty','electronics','fashion','home','industrial','other','automotive','bags','shoes','jewelry','accessories'];
+const physicalCategories:readonly ProductCategory[] = ['packaging','food','beauty','electronics','fashion','home','industrial','other','automotive','bags','shoes','jewelry','accessories','boxes','shoppingbags','labels','containers','plasticfilm','pouches'];
 export const isPhysicalCategory = (category:ProductCategory) => physicalCategories.includes(category);
 export function industryGroupFor(category:ProductCategory):IndustryGroup {
   return industryGroups.find(group=>group.categoryIds.includes(category))!;
@@ -50,10 +52,40 @@ type IndustryContent = {placeholder:string;audience:string;directions:readonly [
 // These are editable starting directions, not inferred facts about a business.
 // Prices, outcomes, clinical effects and investment returns are never fabricated.
 const content:Record<ProductCategory,IndustryContent> = {
-  packaging:{placeholder:'예: 크라프트 택배박스',audience:'포장 방식과 발주 조건을 비교하는 고객',directions:[
+  packaging:{placeholder:'예: 기타 포장재 이름',audience:'포장 방식과 발주 조건을 비교하는 고객',directions:[
     ['브랜드 소개','소재와 브랜드의 분위기','제품을 담는 브랜드의 방식','제품 보기'],
     ['제품 안내','규격과 사용 목적 소개','필요한 포장을 만나보세요','제품 문의'],
     ['디테일 소개','제공한 소재·구조 정보','선택에 필요한 포장 정보','상세 정보 보기'],
+  ]},
+  boxes:{placeholder:'예: 크라프트 택배박스',audience:'박스의 형태·규격·인쇄와 발주 조건을 비교하는 고객',directions:[
+    ['브랜드 소개','박스와 브랜드의 분위기','제품을 담는 우리 브랜드의 방식','박스 보기'],
+    ['제품·제작 안내','박스의 용도와 제작 옵션','제품에 어울리는 박스를 만나보세요','제작 문의'],
+    ['규격·소재 안내','제공한 크기·소재·인쇄 정보','발주 전에 살펴보는 박스 정보','제품 정보 보기'],
+  ]},
+  shoppingbags:{placeholder:'예: 로고 인쇄 종이 쇼핑백',audience:'쇼핑백의 소재·크기·인쇄와 제작 조건을 비교하는 고객',directions:[
+    ['브랜드 소개','쇼핑백과 브랜드의 분위기','브랜드의 이야기를 담아 전하세요','쇼핑백 보기'],
+    ['제품·제작 안내','쇼핑백의 사용 장면과 제작 옵션','우리 브랜드에 어울리는 쇼핑백','제작 문의'],
+    ['규격·소재 안내','제공한 크기·소재·손잡이 정보','선택 전에 살펴보는 쇼핑백 디테일','상세 정보 보기'],
+  ]},
+  labels:{placeholder:'예: 브랜드 로고 스티커 라벨',audience:'라벨의 형태·소재·인쇄와 부착 용도를 비교하는 고객',directions:[
+    ['브랜드 소개','라벨 디자인과 브랜드의 분위기','작은 라벨에 담는 브랜드의 인상','라벨 보기'],
+    ['제품·제작 안내','라벨의 사용 목적과 인쇄 옵션','제품에 어울리는 라벨을 만나보세요','제작 문의'],
+    ['규격·소재 안내','제공한 크기·소재·부착 정보','제작 전에 살펴보는 라벨 정보','제작 정보 보기'],
+  ]},
+  containers:{placeholder:'예: 브랜드 유리 용기',audience:'용기의 형태·소재·규격과 사용 목적을 비교하는 고객',directions:[
+    ['브랜드 소개','용기와 제품의 분위기','담는 방식에서 시작하는 브랜드','용기 보기'],
+    ['제품 안내','용기의 사용 장면과 구성','제품에 맞는 용기를 만나보세요','제품 문의'],
+    ['규격·소재 안내','제공한 치수·소재·용량 정보','선택 전에 살펴보는 용기 디테일','제품 정보 보기'],
+  ]},
+  plasticfilm:{placeholder:'예: 제품 포장용 비닐',audience:'비닐의 소재·크기·두께와 인쇄 조건을 비교하는 고객',directions:[
+    ['브랜드 소개','비닐 포장과 브랜드의 분위기','제품을 전하는 포장의 한 가지 방식','비닐 포장재 보기'],
+    ['제품·제작 안내','포장 용도와 제작 옵션','용도에 맞는 비닐 포장을 만나보세요','제작 문의'],
+    ['규격·소재 안내','제공한 크기·소재·두께 정보','발주 전에 살펴보는 비닐 포장 정보','상세 정보 보기'],
+  ]},
+  pouches:{placeholder:'예: 지퍼형 스탠딩 파우치',audience:'파우치의 형태·소재·크기와 마감 방식을 비교하는 고객',directions:[
+    ['브랜드 소개','파우치와 브랜드의 분위기','제품의 인상을 담는 파우치','파우치 보기'],
+    ['제품·제작 안내','파우치의 사용 장면과 제작 옵션','제품에 어울리는 파우치를 만나보세요','제작 문의'],
+    ['규격·소재 안내','제공한 크기·소재·마감 정보','선택 전에 살펴보는 파우치 디테일','제품 정보 보기'],
   ]},
   food:{placeholder:'예: 브랜드 그래놀라',audience:'원재료와 제품 정보를 확인하는 식품 구매 고객',directions:[
     ['브랜드 소개','제품과 식탁의 분위기','식탁에 더하는 새로운 선택','브랜드 보기'],
