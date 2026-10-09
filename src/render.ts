@@ -2,6 +2,7 @@ import {dimensionAxes,specSummary} from './product.ts';
 import {labels, loadImage} from './model';
 import type {Project,Axis} from './model';
 import {geometry} from './layout.ts';
+import {paintCreativeFrame} from './creative-render.ts';
 export {geometry} from './layout.ts';
 export const font='"Noto Sans KR Variable", sans-serif';
 function wrap(ctx:CanvasRenderingContext2D,text:string,width:number){const lines:string[]=[];for(const paragraph of text.split('\n')){let line='';for(const char of Array.from(paragraph)){if(ctx.measureText(line+char).width>width&&line){lines.push(line);line=char;}else line+=char;}lines.push(line);}return lines;}
@@ -12,9 +13,10 @@ export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axi
  canvas.width=width;canvas.height=height;const ctx=canvas.getContext('2d')!;const errors:string[]=[];
  const color=p.ink==='dark'?'#20261f':'#ffffff';ctx.fillStyle=p.background.color;ctx.fillRect(0,0,width,height);
  if(background){const fit=Math.max(width/background.naturalWidth,height/background.naturalHeight);const w=background.naturalWidth*fit,h=background.naturalHeight*fit;ctx.drawImage(background,(width-w)/2,(height-h)/2,w,h);}
+ paintCreativeFrame(ctx,p,width,height);
  const text=(value:string,x:number,y:number,size:number,maxWidth:number,maxLines:number,name:string,weight=400)=>{ctx.fillStyle=color;ctx.font=`${weight} ${size}px ${font}`;ctx.textBaseline='top';const lines=wrap(ctx,value,maxWidth);if(lines.length>maxLines)errors.push(`${name}이(가) 영역을 넘습니다. 문구를 줄이거나 줄바꿈을 조정해주세요.`);lines.slice(0,maxLines).forEach((line,i)=>ctx.fillText(line,x,y+i*size*1.4));};
  const placed=(value:string,region:typeof layout.title,name:string,weight=400)=>text(value,region.x,region.y,region.size,region.w,region.lines,name,weight);
- placed(content.company||'PRODUCT STORY',layout.brand,'상단 기업명',500);
+ placed(content.company||(layout.textOnly?'BRAND STORY':'PRODUCT STORY'),layout.brand,'상단 기업명',500);
  placed(content.title,layout.title,'제목',700);
  placed(content.description,layout.description,'설명');
  if(product){ctx.drawImage(product,photo.x,photo.y,photo.w,photo.h);}else if(!layout.textOnly){

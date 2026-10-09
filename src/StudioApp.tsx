@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {ArrowRight,ArrowUpRight,Box,BookOpen,FolderOpen,Home,Plus,ShieldCheck,Sparkles,Store,GraduationCap,Car,SlidersHorizontal} from 'lucide-react';
+import {ArrowRight,ArrowUpRight,BookOpen,FolderOpen,Home,Plus,ShieldCheck,Sparkles,SlidersHorizontal} from 'lucide-react';
 import Editor from './App';
 import {CreateCampaign} from './CreateCampaign';
 import {PricingDialog} from './PricingDialog';
@@ -7,6 +7,8 @@ import {newProject} from './model';
 import type {Project} from './model';
 import type {ProductCategory} from './product';
 import {productCategories} from './product';
+import {industryGroups} from './industry';
+import {IndustryIcon} from './IndustryPicker';
 import {projects,saveProject} from './storage';
 import perfume from './assets/container-1.webp?inline';
 import clock from './assets/other-2.webp?inline';
@@ -37,8 +39,8 @@ export default function StudioApp(){
    <div hidden={page!=='home'} className="home-page app-page">
     <div className="home-welcome"><span>MAKE YOUR NEXT MOVE.</span><span>상품 · 브랜드 · 서비스</span></div>
     <section className="home-hero"><div className="hero-copy"><span className="hero-kicker"><i/>CREATIVITY, WITH PURPOSE</span><h1>당신의 비즈니스,<br/>광고가 되는 순간<span>.</span></h1><p>상품의 형태부터 서비스의 가치까지.<br/>만들고, 다듬고, 알리는 일을 한곳에서.</p><button className="primary-action" onClick={()=>begin()}>나의 광고 만들기<ArrowUpRight size={19}/></button><a className="hero-secondary" href="#studio">편집기 둘러보기 <ArrowRight size={14}/></a><div className="hero-capabilities"><span>원본 사진 사용</span><span>규격 선택</span><span>7가지 비율</span></div></div><div className="hero-gallery" aria-label="이전 aiadcast 생성 사례"><div className="hero-grid"/><figure className="hero-poster poster-back"><img src={clock} alt="이전 앱에서 생성한 클래식 시계 광고 참고 사례"/></figure><figure className="hero-poster poster-front"><img src={perfume} alt="이전 앱에서 생성한 유리 향수 용기 광고 참고 사례"/></figure><div className="hero-floating"><span className="mini-spark"><Sparkles size={17}/></span><span>YOUR PRODUCT.<br/><strong>A NEW PERSPECTIVE.</strong></span></div><p className="gallery-caption">이전 aiadcast 생성 사례 · 새 앱의 생성 결과가 아닙니다.</p></div></section>
-    <section className="start-section"><div className="section-label"><span>START WITH YOUR BUSINESS</span><span>무엇을 알리고 싶으세요?</span></div><div className="business-options">{([{category:'other',title:'상품·브랜드',desc:'뷰티부터 생활용품까지',Icon:Box},{category:'services',title:'서비스·매장',desc:'이용 방법과 가치를 전하세요',Icon:Store},{category:'education',title:'교육·클래스',desc:'배움의 기회를 소개하세요',Icon:GraduationCap},{category:'automotive',title:'자동차·모빌리티',desc:'실제 차량의 매력을 그대로',Icon:Car}] as const).map(({category,title,desc,Icon})=><button key={category} onClick={()=>begin(category)}><Icon size={23} strokeWidth={1.4}/><strong>{title}</strong><small>{desc}</small><ArrowUpRight className="option-arrow" size={17}/></button>)}</div></section>
-    <section className="home-work"><div><div className="section-label"><span>MADE TO KEEP EVOLVING</span></div><h2>한 번 만든 광고,<br/>계속 새롭게.</h2><p>사진·문구·배경·규격을 따로 편집하세요.<br/>저장한 프로젝트에서 다음 캠페인을 이어갈 수 있습니다.</p><a href="#projects">내 프로젝트 보기<ArrowRight size={17}/></a></div><div className="work-features"><article><span>01</span><div><h3>상품이 기준입니다.</h3><p>실제 사진과 입력한 규격을 함께 보관합니다.</p></div></article><article><span>02</span><div><h3>서비스도, 규격 없이.</h3><p>교육·보험·매장·전문 서비스 광고를 구성합니다.</p></div></article><article><span>03</span><div><h3>원하는 곳에 어울리게.</h3><p>피드·스토리·웹 배너에 맞춰 비율을 바꿉니다.</p></div></article></div></section>
+    <section className="start-section"><div className="section-label"><span>START WITH YOUR BUSINESS</span><span>무엇을 알리고 싶으세요?</span></div><div className="business-options industry-home-options">{industryGroups.map(group=><button key={group.id} aria-label={group.label+' 업종으로 광고 만들기'} onClick={()=>begin(group.id==='products'?'other':group.categoryIds[0])}><IndustryIcon groupId={group.id} size={23}/><strong>{group.label}</strong><small>{group.description}</small><ArrowUpRight className="option-arrow" size={17}/></button>)}</div></section>
+    <section className="home-work"><div><div className="section-label"><span>MADE TO KEEP EVOLVING</span></div><h2>한 번 만든 광고,<br/>계속 새롭게.</h2><p>사진·문구·배경·규격을 따로 편집하세요.<br/>저장한 프로젝트에서 다음 캠페인을 이어갈 수 있습니다.</p><a href="#projects">내 프로젝트 보기<ArrowRight size={17}/></a></div><div className="work-features"><article><span>01</span><div><h3>상품이 기준입니다.</h3><p>실제 사진과 입력한 규격을 함께 보관합니다.</p></div></article><article><span>02</span><div><h3>서비스도, 규격 없이.</h3><p>음식점·여행·운동·의료·금융 등 다양한 업종을 담습니다.</p></div></article><article><span>03</span><div><h3>원하는 곳에 어울리게.</h3><p>피드·스토리·웹 배너에 맞춰 비율을 바꿉니다.</p></div></article></div></section>
     {!!items.length&&<div className="continue-work"><FolderOpen size={23}/><div><strong>이 기기에 저장한 프로젝트 {items.length}개</strong><span>마지막 작업을 이어서 완성하세요.</span></div><button onClick={()=>open(items[0])}>최근 작업 열기<ArrowRight size={17}/></button></div>}
     <p className="home-scope">현재 사진·문구 직접 편집과 기기 저장을 사용할 수 있습니다. AI 생성·자동 번역·결제는 연결 전입니다.</p>
    </div>

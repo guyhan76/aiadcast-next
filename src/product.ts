@@ -1,17 +1,15 @@
 import type {Project} from './model.ts';
-export const productCategories = [
-  ['packaging', '포장재'], ['food', '식품·음료'], ['beauty', '뷰티·생활용품'],
-  ['electronics', '전자제품'], ['fashion', '의류·패션잡화'], ['home', '가구·인테리어'],
-  ['industrial', '산업용 부품·장비'], ['automotive', '자동차·모빌리티'],
-  ['education', '교육·강의'], ['insurance', '보험'], ['services', '서비스 업종'], ['other', '기타 실물 상품'],
-] as const;
-export type ProductCategory = typeof productCategories[number][0];
+import {productCategories,isPhysicalCategory} from './industry.ts';
+import type {ProductCategory} from './industry.ts';
+export {productCategories} from './industry.ts';
+export type {ProductCategory} from './industry.ts';
 export type SpecType = 'rectangular' | 'flat' | 'cylindrical' | 'none';
 export type ProductProfile = {category: ProductCategory; specType: SpecType; material: string};
 export const specTypes = [['rectangular','가로 × 세로 × 높이'],['flat','가로 × 세로'],['cylindrical','지름 × 높이'],['none','규격 정보 없음']] as const;
 export const defaultProfile = ():ProductProfile => ({category:'other',specType:'rectangular',material:''});
-export const isServiceCategory = (category:ProductCategory) => ['education','insurance','services'].includes(category);
+export const isServiceCategory = (category:ProductCategory) => !isPhysicalCategory(category);
 export function withCategory(p:Project,category:ProductCategory):Project {
+  if(p.productProfile.category===category)return p;
   const noSpecsByDefault=isServiceCategory(category)||category==='automotive';
   return {...p,productProfile:{...p.productProfile,category,specType:noSpecsByDefault?'none':p.productProfile.specType},dimensions:noSpecsByDefault?{...p.dimensions,visible:false,lines:false}:p.dimensions};
 }

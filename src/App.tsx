@@ -1,7 +1,7 @@
 import {defaultGeneration,generationIssues} from './generation.ts';
 import {getImageFormat,imageFormats} from './formats.ts';
-import {axisLabel,defaultProfile,dimensionAxes,isServiceCategory,productCategories,specTypes,withCategory} from './product.ts';
-import type {ProductCategory,SpecType} from './product.ts';
+import {axisLabel,defaultProfile,dimensionAxes,isServiceCategory,specTypes,withCategory} from './product.ts';
+import type {SpecType} from './product.ts';
 import {useEffect,useRef,useState} from 'react';
 import type {PointerEvent} from 'react';
 import {ArrowDownToLine,ArrowLeft,Check,ChevronRight,FolderOpen,ImagePlus,Layers,Maximize2,MessageSquare,Plus,RotateCcw,Save,ShieldCheck,Upload,X} from 'lucide-react';
@@ -13,6 +13,8 @@ import {PricingDialog} from './PricingDialog';
 import {CampaignFields,CampaignPanel} from './CampaignPanel';
 import {ReferenceInspector} from './ReferenceInspector';
 import {CreativeDirector} from './CreativeDirector';
+import {IndustryPicker} from './IndustryPicker';
+import {CreativeOptions} from './CreativeOptions';
 const tabs=[['product','광고 정보'],['copy','문구·언어'],['background','배경'],['dimensions','규격']] as const;
 type Tab=typeof tabs[number][0];
 const presets=[['크림','#f4f0e8','dark'],['화이트','#ffffff','dark'],['차콜','#20241f','light'],['세이지','#e5e9de','dark']] as const;
@@ -67,10 +69,10 @@ export default function App({initialProject,onProjectChange}:{initialProject?:Pr
      <div className="editor-tabs" role="group" aria-label="편집할 요소">{tabs.map(([id,title],i)=><button key={id} aria-pressed={tab===id} onClick={()=>setTab(id)}><span>0{i+1}</span>{title}</button>)}</div>
      <div className="editor-body">
       {tab==='product'&&<><div className="panel-heading"><h2>광고 대상과 제작 방식</h2><span>01 / AD CONTENT</span></div><p className="help">상품과 서비스 모두 광고할 수 있습니다. 업종과 제작 방식을 선택하세요.</p>
-       <label className="field">광고 업종·상품 분류<select value={profile.category} onChange={e=>change(p=>withCategory(p,e.target.value as ProductCategory))}>{productCategories.map(([value,name])=><option key={value} value={value}>{name}</option>)}</select></label>
+       <IndustryPicker compact value={profile.category} onChange={category=>change(p=>withCategory(p,category))}/>
        <label className="check-field"><input type="checkbox" aria-label="규격 정보 사용" checked={activeAxes.length>0} onChange={e=>change(p=>({...p,productProfile:{...p.productProfile,specType:e.target.checked?'rectangular':'none'},dimensions:e.target.checked?p.dimensions:{...p.dimensions,visible:false,lines:false}}))}/>규격 정보 사용 <span className="optional-tag">선택</span></label>
        <p className="help small">{activeAxes.length?'입력한 치수를 생성 참고값으로 사용합니다. 규격 탭에서 표시 여부를 별도로 선택하세요.':'규격 없이 만드는 광고입니다. 치수 입력·규격 표·치수선이 필요하지 않습니다.'}</p><fieldset className="dimension-display generation-display"><legend>이미지 제작 방식</legend>{([
-       ['original','사진과 문구로 직접 만들기','첨부 사진을 그대로 유지하며 배경·문구를 편집합니다. 교육·보험·서비스 광고는 사진 없이도 구성할 수 있습니다.'],
+       ['original','사진과 문구로 직접 만들기','첨부 사진을 그대로 유지하며 배경·문구를 편집합니다. 서비스 광고는 사진 없이도 구성할 수 있습니다.'],
        ['creative','새로운 광고 이미지 만들기','사진과 광고 내용을 참고해 새로운 이미지를 구상합니다. 규격은 선택 사항이며 원본과 다르게 표현될 수 있습니다.'],
       ] as const).map(([mode,title,description])=><label key={mode} className={generation.mode===mode?'selected':''}><input type="radio" name="generation-mode" aria-label={title} checked={generation.mode===mode} onChange={()=>change(p=>({...p,generation:{...(p.generation??defaultGeneration()),mode}}))}/><span><strong>{title}{mode==='original'&&<em>기본</em>}</strong><small>{description}</small></span></label>)}</fieldset>
       {creative&&<div className="creative-note"><strong>새 광고 이미지를 구상하는 모드입니다.</strong><p>원본 사진과 다른 장면·상품으로 표현될 수 있습니다. 현재 검증판에서는 설정 저장까지 지원하며 AI 생성은 연결 전입니다.</p><label className="field">원하는 광고 이미지<textarea aria-label="원하는 광고 이미지" rows={3} maxLength={600} value={generation.brief} placeholder={service?"예: 성인 영어 회화 수업을 알리는 차분한 교실 분위기":"예: 참고 사진을 활용한 신차 출시 광고. 규격이 있다면 함께 참고"} onChange={e=>change(p=>({...p,generation:{...(p.generation??defaultGeneration()),brief:e.target.value}}))}/></label><p>{activeAxes.length?"표시를 꺼도 입력한 치수는 생성 참고값으로 저장합니다.":"규격을 사용하지 않으므로 치수 없이 광고 내용과 사진으로 제작 방향을 정합니다."}</p>{activeAxes.length>0&&<button type="button" className="next-panel" onClick={()=>setTab('dimensions')}>참고할 규격 입력하기<ChevronRight size={17}/></button>}{generationIssues(project).map(issue=><p className="generation-issue" key={issue}>{issue}</p>)}</div>}
@@ -81,7 +83,7 @@ export default function App({initialProject,onProjectChange}:{initialProject?:Pr
        <label className="field">상품·서비스명<input value={project.productName} maxLength={100} placeholder="예: 신차, 영어 회화 수업, 보험 상담, 청소 서비스" onChange={e=>change(p=>({...p,productName:e.target.value}))}/></label>
        <label className="field">{service?'서비스 내용':'소재·제품 정보'}<input value={profile.material} maxLength={160} placeholder={service?'예: 수업 내용, 상담 주제, 제공하는 서비스':'예: 스테인리스, 면, 유리 또는 차량 정보'} onChange={e=>change(p=>({...p,productProfile:{...(p.productProfile??defaultProfile()),material:e.target.value}}))}/></label><p className="help small">광고 대상의 정보를 저장합니다. 가격·조건·혜택 등 공개할 내용은 문구·언어 탭에 직접 입력하세요.</p>
        <label className="field range-label" hidden={creative||!project.product}>사진 크기 <span>{Math.round(project.scale*100)}%</span><input aria-label="사진 크기" type="range" min="0.5" max="1" step="0.01" value={project.scale} onChange={e=>change(p=>({...p,scale:Number(e.target.value)}))}/></label>
-       <CampaignFields project={project} change={change}/><button className="next-panel" onClick={()=>setTab('copy')}>문구 편집하기<ChevronRight size={17}/></button></>}
+       <CreativeOptions compact project={project} change={change}/><CampaignFields project={project} change={change}/><button className="next-panel" onClick={()=>setTab('copy')}>문구 편집하기<ChevronRight size={17}/></button></>}
       {tab==='copy'&&<><div className="panel-heading"><h2>문구와 언어</h2><span>02 / COPY</span></div><p className="help">언어별 문구를 따로 편집·저장합니다. 아래 초기 문구는 예시이며 자동 번역되지 않습니다.</p><div className="language-options" role="group" aria-label="콘텐츠 언어">{(['ko','en'] as Locale[]).map(lang=><button key={lang} aria-pressed={project.locale===lang} onClick={()=>change(p=>({...p,locale:lang}))}>{lang==='ko'?'한국어':'English'}</button>)}</div>
        <label className="field">홍보 제목<textarea rows={3} maxLength={180} value={copy.title} onChange={e=>setCopy('title',e.target.value)}/></label><label className="field">광고 설명<textarea rows={3} maxLength={240} value={copy.description} onChange={e=>setCopy('description',e.target.value)}/></label>
        <label className="field">회사명<input maxLength={80} value={copy.company} onChange={e=>setCopy('company',e.target.value)}/></label><label className="field">연락처<input maxLength={60} value={copy.contact} placeholder="010-0000-0000" onChange={e=>setCopy('contact',e.target.value)}/></label><label className="field">이메일 또는 홈페이지<input maxLength={100} value={copy.website} placeholder="hello@example.com" onChange={e=>setCopy('website',e.target.value)}/></label><p className="help small">확정한 문구를 실제 글꼴로 출력합니다. 원본 상품 사진 안에 인쇄된 글자는 그대로 유지됩니다.</p></>}

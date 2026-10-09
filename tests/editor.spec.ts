@@ -1,5 +1,6 @@
 import {test,expect} from '@playwright/test';
 import sharp from 'sharp';
+import {selectIndustry} from './helpers/industry';
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 const fixture=await sharp({create:{width:480,height:320,channels:4,background:{r:191,g:87,b:45,alpha:1}}}).png().toBuffer();
@@ -62,7 +63,7 @@ test('ad format guide selects portrait, square and landscape without mobile over
 });
 test('general product profiles persist and cylindrical outputs need only diameter and height',async({page})=>{
  await page.getByLabel('상품 사진 추가').setInputFiles(photo);await expect(page.getByRole('status')).toContainText('원본 사진을 추가');
- await page.getByRole('combobox',{name:'광고 업종·상품 분류',exact:true}).selectOption('beauty');await page.getByLabel('소재·제품 정보',{exact:true}).fill('유리 용기');
+ await selectIndustry(page,'beauty');await page.getByLabel('소재·제품 정보',{exact:true}).fill('유리 용기');
  await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();await page.getByRole('combobox',{name:'규격 형식',exact:true}).selectOption('cylindrical');
  await page.getByLabel('지름 mm',{exact:true}).fill('80');await page.getByLabel('높이 mm',{exact:true}).fill('210');await expect(page.getByLabel('세로 mm',{exact:true})).toHaveCount(0);
  const p=await backup(page);expect(p.productProfile).toEqual({category:'beauty',specType:'cylindrical',material:'유리 용기'});
@@ -108,7 +109,7 @@ test('automotive, education, insurance and services export without dimension fie
  await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();await page.getByLabel('가로 mm',{exact:true}).fill('-1');
  for(const category of ['automotive','education','insurance','services']){
   await page.locator('.editor-tabs').getByRole('button',{name:/광고 정보/}).click();
-  await page.getByRole('combobox',{name:'광고 업종·상품 분류',exact:true}).selectOption(category);
+  await selectIndustry(page,category);
   await expect(page.getByRole('checkbox',{name:'규격 정보 사용',exact:true})).not.toBeChecked();
   await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();
   await expect(page.getByRole('combobox',{name:'규격 형식',exact:true})).toHaveValue('none');await expect(page.locator('.dimension-inputs input')).toHaveCount(0);
@@ -121,7 +122,7 @@ test('automotive, education, insurance and services export without dimension fie
  }
 });
 test('photo-free service ads save, restore and export while creative requests stay pending',async({page})=>{
- await page.getByRole('combobox',{name:'광고 업종·상품 분류',exact:true}).selectOption('education');
+ await selectIndustry(page,'education');
  await page.getByRole('textbox',{name:'상품·서비스명',exact:true}).fill('성인 영어 회화');await page.getByLabel('서비스 내용',{exact:true}).fill('주 2회 소규모 수업');
  await page.getByLabel('출력 비율').selectOption('4:5');
  await page.locator('.editor-tabs').getByRole('button',{name:/문구·언어/}).click();await page.getByRole('textbox',{name:'홍보 제목',exact:true}).fill('나에게 맞는 영어 수업');await page.getByRole('textbox',{name:'광고 설명',exact:true}).fill('성인 대상 · 주 2회\n수업 일정은 상담으로 안내합니다.');

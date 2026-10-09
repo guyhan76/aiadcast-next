@@ -1,5 +1,6 @@
 import {test,expect} from '@playwright/test';
 import sharp from 'sharp';
+import {selectIndustry} from './helpers/industry';
 import {readFile} from 'node:fs/promises';
 const pixels=await sharp({create:{width:600,height:200,channels:4,background:'#b97b4e'}}).png().toBuffer();
 const photo={name:'reference.png',mimeType:'image/png',buffer:pixels};
@@ -11,19 +12,19 @@ test('home, creation, library and guide fit narrow screens without claiming live
  expect(await page.locator('.hero-gallery img').evaluateAll(images=>images.every(i=>(i as HTMLImageElement).naturalWidth>0))).toBe(true);expect(errors).toEqual([]);
 });
 test('service wizard exports a real dimension-free image and restores editable projects',async({page})=>{
- await page.goto('/');await page.getByRole('button',{name:/교육·클래스/}).click();const wizard=page.locator('.create-page');
+ await page.goto('/');await page.getByRole('button',{name:'교육 업종으로 광고 만들기',exact:true}).click();const wizard=page.locator('.create-page');
  await wizard.getByRole('button',{name:'다음',exact:true}).click();await expect(wizard.getByRole('alert')).toContainText('이름');
  await wizard.getByLabel('상품·서비스 이름').fill('성인 영어 회화');await wizard.getByRole('button',{name:'다음',exact:true}).click();
  await wizard.getByLabel('서비스 소개').fill('주 2회 소규모 수업');await expect(wizard.getByRole('checkbox',{name:/규격 정보 사용/})).not.toBeChecked();
  await wizard.getByRole('button',{name:'이전',exact:true}).click();await expect(wizard.getByLabel('상품·서비스 이름')).toHaveValue('성인 영어 회화');await wizard.getByRole('button',{name:'다음',exact:true}).click();await expect(wizard.getByLabel('서비스 소개')).toHaveValue('주 2회 소규모 수업');
- await wizard.getByRole('button',{name:'다음',exact:true}).click();await wizard.locator('.wizard-formats').getByRole('button',{name:/4:5/}).click();await wizard.getByRole('button',{name:'편집 시작',exact:true}).click();await expect(page).toHaveURL(/#studio$/);
+ await wizard.getByRole('button',{name:'다음',exact:true}).click();await wizard.locator('.wizard-format-details summary').click();await wizard.locator('.wizard-formats').getByRole('button',{name:/4:5/}).click();await wizard.getByRole('button',{name:'편집 시작',exact:true}).click();await expect(page).toHaveURL(/#studio$/);
  const plan=await brief(page);expect(plan.status).toBe('planning-only');expect(plan.request.subjectType).toBe('service');expect(plan.request.specifications).toEqual([]);expect(plan.request.source).toBeNull();expect(plan.request.output.format).toBe('4:5');
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();expect((await sharp(await readFile((await (await download).path())!)).metadata()).height).toBe(1350);
  await page.goto('/#projects');await page.getByRole('button',{name:/성인 영어 회화 광고/}).click();await expect(page.getByRole('textbox',{name:'상품·서비스명',exact:true})).toHaveValue('성인 영어 회화');
 });
 test('physical wizard saves the photo, optional hidden specs and structured campaign attributes',async({page})=>{
- await page.goto('/');await page.getByRole('button',{name:/상품·브랜드/}).click();const wizard=page.locator('.create-page');
- await wizard.getByLabel('상품·서비스 이름').fill('크라프트 박스');await wizard.getByLabel('업종',{exact:true}).selectOption('packaging');await wizard.locator('.campaign-fields summary').click();await wizard.getByLabel('추가 속성 항목명').fill('수량');await wizard.getByLabel('추가 속성 값').fill('100');await wizard.getByRole('button',{name:'속성 추가',exact:true}).click();
+ await page.goto('/');await page.getByRole('button',{name:'상품·브랜드 업종으로 광고 만들기',exact:true}).click();const wizard=page.locator('.create-page');
+ await wizard.getByLabel('상품·서비스 이름').fill('크라프트 박스');await selectIndustry(page,'packaging',wizard);await wizard.locator('.campaign-fields summary').click();await wizard.getByLabel('추가 속성 항목명').fill('수량');await wizard.getByLabel('추가 속성 값').fill('100');await wizard.getByRole('button',{name:'속성 추가',exact:true}).click();
  await wizard.getByRole('button',{name:'다음',exact:true}).click();await wizard.getByRole('button',{name:'다음',exact:true}).click();await expect(wizard.getByRole('alert')).toContainText('사진');await wizard.getByLabel('제작용 사진 추가').setInputFiles(photo);await expect(wizard.getByText('reference.png',{exact:true})).toBeVisible();
  await wizard.getByRole('checkbox',{name:/규격 정보 사용/}).check();for(const [label,value] of [['가로 (mm)','300'],['세로 (mm)','200'],['높이 (mm)','100']])await wizard.getByLabel(label,{exact:true}).fill(value);await wizard.getByRole('checkbox',{name:'광고에 규격 표시',exact:true}).uncheck();
  await wizard.getByRole('button',{name:'다음',exact:true}).click();await wizard.getByRole('button',{name:'편집 시작',exact:true}).click();await expect(page).toHaveURL(/#studio$/);
@@ -36,7 +37,7 @@ test('manual reference mismatch blocks a generation brief and clears when source
  await page.locator('.editor-tabs').getByRole('button',{name:/광고 정보/}).click();const another=await sharp(pixels).resize(300,200).png().toBuffer();await page.getByLabel('상품 사진 추가').setInputFiles({...photo,buffer:another});await expect(page.getByRole('status')).toContainText('원본 사진');await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();await page.locator('.reference-inspector summary').click();await expect(page.getByRole('checkbox',{name:'두 치수선을 실제 상품 경계에 맞췄습니다.',exact:true})).not.toBeChecked();
 });
 test('opening a library item preserves newer unsaved edits to the same project',async({page})=>{
- await page.goto('/#studio');await page.getByRole('combobox',{name:'광고 업종·상품 분류',exact:true}).selectOption('services');await page.getByLabel('프로젝트 이름').fill('저장한 서비스');await page.getByRole('button',{name:'이 기기에 저장',exact:true}).click();await expect(page.getByRole('status')).toContainText('이 기기에 저장');
+ await page.goto('/#studio');await selectIndustry(page,'services');await page.getByLabel('프로젝트 이름').fill('저장한 서비스');await page.getByRole('button',{name:'이 기기에 저장',exact:true}).click();await expect(page.getByRole('status')).toContainText('이 기기에 저장');
  await page.getByRole('textbox',{name:'상품·서비스명',exact:true}).fill('수정한 서비스 정보');await page.evaluate(()=>location.hash='projects');await page.getByRole('button',{name:/저장한 서비스/}).click();await expect(page.getByRole('textbox',{name:'상품·서비스명',exact:true})).toHaveValue('수정한 서비스 정보');
  await page.reload();await page.getByRole('button',{name:'저장한 작업',exact:true}).click();await page.getByRole('button',{name:/저장한 서비스/}).click();await expect(page.getByRole('textbox',{name:'상품·서비스명',exact:true})).toHaveValue('수정한 서비스 정보');
 });
