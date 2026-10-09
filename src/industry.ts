@@ -11,9 +11,14 @@ export const productCategories = [
   ['securities', '증권'], ['stocks', '주식'], ['crypto', '코인·디지털 자산'],
   ['finance', '금융'], ['banking', '은행'], ['lease', '리스'], ['rental', '렌탈'],
   ['corporate', '기업 홍보'],
-  ['saju', '사주·궁합'], ['divination', '점·무속'], ['fortunehouse', '철학관'],
+  ['tarot', '타로'], ['astrology', '별자리'], ['myeongri', '명리학'], ['sinjeom', '신점'],
 ] as const;
 export type ProductCategory = typeof productCategories[number][0];
+const legacyCategories:Readonly<Record<string,ProductCategory>>={saju:'myeongri',fortunehouse:'myeongri',divination:'sinjeom'};
+export function resolveIndustryCategory(value:unknown):ProductCategory|undefined {
+  const category=typeof value==='string'?(legacyCategories[value]??value):undefined;
+  return productCategories.find(([id])=>id===category)?.[0];
+}
 export type IndustryGroupId = 'products'|'dining'|'travel'|'learning'|'sports'|'health'|'property'|'finance'|'mobility'|'fortune'|'business';
 export type IndustryGroup = {id:IndustryGroupId;label:string;description:string;categoryIds:readonly ProductCategory[]};
 export const industryGroups:readonly IndustryGroup[] = [
@@ -26,7 +31,7 @@ export const industryGroups:readonly IndustryGroup[] = [
   {id:'property',label:'부동산',description:'다음 공간을 위한 선택',categoryIds:['realestate']},
   {id:'finance',label:'금융·보험',description:'조건을 이해하는 금융',categoryIds:['insurance','securities','stocks','crypto','finance','banking']},
   {id:'mobility',label:'자동차·렌탈',description:'필요에 맞는 이용 방식',categoryIds:['automotive','lease','rental']},
-  {id:'fortune',label:'사주·운세',description:'전통 상담과 만남의 공간',categoryIds:['saju','divination','fortunehouse']},
+  {id:'fortune',label:'사주·운세',description:'나에게 맞는 상담의 시작',categoryIds:['tarot','astrology','myeongri','sinjeom']},
   {id:'business',label:'기업·서비스',description:'사업과 서비스의 가치',categoryIds:['services','corporate']},
 ];
 const physicalCategories:readonly ProductCategory[] = ['packaging','food','beauty','electronics','fashion','home','industrial','other','automotive'];
@@ -213,20 +218,25 @@ const content:Record<ProductCategory,IndustryContent> = {
     ['사업·협력 안내','사업 분야와 문의 방법','함께 만들어갈 기회를 만나보세요','협력 문의'],
     ['사업 정보','제공한 사업과 보유 역량','협력 전에 살펴보는 기업 이야기','사업 분야 보기'],
   ]},
-  saju:{placeholder:'예: 사주·궁합 상담소 이름',audience:'사주·궁합 상담 분야와 예약 방법을 살펴보는 고객',directions:[
-    ['상담소 소개','상담 공간과 대화의 분위기','사주와 궁합, 차분히 이야기해보세요','상담소 보기'],
-    ['상담·예약 안내','상담 주제와 예약 방법','궁금한 주제로 상담을 시작하세요','상담 예약 문의'],
-    ['이용 정보','제공한 상담 방식·시간·비용','방문 전에 살펴보는 상담 안내','이용 정보 보기'],
+  tarot:{placeholder:'예: 타로 상담소 이름',audience:'타로 상담 주제와 예약 방법을 살펴보는 고객',directions:[
+    ['타로 상담 소개','카드와 상담 공간의 분위기','카드와 함께 나누는 나의 이야기','타로 상담 보기'],
+    ['상담·예약 안내','상담 주제와 예약 방법','궁금한 주제로 타로 상담을 시작하세요','타로 예약 문의'],
+    ['이용 정보','제공한 상담 방식·시간·비용','상담 전에 살펴보는 타로 이용 안내','이용 정보 보기'],
   ]},
-  divination:{placeholder:'예: 점·무속 상담소 이름',audience:'점·무속 상담 방식과 이용 정보를 확인하는 고객',directions:[
-    ['상담소 소개','공간과 상담 방식 소개','나의 이야기를 나누는 상담','상담소 보기'],
-    ['상담·예약 안내','상담 일정과 문의 방법','상담 일정과 예약 방법을 만나보세요','예약 문의'],
-    ['이용 정보','제공한 상담 절차와 비용','상담 전에 살펴보는 이용 안내','이용 안내 보기'],
+  astrology:{placeholder:'예: 별자리 상담 서비스 이름',audience:'별자리 상담 내용과 이용 방법을 살펴보는 고객',directions:[
+    ['별자리 상담 소개','별과 상담 브랜드의 분위기','별자리를 주제로 나누는 이야기','별자리 상담 보기'],
+    ['상담·예약 안내','상담 주제와 신청 방법','관심 있는 별자리 상담을 만나보세요','별자리 상담 문의'],
+    ['이용 정보','제공한 상담 과정과 이용 조건','시작 전에 살펴보는 별자리 상담 안내','이용 안내 보기'],
   ]},
-  fortunehouse:{placeholder:'예: 철학관 이름',audience:'철학관의 상담 분야와 방문 방법을 살펴보는 고객',directions:[
-    ['철학관 소개','철학관의 공간과 상담 분야','전통 명리 상담을 만나는 공간','철학관 보기'],
-    ['상담·예약 안내','상담 주제와 방문 예약','궁금한 이야기를 나눌 시간을 예약하세요','방문 예약 문의'],
-    ['상담 분야 안내','제공한 분야·상담 방식·이용 정보','방문 전에 알아보는 상담 분야','상담 분야 보기'],
+  myeongri:{placeholder:'예: 명리학 상담소·철학관 이름',audience:'명리학·사주·궁합 상담 분야와 방문 방법을 살펴보는 고객',directions:[
+    ['명리학 상담 소개','명리학 상담 공간과 분야','사주와 궁합, 차분히 이야기해보세요','명리학 상담 보기'],
+    ['상담·예약 안내','상담 주제와 방문 예약','궁금한 이야기를 나눌 시간을 예약하세요','명리학 예약 문의'],
+    ['상담 분야 안내','제공한 분야·상담 방식·이용 정보','방문 전에 알아보는 명리학 상담 분야','상담 분야 보기'],
+  ]},
+  sinjeom:{placeholder:'예: 신점 상담소 이름',audience:'신점 상담 방식과 예약 정보를 확인하는 고객',directions:[
+    ['신점 상담 소개','공간과 상담 방식 소개','나의 이야기를 나누는 신점 상담','신점 상담 보기'],
+    ['상담·예약 안내','상담 일정과 문의 방법','신점 상담 일정과 예약 방법을 만나보세요','신점 예약 문의'],
+    ['이용 정보','제공한 상담 절차와 비용','상담 전에 살펴보는 신점 이용 안내','이용 안내 보기'],
   ]},
 };
 export const industryPlaceholder = (category:ProductCategory):string => content[category].placeholder;

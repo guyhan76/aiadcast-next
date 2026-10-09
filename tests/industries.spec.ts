@@ -20,7 +20,7 @@ async function serviceWizard(page:Page,category:string,name:string,creative=fals
  await wizard.getByRole('button',{name:'다음',exact:true}).click();return wizard;
 }
 
-test('eleven visual groups reveal only their own industries and all thirty-seven are searchable',async({page})=>{
+test('eleven visual groups reveal only their own industries and all thirty-eight are searchable',async({page})=>{
  test.setTimeout(60000);await page.goto('/');
  await expect(page.locator('.business-options').getByRole('button')).toHaveCount(11);
  await page.getByRole('button',{name:'스포츠·운동 업종으로 광고 만들기',exact:true}).click();
@@ -39,9 +39,9 @@ test('eleven visual groups reveal only their own industries and all thirty-seven
  await expect(picker.getByRole('button',{name:'서비스 업종',exact:true})).toHaveAttribute('aria-pressed','true');
 });
 
-test('service industries including fortune consultations prepare ads without a photo or dimensions',async({page})=>{
+test('service industries including all four fortune consultations prepare ads without a photo or dimensions',async({page})=>{
  test.setTimeout(60000);
- for(const [category,name] of [['pilates','필라테스 스튜디오'],['lodging','모먼트 호텔'],['hospital','한결 의원'],['banking','은행 상담 서비스'],['saju','사주·궁합 상담소'],['divination','점·무속 상담소'],['fortunehouse','전통 철학관']]){
+ for(const [category,name] of [['pilates','필라테스 스튜디오'],['lodging','모먼트 호텔'],['hospital','한결 의원'],['banking','은행 상담 서비스'],['tarot','타로 상담소'],['astrology','별자리 상담소'],['myeongri','명리학 상담소'],['sinjeom','신점 상담소']]){
   const wizard=await serviceWizard(page,category,name,category==='banking');
   await expect(wizard.getByRole('region',{name:'광고 방향과 스타일',exact:true})).toBeVisible();
   await wizard.getByRole('button',{name:'편집 시작',exact:true}).click();await expect(page).toHaveURL(/#studio$/);
@@ -70,14 +70,21 @@ test('selected premium direction and optional notes survive save, import and rea
  await page.getByLabel('프로젝트 파일 선택').setInputFiles({name:'premium-direction.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(data))});await expect(page.getByRole('status')).toContainText('프로젝트를 열었습니다');expect((await downloadJSON(page)).campaign.creative).toEqual(data.campaign.creative);
 });
 
-test('older projects keep their source and copy when choosing a new industry and creative look',async({page})=>{
+test('legacy fortune JSON and device projects keep their source and copy with migrated industries',async({page})=>{
  await page.goto('/#studio');const bytes=await sharp({create:{width:400,height:300,channels:4,background:'#b87844'}}).png().toBuffer();
  await page.getByLabel('상품 사진 추가').setInputFiles({name:'original.png',mimeType:'image/png',buffer:bytes});await expect(page.getByRole('status')).toContainText('원본 사진');
  const legacy=await downloadJSON(page);if(legacy.campaign)delete legacy.campaign.creative;
- legacy.copy.ko.title='고객이 작성한 제목';legacy.background.color='#ffeedd';
+ legacy.copy.ko.title='고객이 작성한 제목';legacy.background.color='#ffeedd';legacy.productProfile.category='fortunehouse';
  const confirmImport=page.waitForEvent('dialog').then(async dialog=>{expect(dialog.type()).toBe('confirm');expect(dialog.message()).toBe('저장하지 않은 편집을 닫고 프로젝트를 불러올까요?');await dialog.accept();});
  await page.getByLabel('프로젝트 파일 선택').setInputFiles({name:'legacy-project.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(legacy))});await confirmImport;await expect(page.getByRole('status')).toContainText('프로젝트를 열었습니다');
- const loaded=await downloadJSON(page);expect(loaded.copy).toEqual(legacy.copy);expect(loaded.background).toEqual(legacy.background);expect(loaded.product).toEqual(legacy.product);
+ const loaded=await downloadJSON(page);expect(loaded.copy).toEqual(legacy.copy);expect(loaded.background).toEqual(legacy.background);expect(loaded.product).toEqual(legacy.product);expect(loaded.productProfile).toEqual({...legacy.productProfile,category:'myeongri'});
+ const deviceProject={...legacy,id:'legacy-divination-device',name:'이전 신점 프로젝트',productProfile:{...legacy.productProfile,category:'divination'}};
+ await page.evaluate(async project=>{
+  const database=await new Promise<IDBDatabase>((resolve,reject)=>{const request=indexedDB.open('aiadcast-editor',1);request.onupgradeneeded=()=>request.result.createObjectStore('projects',{keyPath:'id'});request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
+  try{await new Promise<void>((resolve,reject)=>{const transaction=database.transaction('projects','readwrite');transaction.objectStore('projects').put(project);transaction.oncomplete=()=>resolve();transaction.onerror=()=>reject(transaction.error);transaction.onabort=()=>reject(transaction.error);});}finally{database.close();}
+ },deviceProject);
+ await page.goto('/#projects');await page.getByRole('button',{name:/이전 신점 프로젝트/}).click();
+ const migrated=await downloadJSON(page);expect(migrated.productProfile).toEqual({...legacy.productProfile,category:'sinjeom'});expect(migrated.copy).toEqual(legacy.copy);expect(migrated.product).toEqual(legacy.product);expect(migrated.dimensions).toEqual(legacy.dimensions);
  await selectIndustry(page,'corporate');
  const options=page.locator('.editor-container:visible .creative-options-compact');await options.locator('summary').click();
  await options.locator('.creative-look-card').filter({hasText:'모던 테크'}).click();let updated=await downloadJSON(page);

@@ -1,5 +1,5 @@
 import type {Project} from './model.ts';
-import {productCategories,isPhysicalCategory} from './industry.ts';
+import {isPhysicalCategory,resolveIndustryCategory} from './industry.ts';
 import type {ProductCategory} from './industry.ts';
 export {productCategories} from './industry.ts';
 export type {ProductCategory} from './industry.ts';
@@ -17,8 +17,9 @@ export function parseProfile(value:unknown):ProductProfile {
   if(value===undefined)return defaultProfile(); // Earlier project files remain compatible.
   if(!value||typeof value!=='object')throw Error('상품 정보 형식이 올바르지 않습니다.');
   const p=value as ProductProfile;
-  if(!productCategories.some(([key])=>key===p.category)||!specTypes.some(([key])=>key===p.specType)||typeof p.material!=='string'||p.material.length>160)throw Error('상품 분류 또는 규격 형식을 확인해주세요.');
-  return {category:p.category,specType:p.specType,material:p.material};
+  const category=resolveIndustryCategory(p.category);
+  if(!category||!specTypes.some(([key])=>key===p.specType)||typeof p.material!=='string'||p.material.length>160)throw Error('상품 분류 또는 규격 형식을 확인해주세요.');
+  return {category,specType:p.specType,material:p.material};
 }
 export function dimensionAxes(profile?:ProductProfile):('width'|'depth'|'height')[] {
   if(profile?.specType==='none')return [];

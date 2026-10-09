@@ -4,15 +4,18 @@ import {industryGroups,industryGroupFor,industryLabel,industryPlaceholder,indust
 import {dimensionAxes,isServiceCategory,parseProfile,withCategory} from '../src/product.ts';
 import {newProject,importProject,exportErrors} from '../src/model.ts';
 import {buildGenerationRequest} from '../src/generation.ts';
+import {appendDirection} from '../src/conversation.ts';
 
 const physical=['packaging','food','beauty','electronics','fashion','home','industrial','other','automotive'];
-const requestedServices=['restaurant','cafe','lodging','travel','education','fitness','yoga','pilates','swimming','tennis','golf','sports','hospital','biotech','realestate','insurance','securities','stocks','crypto','finance','banking','lease','rental','services','corporate','saju','divination','fortunehouse'];
+const requestedServices=['restaurant','cafe','lodging','travel','education','fitness','yoga','pilates','swimming','tennis','golf','sports','hospital','biotech','realestate','insurance','securities','stocks','crypto','finance','banking','lease','rental','services','corporate','tarot','astrology','myeongri','sinjeom'];
 
 test('every requested industry has one discoverable group without hiding older saved categories',()=>{
   const categoryIds=productCategories.map(([id])=>id);
   assert.deepEqual(new Set(categoryIds),new Set([...physical,...requestedServices]));
-  assert.equal(categoryIds.length,37);
+  assert.equal(categoryIds.length,38);
   assert.equal(industryGroups.length,11);
+  assert.deepEqual(industryGroups.find(group=>group.id==='fortune').categoryIds,['tarot','astrology','myeongri','sinjeom']);
+  assert.deepEqual(['tarot','astrology','myeongri','sinjeom'].map(industryLabel),['타로','별자리','명리학','신점']);
   const grouped=industryGroups.flatMap(group=>group.categoryIds);
   assert.deepEqual([...grouped].sort(),[...categoryIds].sort());
   assert.equal(new Set(grouped).size,grouped.length);
@@ -83,6 +86,19 @@ test('old and expanded profile values survive project import without changing ca
       assert.deepEqual(restored.productProfile,p.productProfile,`${category} ${specType}`);
       assert.equal(restored.dimensions.width,p.dimensions.width);
     }
+  }
+  for(const [oldCategory,category] of [['saju','myeongri'],['fortunehouse','myeongri'],['divination','sinjeom']]){
+    const p=appendDirection(withCategory(newProject(),category),'은은한 조명의 상담 공간으로 연출해주세요','background');
+    p.productName='기존 상담소';
+    p.productProfile={category:oldCategory,specType:'none',material:'이전 사용자가 제공한 정보'};
+    p.conversation.turns[0].context.category=oldCategory;
+    p.conversation.turns[0].context.productName=p.productName;
+    const restored=await importProject(JSON.parse(JSON.stringify(p)));
+    assert.deepEqual(restored.productProfile,{...p.productProfile,category},oldCategory);
+    assert.deepEqual(restored.copy,p.copy,oldCategory);
+    assert.deepEqual(restored.dimensions,p.dimensions,oldCategory);
+    assert.equal(buildGenerationRequest(restored).direction.instructions[0].text,p.conversation.turns[0].text,oldCategory);
+    assert.throws(()=>buildGenerationRequest(withCategory(restored,'tarot')),/이전 요청/,oldCategory);
   }
   assert.throws(()=>parseProfile({category:'injected-industry',specType:'none',material:''}),/분류/);
   assert.throws(()=>parseProfile({category:'hospital',specType:'injected-spec',material:''}),/분류/);

@@ -1,5 +1,6 @@
 import type {Project} from './model.ts';
 import {isImageFormat} from './formats.ts';
+import {resolveIndustryCategory} from './industry.ts';
 export const directionScopes=[['auto','요청 전체'],['background','배경'],['lighting','조명·분위기'],['composition','구도·연출'],['print','상품 인쇄'],['product-color','상품 색상'],['copy','광고 문구'],['format','비율·규격 표시']] as const;
 export type DirectionScope=typeof directionScopes[number][0];
 export type QuickEdit={kind:'background';value:string}|{kind:'title';value:string}|{kind:'format';value:Project['format']}|{kind:'dimensions';value:boolean};
@@ -62,7 +63,7 @@ export function appendDirection(p:Project,text:string,scope:DirectionScope,allow
  const turn:DirectionTurn={id:crypto.randomUUID(),text:trimmed,scope:resolved,allowAppearanceChange:changesProduct(resolved)&&allowAppearanceChange,state:'recorded',createdAt:new Date().toISOString(),context:{sourceHash:p.product?.sha256??null,locale:p.locale,category:p.productProfile.category,productName:p.productName},before:priorValue(p,quickEdit(trimmed,resolved))};
  return {...p,conversation:{version:1,turns:[...c.turns,turn]}};
 }
-export function directionIsCurrent(p:Project,t:DirectionTurn){return t.context.sourceHash===(p.product?.sha256??null)&&t.context.locale===p.locale&&t.context.category===p.productProfile.category&&t.context.productName===p.productName;}
+export function directionIsCurrent(p:Project,t:DirectionTurn){return t.context.sourceHash===(p.product?.sha256??null)&&t.context.locale===p.locale&&resolveIndustryCategory(t.context.category)===p.productProfile.category&&t.context.productName===p.productName;}
 export function quickEditIssue(p:Project,t:DirectionTurn):string|null{
  const edit=quickEdit(t.text,t.scope);
  if(t.state!=='recorded'||!edit)return '이 요청은 바로 편집할 수 없습니다.';
