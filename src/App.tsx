@@ -82,7 +82,8 @@ export default function App({initialProject,onProjectChange}:{initialProject?:Pr
    const blob=await new Promise<Blob>((resolve,reject)=>output.toBlob(b=>b?resolve(b):reject(new Error(text("이미지 파일을 만들지 못했습니다."))),'image/png'));
    download(blob,`aiadcast-${target?target.filename+'-':''}${current.locale}-${current.format.replace(':','x')}.png`);
    if(!nativeDownloads())setNotice(target?t(`${target.label} PNG를 내보냈습니다. 편집 중인 비율과 원본은 유지됩니다. 다시 수정하려면 프로젝트도 저장해주세요.`,`${target.label} PNG exported. Your editable format and original stay unchanged. Save the project to edit again.`):text("PNG 이미지를 내보냈습니다. 다시 편집하려면 프로젝트도 저장해주세요."));
-  }catch(e){message(target?new Error(`${target.label}${t(" 저장", " export")}: ${e instanceof Error?text(e.message):text("파일을 만들지 못했습니다.")}`):e);}finally{setBusy(false);}
+   return null;
+  }catch(e){const reason=e instanceof Error?text(e.message):text("파일을 만들지 못했습니다.");const failure=target?`${target.label}${t(" 저장", " export")}: ${reason}`:reason;message(new Error(failure));return failure;}finally{setBusy(false);}
  }
  const backup=()=>{download(new Blob([JSON.stringify({...latest.current,updatedAt:new Date().toISOString()},null,2)],{type:'application/json'}),'aiadcast-project.json');if(!nativeDownloads())setNotice(text("원본 사진과 편집 정보를 프로젝트 파일로 백업했습니다."));};
  async function restore(file?:File){if(!file)return;try{if(file.size>30*1024*1024)throw new Error(text("프로젝트 파일은 30 MB 이하만 지원합니다."));const p=await importProject(JSON.parse(await file.text()));if(dirty.current&&!confirm(text("저장하지 않은 편집을 닫고 프로젝트를 불러올까요?")))return;load(p);dirty.current=true;}catch(e){message(e);}}
@@ -106,6 +107,7 @@ export default function App({initialProject,onProjectChange}:{initialProject?:Pr
      <div className="canvas-well">{pendingCreative?<div className="creative-reference">{project.product?<img src={project.product.data} alt={text("첨부한 참고 사진")}/>:<ImagePlus size={40}/>}<strong>{text("새 광고 이미지는 아직 생성되지 않았습니다.")}</strong><p>{text("사진과 광고 내용은 참고 자료로 보관합니다.")}<br/>{text("아래 AI 제작에서 연결 상태를 확인하고 새 시안을 요청하세요.")}</p></div>:<canvas ref={canvas} aria-label={text("현재 홍보 이미지")} className={tab==='dimensions'&&dimensionMode==='annotated'?'editing-anchors':''} style={{aspectRatio:`${outputFormat.width}/${outputFormat.height}`,width:`min(100%, calc(var(--preview-height) * ${outputFormat.width/outputFormat.height}))`}} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerEnd} onPointerCancel={pointerEnd}/>}</div>
      <div className="preview-foot"><span><ShieldCheck size={14}/>{creative?text("창작 모드 · 설정 저장 가능"):project.product?(boxProjectionReady(project)?t('원본 면 · 규격 박스 구성','Source faces · dimensioned box'):text("원본 사진 사용")):service?text("문구·배경으로 구성"):text("상품 사진을 추가해주세요")}</span><span>{outputFormat.width} × {outputFormat.height} px</span></div>
      <CompareReview project={project} disabled={busy||pendingCreative} onDownload={download}/>
+     <button className="direction-jump" onClick={()=>document.getElementById('publishing-guide')?.scrollIntoView({block:'start',behavior:'auto'})}>{t('게시글과 활용 방법 보기','View post copy and publishing tips')}</button>
     </section>
     <section className="editor" aria-label={text("이미지 편집 도구")}>
      <div className="project-name"><label htmlFor="project-name">{text("프로젝트 이름")}</label><input id="project-name" value={project.name} maxLength={80} onChange={e=>change(p=>({...p,name:e.target.value}))}/><button aria-label={text("되돌리기")} className="icon-button" disabled={!history.length} onClick={()=>{const last=history.at(-1);if(last){setProject(last);latest.current=last;setHistory(history.slice(0,-1));dirty.current=true;setNotice(text("이전 편집으로 되돌렸습니다."));}}}><RotateCcw size={17}/></button></div>
@@ -148,7 +150,7 @@ export default function App({initialProject,onProjectChange}:{initialProject?:Pr
    <InstagramExports disabled={busy||pendingCreative} pendingGeneration={pendingCreative} onExport={target=>void exportPng(target)}/>
    <GenerationPanel key={`generation-${project.id}`} project={project} change={change}/>
    <CreativeDirector key={`creative-${project.id}`} project={project} change={change}/>
-   <CampaignPanel project={project} change={change} message={setNotice}/>
+   <CampaignPanel project={project} change={change} message={setNotice} onExportImage={target=>exportPng(target)} imageDisabled={busy||pendingCreative}/>
    <div className="backup-strip"><div><strong>{text("이전 광고, 필요한 부분만 다시 수정하세요.")}</strong><p>{text("저장한 작업이나 프로젝트 백업 파일을 열면 문구·배경·규격을 따로 수정할 수 있습니다. PNG·JPG만 있는 광고의 글자와 배경은 자동으로 분리되지 않으니, 프로젝트도 함께 보관하세요.")}</p></div><div><button onClick={backup}><ArrowDownToLine size={16}/>{text("프로젝트 백업")}</button><button onClick={()=>projectFile.current?.click()}><FolderOpen size={16}/>{text("파일 불러오기")}</button><input ref={projectFile} type="file" accept="application/json,.json" aria-label={text("프로젝트 파일 선택")} className="sr-only" onChange={e=>{void restore(e.target.files?.[0]);e.target.value='';}}/></div></div>
    <footer><span>aiadcast <span>by selluplabs</span></span><p>{text("직접 편집은 기기에서 처리합니다. AI 기능을 요청할 때 해당 입력이 서버로 전송됩니다. 기기 저장 데이터는 브라우저 데이터를 지우면 삭제될 수 있습니다.")}</p></footer>
   </main>

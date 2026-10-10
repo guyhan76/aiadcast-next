@@ -1,3 +1,5 @@
+import {parsePublishing} from './publishing.ts';
+import type {Publishing} from './publishing.ts';
 import {defaultGeneration,parseGeneration} from './generation.ts';
 import {isImageFormat} from './formats.ts';
 import type {ImageFormat} from './formats.ts';
@@ -23,7 +25,7 @@ export type Project = {
  version:1;id:string;name:string;updatedAt:string;locale:Locale;format:ImageFormat;
  product:Asset|null;productName:string;productProfile:ProductProfile;generation:GenerationSettings;scale:number;
  background:{color:string;image:Asset|null};ink:'dark'|'light';
- campaign?:Campaign;referenceCheck?:ReferenceCheck;conversation?:Conversation;generated?:GeneratedAsset;boxProjection?:BoxProjection;
+ publishing?:Publishing;campaign?:Campaign;referenceCheck?:ReferenceCheck;conversation?:Conversation;generated?:GeneratedAsset;boxProjection?:BoxProjection;
  dimensions:{width:string;depth:string;height:string;visible:boolean;lines:boolean;anchors:Record<Axis,[Point,Point]>};
  copy:Record<Locale,Copy>;
 };
@@ -62,5 +64,5 @@ export async function importProject(raw:unknown):Promise<Project> {
  const p:Project={...base,campaign:r.campaign===undefined?defaultCampaign():parseCampaign(r.campaign),referenceCheck:r.referenceCheck===undefined?defaultReferenceCheck():parseReferenceCheck(r.referenceCheck),name:string(r.name,80),productName:string(r.productName,100),productProfile:parseProfile(r.productProfile),generation:parseGeneration(r.generation),locale:r.locale,format:r.format,ink:r.ink,scale:r.scale,background:{color:r.background.color,image:await asset(r.background.image)},product:await asset(r.product)};
  for(const lang of ['ko','en'] as const){if(!r.copy[lang])throw new Error('언어별 문구가 누락되었습니다.');for(const field of ['title','description','company','contact','website'] as const)p.copy[lang][field]=string(r.copy[lang][field]);}
  for(const axis of axes){p.dimensions[axis]=string(r.dimensions[axis],20);const points=r.dimensions.anchors?.[axis];if(!Array.isArray(points)||points.length!==2||points.some(pt=>!pt||!Number.isFinite(pt.x)||!Number.isFinite(pt.y)||pt.x<0||pt.x>1||pt.y<0||pt.y>1))throw new Error('치수선 위치가 올바르지 않습니다.');p.dimensions.anchors[axis]=points.map(pt=>({x:pt.x,y:pt.y})) as [Point,Point];}
- p.dimensions.visible=r.dimensions.visible;p.dimensions.lines=r.dimensions.lines;p.conversation=parseConversation(r.conversation);p.generated=await parseGenerated(r.generated,asset);p.boxProjection=parseBoxProjection(r.boxProjection);return p;
+ p.dimensions.visible=r.dimensions.visible;p.dimensions.lines=r.dimensions.lines;p.conversation=parseConversation(r.conversation);p.generated=await parseGenerated(r.generated,asset);p.boxProjection=parseBoxProjection(r.boxProjection);p.publishing=parsePublishing(r.publishing);return p;
 }
