@@ -16,5 +16,17 @@
     "source": "image_gen.imagegen, 2026-10-10",
     "sha256": "8f0515553ece31f4153a059199ade7457673850cabf51530637c1bd7ef686f83",
     "role": "New AI-generated homepage campaign illustration requested by user. Not an output of the mobile app generation API or proof of Sunburst/product-preservation performance. No real brand/logo/contact details embedded."
+  },
+  {
+    "file": "premium-luxury-generated.png",
+    "source": "image_gen.imagegen, 2026-10-10",
+    "sha256": "7464395e2934be2f2ef08f97fd80c6100399a2b4914f0d9563ebc8b4fd1f2efd",
+    "role": "New AI-generated homepage artwork. Not a mobile app API result, real brand endorsement or actual product preservation evidence."
+  },
+  {
+    "file": "premium-fashion-generated.png",
+    "source": "image_gen.imagegen, 2026-10-10",
+    "sha256": "64825df4ddf14e8a6a28f6b5455d4ae2adee5edef5fffbe8186ace7bee37d57b",
+    "role": "New AI-generated homepage artwork. Not a mobile app API result, real brand endorsement or actual product preservation evidence."
   }
 ]
