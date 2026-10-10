@@ -33,3 +33,5 @@
 .editorial-cover.campaign-hotel .cover-headline{top:19%;max-width:46%}
 .editorial-cover.campaign-hotel h2{font-size:clamp(22px,7.2cqw,39px)}
 .editorial-cover.campaign-travel .generated-ad-footer,.editorial-cover.campaign-hotel .generated-ad-footer{color:#fff;text-shadow:0 1px 3px #000e}
+
+.campaign-rotation{display:inline-flex;align-items:center;gap:6px;padding:6px 8px;min-height:32px;color:var(--brand-black,#171717);border:1px solid var(--brand-line,#dedede);border-radius:6px;background:var(--brand-white,#fff);font:inherit;cursor:pointer}.campaign-paging{align-items:center}
