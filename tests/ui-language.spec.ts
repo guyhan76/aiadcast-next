@@ -19,7 +19,7 @@ test.describe('Independent Korean and English interface',()=>{
   expect(errors).toEqual([]);
  });
  test('finds industries in English and keeps the chosen ad language independent of the UI',async({page})=>{
-  await page.goto('/');await page.getByRole('button',{name:'Create a service ad',exact:true}).click();
+  await page.goto('/');await page.getByRole('button',{name:'Create an ad',exact:true}).click();await page.locator('.ad-subject-kind').getByRole('button',{name:'Service',exact:true}).click();
   const wizard=page.locator('.create-page');
   await wizard.locator('.quiet-details>summary').filter({hasText:'Category & dimensions'}).click();await wizard.getByRole('searchbox',{name:'Find an industry',exact:true}).fill('Yoga');await wizard.getByRole('button',{name:'Yoga',exact:true}).click();
   await wizard.getByLabel('Product or service name',{exact:true}).fill('Studio Bloom');
