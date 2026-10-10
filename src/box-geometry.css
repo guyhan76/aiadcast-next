@@ -1,0 +1,5 @@
+.box-geometry{margin:16px 0;padding:14px;border:1px solid #dedbd3;border-radius:12px;background:#faf8f3;color:#292620}
+.box-geometry summary{cursor:pointer;font-weight:650;font-size:14px}
+.box-geometry p{font-size:12px;line-height:1.7;margin:12px 0;overflow-wrap:anywhere}
+.box-geometry svg{display:block;width:100%;height:auto;overflow:visible}
+.box-geometry .box-geometry-note{color:#665d4b;margin-bottom:0}
