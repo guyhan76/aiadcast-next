@@ -40,6 +40,18 @@ test('source faces, dimensions and confirmation survive edit/save/import without
  expect(p.product.sha256).toBe(createHash('sha256').update(fixture).digest('hex'));
  expect(Buffer.from(p.product.data.split(',')[1],'base64')).toEqual(fixture);
  expect(p.boxProjection.markedCorners).toHaveLength(7);
+ // Zoom is only a view change: it must not invalidate an approved mapping or alter source bytes.
+ await page.getByRole('group',{name:'사진 확대',exact:true}).getByRole('button',{name:'4×',exact:true}).click();
+ expect((await backup(page)).boxProjection).toEqual(p.boxProjection);
+ await page.getByRole('button',{name:'왼쪽으로 1픽셀',exact:true}).click();
+ const nudged=await backup(page);
+ expect(nudged.boxProjection.corners[1].x).toBeCloseTo(p.boxProjection.corners[1].x-1/720,10);
+ expect(nudged.product.data).toBe(p.product.data);
+ expect(nudged.boxProjection.confirmedSourceHash).toBeNull();
+ await expect(page.locator('.projection-state')).not.toContainText('투영 적용됨');
+ await page.getByRole('button',{name:'오른쪽으로 1픽셀',exact:true}).click();
+ await page.getByLabel('일곱 점을 현재 사진의 실제 모서리에 맞췄습니다.',{exact:true}).check();
+ await page.getByRole('group',{name:'사진 확대',exact:true}).getByRole('button',{name:'1×',exact:true}).click();
  const first=await png(page);expect((await sharp(first).metadata()).width).toBe(1080);
  const raster=await sharp(first).removeAlpha().raw().toBuffer();let leakedBackground=0;
  for(let i=0;i<raster.length;i+=3)if(raster[i]>200&&raster[i+1]<80&&raster[i+2]>200)leakedBackground++;
@@ -70,4 +82,37 @@ test('source faces, dimensions and confirmation survive edit/save/import without
  await page.getByLabel('상품 사진 추가').setInputFiles({...file,buffer:await sharp(fixture).flop().png().toBuffer()});
  await expect.poll(async()=>(await backup(page)).boxProjection.markedCorners.length).toBe(0);
  expect(paid).toEqual([]);
+});
+
+test('zoomed scrolled photo places the selected source corner accurately and retains selection',async({page})=>{
+ await page.goto('/#studio');await page.getByLabel('상품 사진 추가').setInputFiles(file);
+ await expect(page.getByRole('status').filter({hasText:'원본 사진을 추가'})).toBeVisible();
+ await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();
+ await page.getByLabel('규격 박스 구성 사용',{exact:true}).check();
+ const steps=page.getByRole('group',{name:'사진 모서리 선택'}).getByRole('button');
+ await steps.nth(2).click();
+ await page.getByRole('group',{name:'사진 확대',exact:true}).getByRole('button',{name:'4×',exact:true}).click();
+ await page.locator('.projection-viewport').scrollIntoViewIfNeeded();
+ const target=await page.locator('.projection-photo').evaluate(svg=>{
+  const view=svg.parentElement!;
+  view.scrollLeft+=13;view.scrollTop+=9;
+  const rect=view.getBoundingClientRect();
+  const x=Math.round(rect.left+view.clientWidth/2+12),y=Math.round(rect.top+view.clientHeight/2+8);
+  const point=(svg as SVGSVGElement).createSVGPoint();point.x=x;point.y=y;
+  const local=point.matrixTransform((svg as SVGSVGElement).getScreenCTM()!.inverse());
+  return {x,y,sourceX:local.x/1000,sourceY:local.y/750};
+ });
+ await page.mouse.click(target.x,target.y);
+ await expect(steps.nth(2)).toHaveAttribute('aria-pressed','true');
+ const saved=await backup(page);
+ expect(saved.boxProjection.corners[7].x).toBeCloseTo(target.sourceX,5);
+ expect(saved.boxProjection.corners[7].y).toBeCloseTo(target.sourceY,5);
+ expect(saved.boxProjection.markedCorners).toEqual([7]);
+ expect(saved.boxProjection.confirmedSourceHash).toBeNull();
+ for(const width of [320,390,1440]){await page.setViewportSize({width,height:950});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
+ await page.locator('.editor-tabs').getByRole('button',{name:/광고 정보/}).click();
+ await page.getByLabel('상품 사진 추가').setInputFiles({...file,buffer:await sharp(fixture).flop().png().toBuffer()});
+ await expect(page.getByRole('status').filter({hasText:'원본 사진을 추가'})).toBeVisible();
+ await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();
+ await expect(page.getByRole('group',{name:'사진 확대',exact:true}).getByRole('button',{name:'1×',exact:true})).toHaveAttribute('aria-pressed','true');
 });
