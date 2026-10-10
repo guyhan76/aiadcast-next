@@ -96,7 +96,7 @@ test('service industries including all four fortune consultations prepare ads wi
   const plan=await downloadJSON(page,'광고 기획 저장');
   expect(plan.status).toBe('planning-only');expect(plan.request.subjectType).toBe('service');expect(plan.request.source).toBeNull();expect(plan.request.specifications).toEqual([]);expect(plan.request.output.showDimensions).toBe(false);
   expect(plan.request.creativeDirection.industry.id).toBe(category);expect(plan.request.creativeDirection.providerStatus).toBe('not-connected');
-  if(category==='banking'){expect(plan.request.operation).toBe('image-ad-creative');expect(plan.request.brief).toBe('');await expect(page.getByRole('button',{name:'AI 생성 연결 예정',exact:true})).toBeDisabled();}
+  if(category==='banking'){expect(plan.request.operation).toBe('image-ad-creative');expect(plan.request.brief).toBe('');await expect(page.getByRole('button',{name:'AI 시안 확인 후 저장',exact:true})).toBeDisabled();}
   const data=await downloadJSON(page);expect(data.productName).toBe(name);expect(data.productProfile.specType).toBe('none');expect(data.copy.ko.title).toContain(name);
  }
 });

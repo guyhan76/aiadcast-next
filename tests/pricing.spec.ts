@@ -1,17 +1,23 @@
 import {test,expect} from '@playwright/test';
-test('pricing changes language and display currency without changing ad language or charging',async({page})=>{
+
+test('approved packs keep currency independent of guide and ad languages, without checkout',async({page})=>{
  await page.goto('/#studio');
  await page.getByRole('button',{name:'이용 요금',exact:true}).click();
  let dialog=page.getByRole('dialog',{name:'이용 요금',exact:true});
- await expect(dialog.getByText('₩9,900',{exact:true})).toBeVisible();
- await expect(dialog.getByText('₩24,900',{exact:true})).toBeVisible();
- await expect(dialog.getByText('₩79,900',{exact:true})).toBeVisible();
+ for(const price of ['₩6,900','₩19,900','₩49,900'])await expect(dialog.getByText(price,{exact:true})).toBeVisible();
+ await expect(dialog.getByText('새 광고 1개 = 1크레딧',{exact:true})).toBeVisible();
+ await expect(dialog.getByText(/고급 제작|3크레딧|100개/)).toHaveCount(0);
  await dialog.getByRole('button',{name:'English',exact:true}).click();
  dialog=page.getByRole('dialog',{name:'Pricing',exact:true});
  await expect(dialog).toHaveAttribute('lang','en');
- for(const price of ['$7.99','$19.99','$59.99'])await expect(dialog.getByText(price,{exact:true})).toBeVisible();
+ for(const price of ['₩6,900','₩19,900','₩49,900'])await expect(dialog.getByText(price,{exact:true})).toBeVisible();
+ await expect(dialog.getByText('KRW prices include Korean VAT.',{exact:true})).toBeVisible();
+ await dialog.getByRole('button',{name:'USD · $',exact:true}).click();
+ for(const price of ['$4.99','$14.99','$39.99'])await expect(dialog.getByText(price,{exact:true})).toBeVisible();
+ await expect(dialog.getByText('USD prices exclude applicable local sales tax.',{exact:true})).toBeVisible();
  await expect(dialog.getByText(/Purchases and credit charges are not available/)).toBeVisible();
  await expect(dialog.getByRole('button',{name:/buy|purchase|pay/i})).toHaveCount(0);
+ await expect(dialog.getByText(/Reels exports are still images/)).toBeVisible();
  for(const width of [320,390,768,1440]){
   await page.setViewportSize({width,height:900});
   expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
@@ -21,13 +27,21 @@ test('pricing changes language and display currency without changing ad language
  await expect(page.getByRole('button',{name:'한국어',exact:true})).toHaveAttribute('aria-pressed','true');
  await page.reload();await page.getByRole('button',{name:'이용 요금',exact:true}).click();
  dialog=page.getByRole('dialog',{name:'Pricing',exact:true});
- await expect(dialog.getByText('$7.99',{exact:true})).toBeVisible();
+ await expect(dialog.getByText('$4.99',{exact:true})).toBeVisible();
  await dialog.getByRole('button',{name:'한국어',exact:true}).click();
  dialog=page.getByRole('dialog',{name:'이용 요금',exact:true});
- await expect(dialog.getByText('₩9,900',{exact:true})).toBeVisible();
+ await expect(dialog.getByText('US$4.99',{exact:true})).toBeVisible();
+ await expect(dialog.getByText('달러 가격은 해당 지역 판매세 별도 기준입니다.',{exact:true})).toBeVisible();
  await dialog.getByRole('button',{name:'요금 안내 닫기'}).click();
- await page.evaluate(()=>location.hash='home');await page.getByRole('button',{name:'이용 요금',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'English',exact:true}).click();await page.getByRole('button',{name:'Close pricing'}).click();
- await page.evaluate(()=>location.hash='studio');await page.getByRole('button',{name:'이용 요금',exact:true}).click();await expect(page.getByRole('dialog',{name:'Pricing',exact:true}).getByText('$7.99',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Close pricing'}).click();
+ await page.evaluate(()=>location.hash='home');await page.getByRole('button',{name:'이용 요금',exact:true}).click();
+ dialog=page.getByRole('dialog',{name:'이용 요금',exact:true});
+ await expect(dialog.getByText('US$4.99',{exact:true})).toBeVisible();
+ await dialog.getByRole('button',{name:'KRW · 원',exact:true}).click();
+ await expect(dialog.getByText('₩6,900',{exact:true})).toBeVisible();
+ await dialog.getByRole('button',{name:'요금 안내 닫기'}).click();
+ await page.evaluate(()=>location.hash='studio');await page.getByRole('button',{name:'이용 요금',exact:true}).click();
+ await expect(page.getByRole('dialog',{name:'이용 요금',exact:true}).getByText('₩6,900',{exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'요금 안내 닫기'}).click();
  for(const width of [320,390,768,1440]){
   await page.setViewportSize({width,height:900});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);

@@ -43,6 +43,30 @@ test('invalid dimensions and overflowing copy cannot silently export',async({pag
  await page.getByLabel('상품 사진 추가').setInputFiles(photo);await expect(page.getByRole('status')).toContainText('원본 사진을 추가');await page.getByRole('button',{name:'규격',exact:false}).first().click();await page.getByLabel('가로 mm',{exact:true}).fill('-3');await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();await expect(page.getByRole('alert')).toContainText('규격은');await page.getByLabel('가로 mm',{exact:true}).fill('300');
  await page.getByRole('button',{name:'문구·언어',exact:false}).click();await page.getByRole('textbox',{name:'홍보 제목',exact:true}).fill('너무 긴 홍보 문구를 입력했습니다. '.repeat(7));await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();await expect(page.getByRole('alert')).toContainText('제목이(가) 영역을 넘습니다');
 });
+test('Instagram exports preserve the editable original and validate each target before downloading',async({page})=>{
+ await page.getByLabel('상품 사진 추가').setInputFiles(photo);await expect(page.getByRole('status')).toContainText('원본 사진을 추가');
+ await page.getByLabel('출력 비율').selectOption('3:4');
+ await page.getByRole('button',{name:'문구·언어',exact:false}).click();await page.getByRole('textbox',{name:'홍보 제목',exact:true}).fill('이번 주 신상품');
+ const before=await backup(page);
+ for(const [label,file,width,height,x,y] of [
+  ['피드 이미지','instagram-feed',1080,1350,540,753],
+  ['스토리 이미지','instagram-story',1080,1920,540,1010],
+  ['릴스용 정지 이미지','instagram-reels-still',1080,1920,540,1010],
+ ] as const){
+  const event=page.waitForEvent('download');await page.getByRole('button',{name:`${label} PNG 저장`,exact:true}).click();const result=await event;
+  expect(result.suggestedFilename()).toContain(file);expect(result.suggestedFilename()).toMatch(/\.png$/);
+  const bytes=await readFile((await result.path())!);const metadata=await sharp(bytes).metadata();expect([metadata.format,metadata.width,metadata.height]).toEqual(['png',width,height]);
+  const pixel=await sharp(bytes).extract({left:x,top:y,width:1,height:1}).removeAlpha().raw().toBuffer();expect([...pixel]).toEqual([191,87,45]);
+  await expect(page.getByLabel('출력 비율')).toHaveValue('3:4');
+ }
+ const after=await backup(page);for(const field of ['id','format','product','copy','background','dimensions','scale','generation'] as const)expect(after[field]).toEqual(before[field]);
+ await page.getByRole('button',{name:'이 기기에 저장',exact:true}).click();await expect(page.getByRole('status')).toContainText('이 기기에 저장');
+ await page.reload();await page.getByRole('button',{name:'저장한 작업',exact:true}).click();await page.getByRole('button',{name:/새 프로젝트/}).click();
+ await page.getByRole('button',{name:'문구·언어',exact:false}).click();await expect(page.getByRole('textbox',{name:'홍보 제목',exact:true})).toHaveValue('이번 주 신상품');
+ await page.getByRole('textbox',{name:'홍보 제목',exact:true}).fill('');await page.getByRole('button',{name:'피드 이미지 PNG 저장',exact:true}).click();await expect(page.getByRole('alert')).toContainText('피드 이미지 저장: 제목을 입력');
+ await page.locator('.editor-tabs').getByRole('button',{name:/광고 정보/}).click();await page.getByRole('radio',{name:'새로운 광고 이미지 만들기',exact:true}).check();
+ for(const label of ['피드 이미지','스토리 이미지','릴스용 정지 이미지'])await expect(page.getByRole('button',{name:`${label} PNG 저장`,exact:true})).toBeDisabled();
+});
 test('dimension lines are editable, undoable and consistent with the summary',async({page})=>{
  await page.getByLabel('상품 사진 추가').setInputFiles(photo);await expect(page.getByRole('status')).toContainText('원본 사진을 추가');await page.getByRole('button',{name:'규격',exact:false}).first().click();await page.getByRole('radio',{name:'요약과 치수선',exact:true}).check();await page.getByLabel('가로 mm',{exact:true}).fill('450');await page.getByLabel('시작점 X',{exact:true}).fill('0.3');const before=await backup(page);expect(before.dimensions.width).toBe('450');expect(before.dimensions.anchors.width[0].x).toBe(.3);await page.getByRole('button',{name:'되돌리기',exact:true}).click();const after=await backup(page);expect(after.dimensions.width).toBe('450');expect(after.dimensions.anchors.width[0].x).toBe(.1);await page.getByRole('radio',{name:'표시 안 함',exact:true}).check();expect((await backup(page)).dimensions.visible).toBe(false);
 });
@@ -94,7 +118,7 @@ test('image creation mode persists independently from dimension visibility and k
  await page.getByLabel('상품 사진 추가').setInputFiles(photo);await expect(page.getByRole('status')).toContainText('원본 사진을 추가');
  await page.getByRole('radio',{name:'새로운 광고 이미지 만들기',exact:true}).check();await page.getByRole('textbox',{name:'원하는 광고 이미지',exact:true}).fill('같은 규격의 곡선형 화이트 용기');
  await page.getByLabel('출력 비율').selectOption('1.91:1');
- await expect(page.getByText('새 광고 이미지는 아직 생성되지 않았습니다.',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'AI 생성 연결 예정',exact:true})).toBeDisabled();
+ await expect(page.getByText('새 광고 이미지는 아직 생성되지 않았습니다.',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'AI 시안 확인 후 저장',exact:true})).toBeDisabled();
  await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();await page.getByRole('radio',{name:'표시 안 함',exact:true}).check();await page.getByLabel('가로 mm',{exact:true}).fill('450');
  await page.getByRole('button',{name:'이 기기에 저장',exact:true}).click();await expect(page.getByRole('status')).toContainText('이 기기에 저장');
  const p=await backup(page);expect(p.format).toBe('1.91:1');expect(p.generation).toEqual({mode:'creative',brief:'같은 규격의 곡선형 화이트 용기'});expect(p.dimensions.visible).toBe(false);expect(p.dimensions.width).toBe('450');expect(Buffer.from(p.product.data.split(',')[1],'base64')).toEqual(fixture);
@@ -133,6 +157,6 @@ test('photo-free service ads save, restore and export while creative requests st
  const event=page.waitForEvent('download');await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();const bytes=await readFile((await (await event).path())!);const metadata=await sharp(bytes).metadata();expect([metadata.width,metadata.height]).toEqual([1080,1350]);
  await page.getByRole('radio',{name:'새로운 광고 이미지 만들기',exact:true}).check();await expect(page.getByText('사진 없이 만들 광고의 내용과 원하는 분위기를 입력해주세요.',{exact:true})).toBeVisible();
  await page.getByRole('textbox',{name:'원하는 광고 이미지',exact:true}).fill('차분하고 밝은 교실, 성인 학습자를 위한 영어 회화 수업');
- await expect(page.locator('.generation-issue')).toHaveCount(0);await expect(page.getByRole('button',{name:'AI 생성 연결 예정',exact:true})).toBeDisabled();
+ await expect(page.locator('.generation-issue')).toHaveCount(0);await expect(page.getByRole('button',{name:'AI 시안 확인 후 저장',exact:true})).toBeDisabled();
  const creative=await backup(page);expect(creative.product).toBeNull();expect(creative.productProfile.specType).toBe('none');expect(creative.generation.mode).toBe('creative');expect(creative.format).toBe('4:5');
 });

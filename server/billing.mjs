@@ -19,12 +19,24 @@ export class BillingLedger {
     this.db.exec('PRAGMA busy_timeout=5000;');
     this.db.exec(readFileSync(new URL('./billing.sql', import.meta.url), 'utf8'));
     this.now = now;
+    this.transactionDepth = 0;
   }
   close() { this.db.close(); }
   transaction(fn) {
-    this.db.exec('BEGIN IMMEDIATE');
-    try { const value = fn(); this.db.exec('COMMIT'); return value; }
-    catch (error) { this.db.exec('ROLLBACK'); throw error; }
+    const depth = this.transactionDepth++;
+    const savepoint = `ledger_transaction_${depth}`;
+    try {
+      this.db.exec(depth ? `SAVEPOINT ${savepoint}` : 'BEGIN IMMEDIATE');
+      try {
+        const value = fn();
+        this.db.exec(depth ? `RELEASE SAVEPOINT ${savepoint}` : 'COMMIT');
+        return value;
+      } catch (error) {
+        this.db.exec(depth ? `ROLLBACK TO SAVEPOINT ${savepoint}` : 'ROLLBACK');
+        if (depth) this.db.exec(`RELEASE SAVEPOINT ${savepoint}`);
+        throw error;
+      }
+    } finally { this.transactionDepth--; }
   }
   job(id) {
     const row = this.db.prepare('SELECT * FROM jobs WHERE id=?').get(id);

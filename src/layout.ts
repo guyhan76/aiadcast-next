@@ -1,6 +1,7 @@
 import {getImageFormat} from './formats.ts';
 import {dimensionAxes,isServiceCategory} from './product.ts';
 import type {Project} from './model.ts';
+import {visualAsset} from './generated.ts';
 type Rect={x:number;y:number;w:number;h:number};
 type TextBox={x:number;y:number;w:number;size:number;lines:number};
 const box=(x:number,y:number,w:number,size:number,lines=1):TextBox=>({x,y,w,size,lines});
@@ -34,7 +35,8 @@ export function geometry(p:Project){
   area={x:60,y:400,w:960,h:height-652};summary={x:60,y:height-226,w:960,h:90};
   footerLine={x:60,y:height-116,w:960,h:1};company=box(60,height-99,960,22);contact=box(60,height-62,960,18,2);
  }
- const textOnly=isServiceCategory(p.productProfile.category)&&!p.product;
+ const visual=visualAsset(p);
+ const textOnly=isServiceCategory(p.productProfile.category)&&!visual;
  // A spec-free project gives the photo the space formerly reserved for specs.
  // Merely hiding existing specs keeps the photo placement unchanged.
  if(!dimensionAxes(p.productProfile).length)area={...area,h:footerLine.y-32*markScale-area.y};
@@ -50,9 +52,9 @@ export function geometry(p:Project){
  // The label and value share the same spec block across all layouts.
  const specLabel=box(summary.x+28*markScale,summary.y+summary.h*.175,summary.w-56*markScale,18*markScale);
  const specValue=box(summary.x+28*markScale,summary.y+summary.h*.49,summary.w-56*markScale,(summary.h<100&&markScale===1?26:30)*markScale);
- if(!p.product)return {width,height,area,photo:area,brand,title,description,summary,specLabel,specValue,footerLine,company,contact,markScale,textOnly};
- const fit=Math.min(area.w/p.product.width,area.h/p.product.height)*p.scale;
- const w=p.product.width*fit,h=p.product.height*fit;
+ if(!visual)return {width,height,area,photo:area,brand,title,description,summary,specLabel,specValue,footerLine,company,contact,markScale,textOnly};
+ const fit=Math.min(area.w/visual.width,area.h/visual.height)*p.scale;
+ const w=visual.width*fit,h=visual.height*fit;
  const photo={x:area.x+(area.w-w)/2,y:area.y+(area.h-h)/2,w,h};
  return {width,height,area,photo,brand,title,description,summary,specLabel,specValue,footerLine,company,contact,markScale,textOnly};
 }

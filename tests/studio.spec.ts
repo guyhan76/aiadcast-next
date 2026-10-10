@@ -8,7 +8,7 @@ async function brief(page:import('@playwright/test').Page){const next=page.waitF
 test('home, creation, library and guide fit narrow screens without claiming live AI',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  for(const route of ['home','create','projects','guide']){await page.goto('/#'+route);for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth),`${route} at ${width}`).toBeLessThanOrEqual(width);}}
- await page.goto('/');await expect(page.getByRole('heading',{name:/당신의 비즈니스/})).toBeVisible();await expect(page.locator('.gallery-caption')).toContainText('이전 aiadcast');await expect(page.locator('.home-scope:visible')).toContainText('연결 전');
+ await page.goto('/');await expect(page.getByRole('heading',{name:/내 상품과 서비스로/})).toBeVisible();await expect(page.locator('.gallery-caption')).toContainText('이전 aiadcast');await expect(page.locator('.home-scope:visible')).toContainText('연결 전');
  expect(await page.locator('.hero-gallery img').evaluateAll(images=>images.every(i=>(i as HTMLImageElement).naturalWidth>0))).toBe(true);expect(errors).toEqual([]);
 });
 test('service wizard exports a real dimension-free image and restores editable projects',async({page})=>{

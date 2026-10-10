@@ -1,0 +1,22 @@
+# Optional paid deployment blueprint; creating it here does not create a service.
+# Free ephemeral disks are not compatible with this SQLite beta.
+services:
+  - type: web
+    name: aiadcast-next-beta
+    runtime: docker
+    dockerfilePath: ./Dockerfile.beta
+    plan: starter
+    numInstances: 1
+    autoDeployTrigger: off
+    healthCheckPath: /api/health
+    disk:
+      name: aiadcast-next-beta-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: AIADCAST_BETA_MONTHLY_BUDGET_USD
+        value: "0"
+      - key: AIADCAST_BETA_ENABLE_GENERATION
+        value: "false"
+      - key: AIADCAST_BETA_ENABLE_ASSISTANT
+        value: "false"

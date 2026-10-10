@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+FROM node:24.19.0-bookworm-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi; \
+    npm ci --strict-ssl=true --no-audit --no-fund
+COPY src ./src
+COPY scripts ./scripts
+COPY index.html tsconfig.json vite.config.ts ./
+RUN npx --no-install tsc --noEmit && npx --no-install vite build
+RUN npm prune --omit=dev --ignore-scripts --offline --no-audit --no-fund
+FROM node:24.19.0-bookworm-slim
+WORKDIR /app
+ENV NODE_ENV=production PORT=8790 AIADCAST_BETA_DATA_DIR=/data
+COPY --chown=node:node --from=build /app/node_modules ./node_modules
+COPY --chown=node:node --from=build /app/dist ./dist
+COPY --chown=node:node package.json ./
+COPY --chown=node:node server ./server
+COPY --chown=node:node scripts/beta-admin.mjs scripts/run-beta.sh ./scripts/
+RUN command -v flock && mkdir /data && chown node:node /data
+USER node
+EXPOSE 8790
+CMD ["bash", "scripts/run-beta.sh"]

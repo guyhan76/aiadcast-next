@@ -37,5 +37,5 @@ test('long dialogue and appearance controls fit mobile and desktop without execu
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));const panel=director(page);
  await request(page,'실제 상품의 형태와 로고는 유지해줘. '+ '자연광으로 촬영한 매장 광고를 원해요. '.repeat(20));await panel.getByRole('button',{name:'인쇄 색상 요청',exact:false}).click();
  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});await panel.scrollIntoViewIfNeeded();expect(await page.evaluate(()=>document.documentElement.scrollWidth),`dialogue at ${width}`).toBeLessThanOrEqual(width);}
- await expect(panel.getByText('요청 준비 · AI 연결 전',{exact:true})).toBeVisible();await expect(panel.getByText(/이용권 차감이 실행되지 않았습니다/)).toBeVisible();expect(errors).toEqual([]);
+ await expect(panel.getByText('요청 기록 · 생성은 별도 실행',{exact:true})).toBeVisible();await expect(panel.getByText(/이용권 차감이 실행되지 않았습니다/)).toBeVisible();expect(errors).toEqual([]);
 });

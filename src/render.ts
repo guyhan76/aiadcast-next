@@ -2,6 +2,7 @@ import {dimensionAxes,specSummary} from './product.ts';
 import {labels, loadImage} from './model';
 import type {Project,Axis} from './model';
 import {geometry} from './layout.ts';
+import {visualAsset} from './generated.ts';
 import {paintCreativeFrame} from './creative-render.ts';
 export {geometry} from './layout.ts';
 export const font='"Noto Sans KR Variable", sans-serif';
@@ -9,7 +10,8 @@ function wrap(ctx:CanvasRenderingContext2D,text:string,width:number){const lines
 export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axis):Promise<string[]> {
  const layout=geometry(p);const {width,height,area,photo,summary,footerLine}=layout;const content=p.copy[p.locale];
  await Promise.all([400,500,700].map(weight=>document.fonts.load(`${weight} 32px ${font}`,Object.values(content).join('')+'가로세로높이상품규격')));
- const [product,background]=await Promise.all([p.product?loadImage(p.product.data):null,p.background.image?loadImage(p.background.image.data):null]);
+ const visual=visualAsset(p);
+ const [product,background]=await Promise.all([visual?loadImage(visual.data):null,p.background.image?loadImage(p.background.image.data):null]);
  canvas.width=width;canvas.height=height;const ctx=canvas.getContext('2d')!;const errors:string[]=[];
  const color=p.ink==='dark'?'#20261f':'#ffffff';ctx.fillStyle=p.background.color;ctx.fillRect(0,0,width,height);
  if(background){const fit=Math.max(width/background.naturalWidth,height/background.naturalHeight);const w=background.naturalWidth*fit,h=background.naturalHeight*fit;ctx.drawImage(background,(width-w)/2,(height-h)/2,w,h);}

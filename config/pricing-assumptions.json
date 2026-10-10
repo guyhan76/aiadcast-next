@@ -1,47 +1,37 @@
 {
-  "status": "planning-assumptions-not-measured",
-  "date": "2026-10-09",
+  "status": "owner-approved-prices-with-unmeasured-cost-plan",
+  "date": "2026-10-10",
   "krwPerUsd": 1400,
-  "koreanVatRate": 0.10,
-  "storeFeeRates": [0.15, 0.30],
-  "costScenarios": {
-    "standard": {
-      "outputUsdPerAttempt": 0.063,
-      "inputAndChecksUsdPerAttempt": 0.025,
-      "averageAttemptsPerJob": 1.3,
-      "infrastructureUsdPerJob": 0.02,
-      "chargedShareOfJobs": 0.90,
-      "supportReserveUsdPerChargedExport": 0.03
-    },
-    "premium": {
-      "outputUsdPerAttempt": 0.25,
-      "inputAndChecksUsdPerAttempt": 0.04,
-      "averageAttemptsPerJob": 1.4,
-      "infrastructureUsdPerJob": 0.03,
-      "chargedShareOfJobs": 0.90,
-      "supportReserveUsdPerChargedExport": 0.05
-    },
-    "stress": {
-      "outputUsdPerAttempt": 0.25,
-      "inputAndChecksUsdPerAttempt": 0.07,
-      "averageAttemptsPerJob": 1.8,
-      "infrastructureUsdPerJob": 0.04,
-      "chargedShareOfJobs": 0.75,
-      "supportReserveUsdPerChargedExport": 0.08
-    }
+  "koreanVatRate": 0.1,
+  "storeFeeRates": [
+    0.15,
+    0.3
+  ],
+  "refundReserveRateOfNetReceipts": 0.02,
+  "plannedUnitCostKrw": 350,
+  "normalPackMix": {
+    "basic": 0.7,
+    "bundle": 0.3
   },
   "provenance": {
-    "outputPriceReference": "Historical 2025 GPT Image 1 1024x1536 medium/high output-only prices; not reverified for current models.",
+    "prices": "Owner approved KRW 6900/19900/49900 and USD 499/1499/3999 cents for 3/10/30 new ads on 2026-10-10.",
+    "unitCost": "Owner-selected planning budget of KRW 350 per new ad. Not a measured invoice or a guaranteed provider cost ceiling; includes a planning allowance for retries and infrastructure.",
+    "refundReserve": "Planning reserve of 2% of receipts after tax and store fee, separate from generation correction costs. Not an observed refund rate.",
     "fx": "Planning exchange rate, not a live or verified market quote.",
-    "otherInputs": "All input/check/retry/infrastructure/acceptance/support values are assumptions, not observed invoices.",
-    "sources": [
-      {"url":"https://openai.com/api/pricing/","retrieval":"proxy-tunnel-403"},
-      {"url":"https://platform.openai.com/docs/pricing","retrieval":"proxy-tunnel-403"},
-      {"url":"https://www.photoroom.com/pricing","retrieval":"proxy-tunnel-403"},
-      {"url":"https://www.photoroom.com/api/pricing","retrieval":"proxy-tunnel-403"},
-      {"url":"https://www.adobe.com/products/firefly/plans.html","retrieval":"proxy-tunnel-403"},
-      {"url":"https://docs.midjourney.com/hc/en-us/articles/27870484040333-Comparing-Midjourney-Plans","retrieval":"proxy-tunnel-403"},
-      {"url":"https://support.google.com/googleplay/android-developer/answer/112622?hl=en","retrieval":"proxy-tunnel-403"}
-    ]
-  }
+    "operatingCosts": "Owner revised required monthly cash outflow to KRW 22 million including KRW 3.5 million loan principal and interest. This is cash coverage, not accounting operating profit. The principal/interest split is not supplied; do not treat all KRW 3.5 million as an expense or claim an operating margin from this cash figure.",
+    "fees": "15% and 30% are store-fee scenarios, not confirmed account terms. Do not automatically add a separate card PG fee to ordinary store billing.",
+    "billing": "Purchases remain disabled. Real checkout must use verified store products, country, tax and currency. Display language is not billing country."
+  },
+  "monthlyCashOutflowKrw": 22000000,
+  "monthlyCashOutflowBreakdownKrw": {
+    "payroll": 11600000,
+    "advisor": 2500000,
+    "vehicle": 800000,
+    "office": 820000,
+    "accountant": 160000,
+    "loanPrincipalAndInterest": 3500000,
+    "other": 620000,
+    "marketingAndResearchDevelopment": 2000000
+  },
+  "loanPrincipalInterestSplitKnown": false
 }
