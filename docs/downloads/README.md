@@ -1,6 +1,10 @@
 # 휴대폰 테스트 앱 · 2026-10-10
 
-[Android APK 다운로드](https://github.com/guyhan76/aiadcast-next/raw/refs/heads/feat/mobile-private-beta-20261010/docs/downloads/aiadcast-test-20261010.apk)
+[공개 다운로드 페이지](https://selluplabs-homepage.selluplabs.workers.dev/aiadcast-test/)
+
+[APK 바로 받기](https://selluplabs-homepage.selluplabs.workers.dev/aiadcast-test/aiadcast-0.2.0-dev.apk)
+
+2026-10-10: 홈페이지 저장소 main에 다운로드 전용 파일을 추가했다(d59fac4). 기존 Cloudflare 자동 배포를 사용한다. 로컬 모바일 Chromium에서 버튼 다운로드·파일명·10,628,245바이트·SHA-256 일치를 검증했다. 실행 환경의 공개 호스트 접속은 프록시 403으로 차단돼 원격 배포 완료는 미확인이다. 홈페이지 본문과 영화패키지 본문은 변경하지 않았다.
 
 Android 10 이상, 약 10.6 MB. 앱 이름 **aiadcast Dev**. 기존 외주 앱과 별도로 설치된다. 버전 0.2.0-dev. 이번 파일은 개발용 APK이며 Google Play 출시 파일이 아니다. 서버 주소/공급사 비밀키를 포함하지 않으며 휴대폰의 AI 새 이미지 생성은 공개 서버 연결 후 검증한다.
 
@@ -8,11 +12,11 @@ Android 10 이상, 약 10.6 MB. 앱 이름 **aiadcast Dev**. 기존 외주 앱�
 
 이번 APK는 이전 임시 개발 서명키가 유실되어 새 개발 서명으로 만들었다. 기존 **aiadcast Dev에 덮어쓰기 설치할 수 없다.** 기존 앱에서 저장한 작업을 각각 열어 **프로젝트 백업**으로 JSON을 앱 외부 폴더에 저장한 뒤 aiadcast Dev를 삭제하고 새 파일을 설치한다. 재설치 후 프로젝트 파일을 불러온다. 백업되지 않은 앱 내부 데이터는 삭제 시 사라진다. 기존 외주 앱은 삭제하지 않는다.
 
-GitHub 링크는 저장소 접근 권한이 필요할 수 있다. 공개 익명 다운로드와 실제 휴대폰 설치는 아직 검증하지 않았다. 이 대화에 제공한 파일 다운로드를 이용할 수도 있다.
+작업 폴더의 파일 링크는 휴대폰 공개 다운로드 주소가 아니다. 위 HTTPS 다운로드 페이지를 사용한다. 실제 휴대폰 설치는 아직 검증하지 않았다.
 
 ## 설치와 첫 확인
 
-1. 휴대폰 Chrome에서 다운로드 링크를 연다. GitHub 로그인이 요구되면 이 저장소에 접근 가능한 계정을 사용한다.
+1. 휴대폰 Chrome에서 공개 다운로드 페이지를 열고 APK 다운로드를 누른다. Cloudflare 배포 전에는 경로가 아직 표시되지 않을 수 있다.
 2. 다운로드한 `aiadcast-test-20261010.apk`를 연다. Android가 해당 브라우저의 앱 설치 허용을 요청하면 화면 안내에 따라 설치를 진행한다.
 3. **aiadcast Dev**를 실행한다. 홈 화면과 아래 메뉴가 보이는지 확인한다.
 4. 설치가 실패하면 표시된 오류 문구를 기록한다. 기존 aiadcast Dev가 설치되어 있다면, 삭제하기 전에 기존 프로젝트를 JSON으로 백업한다. 기존 외주 앱을 삭제할 필요는 없다.
