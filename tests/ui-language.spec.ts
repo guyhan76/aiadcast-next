@@ -9,7 +9,7 @@ test.describe('Independent Korean and English interface',()=>{
   await expect(page.locator('html')).toHaveAttribute('lang','en');
   await expect(page.getByRole('heading',{name:/Your product/})).toBeVisible();
   await page.getByRole('combobox',{name:'App language',exact:true}).selectOption('ko');
-  await expect(page.getByRole('heading',{name:/내 상품을/})).toBeVisible();
+  await expect(page.getByRole('heading',{name:/내 상품과 서비스로/})).toBeVisible();
   await page.reload();await expect(page.locator('html')).toHaveAttribute('lang','ko');
   await page.getByRole('combobox',{name:'앱 언어',exact:true}).selectOption('en');
   for(const route of ['home','create','projects','guide']){
@@ -21,7 +21,7 @@ test.describe('Independent Korean and English interface',()=>{
  test('finds industries in English and keeps the chosen ad language independent of the UI',async({page})=>{
   await page.goto('/');await page.getByRole('button',{name:'Create a service ad',exact:true}).click();
   const wizard=page.locator('.create-page');
-  await wizard.locator('.quiet-details>summary').filter({hasText:'Category & dimensions'}).click();await wizard.getByLabel('Category',{exact:true}).selectOption('yoga');
+  await wizard.locator('.quiet-details>summary').filter({hasText:'Category & dimensions'}).click();await wizard.getByRole('searchbox',{name:'Find an industry',exact:true}).fill('Yoga');await wizard.getByRole('button',{name:'Yoga',exact:true}).click();
   await wizard.getByLabel('Product or service name',{exact:true}).fill('Studio Bloom');
   await wizard.getByLabel('Product details',{exact:true}).fill('Small-group yoga classes');
   await wizard.getByRole('button',{name:'Continue',exact:true}).click();await wizard.getByRole('button',{name:'Continue',exact:true}).click();

@@ -23,7 +23,7 @@ export function resolveIndustryCategory(value:unknown):ProductCategory|undefined
 }
 export type IndustryKind = 'product'|'service';
 export const industryKinds:readonly {id:IndustryKind;label:string;description:string;defaultCategory:ProductCategory}[] = [
-  {id:'product',label:'상품',description:'전자기기 · 패션 · 포장재 · 식품 등',defaultCategory:'other'},
+  {id:'product',label:'실물·규격 상품',description:'포장재 · 식품 · 의류 · 가전 등',defaultCategory:'other'},
   {id:'service',label:'서비스',description:'음식점 · 교육 · 여행 · 금융 등',defaultCategory:'services'},
 ];
 export type IndustryGroupId = 'packaging'|'products'|'fashion'|'electronics'|'industrial'|'food'|'beauty'|'home'|'automotive'|'dining'|'travel'|'learning'|'sports'|'health'|'property'|'finance'|'mobility'|'fortune'|'business';

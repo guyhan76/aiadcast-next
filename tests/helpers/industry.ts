@@ -5,13 +5,13 @@ import {industryKindFor,productCategories,type ProductCategory} from '../../src/
 export async function selectIndustry(page:Page,category:string,container?:Locator){
  const label=productCategories.find(([id])=>id===category)?.[1];
  if(!label)throw Error(`Unknown industry: ${category}`);
- if(container){const options=container.locator('.quiet-details').first();if(await options.getAttribute('open')===null)await options.locator(':scope > summary').click();await container.getByRole('combobox',{name:'업종',exact:true}).selectOption(category);return;}
+ if(container){const options=container.locator('.quiet-details').first();if(await options.getAttribute('open')===null)await options.locator(':scope > summary').click();}
  const details=page.locator('.editor-details');if(!container&&await details.count()&&await details.getAttribute('open')===null)await details.locator(':scope > summary').click();
  const picker=(container??page.locator('.editor-container:visible')).getByRole('group',{name:'업종 선택',exact:true});
  const toggle=picker.getByRole('button',{name:/업종 변경/});
  if(await toggle.count()&&await toggle.getAttribute('aria-expanded')!=='true')await toggle.click();
  const kind=industryKindFor(category as ProductCategory);
- const branch=picker.getByRole('button',{name:kind==='product'?'상품':'서비스',exact:true});
+ const branch=picker.getByRole('button',{name:kind==='product'?'실물·규격 상품':'서비스',exact:true});
  if(await branch.getAttribute('aria-pressed')!=='true')await branch.click();
  await picker.getByRole('searchbox',{name:'업종 찾기',exact:true}).fill(label);
  await picker.getByRole('button',{name:label,exact:true}).click();

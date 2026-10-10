@@ -1,5 +1,8 @@
 // Presentation-only translations. User copy and billing country remain independent.
 export const uiEnglish:Record<string,string>={
+ '실물·규격 상품':'Physical products',
+ '포장재 · 식품 · 의류 · 가전 등':'Packaging · Food · Fashion · Appliances',
+
  "홈": "Home",
  "광고 만들기": "Create an ad",
  "내 프로젝트": "My projects",

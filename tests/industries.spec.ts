@@ -1,11 +1,17 @@
 import {test,expect,type Page} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
 import sharp from 'sharp';
-import {productCategories} from '../src/industry';
+import {industryGroups} from '../src/industry';
 import {selectIndustry} from './helpers/industry';
 async function backup(page:Page){const d=page.waitForEvent('download');await page.getByRole('button',{name:'프로젝트 백업',exact:true}).click();return JSON.parse(await readFile((await(await d).path())!,'utf8'));}
-test('all industries remain available without placing a mandatory industry picker before the product',async({page})=>{
- await page.goto('/#create');const wizard=page.locator('.create-page');await expect(wizard.getByLabel('상품·서비스 이름')).toBeVisible();await wizard.locator('.quiet-details>summary').filter({hasText:'업종·규격 설정'}).click();const options=wizard.getByLabel('업종',{exact:true});await expect(options.locator('option')).toHaveCount(productCategories.length);for(const [category] of productCategories){await options.selectOption(category);await expect(options).toHaveValue(category);}
+test('all industries are reachable through product or service, category and detail without a flat dropdown',async({page})=>{
+ test.setTimeout(60000);await page.goto('/#create');const wizard=page.locator('.create-page');await wizard.locator('.quiet-details>summary').filter({hasText:'업종·규격 설정'}).click();const picker=wizard.getByRole('group',{name:'업종 선택',exact:true});await expect(wizard.getByRole('combobox',{name:'업종',exact:true})).toHaveCount(0);
+ for(const kind of ['product','service']){
+  await picker.getByRole('button',{name:kind==='product'?'실물·규격 상품':'서비스',exact:true}).click();
+  const groups=industryGroups.filter(g=>g.kind===kind);await expect(picker.locator('.industry-group-card')).toHaveCount(groups.length);
+  for(const group of groups){await picker.getByRole('button',{name:group.label+' 업종 그룹',exact:true}).click();const leaves=picker.locator('.industry-detail-options button');await expect(leaves).toHaveCount(group.categoryIds.length);for(let i=0;i<group.categoryIds.length;i++){await leaves.nth(i).click();await expect(leaves.nth(i)).toHaveAttribute('aria-pressed','true');}}
+ }
+ for(const width of [320,390,768]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
 });
 test('different service industries can request creative ads without photos or dimensions',async({page})=>{
  test.setTimeout(60000);for(const category of ['pilates','lodging','hospital','banking','tarot','astrology','myeongri','sinjeom']){await page.goto('/');await page.getByRole('button',{name:'서비스 광고 만들기',exact:true}).click();const wizard=page.locator('.create-page');await selectIndustry(page,category,wizard);await wizard.getByLabel('상품·서비스 이름').fill(category+' 안내');await wizard.getByRole('button',{name:'다음',exact:true}).click();await wizard.getByRole('button',{name:'다음',exact:true}).click();await wizard.getByRole('button',{name:'광고 제작으로',exact:true}).click();const saved=await backup(page);expect(saved.product).toBeNull();expect(saved.productProfile).toMatchObject({category,specType:'none'});expect(saved.generation.mode).toBe('creative');}
@@ -31,7 +37,7 @@ test('legacy fortune JSON and device projects keep their source and copy with mi
  const migrated=await backup(page);expect(migrated.productProfile).toEqual({...legacy.productProfile,category:'sinjeom'});expect(migrated.copy).toEqual(legacy.copy);expect(migrated.product).toEqual(legacy.product);expect(migrated.dimensions).toEqual(legacy.dimensions);
  const picker=page.locator('.editor-container:visible').getByRole('group',{name:'업종 선택',exact:true});
  await picker.getByRole('button',{name:/업종 변경/}).click();await expect(picker.getByRole('button',{name:'서비스',exact:true})).toHaveAttribute('aria-pressed','true');
- await picker.getByRole('button',{name:'상품',exact:true}).click();await picker.getByRole('button',{name:'포장재 업종 그룹',exact:true}).click();
+ await picker.getByRole('button',{name:'실물·규격 상품',exact:true}).click();await picker.getByRole('button',{name:'포장재 업종 그룹',exact:true}).click();
  const browsing=await backup(page);expect(browsing.productProfile).toEqual(migrated.productProfile);expect(browsing.copy).toEqual(migrated.copy);expect(browsing.product).toEqual(migrated.product);expect(browsing.dimensions).toEqual(migrated.dimensions);
  await selectIndustry(page,'corporate');
  const options=page.locator('.editor-container:visible .creative-options-compact');await options.locator(':scope > summary').click();
