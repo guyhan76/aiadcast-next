@@ -38,5 +38,19 @@
     "original": "/workspace/generated_images/exec-eba2331a-6bc5-4a62-bc50-7d1e9cc6a4d0.png",
     "sha256": "1d86b8b38de671d985ce0fcd12079b8d364686743a2eeb476315f3b0d43132d5",
     "role": "Original concept products and adult model for homepage lookbook. Not real luxury-brand products, brand endorsements or mobile API results. Exact logo and bilingual text are UI overlays."
+  },
+  {
+    "file": "premium-travel-generated.png",
+    "source": "image_gen.imagegen, 2026-10-10, travel and hotel lookbook",
+    "original": "/workspace/generated_images/exec-80d33ecd-86b2-4b12-96c1-a79f842b6a05.png",
+    "sha256": "3e4b8ccb4e9d7b1f75c2f25a206358e711fba2e7edb3e9a73b75c6695da6d82e",
+    "role": "Fictional travel/hospitality concept scene for homepage lookbook. Not a real destination offer, actual hotel facilities, endorsement, or mobile API result. Exact logo and bilingual text are UI overlays."
+  },
+  {
+    "file": "premium-hotel-generated.png",
+    "source": "image_gen.imagegen, 2026-10-10, travel and hotel lookbook",
+    "original": "/workspace/generated_images/exec-6421d091-29a2-4190-8e43-3e2ae37cea91.png",
+    "sha256": "cdae7b110832e9842a2bff8e0451dd143b3e7cb7c7132791daec9cd26cf172fb",
+    "role": "Fictional travel/hospitality concept scene for homepage lookbook. Not a real destination offer, actual hotel facilities, endorsement, or mobile API result. Exact logo and bilingual text are UI overlays."
   }
 ]

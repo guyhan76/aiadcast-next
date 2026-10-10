@@ -27,8 +27,8 @@
   {
     "key": "luxury",
     "label": [
-      "명품가방",
-      "Luxury bags"
+      "패션소품",
+      "Accessories"
     ],
     "title": [
       [
@@ -45,8 +45,8 @@
       "Leather grain · Fine stitching · A precise metal clasp"
     ],
     "alt": [
-      "손에 든 브라운 가죽 가방의 구조와 스티치를 보여주는 AI 생성 가방 광고",
-      "AI-generated handbag ad showing leather craftsmanship in a carrying gesture"
+      "손에 든 브라운 가죽 가방의 구조와 스티치를 보여주는 AI 생성 패션소품 광고",
+      "AI-generated accessories ad showing leather craftsmanship in a carrying gesture"
     ]
   },
   {
@@ -97,6 +97,56 @@
     "alt": [
       "네이비 재킷과 아이보리 바지를 입고 걷는 성인 모델의 AI 생성 패션 광고",
       "AI-generated fashion ad of an adult model walking in a navy blazer and ivory trousers"
+    ]
+  },
+  {
+    "key": "travel",
+    "label": [
+      "여행",
+      "Travel"
+    ],
+    "title": [
+      [
+        "낯선 풍경,",
+        "새로운 나."
+      ],
+      [
+        "New horizons.",
+        "A new you."
+      ]
+    ],
+    "detail": [
+      "바다를 따라 걷는 길, 일상을 벗어난 순간",
+      "A coastal path. A moment beyond the everyday."
+    ],
+    "alt": [
+      "해안길과 푸른 바다를 걷는 여행자의 AI 생성 여행 광고",
+      "AI-generated travel ad with a traveler walking a scenic coastal path"
+    ]
+  },
+  {
+    "key": "hotel",
+    "label": [
+      "호텔",
+      "Hotel"
+    ],
+    "title": [
+      [
+        "머무는 순간,",
+        "쉼이 되다."
+      ],
+      [
+        "Stay a while.",
+        "Find your calm."
+      ]
+    ],
+    "detail": [
+      "창밖의 숲과 아침빛이 채우는 휴식",
+      "Forest views. Morning light. Room to unwind."
+    ],
+    "alt": [
+      "숲을 향한 큰 창과 침구가 있는 객실의 AI 생성 호텔 광고",
+      "AI-generated hotel ad showing a forest-facing bedroom in morning light"
     ]
   }
 ]

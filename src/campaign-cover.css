@@ -24,3 +24,12 @@
 .editorial-cover .generated-ad-footer:before{display:none}
 .editorial-cover.campaign-jewelry .generated-ad-footer{color:#f4f4f1}
 .editorial-cover.campaign-beauty .generated-ad-footer{color:#fff;text-shadow:0 1px 3px #000d}
+
+/* Six categories remain readable on narrow phones. */
+.home-showcase .campaign-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.home-showcase .campaign-tabs button{min-width:0;padding:10px 4px;white-space:normal}
+.editorial-cover.campaign-travel .cover-headline{top:16%;max-width:75%}
+.editorial-cover.campaign-travel h2{font-size:clamp(26px,8.5cqw,46px)}
+.editorial-cover.campaign-hotel .cover-headline{top:19%;max-width:46%}
+.editorial-cover.campaign-hotel h2{font-size:clamp(22px,7.2cqw,39px)}
+.editorial-cover.campaign-travel .generated-ad-footer,.editorial-cover.campaign-hotel .generated-ad-footer{color:#fff;text-shadow:0 1px 3px #000e}

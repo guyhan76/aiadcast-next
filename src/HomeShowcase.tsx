@@ -1,5 +1,7 @@
 import {useId,useRef,useState} from 'react';
 import lookbook from './assets/lookbook-campaigns.json';
+import travelImage from './assets/premium-travel-generated.png';
+import hotelImage from './assets/premium-hotel-generated.png';
 import jewelryImage from './assets/premium-jewelry-generated.png';
 import luxuryImage from './assets/premium-luxury-generated.png';
 import fashionImage from './assets/premium-fashion-generated.png';
@@ -11,7 +13,7 @@ import {useUiLanguage} from './ui-language';
 export function HomeShowcase(){
  const {t}=useUiLanguage();
  const [active,setActive]=useState(0),id=useId(),touch=useRef<{x:number;y:number}|null>(null);
- const images:Record<string,string>={beauty:premiumBeauty,luxury:luxuryImage,jewelry:jewelryImage,fashion:fashionImage};
+ const images:Record<string,string>={beauty:premiumBeauty,luxury:luxuryImage,jewelry:jewelryImage,fashion:fashionImage,travel:travelImage,hotel:hotelImage};
  const campaigns=lookbook.map(item=>({...item,image:images[item.key],label:t(item.label[0],item.label[1]),title:[t(item.title[0][0],item.title[1][0]),t(item.title[0][1],item.title[1][1])],detail:t(item.detail[0],item.detail[1]),alt:t(item.alt[0],item.alt[1])}));
  const campaign=campaigns[active];
  function select(index:number,focus=false){const next=(index+campaigns.length)%campaigns.length;setActive(next);if(focus)document.getElementById(`${id}-tab-${next}`)?.focus();}
