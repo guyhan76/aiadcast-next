@@ -13,20 +13,20 @@
   },
   {
     "file": "premium-beauty-generated.png",
-    "source": "image_gen.imagegen, 2026-10-10, magazine editorial revision",
-    "sha256": "be4b2093f44125eec0c82093bcee4e92a1e6d6968fb5a0000c83b434550a8879",
+    "source": "image_gen.imagegen, 2026-10-10, realistic product and wearable fashion replacement",
+    "sha256": "09638a37f34ab87a51c3d7ac721c2a662afb463e97d1b52c43ab1185231c1001",
     "role": "User-requested AI-generated magazine-cover homepage artwork. Exact aiadcast logo and bilingual headlines are UI overlays. Not a mobile app API result or real brand endorsement."
   },
   {
     "file": "premium-luxury-generated.png",
-    "source": "image_gen.imagegen, 2026-10-10, magazine editorial revision",
-    "sha256": "1cb28820d93184677f7f339305ff2a1ed2f64f6e4c877b74a6b1720614841e7b",
+    "source": "image_gen.imagegen, 2026-10-10, realistic product and wearable fashion replacement",
+    "sha256": "9fccd8f64789c12317a4418bd52e63f9d2770e3c51ce34e3596a623b00f0d891",
     "role": "User-requested AI-generated magazine-cover homepage artwork. Exact aiadcast logo and bilingual headlines are UI overlays. Not a mobile app API result or real brand endorsement."
   },
   {
     "file": "premium-fashion-generated.png",
-    "source": "image_gen.imagegen, 2026-10-10, magazine editorial revision",
-    "sha256": "984c67ad84e4edc3347bc4b146f6e10f9726a2045eebfc3929dad5d3e668ca9e",
+    "source": "image_gen.imagegen, 2026-10-10, realistic product and wearable fashion replacement",
+    "sha256": "f02336f6779cdae5c033e798263c292d778af8d7c1dac4f33891820e2801392c",
     "role": "User-requested AI-generated magazine-cover homepage artwork. Exact aiadcast logo and bilingual headlines are UI overlays. Not a mobile app API result or real brand endorsement."
   }
 ]

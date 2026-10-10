@@ -10,9 +10,9 @@ export function HomeShowcase(){
  const {t}=useUiLanguage();
  const [active,setActive]=useState(0),id=useId(),touch=useRef<{x:number;y:number}|null>(null);
  const campaigns=[
-  {key:'luxury',label:t('럭셔리','Luxury'),image:luxuryImage,title:[t('강렬하게,','A bold'),t('기억되다.','impression.')],detail:t('가죽의 결, 골드의 빛. 시선을 사로잡는 존재감.','Sculpted leather. Golden light. A lasting impression.'),alt:t('붉은 실크와 골드 조명 속 버건디 가방의 AI 생성 럭셔리 광고','AI-generated luxury ad with an oxblood handbag, red silk and gold light')},
-  {key:'beauty',label:t('뷰티','Beauty'),image:premiumBeauty,title:[t('깊게 빛나는,','Golden light.'),t('나만의 잔향.','Your signature.')],detail:t('향수 · 메이크업 · 빛으로 완성한 아름다움','Perfume · Makeup · Beauty sculpted in light'),alt:t('딥 블루 배경과 황금빛 물결 속 향수의 AI 생성 뷰티 광고','AI-generated beauty ad with amber perfume and golden water against deep blue')},
-  {key:'fashion',label:t('패션','Fashion'),image:fashionImage,title:[t('입는 순간,','Own'),t('시선의 중심.','the moment.')],detail:t('대담한 실루엣. 나를 표현하는 새로운 방식.','A bold silhouette. A new expression of you.'),alt:t('코발트 블루 배경과 블랙 재킷, 레드 실크를 입은 성인 모델의 AI 생성 패션 광고','AI-generated fashion ad with an adult model in black couture and red silk against cobalt blue')},
+  {key:'luxury',label:t('럭셔리','Luxury'),image:luxuryImage,title:[t('매일의 순간,','Every day,'),t('클래식이 되다.','a new classic.')],detail:t('섬세한 가죽의 결. 오래도록 함께할 취향.','Fine leather. Timeless details. Your everyday classic.'),alt:t('작은 골드 잠금장치의 검정 가죽 가방을 담은 AI 생성 럭셔리 광고','AI-generated luxury ad of a black leather handbag with a small gold clasp')},
+  {key:'beauty',label:t('뷰티','Beauty'),image:premiumBeauty,title:[t('나를 닮은,','Your scent.'),t('깊은 잔향.','Your signature.')],detail:t('투명한 유리, 은은한 향. 나를 기억하는 방식.','Clear glass. A quiet fragrance. A lasting impression.'),alt:t('자연광 속 반듯한 직사각형 유리 향수병의 AI 생성 뷰티 광고','AI-generated beauty ad with a straight rectangular glass perfume bottle in sunlight')},
+  {key:'fashion',label:t('패션','Fashion'),image:fashionImage,title:[t('일상에 입는,','Everyday'),t('나만의 품격.','elegance.')],detail:t('테일러드 재킷 · 셔츠 · 매일을 위한 스타일','Tailored blazer · Cotton shirt · Everyday style'),alt:t('베이지 재킷과 흰 셔츠, 검정 바지를 입은 성인 모델의 AI 생성 패션 광고','AI-generated fashion ad of an adult model in a beige blazer, white shirt and black trousers')},
  ];
  const campaign=campaigns[active];
  function select(index:number,focus=false){const next=(index+campaigns.length)%campaigns.length;setActive(next);if(focus)document.getElementById(`${id}-tab-${next}`)?.focus();}
