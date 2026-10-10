@@ -5,7 +5,7 @@ import {newProject} from '../src/model';
 import {withCategory} from '../src/product';
 import {defaultCampaign} from '../src/campaign';
 function sample(){const p=withCategory(newProject(),'cafe');p.name='게시 가이드 시험';p.productName='가을 라떼';p.copy.ko={title:'가을 라떼',description:'6,900원 · 10월 31일까지',company:'카페 봄',contact:'010-1234-5678',website:'https://example.com'};p.copy.en={title:'Autumn latte',description:'Available until October 31',company:'Cafe Spring',contact:'010-1234-5678',website:'https://example.com'};p.campaign={...defaultCampaign(),attributes:[{name:'지역',value:'인천'}]};return p;}
-async function open(page:Page){await page.goto('/#studio');await page.getByLabel('프로젝트 파일 선택').setInputFiles({name:'cafe.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(sample()))});return page.getByRole('region',{name:'광고 활용 가이드',exact:true});}
+async function open(page:Page){await page.goto('/#studio');await page.locator('.editor-details > summary').click();await page.getByLabel('프로젝트 파일 선택').setInputFiles({name:'cafe.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(sample()))});await page.locator('#publishing-tools > summary').click();return page.getByRole('region',{name:'광고 활용 가이드',exact:true});}
 async function backup(page:Page){const event=page.waitForEvent('download');await page.getByRole('button',{name:'프로젝트 백업',exact:true}).click();return JSON.parse(await readFile((await(await event).path())!,'utf8'));}
 test('channel suggestions, editable copy, clipboard and image export work without paid calls or changing the editable ratio',async({page})=>{
  const paid:string[]=[];page.on('request',r=>{if(r.method()==='POST'&&/\/api\/(generations|assistant)/.test(r.url()))paid.push(r.url());});
@@ -27,7 +27,7 @@ test('edited posts persist through save/import, stale prices block copying, and 
  page.on('dialog',d=>d.accept());const panel=await open(page);
  await panel.getByLabel('게시글 내용').fill('수정한 게시글 6,900원');
  const stored=await backup(page);expect(stored.publishing.drafts[0].body).toBe('수정한 게시글 6,900원');
- await page.getByRole('button',{name:'이 기기에 저장',exact:true}).click();await expect(page.getByRole('status').filter({hasText:'이 기기에 저장'})).toBeVisible();await page.reload();
+ await page.getByRole('button',{name:'이 기기에 저장',exact:true}).click();await expect(page.getByRole('status').filter({hasText:'이 기기에 저장'})).toBeVisible();await page.reload();await page.locator('.editor-details>summary').click();await page.locator('#publishing-tools>summary').click();
  await page.getByRole('button',{name:'저장한 작업',exact:true}).click();await page.getByRole('button',{name:/게시 가이드 시험/}).click();await expect(panel.getByLabel('게시글 내용')).toHaveValue('수정한 게시글 6,900원');
  await page.locator('.editor-tabs').getByRole('button',{name:/문구·언어/}).click();await page.getByRole('textbox',{name:'광고 설명',exact:true}).fill('7,900원 · 11월 30일까지');
  await expect(panel.getByRole('alert')).toContainText('광고 정보가 바뀌었습니다');await expect(panel.getByRole('button',{name:'게시글 복사',exact:true})).toBeDisabled();
@@ -42,6 +42,6 @@ test('clipboard denial offers selectable text, never a false copied message',asy
 
 test('image export failures are explained beside the publishing action',async({page})=>{
  const p=withCategory(sample(),'boxes');p.productProfile.specType='rectangular';p.dimensions.visible=true;
- await page.goto('/#studio');await page.getByLabel('프로젝트 파일 선택').setInputFiles({name:'box.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(p))});
+ await page.goto('/#studio');await page.locator('.editor-details > summary').click();await page.getByLabel('프로젝트 파일 선택').setInputFiles({name:'box.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(p))});await page.locator('#publishing-tools>summary').click();
  const panel=page.getByRole('region',{name:'광고 활용 가이드',exact:true});await panel.getByRole('button',{name:/이 매체용 이미지 저장/}).click();await expect(panel.locator('.publication-how').getByRole('status')).toContainText('원본 상품 사진');
 });

@@ -31,8 +31,8 @@ async function mockApi(page:Page,{dropResponse=false,corruptArtifact=false}={}){
   if(url.pathname.endsWith('/reject')){state.rejectPosts++;state.job!.state='rejected';state.job!.artifact=null;state.wallet={available:10,reserved:0,kind:'test'};return respond({job:state.job,wallet:state.wallet});}
   return respond({error:{code:'TEST_ENDPOINT_NOT_CONFIGURED'}},404);
  });
- await page.goto('/#studio');
- await page.getByLabel('상품 사진 추가').setInputFiles(originalPhoto);
+ await page.goto('/#studio');await page.locator('.editor-details > summary').click();
+ await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles(originalPhoto);
  const panel=page.getByRole('region',{name:'AI 광고 제작',exact:true});
  await expect(panel).toHaveCount(1);
  await expect(panel.getByText('생성 테스트 연결됨',{exact:true})).toBeVisible();
@@ -74,7 +74,7 @@ test('changing the source while reviewing makes the old visual inapplicable',asy
  const {state,panel}=await mockApi(page);
  await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();
  await panel.getByRole('checkbox',{name:'상품·배경·형태를 확인했습니다.',exact:true}).check();
- await page.getByLabel('상품 사진 추가').setInputFiles({name:'different.png',mimeType:'image/png',buffer:replacementBytes});
+ await page.getByRole('button',{name:'1 사진 삭제',exact:true}).click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'different.png',mimeType:'image/png',buffer:replacementBytes});
  await expect(panel.getByRole('alert')).toContainText('적용할 수 없습니다');
  await expect(panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true})).toBeDisabled();
  const saved=await backup(page);expect(saved.product.sha256).toBe(hash(replacementBytes));expect(saved.generated).toBeUndefined();expect(state.acceptPosts).toBe(0);

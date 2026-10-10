@@ -32,7 +32,7 @@ async function recoveryApi(page:Page,scenario:'invalid-first'|'lose-second'){
   }
   return json({error:{code:'UNEXPECTED_TEST_ENDPOINT'}},404);
  });
- await page.goto('/#studio');await page.getByLabel('상품 사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:png});
+ await page.goto('/#studio');await page.locator('.editor-details > summary').click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:png});
  const panel=page.getByRole('region',{name:'AI 광고 제작',exact:true});await expect(panel).toHaveCount(1);
  await expect(panel.getByText('생성 테스트 연결됨',{exact:true})).toBeVisible();
  return {panel,state};

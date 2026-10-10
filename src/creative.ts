@@ -29,8 +29,8 @@ export function chooseCreativeLook(p:Project,id:CreativeLook):Project{
 export function creativeCopy(p:Project):{title:string;description:string}{
  const settings=creativeSettings(p),direction=industryDirections(p.productProfile.category).find(d=>d.id===settings.directionId)!;
  const name=p.productName.trim();
- if(p.locale==='en')return {title:name||'Your brand, in focus',description:p.productProfile.material.trim()||({brand:'Discover what we offer.',offer:'Explore the details. Get in touch to learn more.',trust:'Get to know our business and services.'}[settings.directionId])};
- return {title:name?`${name}\n${direction.headline}`:direction.headline,description:p.productProfile.material.trim()||direction.cta};
+ if(p.locale==='en')return {title:name||'Your brand, in focus',description:(p.productProfile.material.trim().length<=80?p.productProfile.material.trim():'')||({brand:'Discover what we offer.',offer:'Explore the details. Get in touch to learn more.',trust:'Get to know our business and services.'}[settings.directionId])};
+ return {title:name?`${name}\n${direction.headline}`:direction.headline,description:(p.productProfile.material.trim().length<=80?p.productProfile.material.trim():'')||direction.cta};
 }
 export function creativeContract(p:Project){
  const settings=creativeSettings(p),category=p.productProfile.category,group=industryGroupFor(category),direction=industryDirections(category).find(d=>d.id===settings.directionId)!,look=creativeLooks.find(x=>x.id===settings.look)!;

@@ -58,3 +58,9 @@ test('old project imports remain compatible and reject generated metadata with n
  p.generation.mode='creative';p.generated=fixture(true).generated;p.generated.asset=null;
  await assert.rejects(()=>importProject(p),/누락/);
 });
+
+test('additional reference changes invalidate a prior creative but footer visibility and email never do',()=>{
+ const p=fixture();p.references=[{...p.product,sha256:'e'.repeat(64)}];p.generated.specificationKey=generatedCompatibilityKey(p);assert.equal(hasUsableCreative(p),true);
+ p.footer={company:false,contact:false,email:false,website:true};p.copy.ko.email='studio@example.com';assert.equal(hasUsableCreative(p),true);
+ p.references[0]={...p.references[0],sha256:'f'.repeat(64)};assert.equal(hasUsableCreative(p),false);
+});

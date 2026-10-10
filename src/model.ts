@@ -20,10 +20,11 @@ export type Locale = 'ko' | 'en';
 export type Axis = 'width' | 'depth' | 'height';
 export type Point = {x:number;y:number};
 export type Asset = {name:string;data:string;width:number;height:number;sha256:string};
-export type Copy = {title:string;description:string;company:string;contact:string;website:string};
+export type Copy = {title:string;description:string;company:string;contact:string;website:string;email?:string};
+export type FooterField = 'company'|'contact'|'email'|'website';
 export type Project = {
  version:1;id:string;name:string;updatedAt:string;locale:Locale;format:ImageFormat;
- product:Asset|null;productName:string;productProfile:ProductProfile;generation:GenerationSettings;scale:number;
+ product:Asset|null;references?:Asset[];footer?:Record<FooterField,boolean>;presentation?:'campaign';productName:string;productProfile:ProductProfile;generation:GenerationSettings;scale:number;
  background:{color:string;image:Asset|null};ink:'dark'|'light';
  publishing?:Publishing;campaign?:Campaign;referenceCheck?:ReferenceCheck;conversation?:Conversation;generated?:GeneratedAsset;boxProjection?:BoxProjection;
  dimensions:{width:string;depth:string;height:string;visible:boolean;lines:boolean;anchors:Record<Axis,[Point,Point]>};
@@ -64,5 +65,24 @@ export async function importProject(raw:unknown):Promise<Project> {
  const p:Project={...base,campaign:r.campaign===undefined?defaultCampaign():parseCampaign(r.campaign),referenceCheck:r.referenceCheck===undefined?defaultReferenceCheck():parseReferenceCheck(r.referenceCheck),name:string(r.name,80),productName:string(r.productName,100),productProfile:parseProfile(r.productProfile),generation:parseGeneration(r.generation),locale:r.locale,format:r.format,ink:r.ink,scale:r.scale,background:{color:r.background.color,image:await asset(r.background.image)},product:await asset(r.product)};
  for(const lang of ['ko','en'] as const){if(!r.copy[lang])throw new Error('언어별 문구가 누락되었습니다.');for(const field of ['title','description','company','contact','website'] as const)p.copy[lang][field]=string(r.copy[lang][field]);}
  for(const axis of axes){p.dimensions[axis]=string(r.dimensions[axis],20);const points=r.dimensions.anchors?.[axis];if(!Array.isArray(points)||points.length!==2||points.some(pt=>!pt||!Number.isFinite(pt.x)||!Number.isFinite(pt.y)||pt.x<0||pt.x>1||pt.y<0||pt.y>1))throw new Error('치수선 위치가 올바르지 않습니다.');p.dimensions.anchors[axis]=points.map(pt=>({x:pt.x,y:pt.y})) as [Point,Point];}
+ p.references=[];if(r.references!==undefined){if(!Array.isArray(r.references)||r.references.length>9)throw Error('참조사진은 최대 10장입니다.');for(const ref of r.references){const a=await asset(ref);if(!a)throw Error('참조사진을 확인해주세요.');p.references.push(a);}}
+ validateReferences(p);
+ if(r.footer!==undefined){if(!r.footer||typeof r.footer!=='object'||['company','contact','email','website'].some(k=>typeof r.footer![k as FooterField]!=='boolean'))throw Error('하단 표시 설정을 확인해주세요.');p.footer={company:r.footer.company,contact:r.footer.contact,email:r.footer.email,website:r.footer.website};}
+ if(r.presentation==='campaign')p.presentation='campaign';
+ for(const lang of ['ko','en'] as const)if(r.copy[lang].email!==undefined)p.copy[lang].email=string(r.copy[lang].email,100);
  p.dimensions.visible=r.dimensions.visible;p.dimensions.lines=r.dimensions.lines;p.conversation=parseConversation(r.conversation);p.generated=await parseGenerated(r.generated,asset);p.boxProjection=parseBoxProjection(r.boxProjection);p.publishing=parsePublishing(r.publishing);return p;
 }
+
+export const referenceAssets=(p:Project):Asset[]=>[...(p.product?[p.product]:[]),...(p.references??[])];
+export function validateReferences(p:Project){
+ const assets=referenceAssets(p);
+ if(assets.length>10||(!p.product&&assets.length))throw Error('참조사진은 대표 사진을 포함해 최대 10장입니다.');
+ if(new Set(assets.map(a=>a.sha256)).size!==assets.length)throw Error('같은 사진이 중복되어 있습니다.');
+ if(assets.reduce((n,a)=>n+Math.floor((a.data.length-a.data.indexOf(',')-1)*3/4),0)>10*1024*1024)throw Error('참조사진 전체 용량은 10 MB 이하로 선택해주세요.');
+}
+export function withReferences(p:Project,assets:Asset[]):Project{
+ const next={...p,product:assets[0]??null,references:assets.slice(1)};validateReferences(next);
+ if(next.product?.sha256!==p.product?.sha256&&next.boxProjection)next.boxProjection={...next.boxProjection,confirmedSourceHash:null,markedCorners:[]};
+ return next;
+}
+export const footerVisible=(p:Project,field:FooterField)=>p.footer?.[field]??true;

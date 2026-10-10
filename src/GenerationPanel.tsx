@@ -38,7 +38,7 @@ export function GenerationPanel({project,change}:{project:Project;change:(fn:(p:
   setBusy(true);setError('');setNotice('');setReviewed(false);
   try{
    const request=buildGenerationRequest(snapshot);await saveProject(snapshot);const record={projectId:snapshot.id,requestId:crypto.randomUUID(),key:generatedCompatibilityKey(snapshot)};remember(record);setJob(null);
-   const result=await apiRequest<JobResponse>('/api/generations',{projectId:snapshot.id,requestId:record.requestId,request,source:snapshot.product});
+   const result=await apiRequest<JobResponse>('/api/generations',{projectId:snapshot.id,requestId:record.requestId,request,source:snapshot.product,references:snapshot.references??[]});
    if(!alive.current)return;remember({...record,jobId:result.job.id});setJob(result.job);setStatus(s=>s?{...s,wallet:result.wallet}:s);
   }catch(e){if(alive.current){if(e instanceof ApiRequestFailure&&['INVALID_REQUEST','INVALID_SPECIFICATIONS','REGION_EDIT_NOT_AVAILABLE','SOURCE_MISMATCH','INVALID_IMAGE','SOURCE_REQUIRED','GENERATION_DISABLED','PROVIDER_NOT_CONFIGURED','BUDGET_NOT_AVAILABLE','NO_TEST_CREDITS','GENERATION_ALREADY_RUNNING','REVIEW_REQUIRED_AFTER_REJECTIONS','JSON_REQUIRED','REQUEST_TOO_LARGE','CLIENT_HEADER_REQUIRED','ORIGIN_NOT_ALLOWED','LOCAL_ACCESS_ONLY','TOO_MANY_REQUESTS'].includes(e.code))remember(null);failure(e);}}finally{if(alive.current)setBusy(false);}
  }

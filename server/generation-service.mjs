@@ -38,7 +38,7 @@ export function normalizeGenerationRequest(value) {
   const specifications = value.specifications ?? [];
   if (!Array.isArray(specifications) || specifications.length > 3 || specifications.some(s => !['width','depth','height','diameter'].includes(s?.axis) || s.unit !== 'mm' || typeof s.value !== 'string' || !/^\d+(\.\d{1,3})?$/.test(s.value) || Number(s.value) <= 0 || Number(s.value) > 100000)) fail('INVALID_SPECIFICATIONS');
   // Pick only supported context; never accept client model, price, credits, identity or API configuration.
-  return boundedObject({ version: 1, mode: value.mode, operation: expected, subjectType: value.subjectType, productName: value.productName, productProfile: value.productProfile ?? {}, brief: value.brief, campaign: value.campaign ?? {}, direction: value.direction ?? {}, creativeDirection: value.creativeDirection ?? null, scene: value.scene ?? {}, specifications, copy: value.copy ?? {}, source: value.source ?? null, output: { format: value.output.format, locale: value.output.locale, showDimensions: value.output.showDimensions === true, showDimensionLines: value.output.showDimensionLines === true } });
+  return boundedObject({ version: 1, mode: value.mode, operation: expected, subjectType: value.subjectType, productName: value.productName, productProfile: value.productProfile ?? {}, brief: value.brief, campaign: value.campaign ?? {}, direction: value.direction ?? {}, creativeDirection: value.creativeDirection ?? null, scene: value.scene ?? {}, specifications, copy: value.copy ?? {}, source: value.source ?? null, references: value.references ?? [], output: { format: value.output.format, locale: value.output.locale, showDimensions: value.output.showDimensions === true, showDimensionLines: value.output.showDimensionLines === true } });
 }
 function persistentLock(path) {
   if (path === ':memory:') return () => {};
@@ -142,6 +142,12 @@ export class GenerationService {
     try { source = await parseSourceAsset(body.source); }
     catch (error) { fail(error.message === 'SOURCE_MISMATCH' ? 'SOURCE_MISMATCH' : 'INVALID_IMAGE'); }
     if (source?.sha256 !== (request.source?.sha256 ?? undefined)) fail('SOURCE_MISMATCH');
+    if(!Array.isArray(body.references??[])||(body.references??[]).length>9||!Array.isArray(request.references)||request.references.length!==(body.references??[]).length)fail('INVALID_IMAGE');
+    const references=[];
+    try { for(const value of body.references??[]) { const ref=await parseSourceAsset(value);if(!ref)throw Error('INVALID_IMAGE');references.push(ref); } } catch(error){fail(error.message==='SOURCE_MISMATCH'?'SOURCE_MISMATCH':'INVALID_IMAGE');}
+    if(references.some((ref,i)=>ref.sha256!==request.references[i]?.sha256))fail('SOURCE_MISMATCH');
+    const all=[...(source?[source]:[]),...references];
+    if((!source&&references.length)||new Set(all.map(a=>a.sha256)).size!==all.length||all.reduce((n,a)=>n+a.bytes.length,0)>10*1024*1024)fail('INVALID_IMAGE');
     if (!source && request.subjectType === 'physical-product') fail('SOURCE_REQUIRED');
     const fingerprint = hashBytes(JSON.stringify({ projectId: body.projectId, request, sourceHash: source?.sha256 ?? null, revision: IMAGE_REVISION }));
     const previous = this.db.prepare('SELECT * FROM generation_keys WHERE request_id=?').get(body.requestId);
@@ -163,6 +169,7 @@ export class GenerationService {
     const id = randomUUID();
     const createdAt = this.now();
     if (source) this.storeAsset(source); // Content-addressed, immutable original bytes.
+    for(const ref of references)this.storeAsset(ref);
     // Reserve credits and persist the request in one transaction, including the existing ledger methods.
     try {
       this.ledger.transaction(() => {
@@ -171,17 +178,17 @@ export class GenerationService {
         this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(body.requestId, fingerprint, id);
       });
     } catch { fail('CREDIT_RESERVATION_FAILED', 409); }
-    const work = this.dispatch(id, request, source);
+    const work = this.dispatch(id, request, source, references);
     this.tasks.add(work); work.finally(() => this.tasks.delete(work));
     return { job: this.job(id), wallet: this.wallet(), reused: false };
   }
-  async dispatch(id, request, source) {
+  async dispatch(id, request, source, references = []) {
     const attemptId = randomUUID(); let began = false;
     try {
       const attempt = this.ledger.beginAttempt({ jobId: id, attemptId, period: this.period(), maximumMicros: MODEL_COST_HOLD_MICROS, limitMicros: this.budgetMicros });
       if (!attempt.shouldDispatch) return;
       began = true;
-      const result = await this.adapter.generate({ request, source: request.mode === 'creative' ? source : null, attemptId });
+      const result = await this.adapter.generate({ request, source: request.mode === 'creative' ? source : null, references:request.mode==='creative'?references:[], attemptId });
       // Persist provider metadata before any customer capture. Pixel validity is not semantic quality approval.
       this.storeAsset(result);
       this.db.prepare('UPDATE generation_records SET artifact_hash=?,artifact_role=?,metadata_json=? WHERE id=?').run(result.sha256, result.role, JSON.stringify({ model: result.model, revision: result.revision, usage: result.usage, cost: result.cost, providerRequestId: result.providerRequestId }), id);

@@ -35,7 +35,7 @@ source /tmp/aiadcast-android-tools/env.sh
 bash native/android-build.sh
 ```
 
-클라우드 도구 준비는 Linux x64 기준이다. Android SDK 원본은 공식 repository2-3.xml의 체크섬으로 최초 검증한 뒤 이 스크립트에 SHA-256을 고정했다. JDK는 Oracle 개발 도구이며 APK 안에 포함되지 않는다. Android Gradle의 사용 통계 초기화가 읽기 전용 사용자 홈 때문에 경고를 낼 수 있지만, 빌드용 사용자 데이터와 개발 서명은 지정한 `ANDROID_USER_HOME`에서 관리한다.
+클라우드 도구 준비는 Linux x64 기준이다. Android SDK 원본은 공식 repository2-3.xml의 체크섬으로 최초 검증한 뒤 이 스크립트에 SHA-256을 고정했다. JDK는 Eclipse Temurin 21.0.8+9이며 공식 GitHub 릴리스의 SHA-256을 검증한다. APK 안에는 포함되지 않는다. 개발 서명키는 Git 제외 경로 `release/android-signing`에 유지한다. 임시 도구 폴더를 다시 설치해도 개발 서명이 바뀌지 않도록 한다. Android Gradle의 사용 통계 초기화가 읽기 전용 사용자 홈 때문에 경고를 낼 수 있지만, 빌드용 사용자 데이터와 개발 서명은 지정한 `ANDROID_USER_HOME`에서 관리한다.
 
 `release` 빌드에는 서명을 자동 설정하지 않는다. 회사가 직접 보유한 업로드 키·Play App Signing·신규 Play 앱 등록 후 별도 안전한 빌드 환경에서 AAB를 서명한다. 키와 비밀번호를 Git 또는 채팅에 넣지 않는다. `app-debug.apk`는 개발 키로 서명한 시험 파일이므로 Play 상용 출시 파일로 사용하지 않는다.
 

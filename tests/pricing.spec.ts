@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 
 test('approved packs keep currency independent of guide and ad languages, without checkout',async({page})=>{
- await page.goto('/#studio');
+ await page.goto('/#studio');await page.locator('.editor-details > summary').click();
  await page.getByRole('button',{name:'이용 요금',exact:true}).click();
  let dialog=page.getByRole('dialog',{name:'이용 요금',exact:true});
  for(const price of ['₩6,900','₩19,900','₩49,900'])await expect(dialog.getByText(price,{exact:true})).toBeVisible();

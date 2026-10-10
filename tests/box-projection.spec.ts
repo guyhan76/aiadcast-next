@@ -15,7 +15,7 @@ async function png(page:Page){const event=page.waitForEvent('download');await pa
 test('source faces, dimensions and confirmation survive edit/save/import without paid calls',async({page},testInfo)=>{
  test.setTimeout(60000);page.on('dialog',d=>d.accept());
  const paid:string[]=[];page.on('request',r=>{if(r.method()==='POST'&&/\/api\/(generations|assistant)/.test(r.url()))paid.push(r.url());});
- await page.goto('/#studio');await page.getByLabel('상품 사진 추가').setInputFiles(file);
+ await page.goto('/#studio');await page.locator('.editor-details > summary').click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles(file);
  await expect(page.getByRole('status').filter({hasText:'원본 사진을 추가'})).toBeVisible();
  await page.getByLabel('프로젝트 이름').fill('면 투영 시험');
  await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();
@@ -69,7 +69,7 @@ test('source faces, dimensions and confirmation survive edit/save/import without
  await page.getByLabel('높이 mm',{exact:true}).fill('210');
  await page.getByRole('button',{name:'이 기기에 저장',exact:true}).click();
  await expect(page.getByRole('status').filter({hasText:'이 기기에 저장'})).toBeVisible();
- await page.reload();await page.getByRole('button',{name:'저장한 작업',exact:true}).click();await page.getByRole('button',{name:/면 투영 시험/}).click();
+ await page.reload();await page.locator('.editor-details > summary').click();await page.getByRole('button',{name:'저장한 작업',exact:true}).click();await page.getByRole('button',{name:/면 투영 시험/}).click();
  await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();
  await expect(page.locator('.projection-state')).toContainText('투영 적용됨');
  await page.getByLabel('프로젝트 파일 선택').setInputFiles({name:'box.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(p))});
@@ -79,13 +79,13 @@ test('source faces, dimensions and confirmation survive edit/save/import without
  await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();await expect(page.getByRole('alert')).toContainText('일곱');
  for(const width of [320,390,1440]){await page.setViewportSize({width,height:950});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
  await page.locator('.editor-tabs').getByRole('button',{name:/광고 정보/}).click();
- await page.getByLabel('상품 사진 추가').setInputFiles({...file,buffer:await sharp(fixture).flop().png().toBuffer()});
+ await page.getByRole('button',{name:'1 사진 삭제',exact:true}).click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({...file,buffer:await sharp(fixture).flop().png().toBuffer()});
  await expect.poll(async()=>(await backup(page)).boxProjection.markedCorners.length).toBe(0);
  expect(paid).toEqual([]);
 });
 
 test('zoomed scrolled photo places the selected source corner accurately and retains selection',async({page})=>{
- await page.goto('/#studio');await page.getByLabel('상품 사진 추가').setInputFiles(file);
+ await page.goto('/#studio');await page.locator('.editor-details > summary').click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles(file);
  await expect(page.getByRole('status').filter({hasText:'원본 사진을 추가'})).toBeVisible();
  await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();
  await page.getByLabel('규격 박스 구성 사용',{exact:true}).check();
@@ -111,7 +111,7 @@ test('zoomed scrolled photo places the selected source corner accurately and ret
  expect(saved.boxProjection.confirmedSourceHash).toBeNull();
  for(const width of [320,390,1440]){await page.setViewportSize({width,height:950});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
  await page.locator('.editor-tabs').getByRole('button',{name:/광고 정보/}).click();
- await page.getByLabel('상품 사진 추가').setInputFiles({...file,buffer:await sharp(fixture).flop().png().toBuffer()});
+ await page.getByRole('button',{name:'1 사진 삭제',exact:true}).click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({...file,buffer:await sharp(fixture).flop().png().toBuffer()});
  await expect(page.getByRole('status').filter({hasText:'원본 사진을 추가'})).toBeVisible();
  await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();
  await expect(page.getByRole('group',{name:'사진 확대',exact:true}).getByRole('button',{name:'1×',exact:true})).toHaveAttribute('aria-pressed','true');

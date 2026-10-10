@@ -1,0 +1,7 @@
+import {footerVisible} from './model';
+import type {FooterField,Project} from './model';
+import {useUiLanguage} from './ui-language';
+export function BrandFooter({project,change}:{project:Project;change:(fn:(p:Project)=>Project)=>void}){
+ const {t}=useUiLanguage();const fields:[FooterField,string,string][]=[['company',t('회사명','Company'),'Your brand'],['contact',t('연락처','Phone'),'010-0000-0000'],['email',t('이메일','Email'),'hello@brand.com'],['website',t('홈페이지','Website'),'www.brand.com']];
+ return <details className="brand-footer-settings"><summary>{t('광고 하단에 연락처 넣기','Brand & contact footer')}<span>{t('선택','Optional')}</span></summary><p>{t('선택한 정보만 광고 하단에 표시합니다.','Only selected details appear in the ad footer.')}</p>{fields.map(([key,label,placeholder])=><div className="brand-footer-row" key={key}><label className="check-field"><input type="checkbox" checked={footerVisible(project,key)} onChange={e=>change(p=>({...p,footer:{company:footerVisible(p,'company'),contact:footerVisible(p,'contact'),email:footerVisible(p,'email'),website:footerVisible(p,'website'),[key]:e.target.checked}}))}/>{label}</label><input aria-label={label} type={key==='email'?'email':key==='contact'?'tel':'text'} maxLength={key==='company'?80:100} placeholder={placeholder} value={project.copy[project.locale][key]??''} onChange={e=>change(p=>({...p,copy:{...p.copy,[p.locale]:{...p.copy[p.locale],[key]:e.target.value}}}))}/></div>)}</details>;
+}

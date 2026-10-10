@@ -20,7 +20,7 @@ export function normalizeAssistantRequest(body) {
   if (!/^[A-Za-z0-9_-]{8,100}$/.test(requestId) || !['suggest', 'translate'].includes(body.kind) || !locales.has(body.sourceLocale) || !locales.has(body.targetLocale)) throw Error('INVALID_ASSISTANT_REQUEST');
   if (!body.copy || typeof body.copy !== 'object' || Array.isArray(body.copy)) throw Error('INVALID_ASSISTANT_REQUEST');
   const copy = { title: string(body.copy.title, 180), description: string(body.copy.description, 240) };
-  const request = { requestId, kind: body.kind, sourceLocale: body.sourceLocale, targetLocale: body.targetLocale, productName: string(body.productName, 120, true), description: string(body.description, 1_000, true), copy };
+  const request = { requestId, kind: body.kind, sourceLocale: body.sourceLocale, targetLocale: body.targetLocale, productName: string(body.productName, 120, true), description: string(body.description, 3_000, true), copy };
   if (!copy.title && !copy.description && !request.productName && !request.description) throw Error('ASSISTANT_CONTEXT_REQUIRED');
   if (request.kind === 'translate' && (!copy.title && !copy.description)) throw Error('ASSISTANT_COPY_REQUIRED');
   if (request.kind === 'translate' && request.sourceLocale === request.targetLocale) throw Error('ASSISTANT_LANGUAGE_UNCHANGED');

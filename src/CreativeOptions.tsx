@@ -23,14 +23,14 @@ export function CreativeOptions({project,change,compact=false}:Props){
  }
  const content=<div className="creative-options-body">
   {!compact&&<div className="creative-options-intro"><span className="creative-options-kicker">YOUR BRAND, YOUR DIRECTION</span><h2>{text("어떤 인상을 전할까요?")}</h2><p>{text("마음에 드는 방향을 고르세요. 어려운 요청문은 필요 없어요.")}</p></div>}
-  <fieldset className="creative-direction-choices">
+  <details className="quiet-details"><summary>{text("광고의 목적")}</summary><fieldset className="creative-direction-choices">
    <legend><span>01</span>{text("광고의 목적")}</legend>
    <div className="creative-direction-grid">{directions.map((item,index)=><button type="button" className="creative-purpose-card" key={item.id} aria-pressed={settings.directionId===item.id} onClick={()=>{change(p=>withCreative(p,{directionId:item.id}));setApplied(false);}}>
     <span className="creative-purpose-top"><span className="creative-purpose-number">0{index+1}</span><span className="creative-card-check" aria-hidden="true">{settings.directionId===item.id&&<Check size={13}/>}</span></span>
     <strong>{text(item.label)}</strong><small>{text(item.description)}</small>
    </button>)}</div>
   </fieldset>
-  <fieldset className="creative-look-choices">
+  </details><fieldset className="creative-look-choices">
    <legend><span>02</span>{text("브랜드의 분위기")}<small>{text("스타일 참고")}</small></legend>
    <div className="creative-look-grid">{creativeLooks.map(item=><button type="button" className="creative-look-card" key={item.id} aria-pressed={settings.look===item.id} onClick={()=>{change(p=>chooseCreativeLook(p,item.id));setApplied(false);}}>
     <span className={`creative-look-art creative-look-${item.id}`} style={{'--look-bg':item.color,'--look-ink':item.ink==='dark'?'#242522':'#f5f2e9','--look-accent':item.accent} as CSSProperties} aria-hidden="true">

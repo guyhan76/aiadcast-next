@@ -5,7 +5,7 @@ export type CopyProposal={requestId:string;kind:'suggest'|'translate';targetLoca
 export type CopySnapshot={projectId:string;sourceLocale:Locale;targetLocale:Locale;signature:string};
 
 function signature(project:Project,sourceLocale:Locale,targetLocale:Locale){
- return JSON.stringify({id:project.id,locale:project.locale,productName:project.productName,source:project.copy[sourceLocale],target:project.copy[targetLocale]});
+ return JSON.stringify({id:project.id,locale:project.locale,productName:project.productName,productDetails:project.productProfile.material,source:project.copy[sourceLocale],target:project.copy[targetLocale]});
 }
 export function copySnapshot(project:Project,sourceLocale:Locale,targetLocale:Locale):CopySnapshot {
  return {projectId:project.id,sourceLocale,targetLocale,signature:signature(project,sourceLocale,targetLocale)};
@@ -15,7 +15,7 @@ export function copySnapshotCurrent(project:Project,snapshot:CopySnapshot){
 }
 export function makeCopyRequest(project:Project,kind:CopyRequest['kind'],targetLocale:Locale,description='',requestId=crypto.randomUUID()):CopyRequest {
  const source=project.copy[project.locale];
- return {requestId,kind,sourceLocale:project.locale,targetLocale,productName:project.productName,description,copy:{title:source.title,description:source.description}};
+ return {requestId,kind,sourceLocale:project.locale,targetLocale,productName:project.productName,description:[project.productProfile.material,description].filter(Boolean).join('\n').slice(0,3000),copy:{title:source.title,description:source.description}};
 }
 export function parseCopyProposal(raw:unknown,request:CopyRequest):CopyProposal {
  if(!raw||typeof raw!=='object')throw Error('INVALID_COPY_RESPONSE');

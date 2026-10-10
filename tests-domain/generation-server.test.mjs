@@ -182,3 +182,24 @@ test('uncertain text call retains its cost reservation and cannot be silently re
  await assert.rejects(service.assist(input),/PROVIDER_UNCERTAIN/);await assert.rejects(service.assist(input),/PROVIDER_UNCERTAIN/);
  assert.equal(calls,1);assert.equal(service.ledger.budget(service.period()).held_micros,30000);assert.equal(service.wallet().available,3);
 });
+
+test('ten references reach creative adapter in order; tampering, duplicates and an eleventh are rejected before reservation',async t=>{
+ const {service,calls}=setup(t);const refs=[];
+ for(let i=0;i<9;i++){const b=await sharp({create:{width:8,height:8,channels:4,background:{r:i*20,g:80,b:60,alpha:1}}}).png().toBuffer();refs.push({name:`ref-${i}.png`,data:`data:image/png;base64,${b.toString('base64')}`,width:8,height:8,sha256:hashBytes(b)});}
+ const input={...body('creative'),references:refs};input.request.references=refs.map(a=>({sha256:a.sha256,role:'additional-product-reference'}));
+ const before=service.wallet();
+ await assert.rejects(service.create({...input,references:[...refs,source]}),/INVALID_IMAGE/);
+ await assert.rejects(service.create({...input,references:[{...refs[0],sha256:'a'.repeat(64)},...refs.slice(1)]}),/SOURCE_MISMATCH/);
+ const duplicate={...input,request:{...input.request,references:refs.map((a,i)=>({sha256:i===0?source.sha256:a.sha256}))},references:[source,...refs.slice(1)]};
+ await assert.rejects(service.create(duplicate),/INVALID_IMAGE/);assert.deepEqual(service.wallet(),before);assert.equal(calls.length,0);
+ const created=await service.create(input);await service.waitForIdle();assert.equal(service.job(created.job.id).state,'ready');
+ assert.equal(calls.length,1);assert.equal(calls[0].source.sha256,source.sha256);assert.deepEqual(calls[0].references.map(a=>a.sha256),refs.map(a=>a.sha256));
+});
+test('multi-image adapter serializes every input and premium direction as image edits, never a collage request',async()=>{
+ const output=await sharp({create:{width:1024,height:1024,channels:4,background:'#ddd'}}).png().toBuffer();let sent;
+ const adapter=new OpenAIImageAdapter({apiKey:'fake',fetchImpl:async(url,options)=>{sent={url,body:options.body};return new Response(JSON.stringify({data:[{b64_json:output.toString('base64')}],usage}));}});
+ const parsed=await parseSourceAsset(source);await adapter.generate({request:request('creative'),source:parsed,references:Array(9).fill(parsed),attemptId:randomUUID()});
+ assert.ok(sent.url.endsWith('/edits'));assert.equal(sent.body.getAll('image[]').length,10);
+ assert.match(sent.body.get('prompt'),/FIRST reference/);assert.match(sent.body.get('prompt'),/full-frame luxury brand campaign/);
+ for(const image of sent.body.getAll('image[]'))assert.deepEqual(Buffer.from(await image.arrayBuffer()),bytes);
+});

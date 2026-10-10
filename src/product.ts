@@ -18,7 +18,7 @@ export function parseProfile(value:unknown):ProductProfile {
   if(!value||typeof value!=='object')throw Error('상품 정보 형식이 올바르지 않습니다.');
   const p=value as ProductProfile;
   const category=resolveIndustryCategory(p.category);
-  if(!category||!specTypes.some(([key])=>key===p.specType)||typeof p.material!=='string'||p.material.length>160)throw Error('상품 분류 또는 규격 형식을 확인해주세요.');
+  if(!category||!specTypes.some(([key])=>key===p.specType)||typeof p.material!=='string'||p.material.length>2000)throw Error('상품 분류 또는 규격 형식을 확인해주세요.');
   return {category,specType:p.specType,material:p.material};
 }
 export function dimensionAxes(profile?:ProductProfile):('width'|'depth'|'height')[] {

@@ -11,6 +11,7 @@ export type GeneratedAsset = {
 export function generatedCompatibilityKey(p:Project):string {
  return JSON.stringify({
   sourceHash:p.product?.sha256??null,
+  ...(p.references?.length?{referenceHashes:p.references.map(a=>a.sha256)}:{}),
   mode:p.generation.mode,
   productProfile:{category:p.productProfile.category,specType:p.productProfile.specType,material:p.productProfile.material},
   specifications:dimensionAxes(p.productProfile).map(axis=>({axis,value:p.dimensions[axis],unit:'mm'})),

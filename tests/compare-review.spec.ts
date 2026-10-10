@@ -4,9 +4,9 @@ import sharp from 'sharp';
 const source=await sharp({create:{width:400,height:300,channels:3,background:'#bf8e52'}}).png().toBuffer();
 test('comparison exports a fresh snapshot without changing the original or making paid requests',async({page})=>{
  const paid:string[]=[];page.on('request',r=>{if(r.method()==='POST'&&/\/api\/(generations|assistant)/.test(r.url()))paid.push(r.url());});
- await page.goto('/#studio');
+ await page.goto('/#studio');await page.locator('.editor-details > summary').click();
  const open=page.getByRole('button',{name:'원본과 결과 비교',exact:true});await expect(open).toBeDisabled();
- await page.getByLabel('상품 사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:source});
+ await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:source});
  await expect(open).toBeEnabled();await open.click();
  const dialog=page.getByRole('dialog',{name:'원본과 결과 비교'});
  await expect(dialog.getByRole('img',{name:'비교할 광고 결과'})).toBeVisible();
@@ -27,7 +27,7 @@ test('comparison exports a fresh snapshot without changing the original or makin
  expect(paid).toEqual([]);
 });
 test('unconfirmed box mapping cannot be exported as a finished comparison',async({page})=>{
- await page.goto('/#studio');await page.getByLabel('상품 사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:source});
+ await page.goto('/#studio');await page.locator('.editor-details > summary').click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:source});
  await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();await page.getByLabel('규격 박스 구성 사용',{exact:true}).check();
  await page.getByRole('button',{name:'원본과 결과 비교',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'원본과 결과 비교'});await expect(dialog.getByRole('alert')).toContainText('일곱');

@@ -7,9 +7,9 @@ test.describe('Independent Korean and English interface',()=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('lang','en');
-  await expect(page.getByRole('heading',{name:/Your business/})).toBeVisible();
+  await expect(page.getByRole('heading',{name:/Your product/})).toBeVisible();
   await page.getByRole('combobox',{name:'App language',exact:true}).selectOption('ko');
-  await expect(page.getByRole('heading',{name:/내 상품과 서비스로/})).toBeVisible();
+  await expect(page.getByRole('heading',{name:/내 상품을/})).toBeVisible();
   await page.reload();await expect(page.locator('html')).toHaveAttribute('lang','ko');
   await page.getByRole('combobox',{name:'앱 언어',exact:true}).selectOption('en');
   for(const route of ['home','create','projects','guide']){
@@ -21,21 +21,19 @@ test.describe('Independent Korean and English interface',()=>{
  test('finds industries in English and keeps the chosen ad language independent of the UI',async({page})=>{
   await page.goto('/');await page.getByRole('button',{name:'Create a service ad',exact:true}).click();
   const wizard=page.locator('.create-page');
-  await wizard.getByRole('searchbox',{name:'Find an industry'}).fill('yoga');
-  await wizard.getByRole('button',{name:'Yoga',exact:true}).click();
+  await wizard.locator('.quiet-details>summary').filter({hasText:'Category & dimensions'}).click();await wizard.getByLabel('Category',{exact:true}).selectOption('yoga');
   await wizard.getByLabel('Product or service name',{exact:true}).fill('Studio Bloom');
-  await wizard.getByRole('button',{name:'Next',exact:true}).click();
-  await wizard.getByLabel('About your service',{exact:true}).fill('Small-group yoga classes');
-  await expect(wizard.getByRole('checkbox',{name:/Use dimensions/})).not.toBeChecked();
-  await wizard.getByRole('button',{name:'Next',exact:true}).click();
+  await wizard.getByLabel('Product details',{exact:true}).fill('Small-group yoga classes');
+  await wizard.getByRole('button',{name:'Continue',exact:true}).click();await wizard.getByRole('button',{name:'Continue',exact:true}).click();
+  await wizard.getByText('More formats, language & mode',{exact:true}).click();
   await expect(wizard.getByRole('combobox',{name:'Ad copy language',exact:true})).toHaveValue('en');
   await wizard.getByRole('combobox',{name:'Ad copy language',exact:true}).selectOption('ko');
   await page.getByRole('combobox',{name:'App language',exact:true}).selectOption('ko');
   await page.getByRole('combobox',{name:'앱 언어',exact:true}).selectOption('en');
   await expect(wizard.getByRole('combobox',{name:'Ad copy language',exact:true})).toHaveValue('ko');
-  await wizard.getByRole('button',{name:'Open my draft',exact:true}).click();
+  await wizard.getByRole('button',{name:'Continue to creation',exact:true}).click();
   await expect(page).toHaveURL(/#studio$/);
-  const download=page.waitForEvent('download');
+  await page.locator('#publishing-tools > summary').click();const download=page.waitForEvent('download');
   await page.getByRole('button',{name:'Save campaign brief',exact:true}).click();
   const brief=JSON.parse(await readFile((await (await download).path())!,'utf8'));
   expect(brief.request.output.locale).toBe('ko');expect(brief.request.productName).toBe('Studio Bloom');
@@ -43,8 +41,8 @@ test.describe('Independent Korean and English interface',()=>{
   expect(brief.guide.target).toContain('yoga');
  });
  test('English quick-edit examples remain usable without a paid AI call',async({page})=>{
-  await page.goto('/#studio');
-  const director=page.getByRole('region',{name:'Describe your ad',exact:true});
+  await page.goto('/#studio');await page.locator('.editor-details > summary').click();
+  await page.locator('#creative-tools > summary').click();const director=page.getByRole('region',{name:'Describe your ad',exact:true});
   await director.getByRole('button',{name:'Change background color',exact:false}).click();
   await expect(director.getByRole('textbox',{name:'Your ad idea or change request'})).toHaveValue('Set the background to black');
   await director.getByRole('button',{name:'Save request',exact:true}).click();
@@ -54,7 +52,7 @@ test.describe('Independent Korean and English interface',()=>{
  test('Android back saves changed edits before leaving the editor and allows exit at home',async({page})=>{
   await page.goto('/');
   expect(await page.evaluate(()=>window.dispatchEvent(new CustomEvent('aiadcast-native-back',{cancelable:true})))).toBe(true);
-  await page.goto('/#studio');
+  await page.goto('/#studio');await page.locator('.editor-details > summary').click();
   await page.getByRole('textbox',{name:'Project name',exact:true}).fill('Back navigation draft');
   expect(await page.evaluate(()=>window.dispatchEvent(new CustomEvent('aiadcast-native-back',{cancelable:true})))).toBe(false);
   await expect(page).toHaveURL(/#projects$/);

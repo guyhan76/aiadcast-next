@@ -42,6 +42,7 @@ export function buildGenerationRequest(p:Project) {
   return {
     version:1,mode:generation.mode,operation:appearanceEdit?'image-region':creative?(service?'image-ad-creative':'image-product-concept'):(service?'compose-ad':'compose-original'),
     source:p.product?{sha256:p.product.sha256,role:appearanceEdit?'appearance-edit-reference':creative?'visual-reference':service?'protected-visual':'protected-product'}:null,
+    references:(p.references??[]).map(a=>({sha256:a.sha256,role:'additional-product-reference'})),
     preserveProduct:!creative&&!appearanceEdit&&!!p.product,brief:creative?generation.brief:'',direction,
     requestedEditOperation:appearanceEdit?'masked-product-appearance-edit':direction.instructions.length?'creative-direction':'none',
     productName:p.productName,productProfile:p.productProfile,

@@ -1,20 +1,17 @@
 import {BetaAccount} from './BetaAccount';
 import {useUiLanguage,LanguageSwitcher} from './ui-language';
 import {useEffect,useState} from 'react';
-import {ArrowRight,ArrowUpRight,BookOpen,FolderOpen,Home,Plus,ShieldCheck,Sparkles,SlidersHorizontal} from 'lucide-react';
+import {ArrowRight,ArrowUpRight,BookOpen,FolderOpen,Home,Plus,ShieldCheck,SlidersHorizontal} from 'lucide-react';
 import Editor from './App';
 import {CreateCampaign} from './CreateCampaign';
 import {PricingDialog} from './PricingDialog';
 import {newProject} from './model';
 import type {Project} from './model';
 import {productCategories} from './product';
-import {industryKinds} from './industry';
 import type {IndustryKind} from './industry';
-import {IndustryIcon} from './IndustryPicker';
 import {projects,saveProject} from './storage';
-import perfume from './assets/container-1.webp?inline';
-import clock from './assets/other-2.webp?inline';
 import './studio.css';
+import './premium.css';
 type Page='home'|'create'|'projects'|'guide'|'studio';
 const navigation=[['home','홈',Home],['create','광고 만들기',Plus],['projects','내 프로젝트',FolderOpen],['guide','사용 안내',BookOpen]] as const;
 function currentPage():Page {const route=location.hash.slice(1);return ['home','create','projects','guide','studio'].includes(route)?route as Page:'home';}
@@ -54,14 +51,12 @@ export default function StudioApp(){
  const filtered=items.filter(p=>(p.name+' '+p.productName).toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
  return <div className={`studio-shell ${page==='studio'?'editor-route':''}`}>
   <aside className="app-sidebar"><a href="#home" className="app-brand" aria-label={text("aiadcast 홈")}><Brand/><small>YOUR CREATIVE PARTNER</small></a><nav aria-label={text("주 메뉴")}>{navigation.map(([id,label,Icon])=><a href={'#'+id} key={id} aria-current={page===id?'page':undefined}><Icon size={19}/><span>{text(label)}</span>{id==='create'&&<span className="nav-plus">+</span>}</a>)}</nav><div className="sidebar-bottom"><div className="studio-mark"><ShieldCheck size={20}/><span>{text("당신의 상품.")}<br/><strong>{text("당신의 브랜드.")}</strong></span></div><span>aiadcast Studio<br/>by selluplabs</span></div></aside>
-  <div className="app-content"><BetaAccount current={current} onOpen={p=>open(p,true)}/>
+  <div className="app-content"><details className="account-drawer"><summary>{language==='ko'?'테스트 계정 · 서버 연결':'Test account & connection'}</summary><BetaAccount current={current} onOpen={p=>open(p,true)}/></details>
    {switchError&&<p className="wizard-error" role="alert">{switchError}</p>}
    {page!=='studio'&&<header className="app-header"><a href="#home" className="mobile-brand" aria-label={text("aiadcast 홈")}><Brand/></a><span className="workspace-label">SELLUPLABS <i>/</i> CREATIVE WORKSPACE</span><div className="app-header-actions"><LanguageSwitcher/><PricingDialog/><span className="preview-label">{text("개발 테스트 버전")}</span></div></header>}
    <div hidden={page!=='home'} className="home-page app-page">
     <div className="home-welcome"><span>MAKE YOUR NEXT MOVE.</span><span>{text("상품 · 브랜드 · 서비스")}</span></div>
-    <section className="home-hero"><div className="hero-copy"><span className="hero-kicker"><i/>CREATIVITY, WITH PURPOSE</span><h1>{text("내 상품과 서비스로,")}<br/>{text("바로 사용할 광고를")}<span>.</span></h1><p>{text("사진과 사업 정보를 등록하고 홍보 목적을 선택하세요.")}<br/>{text("필요한 부분만 다듬어, 다음 광고에도 이어서 쓰세요.")}</p><button className="primary-action" onClick={()=>begin()}>{text("나의 광고 만들기")}<ArrowUpRight size={19}/></button><a className="hero-secondary" href="#projects">{text("이전 광고 수정하기 ")}<ArrowRight size={14}/></a><p className="hero-promise">{text("어려운 요청문 없이 · 내 상품을 유지하며 · 다음 광고에도 이어서")}</p><p className="hero-preview-note">{text("내 상품을 지키는 편집 · AI 제작은 테스트 서버 연결 후")}</p></div><div className="hero-gallery" aria-label={text("이전 aiadcast 생성 사례")}><div className="hero-grid"/><figure className="hero-poster poster-back"><img src={clock} alt={text("이전 앱에서 생성한 클래식 시계 광고 참고 사례")}/></figure><figure className="hero-poster poster-front"><img src={perfume} alt={text("이전 앱에서 생성한 유리 향수 용기 광고 참고 사례")}/></figure><div className="hero-floating"><span className="mini-spark"><Sparkles size={17}/></span><span>YOUR PRODUCT.<br/><strong>A NEW PERSPECTIVE.</strong></span></div><p className="gallery-caption">{text("이전 aiadcast 생성 사례 · 새 앱의 생성 결과가 아닙니다.")}</p></div></section>
-    <section className="start-section"><div className="section-label"><span>START WITH YOUR BUSINESS</span><span>{text("광고할 대상을 먼저 골라주세요.")}</span></div><div className="business-options subject-home-options">{industryKinds.map(kind=><button key={kind.id} aria-label={language==='ko'?kind.label+' 광고 만들기':'Create a '+(kind.id==='product'?'product':'service')+' ad'} onClick={()=>begin(kind.id)}><IndustryIcon groupId={kind.id==='product'?'products':'business'} size={27}/><strong>{text(kind.label)}</strong><small>{text(kind.description)}</small><ArrowUpRight className="option-arrow" size={19}/></button>)}</div></section>
-    <section className="home-work"><div><div className="section-label"><span>MADE TO KEEP EVOLVING</span></div><h2>{text("한 번 만든 광고,")}<br/>{text("계속 새롭게.")}</h2><p>{text("가격 한 줄, 행사 기간 하나도 바로 수정하세요.")}<br/>{text("저장한 프로젝트에서 다음 광고를 이어갈 수 있습니다.")}</p><a href="#projects">{text("이전 광고 수정하기")}<ArrowRight size={17}/></a></div><div className="work-features"><article><span>01</span><div><h3>{text("내 상품과 정보를 지킵니다.")}</h3><p>{text("원본 사진을 사용하고, 문구·규격을 별도로 편집합니다. 서비스 광고는 규격 없이 시작하세요.")}</p></div></article><article><span>02</span><div><h3>{text("필요한 부분만 다시 고칩니다.")}</h3><p>{text("저장한 프로젝트를 열어 가격·기간·연락처를 수정하고, 다음 광고에도 활용하세요.")}</p></div></article><article><span>03</span><div><h3>{text("인스타그램에 맞는 크기로.")}</h3><p>{text("피드 4:5 · 스토리 9:16로 저장하세요. 릴스용 PNG는 영상 제작에 사용할 정지 이미지입니다.")}</p></div></article></div></section>
+    <section className="premium-home"><div className="premium-eyebrow"><span/> YOUR BRAND, BEAUTIFULLY SEEN</div><h1>{language==='ko'?<>내 상품을,<br/>브랜드의 <em>한 장</em>으로.</>:<>Your product.<br/>A <em>signature</em> image.</>}</h1><p>{language==='ko'?'사진과 상품 설명을 더하고, 원하는 분위기를 고르세요.':'Add your photos and product story. Choose an art direction.'}</p><div className="brand-art" aria-label={language==='ko'?'aiadcast 브랜드 그래픽 — 생성 예시 아님':'aiadcast brand graphic, not a generated sample'}><span className="brand-art-index">AIADCAST — CREATIVE STUDIO</span><div className="brand-art-monogram">a<span>i</span></div><span className="brand-art-note">LESS NOISE.<br/>MORE PRESENCE.</span><span className="brand-art-caption">{language==='ko'?'사진 · 빛 · 여백 · 당신의 브랜드':'IMAGE · LIGHT · SPACE · YOUR BRAND'}</span></div><button className="primary-action premium-start" onClick={()=>begin()}>{text('광고 만들기')}<ArrowUpRight size={21}/></button><div className="premium-shortcuts"><button onClick={()=>begin('service')}>{language==='ko'?'서비스 광고 만들기':'Create a service ad'}<ArrowRight size={15}/></button><a href="#projects">{language==='ko'?'이전 광고 다시 쓰기':'Reuse a saved ad'}<ArrowRight size={15}/></a></div><div className="premium-value"><span>01 / {language==='ko'?'사진과 설명':'Product story'}</span><span>02 / {language==='ko'?'스타일 선택':'Art direction'}</span><span>03 / {language==='ko'?'확인하고 저장':'Review & save'}</span></div></section>
     {!!items.length&&<div className="continue-work"><FolderOpen size={23}/><div><strong>{text("이 기기에 저장한 프로젝트 ")}{items.length}{text("개")}</strong><span>{text("마지막 작업을 이어서 완성하세요.")}</span></div><button onClick={()=>open(items[0])}>{text("최근 작업 열기")}<ArrowRight size={17}/></button></div>}
     <p className="home-scope">{text("직접 편집과 기기 저장을 사용할 수 있습니다. AI 제작은 테스트 서버·비용 한도 설정 후 사용하며, 실제 결제는 연결 전입니다.")}</p>
    </div>

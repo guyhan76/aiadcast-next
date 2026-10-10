@@ -5,6 +5,8 @@ import {industryKindFor,productCategories,type ProductCategory} from '../../src/
 export async function selectIndustry(page:Page,category:string,container?:Locator){
  const label=productCategories.find(([id])=>id===category)?.[1];
  if(!label)throw Error(`Unknown industry: ${category}`);
+ if(container){const options=container.locator('.quiet-details').first();if(await options.getAttribute('open')===null)await options.locator(':scope > summary').click();await container.getByRole('combobox',{name:'업종',exact:true}).selectOption(category);return;}
+ const details=page.locator('.editor-details');if(!container&&await details.count()&&await details.getAttribute('open')===null)await details.locator(':scope > summary').click();
  const picker=(container??page.locator('.editor-container:visible')).getByRole('group',{name:'업종 선택',exact:true});
  const toggle=picker.getByRole('button',{name:/업종 변경/});
  if(await toggle.count()&&await toggle.getAttribute('aria-expanded')!=='true')await toggle.click();

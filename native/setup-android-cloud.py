@@ -17,7 +17,7 @@ import zipfile
 
 ROOT = Path('/tmp/aiadcast-android-tools')
 ARTIFACTS = [
-    ('jdk.tar.gz', 'https://download.oracle.com/java/21/archive/jdk-21.0.12.1_linux-x64_bin.tar.gz', '12f870b21301b42292558a3f872ce543affa2b86cb6458591c78388c41ddb111'),
+    ('jdk.tar.gz', 'https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.8%2B9/OpenJDK21U-jdk_x64_linux_hotspot_21.0.8_9.tar.gz', 'f2dc5418092c43003db8f9005c4a286e1c0104fea96ccdd49e8ebd037cac9219'),
     ('platform-36_r02.zip', 'https://dl.google.com/android/repository/platform-36_r02.zip', '37607369a28c5b640b3a7998868d45898ebcb777565a0e85f9acf36f29631d2e'),
     ('build-tools_r36_linux.zip', 'https://dl.google.com/android/repository/build-tools_r36_linux.zip', '5d9ac77fb6ff43d9da518a337b4fcf8f9097113df531d99ccefe80ef7ce8250b'),
     ('platform-tools_r37.0.1-linux.zip', 'https://dl.google.com/android/repository/platform-tools_r37.0.1-linux.zip', 'd230f13842f60f782a8645f9c813f8f845bf36089ea7289f28c48f17979313f1'),
@@ -53,7 +53,7 @@ for name, url, checksum in ARTIFACTS:
         temporary.replace(archive)
     print('Verified', name)
 
-jdk = ROOT / 'jdk/jdk-21.0.12.1'
+jdk = ROOT / 'jdk/jdk-21.0.8+9'
 if not (jdk / 'bin/javac').exists():
     with tarfile.open(ROOT / 'jdk.tar.gz') as archive:
         archive.extractall(ROOT / 'jdk', filter='data')
@@ -73,9 +73,9 @@ for command in ('adb', 'fastboot'):
     (sdk / 'platform-tools' / command).chmod(0o755)
 
 gradle_cache = ROOT / 'gradle-cache'
-android_user = ROOT / 'android-user'
+android_user = Path(__file__).resolve().parent.parent / 'release/android-signing'
 gradle_cache.mkdir(exist_ok=True)
-android_user.mkdir(exist_ok=True)
+android_user.mkdir(parents=True, exist_ok=True)
 proxy = urllib.parse.urlparse(os.environ.get('HTTPS_PROXY', ''))
 properties = 'org.gradle.java.installations.auto-download=false\n'
 if proxy.hostname:

@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 test('box shape follows dimensions and remains explicitly unverified',async({page},testInfo)=>{
- await page.goto('/#studio');
+ await page.goto('/#studio');await page.locator('.editor-details > summary').click();
  await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();
  for(const [axis,value] of [['가로','340'],['세로','250'],['높이','210']])await page.getByLabel(`${axis} mm`,{exact:true}).fill(value);
  await page.locator('.box-geometry summary').click();
