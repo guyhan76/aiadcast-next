@@ -5,6 +5,7 @@ import {campaignGuide,parseCampaign} from './campaign.ts';
 import {assessReference,specificationContract} from './specification.ts';
 import {conversationContract} from './conversation.ts';
 import {creativeContract} from './creative.ts';
+import {boxProjectionActive,boxProjectionError} from './box-projection.ts';
 export type GenerationMode = 'original' | 'creative';
 export type GenerationSettings = {mode:GenerationMode;brief:string};
 export const defaultGeneration = ():GenerationSettings => ({mode:'original',brief:''});
@@ -18,6 +19,7 @@ export function parseGeneration(value:unknown):GenerationSettings {
 export function generationIssues(p:Project):string[] {
   const creative=(p.generation??defaultGeneration()).mode==='creative';
   const axes=dimensionAxes(p.productProfile);const errors:string[]=[];
+  const projectionError=boxProjectionError(p);if(projectionError)errors.push(projectionError);
   const service=isServiceCategory(p.productProfile.category);
   if(!p.product&&!service)errors.push(creative?'참고할 상품 사진을 추가해주세요.':'원본 상품 사진을 추가해주세요.');
   if(creative&&service&&!p.product&&!p.generation.brief.trim()&&!p.campaign?.creative&&!p.conversation?.turns.some(t=>t.state==='recorded'))errors.push('사진 없이 만들 광고의 내용과 원하는 분위기를 입력해주세요.');
@@ -49,6 +51,6 @@ export function buildGenerationRequest(p:Project) {
     target:{label:guide.target,method:guide.method,reason:guide.reason},contentType:campaign.contentType,specificationContract:specificationContract(p),
     specifications:dimensionAxes(p.productProfile).map(axis=>({axis:axis==='width'&&p.productProfile.specType==='cylindrical'?'diameter':axis,value:p.dimensions[axis],unit:'mm'})),
     output:{format:p.format,width:format.width,height:format.height,locale:p.locale,showDimensions:p.dimensions.visible&&dimensionAxes(p.productProfile).length>0,showDimensionLines:p.dimensions.visible&&p.dimensions.lines&&dimensionAxes(p.productProfile).length>0},
-    claims:{sameProduct:!creative&&!appearanceEdit&&!service&&!!p.product,exactGeometry:false},
+    claims:{sameProduct:!creative&&!appearanceEdit&&!service&&!!p.product&&!boxProjectionActive(p),exactGeometry:false},
   };
 }

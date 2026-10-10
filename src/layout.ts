@@ -2,6 +2,7 @@ import {getImageFormat} from './formats.ts';
 import {dimensionAxes,isServiceCategory} from './product.ts';
 import type {Project} from './model.ts';
 import {visualAsset} from './generated.ts';
+import {boxProjectionReady} from './box-projection.ts';
 type Rect={x:number;y:number;w:number;h:number};
 type TextBox={x:number;y:number;w:number;size:number;lines:number};
 const box=(x:number,y:number,w:number,size:number,lines=1):TextBox=>({x,y,w,size,lines});
@@ -53,8 +54,9 @@ export function geometry(p:Project){
  const specLabel=box(summary.x+28*markScale,summary.y+summary.h*.175,summary.w-56*markScale,18*markScale);
  const specValue=box(summary.x+28*markScale,summary.y+summary.h*.49,summary.w-56*markScale,(summary.h<100&&markScale===1?26:30)*markScale);
  if(!visual)return {width,height,area,photo:area,brand,title,description,summary,specLabel,specValue,footerLine,company,contact,markScale,textOnly};
- const fit=Math.min(area.w/visual.width,area.h/visual.height)*p.scale;
- const w=visual.width*fit,h=visual.height*fit;
+ const reference=boxProjectionReady(p)?{width:720,height:540}:visual;
+ const fit=Math.min(area.w/reference.width,area.h/reference.height)*p.scale;
+ const w=reference.width*fit,h=reference.height*fit;
  const photo={x:area.x+(area.w-w)/2,y:area.y+(area.h-h)/2,w,h};
  return {width,height,area,photo,brand,title,description,summary,specLabel,specValue,footerLine,company,contact,markScale,textOnly};
 }

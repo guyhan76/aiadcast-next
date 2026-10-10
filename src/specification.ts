@@ -1,5 +1,6 @@
 import type {Project} from './model.ts';
 import {dimensionAxes} from './product.ts';
+import {boxProjectionActive} from './box-projection.ts';
 export type ReferenceCheck={view:'perspective'|'front';confirmedSourceHash:string|null};
 export const defaultReferenceCheck=():ReferenceCheck=>({view:'perspective',confirmedSourceHash:null});
 export function parseReferenceCheck(value:unknown):ReferenceCheck{
@@ -8,6 +9,7 @@ export function parseReferenceCheck(value:unknown):ReferenceCheck{
  return {view:r.view,confirmedSourceHash:r.confirmedSourceHash};
 }
 export function assessReference(p:Project){
+ if(boxProjectionActive(p))return {status:'unverified',message:'원본 면을 입력 규격의 박스에 투영합니다. 실제 상품의 실측 일치와 인쇄 정합성은 별도로 확인해야 합니다.',relativeError:null};
  const axes=dimensionAxes(p.productProfile),check=p.referenceCheck??defaultReferenceCheck();
  if(!axes.length)return {status:'not-applicable',message:'규격 없이 만드는 광고입니다.',relativeError:null};
  if(!p.product)return {status:'unverified',message:'원본 사진을 추가하면 규격과 함께 확인할 수 있습니다.',relativeError:null};
@@ -24,5 +26,5 @@ export function specificationContract(p:Project){
  const values=axes.map(axis=>({axis:axis==='width'&&p.productProfile.specType==='cylindrical'?'diameter':axis,value:Number(p.dimensions[axis]),unit:'mm'}));
  if(values.some(s=>!Number.isFinite(s.value)||s.value<=0||s.value>100000))throw Error('생성 요청의 규격을 확인해주세요.');
  const basis=values[0]?.value;
- return {values,normalizedRatios:values.map(s=>({axis:s.axis,ratio:s.value/basis!})),sourceHash:p.product?.sha256??null,referenceAssessment:assessReference(p),preservation:p.generation.mode==='original'?'protected-source-layer':'creative-reference',geometryVerified:false};
+ return {values,normalizedRatios:values.map(s=>({axis:s.axis,ratio:s.value/basis!})),sourceHash:p.product?.sha256??null,referenceAssessment:assessReference(p),preservation:boxProjectionActive(p)?'source-face-projection':p.generation.mode==='original'?'protected-source-layer':'creative-reference',geometryVerified:false};
 }

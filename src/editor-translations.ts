@@ -179,5 +179,12 @@ export const editorEnglish:Record<string,string>={
  "가로 × 세로 × 높이": "Width × Depth × Height",
  "가로 × 세로": "Width × Depth",
  "지름 × 높이": "Diameter × Height",
+ "규격 박스에 사용할 원본 사진을 추가해주세요.": "Add the original photo for the dimensioned box.",
+ "박스의 세 면이 겹치거나 뒤집히지 않도록 모서리를 다시 맞춰주세요.": "Realign the corners so the three box faces do not overlap or flip.",
+ "규격 박스를 내보내기 전에 현재 사진의 모서리 일곱 곳을 확인해주세요.": "Confirm all seven corners of the current photo before exporting the box.",
+ "규격 표시를 숨겨도 박스 형상에 사용할 세 치수는 모두 유효해야 합니다.": "All three box dimensions must be valid even when labels are hidden.",
+ "박스 면 지정 정보를 확인해주세요.": "Check the saved box face alignment.",
+ "박스 모서리 좌표가 올바르지 않습니다.": "Invalid box corner coordinates.",
+ "박스 모서리 확인 정보를 확인해주세요.": "Check the saved corner confirmation.",
  "규격 정보 없음": "No dimensions"
 };
