@@ -13,20 +13,30 @@
   },
   {
     "file": "premium-beauty-generated.png",
-    "source": "image_gen.imagegen, 2026-10-10, realistic product and wearable fashion replacement",
-    "sha256": "09638a37f34ab87a51c3d7ac721c2a662afb463e97d1b52c43ab1185231c1001",
-    "role": "User-requested AI-generated magazine-cover homepage artwork. Exact aiadcast logo and bilingual headlines are UI overlays. Not a mobile app API result or real brand endorsement."
+    "source": "image_gen.imagegen, 2026-10-10, four-category lookbook",
+    "original": "/workspace/generated_images/exec-677b0272-0a8a-423d-9ad2-f95c749d6170.png",
+    "sha256": "317749156a4540c33a36976bb22733ebcbe1104a8ee318cb6cbdacf54d76c904",
+    "role": "Original concept products and adult model for homepage lookbook. Not real luxury-brand products, brand endorsements or mobile API results. Exact logo and bilingual text are UI overlays."
   },
   {
     "file": "premium-luxury-generated.png",
-    "source": "image_gen.imagegen, 2026-10-10, realistic product and wearable fashion replacement",
-    "sha256": "9fccd8f64789c12317a4418bd52e63f9d2770e3c51ce34e3596a623b00f0d891",
-    "role": "User-requested AI-generated magazine-cover homepage artwork. Exact aiadcast logo and bilingual headlines are UI overlays. Not a mobile app API result or real brand endorsement."
+    "source": "image_gen.imagegen, 2026-10-10, four-category lookbook",
+    "original": "/workspace/generated_images/exec-81cdab5b-fa9e-46ee-9443-6c3a5f5cc52c.png",
+    "sha256": "213d583cdaf5fd2888c27b7d8269aee7658791c5dd6463f8994dcdebbcbb2507",
+    "role": "Original concept products and adult model for homepage lookbook. Not real luxury-brand products, brand endorsements or mobile API results. Exact logo and bilingual text are UI overlays."
+  },
+  {
+    "file": "premium-jewelry-generated.png",
+    "source": "image_gen.imagegen, 2026-10-10, four-category lookbook",
+    "original": "/workspace/generated_images/exec-5a6dfff9-0f1c-4f1b-8777-66dbab2b9504.png",
+    "sha256": "1c5b01f9eafb6903e3d29e31268df96d1cbbea14a957b6635cf7432b0a53b50d",
+    "role": "Original concept products and adult model for homepage lookbook. Not real luxury-brand products, brand endorsements or mobile API results. Exact logo and bilingual text are UI overlays."
   },
   {
     "file": "premium-fashion-generated.png",
-    "source": "image_gen.imagegen, 2026-10-10, realistic product and wearable fashion replacement",
-    "sha256": "f02336f6779cdae5c033e798263c292d778af8d7c1dac4f33891820e2801392c",
-    "role": "User-requested AI-generated magazine-cover homepage artwork. Exact aiadcast logo and bilingual headlines are UI overlays. Not a mobile app API result or real brand endorsement."
+    "source": "image_gen.imagegen, 2026-10-10, four-category lookbook",
+    "original": "/workspace/generated_images/exec-eba2331a-6bc5-4a62-bc50-7d1e9cc6a4d0.png",
+    "sha256": "1d86b8b38de671d985ce0fcd12079b8d364686743a2eeb476315f3b0d43132d5",
+    "role": "Original concept products and adult model for homepage lookbook. Not real luxury-brand products, brand endorsements or mobile API results. Exact logo and bilingual text are UI overlays."
   }
 ]

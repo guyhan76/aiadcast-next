@@ -1,0 +1,102 @@
+[
+  {
+    "key": "beauty",
+    "label": [
+      "화장품",
+      "Cosmetics"
+    ],
+    "title": [
+      [
+        "나를 위한,",
+        "아름다운 루틴."
+      ],
+      [
+        "Your daily",
+        "beauty ritual."
+      ]
+    ],
+    "detail": [
+      "세럼의 투명함과 크림의 부드러운 텍스처",
+      "Clear serum. Soft cream. A moment for yourself."
+    ],
+    "alt": [
+      "세럼과 크림의 제형과 용기를 보여주는 AI 생성 화장품 광고",
+      "AI-generated cosmetics ad showing serum and cream textures"
+    ]
+  },
+  {
+    "key": "luxury",
+    "label": [
+      "명품가방",
+      "Luxury bags"
+    ],
+    "title": [
+      [
+        "손에 담긴,",
+        "나만의 취향."
+      ],
+      [
+        "Carried with",
+        "character."
+      ]
+    ],
+    "detail": [
+      "가죽의 결 · 섬세한 스티치 · 작은 금속 잠금장치",
+      "Leather grain · Fine stitching · A precise metal clasp"
+    ],
+    "alt": [
+      "손에 든 브라운 가죽 가방의 구조와 스티치를 보여주는 AI 생성 가방 광고",
+      "AI-generated handbag ad showing leather craftsmanship in a carrying gesture"
+    ]
+  },
+  {
+    "key": "jewelry",
+    "label": [
+      "주얼리",
+      "Jewelry"
+    ],
+    "title": [
+      [
+        "작은 디테일,",
+        "깊은 존재감."
+      ],
+      [
+        "Quiet detail.",
+        "Lasting presence."
+      ]
+    ],
+    "detail": [
+      "빛을 나누는 컷과 정교한 세팅",
+      "Faceted light. A precisely crafted setting."
+    ],
+    "alt": [
+      "반지와 귀걸이의 세팅과 빛을 근접 촬영한 AI 생성 주얼리 광고",
+      "AI-generated jewelry ad with a close view of ring and stud settings"
+    ]
+  },
+  {
+    "key": "fashion",
+    "label": [
+      "패션",
+      "Fashion"
+    ],
+    "title": [
+      [
+        "움직임에,",
+        "품격을 입다."
+      ],
+      [
+        "Elegance,",
+        "in motion."
+      ]
+    ],
+    "detail": [
+      "재킷의 재단선과 걸음에 따라 흐르는 실루엣",
+      "Tailored lines. A silhouette that moves with you."
+    ],
+    "alt": [
+      "네이비 재킷과 아이보리 바지를 입고 걷는 성인 모델의 AI 생성 패션 광고",
+      "AI-generated fashion ad of an adult model walking in a navy blazer and ivory trousers"
+    ]
+  }
+]

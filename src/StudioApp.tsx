@@ -13,6 +13,7 @@ import type {IndustryKind} from './industry';
 import {projects,saveProject} from './storage';
 import './studio.css';
 import './premium.css';
+import './campaign-cover.css';
 type Page='home'|'create'|'projects'|'guide'|'studio';
 const navigation=[['home','홈',Home],['create','광고 만들기',Plus],['projects','내 프로젝트',FolderOpen],['guide','사용 안내',BookOpen]] as const;
 function currentPage():Page {const route=location.hash.slice(1);return ['home','create','projects','guide','studio'].includes(route)?route as Page:'home';}

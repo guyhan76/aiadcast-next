@@ -19,12 +19,14 @@ test('physical wizard preserves original bytes and entered dimensions without re
  await wizard.getByRole('button',{name:'다음',exact:true}).click();await wizard.getByRole('button',{name:'다음',exact:true}).click();await wizard.getByRole('button',{name:'광고 제작으로',exact:true}).click();const saved=await backup(page);expect(Buffer.from(saved.product.data.split(',')[1],'base64')).toEqual(pixels);expect(saved.dimensions.width).toBe('300');expect(saved.dimensions.visible).toBe(true);expect(saved.generation.mode).toBe('creative');
 });
 
-test('campaign gallery changes image and copy with tabs, keyboard and horizontal swipes',async({page})=>{
+test('four-category lookbook supports tabs, keyboard boundaries and touch without horizontal overflow',async({page})=>{
  await page.goto('/');const gallery=page.locator('.home-showcase'),panel=gallery.getByRole('tabpanel'),image=gallery.locator('.generated-home-ad img');
- await expect(gallery.getByRole('tab',{name:'럭셔리',exact:true})).toHaveAttribute('aria-selected','true');const luxury=await image.getAttribute('src');
- await gallery.getByRole('tab',{name:'뷰티',exact:true}).click();await expect(image).toHaveAttribute('alt',/뷰티 광고/);expect(await image.getAttribute('src')).not.toBe(luxury);
- await gallery.getByRole('tab',{name:'뷰티',exact:true}).press('ArrowRight');await expect(gallery.getByRole('tab',{name:'패션',exact:true})).toBeFocused();await expect(image).toHaveAttribute('alt',/패션 광고/);await expect.poll(()=>image.evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBeGreaterThan(1000);
- await panel.dispatchEvent('touchstart',{touches:[{identifier:1,clientX:250,clientY:150}]});await panel.dispatchEvent('touchend',{changedTouches:[{identifier:1,clientX:80,clientY:155}]});await expect(gallery.getByRole('tab',{name:'럭셔리',exact:true})).toHaveAttribute('aria-selected','true');
- await panel.dispatchEvent('touchstart',{touches:[{identifier:1,clientX:250,clientY:150}]});await panel.dispatchEvent('touchend',{changedTouches:[{identifier:1,clientX:230,clientY:300}]});await expect(gallery.getByRole('tab',{name:'럭셔리',exact:true})).toHaveAttribute('aria-selected','true');
- for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
+ await expect(gallery.getByRole('tab')).toHaveCount(4);
+ await expect(gallery.getByRole('tab',{name:'화장품',exact:true})).toHaveAttribute('aria-selected','true');const cosmetics=await image.getAttribute('src');
+ await gallery.getByRole('tab',{name:'명품가방',exact:true}).click();await expect(image).toHaveAttribute('alt',/가방 광고/);expect(await image.getAttribute('src')).not.toBe(cosmetics);
+ await gallery.getByRole('tab',{name:'명품가방',exact:true}).press('ArrowRight');await expect(gallery.getByRole('tab',{name:'주얼리',exact:true})).toBeFocused();await expect(image).toHaveAttribute('alt',/주얼리 광고/);
+ await gallery.getByRole('tab',{name:'주얼리',exact:true}).press('End');await expect(gallery.getByRole('tab',{name:'패션',exact:true})).toBeFocused();await expect(image).toHaveAttribute('alt',/패션 광고/);
+ await panel.dispatchEvent('touchstart',{touches:[{identifier:1,clientX:250,clientY:150}]});await panel.dispatchEvent('touchend',{changedTouches:[{identifier:1,clientX:80,clientY:155}]});await expect(gallery.getByRole('tab',{name:'화장품',exact:true})).toHaveAttribute('aria-selected','true');
+ await panel.dispatchEvent('touchstart',{touches:[{identifier:1,clientX:250,clientY:150}]});await panel.dispatchEvent('touchend',{changedTouches:[{identifier:1,clientX:230,clientY:300}]});await expect(gallery.getByRole('tab',{name:'화장품',exact:true})).toHaveAttribute('aria-selected','true');
+ for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});for(const name of ['화장품','명품가방','주얼리','패션']){await gallery.getByRole('tab',{name,exact:true}).click();await expect.poll(()=>image.evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBeGreaterThan(1000);expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}}
 });

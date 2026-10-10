@@ -2,6 +2,7 @@ import {SessionBoundary} from './BetaAccount';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import '@fontsource-variable/noto-sans-kr';
+import './lookbook-font.css';
 import './style.css';
 import './formats.css';
 import App from './StudioApp';

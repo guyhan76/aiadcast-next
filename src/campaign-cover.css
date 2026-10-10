@@ -1,0 +1,26 @@
+/* aiadcast print-inspired campaign system; photos stay intact. */
+.editorial-cover.generated-home-ad{position:relative;isolation:isolate;margin:0 auto;border-radius:0;overflow:hidden;container-type:inline-size;background:#eee7db;box-shadow:0 14px 40px #2c24171a}
+.editorial-cover.generated-home-ad>img{display:block;width:100%;height:auto}
+.editorial-cover.generated-home-ad figcaption{position:absolute;inset:0;color:#29271f;pointer-events:none}
+.editorial-cover .cover-brand{position:absolute;top:5%;left:6%;display:inline-flex;background:transparent;padding:0}
+.editorial-cover .cover-brand .brand-lockup{display:inline-flex;align-items:center;color:#292d27;font-size:clamp(22px,7cqw,37px);font-family:'Noto Sans KR Variable',sans-serif;letter-spacing:-1.5px;font-weight:850;line-height:1}
+.editorial-cover .cover-brand .brand-lockup b{color:#b65a35}
+.editorial-cover .cover-brand .brand-lockup i{border-left:7px solid #f27a37;border-top:4px solid transparent;border-bottom:4px solid transparent;margin:4px 0 0 6px}
+.editorial-cover .cover-headline{position:absolute;left:6%;top:19%;max-width:74%}
+.editorial-cover .cover-category{display:flex;align-items:center;gap:9px;font-family:'Noto Sans KR Variable',sans-serif;font-size:clamp(9px,2.7cqw,14px);font-weight:500;letter-spacing:.2em;color:#62513d}
+.editorial-cover .cover-category:before{content:'';display:block;width:20px;height:1px;background:currentColor}
+.editorial-cover.generated-home-ad h2{font-family:'Noto Serif KR Variable',Georgia,serif;font-size:clamp(26px,8.3cqw,45px);font-weight:500;line-height:1.38;letter-spacing:-.065em;margin:12px 0 0;text-shadow:none;word-break:keep-all}
+.editorial-cover.generated-home-ad h2 span{display:block}
+.editorial-cover.generated-home-ad h2 span:last-child{font-weight:650}
+.editorial-cover.campaign-beauty .cover-headline{top:18%;max-width:66%}
+.editorial-cover.campaign-beauty h2{font-size:clamp(25px,8.2cqw,44px);line-height:1.38}
+.editorial-cover.campaign-luxury .cover-headline{top:18%;max-width:45%}
+.editorial-cover.campaign-luxury h2{font-size:clamp(22px,7.2cqw,39px);line-height:1.4}
+.editorial-cover.campaign-jewelry .cover-headline{top:18%;max-width:75%}
+.editorial-cover.campaign-jewelry h2{font-size:clamp(25px,8.5cqw,46px);line-height:1.38}
+.editorial-cover.campaign-fashion .cover-headline{top:25%;max-width:45%}
+.editorial-cover.campaign-fashion h2{font-size:clamp(22px,7.2cqw,39px);line-height:1.42}
+.editorial-cover .generated-ad-footer{position:absolute;bottom:5%;left:6%;right:6%;color:#343c3e;background:none;padding:0;border:0;font-family:'Noto Sans KR Variable',sans-serif;font-size:clamp(9px,2.7cqw,14px);line-height:1.8;letter-spacing:0;text-align:left;word-break:keep-all}
+.editorial-cover .generated-ad-footer:before{display:none}
+.editorial-cover.campaign-jewelry .generated-ad-footer{color:#f4f4f1}
+.editorial-cover.campaign-beauty .generated-ad-footer{color:#fff;text-shadow:0 1px 3px #000d}
