@@ -24,7 +24,7 @@ test.describe('Independent Korean and English interface',()=>{
   await wizard.locator('.quiet-details>summary').filter({hasText:'Category & dimensions'}).click();await wizard.getByRole('searchbox',{name:'Find an industry',exact:true}).fill('Yoga');await wizard.getByRole('button',{name:'Yoga',exact:true}).click();
   await wizard.getByLabel('Product or service name',{exact:true}).fill('Studio Bloom');
   await wizard.getByLabel('Product details',{exact:true}).fill('Small-group yoga classes');
-  await wizard.getByRole('button',{name:'Continue',exact:true}).click();await wizard.getByRole('button',{name:'Continue',exact:true}).click();
+  await wizard.getByRole('button',{name:'Continue',exact:true}).click();
   await wizard.getByText('More formats, language & mode',{exact:true}).click();
   await expect(wizard.getByRole('combobox',{name:'Ad copy language',exact:true})).toHaveValue('en');
   await wizard.getByRole('combobox',{name:'Ad copy language',exact:true}).selectOption('ko');

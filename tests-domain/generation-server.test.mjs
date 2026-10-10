@@ -200,6 +200,6 @@ test('multi-image adapter serializes every input and premium direction as image 
  const adapter=new OpenAIImageAdapter({apiKey:'fake',fetchImpl:async(url,options)=>{sent={url,body:options.body};return new Response(JSON.stringify({data:[{b64_json:output.toString('base64')}],usage}));}});
  const parsed=await parseSourceAsset(source);await adapter.generate({request:request('creative'),source:parsed,references:Array(9).fill(parsed),attemptId:randomUUID()});
  assert.ok(sent.url.endsWith('/edits'));assert.equal(sent.body.getAll('image[]').length,10);
- assert.match(sent.body.get('prompt'),/FIRST reference/);assert.match(sent.body.get('prompt'),/full-frame luxury brand campaign/);
+ assert.match(sent.body.get('prompt'),/FIRST reference/);assert.match(sent.body.get('prompt'),/full-frame luxury brand campaign/);assert.match(sent.body.get('prompt'),/Choose the art direction automatically/);assert.doesNotMatch(sent.body.get('prompt'),/Follow only the selected style/);assert.match(sent.body.get('prompt'),/Honor recorded changes/);
  for(const image of sent.body.getAll('image[]'))assert.deepEqual(Buffer.from(await image.arrayBuffer()),bytes);
 });

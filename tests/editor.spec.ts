@@ -155,7 +155,7 @@ test('photo-free service ads save, restore and export while creative requests st
  await page.reload();await page.locator('.editor-details > summary').click();await page.getByRole('button',{name:'저장한 작업',exact:true}).click();await page.getByRole('button',{name:/새 프로젝트/}).click();await expect(page.getByRole('checkbox',{name:'규격 정보 사용',exact:true})).not.toBeChecked();
  await page.getByLabel('프로젝트 파일 선택').setInputFiles({name:'service.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(p))});await expect(page.getByRole('status')).toContainText('프로젝트를 열었습니다');
  const event=page.waitForEvent('download');await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();const bytes=await readFile((await (await event).path())!);const metadata=await sharp(bytes).metadata();expect([metadata.width,metadata.height]).toEqual([1080,1350]);
- await page.getByRole('radio',{name:'새로운 광고 이미지 만들기',exact:true}).check();await expect(page.getByText('사진 없이 만들 광고의 내용과 원하는 분위기를 입력해주세요.',{exact:true})).toBeVisible();
+ await page.getByRole('radio',{name:'새로운 광고 이미지 만들기',exact:true}).check();await expect(page.getByText('사진 없이 만들 광고의 내용과 요청사항을 입력해주세요.',{exact:true})).toBeVisible();
  await page.getByRole('textbox',{name:'원하는 광고 이미지',exact:true}).fill('차분하고 밝은 교실, 성인 학습자를 위한 영어 회화 수업');
  await expect(page.locator('.generation-issue')).toHaveCount(0);await expect(page.getByRole('button',{name:'AI 시안 확인 후 저장',exact:true})).toBeDisabled();
  const creative=await backup(page);expect(creative.product).toBeNull();expect(creative.productProfile.specType).toBe('none');expect(creative.generation.mode).toBe('creative');expect(creative.format).toBe('4:5');

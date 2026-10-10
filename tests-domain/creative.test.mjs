@@ -47,3 +47,19 @@ test('reselecting the current service never resets explicitly enabled specificat
  const p=withCategory(newProject(),'biotech');p.productProfile.specType='cylindrical';p.dimensions.visible=true;
  const next=withCategory(p,'biotech');assert.equal(next.productProfile.specType,'cylindrical');assert.equal(next.dimensions.visible,true);assert.deepEqual(next.dimensions,p.dimensions);
 });
+
+test('automatic direction retains requests and facts without imposing legacy mood presets',()=>{
+ assert.equal(defaultCreative().look,'auto');
+ for(const category of ['lodging','packaging','pilates']){
+  let p=withCategory(newProject(),category);p=withCreative(p,{note:'제품 색상은 유지하고 빛은 왼쪽에서'});
+  p.productName='확인된 상품';p.productProfile.material='확인된 특징';
+  const automatic=creativeContract(p);
+  assert.equal(automatic.visual.id,'auto');assert.equal(automatic.additionalInstructions,'제품 색상은 유지하고 빛은 왼쪽에서');
+  assert.equal(automatic.industry.id,category);
+  for(const look of ['editorial','signature','natural','precision']){
+   const restored=creativeContract(chooseCreativeLook(p,look));
+   assert.equal(restored.visual.id,'auto');assert.equal(restored.visual.styleReference,undefined);
+   assert.equal(restored.additionalInstructions,automatic.additionalInstructions);
+  }
+ }
+});

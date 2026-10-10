@@ -5,6 +5,7 @@ import {creativeLooks,creativeSettings} from './creative.ts';
 export function paintCreativeFrame(ctx:CanvasRenderingContext2D,p:Project,width:number,height:number){
  if(!p.campaign?.creative)return;
  const settings=creativeSettings(p),look=creativeLooks.find(l=>l.id===settings.look)!;
+ if(!look)return;
  const unit=Math.min(width,height)/1080;
  ctx.save();ctx.strokeStyle=look.accent;ctx.fillStyle=look.accent;ctx.lineWidth=unit;
  if(settings.look==='editorial'){

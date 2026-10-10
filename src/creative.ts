@@ -9,11 +9,11 @@ export const creativeLooks=[
  {id:'precision',label:'모던 테크',description:'차분한 네이비와 정제된 구성',color:'#132235',ink:'light',accent:'#8baec6'},
 ] as const;
 export type CreativeLook=typeof creativeLooks[number]['id'];
-export type CreativeSettings={directionId:'brand'|'offer'|'trust';look:CreativeLook;note:string};
-export const defaultCreative=():CreativeSettings=>({directionId:'brand',look:'editorial',note:''});
+export type CreativeSettings={directionId:'brand'|'offer'|'trust';look:CreativeLook|'auto';note:string};
+export const defaultCreative=():CreativeSettings=>({directionId:'brand',look:'auto',note:''});
 export function parseCreative(raw:unknown):CreativeSettings{
  if(raw===undefined)return defaultCreative();const c=raw as CreativeSettings;
- if(!c||!['brand','offer','trust'].includes(c.directionId)||!creativeLooks.some(x=>x.id===c.look)||typeof c.note!=='string'||c.note.length>600)throw Error('광고 방향과 스타일을 확인해주세요.');
+ if(!c||!['brand','offer','trust'].includes(c.directionId)||(c.look!=='auto'&&!creativeLooks.some(x=>x.id===c.look))||typeof c.note!=='string'||c.note.length>600)throw Error('광고 목적과 요청사항을 확인해주세요.');
  return {directionId:c.directionId,look:c.look,note:c.note};
 }
 export function creativeSettings(p:Project):CreativeSettings{return parseCreative(p.campaign?.creative);}
@@ -33,8 +33,8 @@ export function creativeCopy(p:Project):{title:string;description:string}{
  return {title:name?`${name}\n${direction.headline}`:direction.headline,description:(p.productProfile.material.trim().length<=80?p.productProfile.material.trim():'')||direction.cta};
 }
 export function creativeContract(p:Project){
- const settings=creativeSettings(p),category=p.productProfile.category,group=industryGroupFor(category),direction=industryDirections(category).find(d=>d.id===settings.directionId)!,look=creativeLooks.find(x=>x.id===settings.look)!;
- return {version:1,industry:{id:category,label:industryLabel(category),groupId:group.id,groupLabel:group.label},direction:{id:direction.id,label:direction.label,description:direction.description,callToAction:direction.cta},visual:{id:look.id,label:look.label,styleReference:{description:look.description,palette:look.color},approvedSceneOverridesStyle:true,backgroundColor:p.background.color,ink:p.ink,accent:look.accent,composition:'Generous whitespace, clear typographic hierarchy, restrained palette, one focal subject. Keep confirmed copy in separate editable text layers. Approved scene colors and existing assets take precedence over the style reference.'},additionalInstructions:settings.note,
+ const settings=creativeSettings(p),category=p.productProfile.category,group=industryGroupFor(category),direction=industryDirections(category).find(d=>d.id===settings.directionId)!;
+ return {version:1,industry:{id:category,label:industryLabel(category),groupId:group.id,groupLabel:group.label},direction:{id:direction.id,label:direction.label,description:direction.description,callToAction:direction.cta},visual:{id:'auto',label:'상품에 맞춘 AI 연출',approvedSceneOverridesStyle:true,backgroundColor:p.background.color,ink:p.ink,composition:'Choose one high-end editorial concept from the product features, references and customer requests. Select relevant setting, composition, materials, lighting and palette for this specific category. Do not impose a saved mood preset. Keep advertising copy in separate editable text layers.'},additionalInstructions:settings.note,
   factPolicy:'Use only supplied or confirmed business facts. Do not invent prices, performance, returns, medical outcomes, certifications, testimonials or eligibility. Ask for missing facts when needed.',
   status:'direction-prepared',providerStatus:'not-connected'};
 }
