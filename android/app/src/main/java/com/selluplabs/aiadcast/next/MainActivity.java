@@ -67,7 +67,7 @@ public final class MainActivity extends ComponentActivity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         FrameLayout frame = new FrameLayout(this);
-        frame.setBackgroundColor(Color.rgb(247, 246, 242));
+        frame.setBackgroundColor(Color.WHITE);
         frame.setOnApplyWindowInsetsListener((view, insets) -> {
             if (Build.VERSION.SDK_INT >= 30) {
                 android.graphics.Insets safe = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());

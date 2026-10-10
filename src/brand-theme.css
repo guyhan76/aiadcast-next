@@ -1,0 +1,15 @@
+/* App chrome only. Product photos, ad artwork and customer color choices retain their colors. */
+:root{--brand-white:#ffffff;--brand-orange:#b65a35;--brand-black:#171717;--brand-light:#f3f3f3;--brand-line:#dedede;--brand-muted:#666666;color-scheme:light;background:var(--brand-white);color:var(--brand-black);accent-color:var(--brand-orange)}
+body,.studio-shell,.app-content,.app-header,.app-footer{background:var(--brand-white);color:var(--brand-black)}
+.app-sidebar{background:var(--brand-white);color:var(--brand-black)}
+.account-drawer,.home-showcase,.project-reuse-note{background:var(--brand-light)}
+.create-card,.guide-page-grid article,.mobile-app-nav{background:var(--brand-white)}
+.brand-lockup b,.wordmark b,.premium-home h1 em{color:var(--brand-orange)}
+.brand-lockup i,.wordmark i{border-left-color:var(--brand-orange)}
+.studio-mark,.studio-mark strong,.sidebar-bottom,.app-sidebar .sidebar-bottom{color:var(--brand-muted)}
+.primary-action{background:var(--brand-black)!important;color:var(--brand-white)!important}
+.primary-action:hover{background:var(--brand-orange)!important}
+.mobile-app-nav a[aria-current=page]>svg{color:var(--brand-orange)}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,a:focus-visible,summary:focus-visible{outline-color:var(--brand-orange)}
+.projects-heading .primary-action{flex-shrink:0;white-space:nowrap}
+::selection{background:var(--brand-orange);color:var(--brand-white)}
