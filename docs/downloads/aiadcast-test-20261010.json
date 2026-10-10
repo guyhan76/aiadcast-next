@@ -1,0 +1,12 @@
+{
+  "file": "aiadcast-test-20261010.apk",
+  "sourceCommit": "31fd9e2",
+  "sha256": "daa532937be90f79e701569b31dd39b85c8ab9ab4e7a42e6d85255ad1c7865ac",
+  "bytes": 10882217,
+  "applicationId": "com.selluplabs.aiadcast.next.dev",
+  "appName": "aiadcast Dev",
+  "minAndroid": "10",
+  "matchedWebAssets": 127,
+  "publicGenerationServerConnected": false,
+  "physicalDeviceValidation": "pending"
+}
