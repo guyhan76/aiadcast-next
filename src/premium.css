@@ -32,3 +32,21 @@
 /* Separate the advertising uses from the available output ratios. */
 .showcase-uses{border-top:1px solid var(--brand-line);margin-top:22px;padding-top:20px}.showcase-uses h3{margin:0 0 14px;font-size:15px;font-weight:600;color:var(--brand-black);line-height:1.5}.showcase-channels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;list-style:none;margin:0;padding:0}.showcase-channels li{display:flex;align-items:center;justify-content:center;min-width:0;padding:11px 8px;border-radius:8px;background:var(--brand-white);font-size:13px;line-height:1.5;color:var(--brand-black);word-break:keep-all;text-align:center}.showcase-ratios{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px;margin-top:18px;font-size:12px;color:var(--brand-muted)}.showcase-ratios>span{font-weight:500;white-space:nowrap}.showcase-ratios ul{display:flex;flex-wrap:wrap;gap:6px 12px;list-style:none;margin:0;padding:0}.showcase-ratios li{font-variant-numeric:tabular-nums;white-space:nowrap}.app-footer .footer-brand{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px 12px}.app-footer .brand-lockup{font-size:24px;line-height:1.3;color:var(--brand-black)}.app-footer .footer-byline{font-size:13px;line-height:1.5;color:var(--brand-muted)}
 @media(max-width:600px){.showcase-channels{grid-template-columns:repeat(2,minmax(0,1fr))}.showcase-uses h3{font-size:14px}.showcase-channels li{font-size:12px;padding:10px 7px}.showcase-ratios{font-size:11px;gap:7px 12px}.showcase-ratios ul{gap:6px 10px}}
+
+
+/* Shared brand footer and accessible, centered photo selection. */
+.app-footer .brand-lockup{font-size:28px;line-height:1.3}
+.app-footer .brand-lockup b{color:var(--brand-orange)}
+.app-footer .footer-byline{font-size:14px;line-height:1.5}
+.brand-footer-settings .brand-footer-row{display:block;margin:16px 0}
+.brand-footer-label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;font-size:15px;line-height:1.5}
+.brand-footer-label>label:first-child{font-weight:500}
+.brand-footer-label>.check-field{display:flex;align-items:center;gap:6px;font-size:13px;min-height:32px;margin:0;white-space:nowrap}
+.brand-footer-label .check-field input{width:16px;height:16px;accent-color:var(--brand-black)}
+.brand-footer-settings .brand-footer-row>input{font-size:16px;line-height:1.5;padding:12px 13px;border-radius:10px}
+.brand-footer-settings>p{font-size:13px;line-height:1.6;word-break:keep-all}
+.reference-upload-zone{width:100%;margin:16px auto 0}
+.reference-upload-zone .reference-add{width:100%;min-height:190px;aspect-ratio:auto;display:flex;align-items:center;justify-content:center;gap:19px;border:1px dashed var(--brand-line);border-radius:16px;background:var(--brand-light);font-size:15px;color:var(--brand-muted)}
+.reference-upload-zone .reference-add>span{display:flex;align-items:center;justify-content:center;min-width:152px;min-height:46px;padding:10px 16px;border-radius:10px;background:var(--brand-black);color:var(--brand-white);font-weight:600}
+.reference-file-info{text-align:center;font-size:13px;line-height:1.6;color:var(--brand-muted);margin:12px 0 24px}
+.reference-file-info p{margin:2px 0}
