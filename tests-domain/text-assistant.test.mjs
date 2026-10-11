@@ -10,7 +10,8 @@ const mock=result=>async()=>new Response(JSON.stringify(result),{status:200,head
 
 test('normalization drops arbitrary context and rejects malformed requests before a paid call',()=>{
  const safe=normalizeAssistantRequest({...request(),company:'secret-company',contact:'010-1234-5678',model:'expensive',copy:{...request().copy,website:'https://private.example'}});
- assert.deepEqual(Object.keys(safe),['requestId','kind','sourceLocale','targetLocale','productName','description','copy']);
+ assert.deepEqual(Object.keys(safe),['requestId','kind','sourceLocale','targetLocale','productName','description','copy','cta']);
+ assert.deepEqual(safe.cta,{requested:false,text:''});
  assert.equal(safe.copy.website,undefined);
  for(const changes of [{requestId:'x'},{kind:'image'},{targetLocale:'fr'},{copy:{title:'x'.repeat(181),description:''}},{copy:null},{description:'\u0000'},{kind:'translate'}])assert.throws(()=>normalizeAssistantRequest({...request(),...changes}));
 });
@@ -94,3 +95,4 @@ test('mismatched response identifiers cannot be applied to another request',()=>
  const project=newProject(),data=makeCopyRequest(project,'translate','en');
  assert.throws(()=>parseCopyProposal({requestId:'wrong',kind:'translate',targetLocale:'en',proposal:{title:'x',description:'y'},review:{numericChanges:{added:[],omitted:[]}}},data),/INVALID_COPY_RESPONSE/);
 });
+

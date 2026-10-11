@@ -6,9 +6,10 @@ import {hasUsableCreative,visualAsset} from './generated.ts';
 import {paintCreativeFrame} from './creative-render.ts';
 import {boxProjectionActive,boxProjectionReady} from './box-projection.ts';
 import {boxTexture} from './box-texture.ts';
+import {artDirectionFor} from './art-direction.ts';
+import {fitAdText} from './ad-type.ts';
 export {geometry} from './layout.ts';
 export const font='"Noto Sans KR Variable", sans-serif';
-function wrap(ctx:CanvasRenderingContext2D,text:string,width:number){const lines:string[]=[];for(const paragraph of text.split('\n')){let line='';for(const char of Array.from(paragraph)){if(ctx.measureText(line+char).width>width&&line){lines.push(line);line=char;}else line+=char;}lines.push(line);}return lines;}
 export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axis):Promise<string[]> {
  const layout=geometry(p);const {width,height,area,photo,summary,footerLine}=layout;const content=p.copy[p.locale];
  await Promise.all([400,500,700].map(weight=>document.fonts.load(`${weight} 32px ${font}`,Object.values(content).join('')+'가로세로높이상품규격')));
@@ -23,9 +24,21 @@ export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axi
  if(campaign&&product){
   ctx.drawImage(product,photo.x,photo.y,photo.w,photo.h);
   const shade=p.ink==='dark'?'248,247,244':'14,17,19';
-  const wash=ctx.createLinearGradient(0,0,0,height);wash.addColorStop(0,`rgba(${shade},.85)`);wash.addColorStop(.30,`rgba(${shade},0)`);wash.addColorStop(.76,`rgba(${shade},0)`);wash.addColorStop(1,`rgba(${shade},.92)`);ctx.fillStyle=wash;ctx.fillRect(0,0,width,height);
+  const zone=artDirectionFor(p.productProfile.category,p.format,p.campaign?.creative?.note??'').copyZone;
+  const wash=zone==='left'?ctx.createLinearGradient(0,0,width,0):ctx.createLinearGradient(0,0,0,height);
+  if(zone==='left'){wash.addColorStop(0,`rgba(${shade},.90)`);wash.addColorStop(.42,`rgba(${shade},.72)`);wash.addColorStop(.58,`rgba(${shade},0)`);}
+  else if(zone==='bottom'){wash.addColorStop(0,`rgba(${shade},0)`);wash.addColorStop(.43,`rgba(${shade},0)`);wash.addColorStop(.68,`rgba(${shade},.87)`);wash.addColorStop(1,`rgba(${shade},.95)`);}
+  else{wash.addColorStop(0,`rgba(${shade},.87)`);wash.addColorStop(.30,`rgba(${shade},0)`);}
+  ctx.fillStyle=wash;ctx.fillRect(0,0,width,height);
+  const footerWash=ctx.createLinearGradient(0,height*.80,0,height);footerWash.addColorStop(0,`rgba(${shade},0)`);footerWash.addColorStop(1,`rgba(${shade},.94)`);ctx.fillStyle=footerWash;ctx.fillRect(0,height*.80,width,height*.20);
  }else paintCreativeFrame(ctx,p,width,height);
- const text=(value:string,x:number,y:number,size:number,maxWidth:number,maxLines:number,name:string,weight=400)=>{ctx.fillStyle=color;ctx.font=`${weight} ${size}px ${font}`;ctx.textBaseline='top';const lines=wrap(ctx,value,maxWidth);if(lines.length>maxLines)errors.push(`${name}이(가) 영역을 넘습니다. 문구를 줄이거나 줄바꿈을 조정해주세요.`);lines.slice(0,maxLines).forEach((line,i)=>ctx.fillText(line,x,y+i*size*1.4));};
+ const text=(value:string,x:number,y:number,size:number,maxWidth:number,maxLines:number,name:string,weight=400)=>{
+  if(!value)return;
+  const fit=fitAdText(value,maxWidth,size,size*.68,maxLines,(line,s)=>{ctx.font=`${weight} ${s}px ${font}`;return ctx.measureText(line).width;});
+  ctx.fillStyle=color;ctx.font=`${weight} ${fit.size}px ${font}`;ctx.textBaseline='top';
+  if(fit.overflow||y+fit.lines.length*fit.size*1.4>height||x+maxWidth>width)errors.push(`${name}이(가) 영역을 넘습니다. 문구를 줄이거나 줄바꿈을 조정해주세요.`);
+  fit.lines.slice(0,maxLines).forEach((line,i)=>ctx.fillText(line,x,y+i*fit.size*1.4));
+ };
  const placed=(value:string,region:typeof layout.title,name:string,weight=400)=>text(value,region.x,region.y,region.size,region.w,region.lines,name,weight);
  if(!p.footer)placed(content.company||(layout.textOnly?'BRAND STORY':'PRODUCT STORY'),layout.brand,'상단 기업명',500);
  placed(content.title,layout.title,'제목',700);
@@ -43,3 +56,4 @@ export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axi
  placed(footerCompany,layout.company,'기업명',700);placed(footerDetails,layout.contact,'연락처');
  return errors;
 }
+

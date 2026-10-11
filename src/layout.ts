@@ -3,6 +3,7 @@ import {dimensionAxes,isServiceCategory} from './product.ts';
 import type {Project} from './model.ts';
 import {hasUsableCreative,visualAsset} from './generated.ts';
 import {boxProjectionReady} from './box-projection.ts';
+import {artDirectionFor} from './art-direction.ts';
 type Rect={x:number;y:number;w:number;h:number};
 type TextBox={x:number;y:number;w:number;size:number;lines:number};
 const box=(x:number,y:number,w:number,size:number,lines=1):TextBox=>({x,y,w,size,lines});
@@ -46,6 +47,15 @@ export function geometry(p:Project){
   company=box(margin,height-170*unit,width-margin*2,25*unit);
   contact=box(margin,height-123*unit,width-margin*2,20*unit,3);
   summary={x:margin,y:height-305*unit,w:width-margin*2,h:95*unit};markScale=unit;
+  const production=artDirectionFor(p.productProfile.category,p.format,p.campaign?.creative?.note??'');
+  if(production.copyZone==='left'){
+   title=box(margin,height*.13,width*.36,44*unit,3);
+   description=box(margin,height*.13+200*unit,width*.36,22*unit,3);
+  }else if(production.copyZone==='bottom'){
+   const start=Math.max(height*.43,summary.y-310*unit);
+   title=box(margin,start,width-margin*2,50*unit,2);
+   description=box(margin,start+145*unit,width-margin*2,24*unit,2);
+  }
  }
  const visual=visualAsset(p);
  const textOnly=isServiceCategory(p.productProfile.category)&&!visual;
@@ -71,3 +81,4 @@ export function geometry(p:Project){
  const photo={x:area.x+(area.w-w)/2,y:area.y+(area.h-h)/2,w,h};
  return {width,height,area,photo,brand,title,description,summary,specLabel,specValue,footerLine,company,contact,markScale,textOnly};
 }
+

@@ -3,6 +3,7 @@ import type {ImageFormat} from './formats.ts';
 import {industryGroupFor,industryLabel} from './industry.ts';
 import {axisLabel,dimensionAxes} from './product.ts';
 import {uiEnglish} from './ui-translations.ts';
+import {requestedCallToAction} from './art-direction.ts';
 
 export const publishingChannels=['instagram','blog','shortform','website','lookbook'] as const;
 export type PublishingChannel=typeof publishingChannels[number];
@@ -21,7 +22,7 @@ export function parsePublishing(raw:unknown):Publishing|undefined{
 }
 // Captions follow the ad language, not UI language. View changes and image exports do not stale copy.
 export function publishingBasis(p:Project):string{
- return JSON.stringify({version:1,locale:p.locale,productName:p.productName,profile:p.productProfile,copy:p.copy[p.locale],goal:p.campaign?.goal??'awareness',attributes:p.campaign?.attributes??[],dimensions:p.dimensions.visible?dimensionAxes(p.productProfile).map(a=>[a,p.dimensions[a]]):[]});
+ return JSON.stringify({version:1,locale:p.locale,productName:p.productName,profile:p.productProfile,copy:p.copy[p.locale],goal:p.campaign?.goal??'awareness',cta:requestedCallToAction(p.campaign?.creative?.note??''),attributes:p.campaign?.attributes??[],dimensions:p.dimensions.visible?dimensionAxes(p.productProfile).map(a=>[a,p.dimensions[a]]):[]});
 }
 export function recommendedChannels(p:Project):PublishingChannel[]{
  const group=industryGroupFor(p.productProfile.category).id;
@@ -59,7 +60,8 @@ export function suggestedDraft(p:Project,channel:PublishingChannel):PublishingDr
  const dims=dimensionAxes(p.productProfile);
  if(p.dimensions.visible&&dims.length&&dims.every(a=>/^\d+(\.\d{1,3})?$/.test(p.dimensions[a])&&Number(p.dimensions[a])>0&&Number(p.dimensions[a])<=100000))facts.push(dims.map(a=>`${axisLabel(a,p.locale,p.productProfile)} ${p.dimensions[a]} mm`).join(' · '));
  const contact=[copy.contact.trim(),copy.website.trim()].filter(Boolean).join('\n');
- const cta=contact?`${t('문의·자세한 안내','Inquiries and details')}\n${contact}`:'';
+ const action=requestedCallToAction(p.campaign?.creative?.note??'');
+ const cta=contact?(action?`${action==='requested'?t('문의·자세한 안내','Inquiries and details'):action}\n${contact}`:contact):'';
  const detail=unique([copy.description.trim(),...facts].filter(Boolean)).join('\n');
  let body=[copy.company.trim(),subject!==title?subject:'',detail,cta].filter(Boolean).join('\n\n');
  if(channel==='blog')body=[unique([subject,title,copy.description.trim()].filter(Boolean)).join('\n'),facts.length?`${t('알아두면 좋은 정보','Details to know')}\n${facts.join('\n')}`:'',cta].filter(Boolean).join('\n\n');
@@ -75,3 +77,4 @@ export function savePublishingDraft(p:Project,draft:PublishingDraft):Project{
  return {...p,publishing:parsePublishing({version:1,drafts:[...others,draft]})};
 }
 export function publicationText(draft:PublishingDraft){return [draft.title,draft.body,...(draft.channel==='instagram'||draft.channel==='shortform'?[hashtagText(draft.keywords)]:[])].filter(Boolean).join('\n\n');}
+

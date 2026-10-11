@@ -1,37 +1,54 @@
-/* aiadcast print-inspired campaign system; photos stay intact. */
-.editorial-cover.generated-home-ad{position:relative;isolation:isolate;margin:0 auto;border-radius:0;overflow:hidden;container-type:inline-size;background:#eee7db;box-shadow:0 14px 40px #2c24171a}
-.editorial-cover.generated-home-ad>img{display:block;width:100%;height:auto}
-.editorial-cover.generated-home-ad figcaption{position:absolute;inset:0;color:#29271f;pointer-events:none}
-.editorial-cover .cover-brand{position:absolute;top:5%;left:6%;display:inline-flex;background:transparent;padding:0}
-.editorial-cover .cover-brand .brand-lockup{display:inline-flex;align-items:center;color:#292d27;font-size:clamp(22px,7cqw,37px);font-family:'Noto Sans KR Variable',sans-serif;letter-spacing:-1.5px;font-weight:850;line-height:1}
-.editorial-cover .cover-brand .brand-lockup b{color:#b65a35}
-.editorial-cover .cover-brand .brand-lockup i{border-left:7px solid #f27a37;border-top:4px solid transparent;border-bottom:4px solid transparent;margin:4px 0 0 6px}
-.editorial-cover .cover-headline{position:absolute;left:6%;top:19%;max-width:74%}
-.editorial-cover .cover-category{display:flex;align-items:center;gap:9px;font-family:'Noto Sans KR Variable',sans-serif;font-size:clamp(9px,2.7cqw,14px);font-weight:500;letter-spacing:.2em;color:#62513d}
-.editorial-cover .cover-category:before{content:'';display:block;width:20px;height:1px;background:currentColor}
-.editorial-cover.generated-home-ad h2{font-family:'Noto Serif KR Variable',Georgia,serif;font-size:clamp(26px,8.3cqw,45px);font-weight:500;line-height:1.38;letter-spacing:-.065em;margin:12px 0 0;text-shadow:none;word-break:keep-all}
+/* Ten individually art-directed campaigns; exact text stays separate from photographs. */
+.editorial-cover.generated-home-ad{position:relative;isolation:isolate;margin:0 auto;border-radius:0;overflow:hidden;container-type:inline-size;background:#171717;box-shadow:none;max-width:680px}
+.editorial-cover.generated-home-ad>img{display:block;width:100%;height:auto;aspect-ratio:4/5;object-fit:contain}
+.editorial-cover.generated-home-ad figcaption{position:absolute;inset:0;color:#171717;pointer-events:none}
+.editorial-cover .cover-headline{position:absolute;left:7%;top:7%;width:86%;max-width:none;text-align:left}
+.editorial-cover .cover-category{display:block;font-family:'Noto Sans KR Variable',sans-serif;font-size:clamp(11px,2.65cqw,20px);font-weight:500;letter-spacing:.10em;margin:0 0 3.5cqw;color:inherit}
+.editorial-cover .cover-category:before{display:none}
+.editorial-cover.generated-home-ad h2{font-family:'Noto Serif KR Variable',Georgia,serif;font-size:7.4cqw;font-weight:550;line-height:1.32;letter-spacing:-.055em;margin:0;text-shadow:none;word-break:keep-all;overflow-wrap:normal}
 .editorial-cover.generated-home-ad h2 span{display:block}
 .editorial-cover.generated-home-ad h2 span:last-child{font-weight:650}
-.editorial-cover.campaign-beauty .cover-headline{top:18%;max-width:66%}
-.editorial-cover.campaign-beauty h2{font-size:clamp(25px,8.2cqw,44px);line-height:1.38}
-.editorial-cover.campaign-luxury .cover-headline{top:18%;max-width:45%}
-.editorial-cover.campaign-luxury h2{font-size:clamp(22px,7.2cqw,39px);line-height:1.4}
-.editorial-cover.campaign-jewelry .cover-headline{top:18%;max-width:75%}
-.editorial-cover.campaign-jewelry h2{font-size:clamp(25px,8.5cqw,46px);line-height:1.38}
-.editorial-cover.campaign-fashion .cover-headline{top:25%;max-width:45%}
-.editorial-cover.campaign-fashion h2{font-size:clamp(22px,7.2cqw,39px);line-height:1.42}
-.editorial-cover .generated-ad-footer{position:absolute;bottom:5%;left:6%;right:6%;color:#343c3e;background:none;padding:0;border:0;font-family:'Noto Sans KR Variable',sans-serif;font-size:clamp(9px,2.7cqw,14px);line-height:1.8;letter-spacing:0;text-align:left;word-break:keep-all}
-.editorial-cover .generated-ad-footer:before{display:none}
-.editorial-cover.campaign-jewelry .generated-ad-footer{color:#f4f4f1}
-.editorial-cover.campaign-beauty .generated-ad-footer{color:#fff;text-shadow:0 1px 3px #000d}
-
-/* Six categories remain readable on narrow phones. */
-.home-showcase .campaign-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
-.home-showcase .campaign-tabs button{min-width:0;padding:10px 4px;white-space:normal}
-.editorial-cover.campaign-travel .cover-headline{top:16%;max-width:75%}
-.editorial-cover.campaign-travel h2{font-size:clamp(26px,8.5cqw,46px)}
-.editorial-cover.campaign-hotel .cover-headline{top:19%;max-width:46%}
-.editorial-cover.campaign-hotel h2{font-size:clamp(22px,7.2cqw,39px)}
-.editorial-cover.campaign-travel .generated-ad-footer,.editorial-cover.campaign-hotel .generated-ad-footer{color:#fff;text-shadow:0 1px 3px #000e}
-
-.campaign-rotation{display:inline-flex;align-items:center;gap:6px;padding:6px 8px;min-height:32px;color:var(--brand-black,#171717);border:1px solid var(--brand-line,#dedede);border-radius:6px;background:var(--brand-white,#fff);font:inherit;cursor:pointer}.campaign-paging{align-items:center}
+.editorial-cover .cover-detail{font-family:'Noto Sans KR Variable',sans-serif;font-size:2.7cqw;line-height:1.65;letter-spacing:-.02em;margin:3.8cqw 0 0;word-break:keep-all;color:inherit}
+.editorial-cover.campaign-beauty .cover-headline{width:64%;top:6%}
+.editorial-cover.campaign-beauty h2{font-size:7cqw}
+.editorial-cover.campaign-luxury figcaption{color:#fff7ef}
+.editorial-cover.campaign-luxury .cover-headline{text-align:center;top:6.5%}
+.editorial-cover.campaign-luxury h2{font-size:8.1cqw}
+.editorial-cover.campaign-luxury .cover-category{letter-spacing:.25em}
+.editorial-cover.campaign-fashion .cover-headline{width:48%;top:14%}
+.editorial-cover.campaign-fashion h2{font-size:6.1cqw;line-height:1.4}
+.editorial-cover.campaign-fashion .cover-detail{max-width:90%;font-size:2.8cqw}
+.editorial-cover.campaign-jewelry figcaption{color:#f0f5ff}
+.editorial-cover.campaign-jewelry .cover-headline{top:8%}
+.editorial-cover.campaign-jewelry h2{font-size:8.6cqw}
+.editorial-cover.campaign-appliance figcaption{color:#fff}
+.editorial-cover.campaign-appliance .cover-headline{width:60%;top:8%}
+.editorial-cover.campaign-appliance h2{font-size:7cqw}
+.editorial-cover.campaign-travel .cover-headline{top:5.5%}
+.editorial-cover.campaign-travel h2{font-size:7.3cqw}
+.editorial-cover.campaign-hotel figcaption{color:#fff9ef;text-shadow:0 1px 8px #38220966}
+.editorial-cover.campaign-hotel .cover-headline{width:56%;top:8%}
+.editorial-cover.campaign-hotel h2{font-size:6.5cqw}
+.editorial-cover.campaign-insurance .cover-headline{top:6%}
+.editorial-cover.campaign-insurance h2{font-size:7.1cqw}
+.editorial-cover.campaign-hospital .cover-headline{top:6%}
+.editorial-cover.campaign-hospital h2{font-size:6.9cqw}
+.editorial-cover.campaign-mobility figcaption{color:#fff}
+.editorial-cover.campaign-mobility .cover-headline{top:7%}
+.editorial-cover.campaign-mobility h2{font-size:7cqw}
+.home-showcase .campaign-tabs{display:block;padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid #dedede}
+.campaign-category-group{display:flex;align-items:center;gap:12px;margin:6px 0}
+.campaign-group-label{flex:none;width:42px;font-size:12px;color:#6b6b6b}
+.campaign-category-group>div{display:flex;flex:1;flex-wrap:wrap;gap:4px;min-width:0}
+.home-showcase .campaign-tabs button{font-size:13px;line-height:1.35;min-height:44px;padding:9px 12px;min-width:0;max-width:100%;white-space:nowrap;flex:1 0 auto;border-radius:8px}
+.campaign-preview{position:relative;margin:auto;max-width:680px}
+.campaign-enlarge{position:absolute;inset:0;width:100%;height:100%;border:0;padding:0;background:transparent;cursor:zoom-in;color:#fff}
+.campaign-expand-icon{position:absolute;right:12px;bottom:12px;display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:#0009}
+.campaign-enlarge:focus-visible{outline:3px solid #b65a35;outline-offset:4px}
+.campaign-paging{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;font-size:12px;margin:14px auto 0;max-width:680px;gap:8px}
+.campaign-navigation{display:flex;align-items:center;gap:8px;color:#171717;min-width:0}
+.campaign-navigation>span{font-size:12px;white-space:nowrap}
+.campaign-navigation button{display:grid;place-items:center;min-height:44px;min-width:44px;border:1px solid #dedede;border-radius:8px;background:#fff;color:#171717;cursor:pointer}
+.campaign-rotation{display:inline-flex;align-items:center;gap:6px;padding:9px 12px;min-height:44px;color:#171717;border:1px solid #dedede;border-radius:8px;background:#fff;font:inherit;cursor:pointer}
+.campaign-rotation:focus-visible,.campaign-navigation button:focus-visible{outline:2px solid #b65a35;outline-offset:2px}
+@media(max-width:600px){.campaign-category-group{display:block}.campaign-group-label{display:block;width:auto;margin:0 0 4px}.home-showcase .campaign-tabs button{padding:9px 7px;font-size:12px}.campaign-paging{font-size:11px}.campaign-navigation{gap:2px}.campaign-navigation>span{font-size:11px}.campaign-rotation{padding:9px 8px}.editorial-cover .cover-detail{font-size:3cqw}}
