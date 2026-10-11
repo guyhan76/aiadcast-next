@@ -1,5 +1,5 @@
 import {useUiLanguage} from './ui-language';
-import {useState} from 'react';
+import {useId,useState} from 'react';
 import {ArrowLeft,ArrowRight,Check} from 'lucide-react';
 import {newProject} from './model';
 import type {Project} from './model';
@@ -21,6 +21,7 @@ export function starterProject(category:ProductCategory='other'):Project{
 }
 export function CreateCampaign({initialKind,onReady}:{initialKind?:IndustryKind;onReady:(p:Project)=>Promise<void>}){
  const {language,t,text}=useUiLanguage();
+ const fieldsId=useId();
  const [project,setProject]=useState(()=>({...starterProject(initialKind==='service'?'services':'other'),locale:language}));
  const [step,setStep]=useState(0),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const axes=dimensionAxes(project.productProfile),service=isServiceCategory(project.productProfile.category);
@@ -45,8 +46,8 @@ export function CreateCampaign({initialKind,onReady}:{initialKind?:IndustryKind;
    {step===0&&<>
     <fieldset className="ad-subject-kind"><legend>{t('광고 대상','Ad subject')}</legend><div>{(['product','service'] as const).map(kind=><button type="button" key={kind} aria-pressed={service===(kind==='service')} onClick={()=>change(p=>isServiceCategory(p.productProfile.category)===(kind==='service')?p:withCategory(p,kind==='service'?'services':'other'))}>{kind==='product'?t('상품','Product'):t('서비스','Service')}</button>)}</div></fieldset>
     <ReferencePhotos project={project} change={change} onBusyChange={setBusy}/>
-    <label className="field create-name-field">{service?t('서비스명','Service name'):t('상품명','Product name')}<textarea rows={2} value={project.productName} maxLength={100} placeholder={service?t('예: 제주 감성 숙소','Example: Jeju boutique stay'):t('예: 바이탈 골드 콜라겐 토너 150ml 2개','Example: Vital Gold Collagen Toner 150ml, 2 bottles')} onChange={e=>change(p=>({...p,productName:e.target.value}))}/></label>
-    <label className="field">{service?t('서비스 소개','Service description'):t('상품 설명','Product description')}<textarea rows={3} maxLength={2000} value={project.productProfile.material} placeholder={t('특징과 장점을 알려주세요.','Describe the features and benefits.')} onChange={e=>change(p=>({...p,productProfile:{...p.productProfile,material:e.target.value}}))}/></label>
+    <div className="field create-name-field"><label htmlFor={`${fieldsId}-name`}>{service?t('서비스명','Service name'):t('상품명','Product name')}</label><textarea id={`${fieldsId}-name`} rows={2} value={project.productName} maxLength={100} placeholder={service?t('예: 제주 감성 숙소','Example: Jeju boutique stay'):t('예: 바이탈 골드 콜라겐 토너 150ml 2개','Example: Vital Gold Collagen Toner 150ml, 2 bottles')} onChange={e=>change(p=>({...p,productName:e.target.value}))}/></div>
+    <div className="field"><label htmlFor={`${fieldsId}-description`}>{service?t('서비스 소개','Service description'):t('상품 설명','Product description')}</label><textarea id={`${fieldsId}-description`} rows={3} maxLength={2000} value={project.productProfile.material} placeholder={t('특징과 장점을 알려주세요.','Describe the features and benefits.')} onChange={e=>change(p=>({...p,productProfile:{...p.productProfile,material:e.target.value}}))}/></div>
     <details className="quiet-details create-industry-settings"><summary>{t('업종·규격','Category & dimensions')}<span>{t('선택','Optional')}</span></summary>
      <IndustryPicker simple value={project.productProfile.category} onChange={category=>change(p=>withCategory(p,category))}/>
      {!service&&<>
