@@ -8,6 +8,7 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.util.Base64;
 import android.view.View;
 import android.view.WindowInsets;
@@ -30,6 +31,7 @@ import androidx.activity.OnBackPressedCallback;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
+import androidx.webkit.ScriptHandler;
 import org.json.JSONObject;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -40,6 +42,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -52,11 +56,15 @@ public final class MainActivity extends ComponentActivity {
     private static final int SAVE_FILE = 72;
     private WebView webView;
     private ValueCallback<Uri[]> filePicker;
+    private boolean filePickerMultiple;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private File pendingFile;
     private String pendingMime;
     private String pendingFilename;
     private String bridgeScript;
+    private String bridgeSource;
+    private volatile String apiOrigin;
+    private ScriptHandler documentStartScript;
     private boolean bridgeReady;
     private boolean exportInProgress;
 
@@ -100,20 +108,36 @@ public final class MainActivity extends ComponentActivity {
         try (InputStream source = getAssets().open("native-bridge.js")) {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             copyStream(source, bytes);
-            bridgeScript = "window.__AIADCAST_API_ORIGIN__=" + JSONObject.quote(BuildConfig.API_ORIGIN) + ";" + new String(bytes.toByteArray(), StandardCharsets.UTF_8);
+            bridgeSource = new String(bytes.toByteArray(), StandardCharsets.UTF_8);
+            apiOrigin = BuildConfig.API_ORIGIN;
+            if (BuildConfig.ALLOW_TEST_CONFIG) {
+                try { apiOrigin = TestServerOrigin.normalize(getPreferences(MODE_PRIVATE).getString("test-api-origin", apiOrigin)); }
+                catch (IllegalArgumentException invalid) { apiOrigin = BuildConfig.API_ORIGIN; }
+            }
+            updateBridgeScript();
         } catch (Exception error) {
             bridgeScript = "";
+            apiOrigin = BuildConfig.API_ORIGIN;
         }
 
         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
             WebViewCompat.addWebMessageListener(webView, "AiadcastNative", Collections.singleton(APP_ORIGIN),
                 (view, message, origin, mainFrame, reply) -> {
                     if (!mainFrame || !APP_ORIGIN.equals(origin.toString())) return;
-                    receiveExport(message.getData());
+                    String data = message.getData();
+                    if (data != null && data.length() <= 1024) {
+                        try {
+                            JSONObject request = new JSONObject(data);
+                            if ("configure-test-server".equals(request.optString("type"))) {
+                                configureTestServer(request.getString("origin")); return;
+                            }
+                        } catch (Exception ignored) { /* Export validation handles other messages. */ }
+                    }
+                    receiveExport(data);
                 });
             bridgeReady = true;
             if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-                WebViewCompat.addDocumentStartJavaScript(webView, bridgeScript, Collections.singleton(APP_ORIGIN));
+                documentStartScript = WebViewCompat.addDocumentStartJavaScript(webView, bridgeScript, Collections.singleton(APP_ORIGIN));
             }
         }
 
@@ -124,7 +148,7 @@ public final class MainActivity extends ComponentActivity {
                     WebResourceResponse local = assets.shouldInterceptRequest(url);
                     return local != null ? local : blocked(404, "Not found");
                 }
-                if (!BuildConfig.API_ORIGIN.isEmpty() && sameOrigin(url, BuildConfig.API_ORIGIN)) return null;
+                if (!apiOrigin.isEmpty() && sameOrigin(url, apiOrigin)) return null;
                 return blocked(403, "Network origin is not configured");
             }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -160,15 +184,25 @@ public final class MainActivity extends ComponentActivity {
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> result, FileChooserParams parameters) {
                 if (filePicker != null) filePicker.onReceiveValue(null);
                 filePicker = result;
-                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
                 String[] accepted = parameters.getAcceptTypes();
-                if (accepted.length == 1 && accepted[0].contains("json")) intent.setType("application/json");
-                else intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/jpeg", "image/png", "image/webp", "application/json"});
-                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, parameters.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE);
+                boolean json = accepted.length == 1 && accepted[0].contains("json");
+                filePickerMultiple = !json && parameters.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE;
+                Intent fallback = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType(json ? "application/json" : "image/*")
+                    .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, filePickerMultiple);
+                if (!json) fallback.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/jpeg", "image/png", "image/webp"});
+                Intent intent = fallback;
+                if (!json && Build.VERSION.SDK_INT >= 33) {
+                    intent = new Intent(MediaStore.ACTION_PICK_IMAGES).setType("image/*");
+                    if (filePickerMultiple) intent.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, Math.min(10, MediaStore.getPickImagesMaxLimit()));
+                }
                 try { startActivityForResult(intent, PICK_FILE); }
                 catch (ActivityNotFoundException error) {
-                    filePicker.onReceiveValue(null); filePicker = null;
-                    toast(words("파일 선택 앱을 열지 못했습니다.", "Could not open the document picker."));
+                    try { startActivityForResult(fallback, PICK_FILE); }
+                    catch (ActivityNotFoundException unavailable) {
+                        filePicker.onReceiveValue(null); filePicker = null;
+                        toast(words("파일 선택 앱을 열지 못했습니다.", "Could not open the document picker."));
+                    }
                 }
                 return true;
             }
@@ -186,6 +220,33 @@ public final class MainActivity extends ComponentActivity {
         Uri origin = Uri.parse(allowed);
         return "https".equals(uri.getScheme()) && origin.getHost() != null && origin.getHost().equals(uri.getHost())
             && uri.getPort() == origin.getPort() && uri.getUserInfo() == null;
+    }
+
+    private void updateBridgeScript() {
+        bridgeScript = "window.__AIADCAST_API_ORIGIN__=" + JSONObject.quote(apiOrigin)
+            + ";window.__AIADCAST_TEST_CONNECTION__=" + BuildConfig.ALLOW_TEST_CONFIG + ";" + bridgeSource;
+    }
+
+    private void configureTestServer(String value) {
+        if (!BuildConfig.ALLOW_TEST_CONFIG || exportInProgress) {
+            connectionError(); return;
+        }
+        try {
+            String next = TestServerOrigin.normalize(value);
+            if (!getPreferences(MODE_PRIVATE).edit().putString("test-api-origin", next).commit()) throw new IllegalStateException();
+            apiOrigin = next;
+            updateBridgeScript();
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                if (documentStartScript != null) documentStartScript.remove();
+                documentStartScript = WebViewCompat.addDocumentStartJavaScript(webView, bridgeScript, Collections.singleton(APP_ORIGIN));
+            }
+            // Drop authentication/order grants on a server change. Local project DBs are retained.
+            webView.evaluateJavascript("sessionStorage.clear();location.hash='home';location.reload();", null);
+        } catch (Exception invalid) { connectionError(); }
+    }
+
+    private void connectionError() {
+        webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('aiadcast-test-connection',{detail:{status:'error'}}));", null);
     }
 
     private static WebResourceResponse blocked(int code, String message) {
@@ -243,7 +304,22 @@ public final class MainActivity extends ComponentActivity {
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if (request == PICK_FILE && filePicker != null) {
-            filePicker.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result, data)); filePicker = null;
+            ValueCallback<Uri[]> callback = filePicker; filePicker = null;
+            Uri[] selected = null;
+            if (result == RESULT_OK && data != null) {
+                List<String> clips = new ArrayList<>();
+                ClipData clip = data.getClipData();
+                if (clip != null) for (int i = 0; i < clip.getItemCount(); i++) {
+                    Uri uri = clip.getItemAt(i).getUri();
+                    if (uri != null) clips.add(uri.toString());
+                }
+                List<String> uris = SelectedDocuments.collect(data.getData() == null ? null : data.getData().toString(), clips, filePickerMultiple);
+                if (!uris.isEmpty()) {
+                    selected = new Uri[uris.size()];
+                    for (int i = 0; i < uris.size(); i++) selected[i] = Uri.parse(uris.get(i));
+                }
+            }
+            callback.onReceiveValue(selected);
         } else if (request == SAVE_FILE && pendingFile != null) {
             if (result != RESULT_OK || data == null || data.getData() == null) {
                 clearPending(true); emit("cancelled", words("저장을 취소했습니다.", "Export cancelled.")); return;

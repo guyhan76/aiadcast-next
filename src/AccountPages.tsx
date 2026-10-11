@@ -3,7 +3,7 @@ import {ArrowLeft,Check,Mail} from 'lucide-react';
 import {useUiLanguage} from './ui-language';
 import {formatPrice,pricingCatalog,type PricingCurrency} from './pricing';
 import {apiRequest} from './generation-client';
-import {betaSession,setBetaSession,storageNamespace} from './beta-session';
+import {betaSession,setBetaSession,storageNamespace,accountNamespace} from './beta-session';
 import {carryGuestWorkspace} from './workspace-draft';
 import {accountError,exchangeEmail,readSession,type Capabilities,type EmailRequest,type TestOrder} from './account-client';
 import './account-pages.css';
@@ -18,7 +18,7 @@ export function EmailAccountPage({mode,preserve,returnPage}:Context&{mode:'signu
  const signup=mode==='signup';
  async function check(){if(!request||locked.current)return;locked.current=true;try{
   if(Date.now()>=request.expires){setExpired(true);return;}
-  const result=await exchangeEmail(request);if(result.session){await latest.current.preserve();await carryGuestWorkspace(result.session.user.id);sessionStorage.removeItem(key);const target=sessionStorage.getItem('aiadcast.auth-return')==='checkout'?'checkout':latest.current.returnPage;sessionStorage.removeItem('aiadcast.auth-return');setBetaSession(result.session,target);}
+  const result=await exchangeEmail(request);if(result.session){await latest.current.preserve();await carryGuestWorkspace(accountNamespace(result.session.user.id));sessionStorage.removeItem(key);const target=sessionStorage.getItem('aiadcast.auth-return')==='checkout'?'checkout':latest.current.returnPage;sessionStorage.removeItem('aiadcast.auth-return');setBetaSession(result.session,target);}
  }catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;}}
  useEffect(()=>{if(!request||expired)return;const timer=setInterval(()=>{if(document.visibilityState==='visible')void check();},3000);return()=>clearInterval(timer);},[request,expired,ko]);
  async function submit(){if(locked.current)return;locked.current=true;setBusy(true);setMessage('');try{await preserve();const result=await apiRequest<EmailRequest>('/api/auth/email/request',{email});sessionStorage.setItem(key,JSON.stringify(result));setRequest(result);setExpired(false);}catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;setBusy(false);}}
@@ -68,3 +68,4 @@ export function CheckoutPage({preserve,returnPage}:Context){
  <button className="primary-action" disabled={busy||!cap?.checkout.enabled||currency!=='KRW'||Boolean(session&&!agreed)} onClick={()=>void checkout()}>{!cap?.checkout.enabled?t('결제 연결 준비 중','Checkout coming soon'):!session?t('이메일로 로그인하고 계속','Sign in with email to continue'):busy?t('준비 중…','Preparing…'):t('테스트 결제 준비','Continue to test checkout')}</button></>}
  {message&&<p role="alert">{message}</p>}</section>;
 }
+

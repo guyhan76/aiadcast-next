@@ -1,4 +1,5 @@
 import {DimensionInputs} from './DimensionInputs';
+import {DimensionApplication} from './DimensionApplication';
 import {ReferencePhotos} from './ReferencePhotos';
 import {BrandFooter} from './BrandFooter';
 import {defaultGeneration,generationIssues} from './generation.ts';
@@ -108,9 +109,10 @@ export default function App({initialProject,onProjectChange}:{initialProject?:Pr
      <details className="format-guide"><summary>{text("광고 용도별 비율 고르기")}<span>{text("7가지 비율")}</span></summary><div className="format-options" role="group" aria-label={text("광고 이미지 비율")}>{imageFormats.map(format=><button type="button" key={format.id} aria-label={`${format.id} ${text(format.name)}`} aria-pressed={project.format===format.id} onClick={()=>change(p=>({...p,format:format.id}))}><span className="ratio-icon" aria-hidden="true"><i style={{width:format.width>=format.height?30:30*format.width/format.height,height:format.height>=format.width?30:30*format.height/format.width}}/></span><span><strong>{format.id}<small>{text(format.name)}</small></strong><em>{text(format.use)}</em><small>{format.width} × {format.height} px</small></span></button>)}</div><p>{text("용도에 맞는 비율을 선택하면 사진과 문구가 다시 배치됩니다. 실제 광고의 허용 비율과 안전 영역은 매체·노출 위치에 따라 다릅니다.")}</p></details>
      <div className="canvas-well">{pendingCreative?<div className="creative-reference">{project.product?<img src={project.product.data} alt={text("첨부한 참고 사진")}/>:<ImagePlus size={40}/>}<strong>{text("새 광고 이미지는 아직 생성되지 않았습니다.")}</strong><p>{text("사진과 광고 내용은 참고 자료로 보관합니다.")}<br/>{text("아래 AI 제작에서 연결 상태를 확인하고 새 시안을 요청하세요.")}</p></div>:<canvas ref={canvas} aria-label={text("현재 홍보 이미지")} className={tab==='dimensions'&&dimensionMode==='annotated'?'editing-anchors':''} style={{aspectRatio:`${outputFormat.width}/${outputFormat.height}`,width:`min(100%, calc(var(--preview-height) * ${outputFormat.width/outputFormat.height}))`}} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerEnd} onPointerCancel={pointerEnd}/>}</div>
      <div className="preview-foot"><span><ShieldCheck size={14}/>{creative?text("창작 모드 · 설정 저장 가능"):project.product?(boxProjectionReady(project)?t('원본 면 · 규격 박스 구성','Source faces · dimensioned box'):text("원본 사진 사용")):service?text("문구·배경으로 구성"):text("상품 사진을 추가해주세요")}</span><span>{outputFormat.width} × {outputFormat.height} px</span></div>
+     <DimensionApplication project={project} onEdit={()=>{setTab('dimensions');const details=document.querySelector('.editor-details') as HTMLDetailsElement|null;if(details){details.open=true;details.scrollIntoView({block:'start'});}}}/>
+     <CompareReview project={project} disabled={busy||pendingCreative} onDownload={download}/>
      <GenerationPanel key={`generation-${project.id}`} project={project} change={change}/>
      <div className="editor-actions"><button className="save-button" disabled={busy} onClick={()=>void save()}><Save size={17}/>{text("이 기기에 저장")}</button><button className="export-button" disabled={busy||pendingCreative} onClick={()=>void exportPng()}><ArrowDownToLine size={17}/>{busy?text("처리 중…"):pendingCreative?text("AI 시안 확인 후 저장"):text("PNG 내보내기")}</button></div>
-     <CompareReview project={project} disabled={busy||pendingCreative} onDownload={download}/>
      <button className="direction-jump" onClick={()=>{const d=document.getElementById('publishing-tools') as HTMLDetailsElement;if(d){d.open=true;d.scrollIntoView({block:'start'});}}}>{t('게시글과 활용 방법 보기','View post copy and publishing tips')}</button>
     </section>
     <details className="editor editor-details"><summary>{t("정보·문구 수정","Edit details & copy")}</summary><section aria-label={text("이미지 편집 도구")}>
@@ -161,3 +163,4 @@ export default function App({initialProject,onProjectChange}:{initialProject?:Pr
   <dialog ref={zoomDialog} className="zoom-dialog"><button onClick={()=>zoomDialog.current?.close()}><ArrowLeft size={18}/>{text("편집기로 돌아가기")}</button>{zoom&&<img src={zoom} alt={text("홍보 이미지 확대 미리보기")}/>}</dialog>
  </>;
 }
+

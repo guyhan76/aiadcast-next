@@ -21,11 +21,12 @@ export function ReferencePhotos({project,change,onBusyChange,onAdded}:{project:P
   </div>)}</div>}
   {photos.length<10&&<div className="reference-upload-zone">
    <input ref={inputRef} type="file" multiple hidden disabled={busy} accept="image/png,image/jpeg,image/webp" aria-label={t('참조사진 추가','Add reference photos')} onChange={e=>{void add(Array.from(e.target.files??[]));e.target.value='';}}/>
-   <button type="button" className="reference-add" disabled={busy} onClick={()=>inputRef.current?.click()}><ImagePlus size={36} aria-hidden="true"/><span>{busy?t('불러오는 중','Loading'):t('사진 추가','Add photos')}</span></button>
+   <button type="button" className="reference-add" disabled={busy} onClick={()=>inputRef.current?.click()}><ImagePlus size={36} aria-hidden="true"/><span>{busy?t('불러오는 중','Loading'):t('사진 여러 장 추가','Add multiple photos')}</span></button>
   </div>}
-  <div className="reference-file-info"><p>PNG · JPG · WebP</p><p>{t('최대 10장 · 전체 10MB','Up to 10 photos · 10MB total')}</p></div>
+  <div className="reference-file-info"><p>PNG · JPG · WebP</p><p>{t('한 번에 여러 장 선택 · 최대 10장 · 전체 10MB','Select multiple photos at once · Up to 10 · 10MB total')}</p></div>
   {project.generation.mode==='original'&&photos.length>1&&<p>{t('원본 합성에서는 대표 사진만 사용합니다. 모든 참조사진을 활용하려면 AI 광고를 선택하세요.','Original composition uses only the main photo. AI creative uses all references.')}</p>}
   {error&&<p role="alert" className="wizard-error">{error}</p>}
  </section>;
 }
+
 

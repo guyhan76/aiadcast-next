@@ -17,4 +17,16 @@ fi
 npm run build
 node native/prepare-android.mjs
 cd android
-./gradlew --no-daemon "test${variant}UnitTest" "lint${variant}" "assemble${variant}"
+tasks=("test${variant}UnitTest" "lint${variant}" "assemble${variant}")
+# A cached Preview packaging run produced an unsigned APK in this environment.
+# Rebuild Preview packaging cleanly and reject any unverifiable output.
+if [[ "$variant" == Preview ]]; then tasks=(clean "${tasks[@]}"); fi
+./gradlew --no-daemon "${tasks[@]}"
+sdk_root="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+case "$variant" in
+  Debug) apk_folder=debug ;;
+  Preview) apk_folder=preview ;;
+esac
+apk_path="app/build/outputs/apk/$apk_folder/app-$apk_folder.apk"
+"$sdk_root/build-tools/36.0.0/apksigner" verify "$apk_path"
+"$sdk_root/build-tools/36.0.0/zipalign" -c -P 16 4 "$apk_path"
