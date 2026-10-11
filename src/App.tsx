@@ -1,4 +1,5 @@
 import {AutomaticProportion} from './AutomaticProportion';
+import {AppFooter} from './AppFooter';
 import {DimensionInputs} from './DimensionInputs';
 import {DimensionApplication} from './DimensionApplication';
 import {ReferencePhotos} from './ReferencePhotos';
@@ -159,7 +160,7 @@ export default function App({initialProject,onProjectChange}:{initialProject?:Pr
    <details className="quiet-details" id="creative-tools"><summary>{t("대화로 수정하기","Request changes")}</summary><CreativeDirector key={`creative-${project.id}`} project={project} change={change}/></details>
    <details className="quiet-details" id="publishing-tools"><summary>{t("캡션·키워드·활용 가이드","Captions, keywords & publishing")}</summary><CampaignPanel project={project} change={change} message={setNotice} onExportImage={target=>exportPng(target)} imageDisabled={busy||pendingCreative}/></details>
    <div className="backup-strip"><div><strong>{text("이전 광고, 필요한 부분만 다시 수정하세요.")}</strong><p>{text("저장한 작업이나 프로젝트 백업 파일을 열면 문구·배경·규격을 따로 수정할 수 있습니다. PNG·JPG만 있는 광고의 글자와 배경은 자동으로 분리되지 않으니, 프로젝트도 함께 보관하세요.")}</p></div><div><button onClick={backup}><ArrowDownToLine size={16}/>{text("프로젝트 백업")}</button><button onClick={()=>projectFile.current?.click()}><FolderOpen size={16}/>{text("파일 불러오기")}</button><input ref={projectFile} type="file" accept="application/json,.json" aria-label={text("프로젝트 파일 선택")} className="sr-only" onChange={e=>{void restore(e.target.files?.[0]);e.target.value='';}}/></div></div>
-   <footer><span>aiadcast <span>by selluplabs</span></span><p>{text("직접 편집은 기기에서 처리합니다. AI 기능을 요청할 때 해당 입력이 서버로 전송됩니다. 기기 저장 데이터는 브라우저 데이터를 지우면 삭제될 수 있습니다.")}</p></footer>
+   <AppFooter editor note={text("직접 편집은 기기에서 처리합니다. AI 기능을 요청할 때 해당 입력이 서버로 전송됩니다. 기기 저장 데이터는 브라우저 데이터를 지우면 삭제될 수 있습니다.")}/>
   </main>
   <dialog ref={library} className="library-dialog"><div className="dialog-head"><h2>{text("저장한 작업")}</h2><button className="icon-button" aria-label={text("저장한 작업 닫기")} onClick={()=>library.current?.close()}><X/></button></div><p className="help">{text("이 브라우저에 저장된 프로젝트입니다.")}</p>{saved.length===0?<div className="empty-library"><FolderOpen size={36}/><p>{text("아직 저장한 작업이 없습니다.")}</p></div>:saved.map(p=><button className="saved-project" key={p.id} onClick={()=>{if(!dirty.current||confirm(text("저장하지 않은 편집을 닫고 선택한 작업을 열까요?")))load(p);}}>{p.product?<img src={p.product.data} alt=""/>:<Layers size={24}/>}<span><strong>{p.name||text("이름 없는 작업")}</strong><small>{new Date(p.updatedAt).toLocaleString(language==='ko'?'ko-KR':'en-US')} · {p.format}</small></span><ChevronRight size={18}/></button>)}</dialog>
   <dialog ref={zoomDialog} className="zoom-dialog"><button onClick={()=>zoomDialog.current?.close()}><ArrowLeft size={18}/>{text("편집기로 돌아가기")}</button>{zoom&&<img src={zoom} alt={text("홍보 이미지 확대 미리보기")}/>}</dialog>

@@ -110,6 +110,11 @@ export class GenerationService {
     this.ledger.expire();
   }
   period() { return new Date(this.now()).toISOString().slice(0, 7); }
+  increaseBudget(micros) {
+    if(!Number.isSafeInteger(micros)||micros<this.budgetMicros||micros>100_000_000)fail('BUDGET_INCREASE_ONLY');
+    this.ledger.transaction(()=>this.db.prepare('UPDATE budgets SET limit_micros=?').run(micros));
+    this.budgetMicros=micros;
+  }
   recordTestPurchase({purchaseId,credits}) { this.ledger.recordVerifiedPurchase({purchaseId,userId:LOCAL_USER,credits});return this.wallet(); }
   wallet() { return { ...this.ledger.wallet(LOCAL_USER), kind: 'test-credits' }; }
   status() {

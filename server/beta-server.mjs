@@ -9,6 +9,7 @@ import {assistCopy} from './text-assistant.mjs';
 import {EmailAuth} from './email-auth.mjs';
 import {TestCheckout} from './test-checkout.mjs';
 import {accountConfiguration} from './account-providers.mjs';
+import {AdminApi} from './admin-api.mjs';
 export const ANDROID_ORIGIN='https://appassets.androidplatform.net';
 export function providerGate(max=2){let active=0;return async task=>{if(active>=max)throw new ProviderFailure('PROVIDER_BUSY',{uncertain:false});active++;try{return await task();}finally{active--;}};}
 export function publicOrigin(value){const u=new URL(value);if(u.protocol!=='https:'||!u.hostname||u.username||u.password||u.search||u.hash||u.pathname!=='/')throw Error('HTTPS_ORIGIN_REQUIRED');return u.origin;}
@@ -22,6 +23,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
  const service=user=>{if(!services.has(user.id))services.set(user.id,serviceFactory(user));return services.get(user.id);};
  const email=new EmailAuth(store,{sendMail:accounts.sendMail,publicOrigin:origin,now});
  const checkout=new TestCheckout(store,{...accounts,publicOrigin:origin,now,creditPurchase:async(id,purchase)=>{const user=store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id);if(!user)throw new ApiFailure('AUTH_REQUIRED',401);return service(user).recordTestPurchase(purchase);}});
+ const admin=new AdminApi(store,{service,accounts,checkout,now});
  const send=(res,status,value,cors)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer',...(cors?{'Access-Control-Allow-Origin':cors,'Vary':'Origin'}:{})});res.end(JSON.stringify(value));};
  const read=async(req,max)=>{if(!/^application\/json(?:;.*)?$/i.test(req.headers['content-type']??''))throw new ApiFailure('JSON_REQUIRED',415);if(Number(req.headers['content-length']??0)>max)throw new ApiFailure('REQUEST_TOO_LARGE',413);if(bodies>=2)throw new ApiFailure('SERVER_BUSY',429);bodies++;try{let size=0;const parts=[];for await(const part of req){size+=part.length;if(size>max)throw new ApiFailure('REQUEST_TOO_LARGE',413);parts.push(part);}try{return JSON.parse(Buffer.concat(parts).toString('utf8'));}catch{throw new ApiFailure('INVALID_JSON',400);}}finally{bodies--;}};
  const server=createServer(async(req,res)=>{
@@ -45,12 +47,20 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
     send(res,200,result,cors);return;}
    if(req.method==='POST'&&['/api/checkout/launch','/api/checkout/confirm'].includes(url.pathname)){const b=await read(req,2048);send(res,200,await (url.pathname.endsWith('/launch')?checkout.launch(b):checkout.confirm(b)),cors);return;}
    const user=store.authenticate(req.headers.authorization);
+   if(url.pathname.startsWith('/api/admin/')){
+    admin.require(user);
+    if(req.method==='GET'&&url.pathname==='/api/admin/overview'){send(res,200,admin.overview(user),cors);return;}
+    if(req.method==='POST'&&['/api/admin/grants','/api/admin/allocations','/api/admin/revoke'].includes(url.pathname)){
+     const body=await read(req,2048);send(res,200,url.pathname.endsWith('/grants')?admin.grant(user,body):url.pathname.endsWith('/allocations')?admin.allocate(user,body):admin.revoke(user,body),cors);return;
+    }
+    throw new ApiFailure('NOT_FOUND',404);
+   }
    if(url.pathname==='/api/checkout/orders'&&req.method==='POST'){send(res,201,checkout.create(user,await read(req,2048)),cors);return;}
    if(url.pathname==='/api/checkout/orders'&&req.method==='GET'){send(res,200,{orders:checkout.history(user)},cors);return;}
    const order=/^\/api\/checkout\/orders\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
    if(order&&req.method==='GET'){send(res,200,await checkout.status(user,order[1]),cors);return;}
    if(req.method==='POST'&&url.pathname==='/api/auth/logout'){store.logout(req.headers.authorization);send(res,200,{signedOut:true},cors);return;}
-   if(req.method==='GET'&&url.pathname==='/api/auth/me'){send(res,200,{user:{id:user.id,label:user.label}},cors);return;}
+   if(req.method==='GET'&&url.pathname==='/api/auth/me'){send(res,200,{user:{id:user.id,label:user.label,role:user.role}},cors);return;}
    if(req.method==='GET'&&url.pathname==='/api/projects'){send(res,200,{projects:store.list(user.id)},cors);return;}
    const project=/^\/api\/projects\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
    if(project&&req.method==='GET'){send(res,200,store.project(user.id,project[1]),cors);return;}
@@ -83,3 +93,4 @@ async function main(){
  let closing=false;const stop=async()=>{if(closing)return;closing=true;await app.close();store.close();};process.once('SIGTERM',()=>void stop());process.once('SIGINT',()=>void stop());
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(()=>{console.error('Beta startup failed. Use the beta launcher and verify origin, data and budget configuration.');process.exitCode=1;});
+

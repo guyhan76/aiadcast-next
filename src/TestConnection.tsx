@@ -1,11 +1,11 @@
 import {useEffect,useRef,useState} from 'react';
-import {apiUrl} from './generation-client';
+import {apiUrl,apiRequest,type ApiStatus} from './generation-client';
 import {configuredApiOrigin,nativeTestConnection,requestTestConnection} from './api-origin';
 import {betaSession} from './beta-session';
 import {useUiLanguage} from './ui-language';
 import './test-connection.css';
 
-type Readiness={connected:boolean;email:boolean;checkout:boolean};
+type Readiness={connected:boolean;email:boolean;checkout:boolean;generation?:{enabled:boolean;reason:string|null}};
 export function TestConnection({beforeChange,preserve}:{beforeChange:()=>Promise<void>;preserve:()=>Promise<void>}){
  const {t}=useUiLanguage(),origin=configuredApiOrigin(),editable=nativeTestConnection();
  const [input,setInput]=useState(origin),[busy,setBusy]=useState(false),[checking,setChecking]=useState(false);
@@ -19,7 +19,9 @@ export function TestConnection({beforeChange,preserve}:{beforeChange:()=>Promise
    const get=async(path:string)=>{const response=await fetch(apiUrl(path),{credentials:'omit',redirect:'error',signal:controller.signal});if(!response.ok||!response.headers.get('content-type')?.includes('application/json'))throw Error('UNAVAILABLE');return response.json();};
    const [health,cap]=await Promise.all([get('/api/health'),get('/api/account/capabilities')]);
    if(health.mode!=='invite-beta'||health.commercialReady!==false||cap.checkout?.test!==true||cap.checkout?.currency!=='KRW')throw Error('INVALID_TEST_SERVER');
-   if(probe.current===controller)setStatus({connected:true,email:cap.email?.enabled===true,checkout:cap.checkout.enabled===true});
+   let generation:Readiness['generation'];
+   if(betaSession())try{generation=(await apiRequest<ApiStatus>('/api/status',undefined,controller.signal)).generation;}catch{}
+   if(probe.current===controller)setStatus({connected:true,email:cap.email?.enabled===true,checkout:cap.checkout.enabled===true,generation});
   }catch{if(probe.current===controller)setStatus({connected:false,email:false,checkout:false});}
   finally{clearTimeout(timeout);if(probe.current===controller)setChecking(false);}
  }
@@ -42,8 +44,10 @@ export function TestConnection({beforeChange,preserve}:{beforeChange:()=>Promise
   <ul aria-label={t('연결 준비 상태','Connection readiness')}>
    <li><b>{t('서버','Server')}</b><span>{checking?t('확인 중…','Checking…'):status?.connected?t('응답 확인','Response verified'):t('연결되지 않음','Not connected')}</span></li>
    <li><b>{t('이메일 인증','Email verification')}</b><span>{status?.email?t('설정 연결됨 · 수신 시험 필요','Configured · Delivery test needed'):t('서버 설정 필요','Server configuration required')}</span></li>
+   <li><b>{t('OpenAI 이미지 생성','OpenAI image generation')}</b><span>{!betaSession()?t('로그인 후 확인','Check after signing in'):status?.generation?.enabled?t('요청 가능 · 실제 생성 시험 필요','Ready · Live generation test needed'):status?.generation?.reason==='PROVIDER_NOT_CONFIGURED'?t('서버 키 설정 필요','Server key required'):status?.generation?.reason==='BUDGET_NOT_AVAILABLE'?t('관리자 예산 배정 필요','Administrator budget allocation needed'):status?.generation?.reason==='NO_TEST_CREDITS'?t('테스트 이용권 필요','Test credits needed'):t('서버 생성 설정 필요','Server generation configuration needed')}</span></li>
    <li><b>{t('결제','Payment')}</b><span>{status?.checkout?t('테스트 키 연결됨 · 승인 시험 필요','Test keys configured · Approval test needed'):t('테스트 결제 설정 필요','Test checkout configuration required')}</span></li>
   </ul>
+  {betaSession()?.user.role==='admin'&&<a className="test-admin-link" href="#admin">{t('관리자 페이지 열기','Open administration')}</a>}
   <div className="test-connection-actions"><button type="button" disabled={checking||busy} onClick={()=>void check()}>{t('연결 상태 다시 확인','Recheck connection')}</button><button type="button" disabled={!status?.email||busy} onClick={()=>void go(betaSession()?'checkout':'signup')}>{betaSession()?t('테스트 결제 시작','Start test checkout'):t('회원가입 시험 시작','Start signup test')}</button></div>
   <p>{t('테스트 결제는 실청구가 없습니다. 상태 확인만으로 실제 이메일 수신이나 결제 승인이 완료되었다고 판단하지 않습니다.','Test payments do not charge real money. Readiness does not prove actual email delivery or payment approval.')}</p>
   {message&&<p role="alert">{message}</p>}

@@ -12,7 +12,7 @@ test('creation essentials and expanded optional fields stay readable on narrow s
  await expect(wizard.getByLabel('상품명',{exact:true})).toHaveAttribute('placeholder','예: 바이탈 골드 콜라겐 토너 150ml 2개');
  for(const width of [320,390,768,1440]){
   await page.setViewportSize({width,height:900});
-  const upload=await wizard.getByRole('button',{name:'사진 추가',exact:true}).boundingBox(),area=await wizard.locator('.reference-photos').boundingBox();
+  const upload=await wizard.getByRole('button',{name:'사진 여러 장 추가',exact:true}).boundingBox(),area=await wizard.locator('.reference-photos').boundingBox();
   expect(upload).not.toBeNull();expect(area).not.toBeNull();
   expect(upload!.height).toBeGreaterThanOrEqual(190);
   expect(upload!.width).toBeGreaterThanOrEqual(area!.width-2);
@@ -53,3 +53,4 @@ test('creation essentials and expanded optional fields stay readable on narrow s
  expect(await footer.locator('.brand-lockup').evaluate(element=>parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(28);
  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
 });
+

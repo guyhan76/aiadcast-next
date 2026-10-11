@@ -18,6 +18,7 @@ export class BetaStore {
    CREATE TABLE IF NOT EXISTS invites(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS projects(user_id TEXT NOT NULL REFERENCES users(id),id TEXT NOT NULL,revision INTEGER NOT NULL,name TEXT NOT NULL,json TEXT NOT NULL,bytes INTEGER NOT NULL,updated TEXT NOT NULL,PRIMARY KEY(user_id,id));`);
+  if(!this.db.prepare('PRAGMA table_info(users)').all().some(c=>c.name==='role'))this.db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('member','admin'))");
   this.db.prepare("INSERT INTO settings VALUES('budget',?) ON CONFLICT DO NOTHING").run(monthlyBudgetMicros);
   if(this.db.prepare("SELECT value FROM settings WHERE key='budget'").get().value!==monthlyBudgetMicros){this.db.close();throw Error('BETA_BUDGET_CONFIG_CHANGED');}
   this.cap=monthlyBudgetMicros;
@@ -49,10 +50,11 @@ export class BetaStore {
    const count=this.db.prepare('SELECT COUNT(*) n FROM sessions WHERE user_id=?').get(row.id).n;
    if(count>=5)this.db.prepare('DELETE FROM sessions WHERE hash IN(SELECT hash FROM sessions WHERE user_id=? ORDER BY expires LIMIT 1)').run(row.id);
    const token=code(),expires=this.now()+24*60*60*1000;this.db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(digest(token),row.id,expires);
-   return {token,expires,user:{id:row.id,label:row.label}};
+   return {token,expires,user:{id:row.id,label:row.label,role:row.role??'member'}};
  }
  authenticate(header){if(typeof header!=='string'||!/^Bearer [A-Za-z0-9_-]{43}$/.test(header))fail('AUTH_REQUIRED',401);const u=this.db.prepare('SELECT u.* FROM sessions s JOIN users u ON s.user_id=u.id WHERE s.hash=? AND s.expires>? AND u.disabled=0').get(digest(header.slice(7)),this.now());if(!u)fail('AUTH_REQUIRED',401);return u;}
  logout(header){if(typeof header==='string')this.db.prepare('DELETE FROM sessions WHERE hash=?').run(digest(header.slice(7)));}
+ setRole(id,role){if(!['member','admin'].includes(role))fail('INVALID_ROLE');const result=this.db.prepare('UPDATE users SET role=? WHERE id=? AND disabled=0').run(role,id);if(!result.changes)fail('USER_NOT_FOUND',404);this.db.prepare('DELETE FROM sessions WHERE user_id=?').run(id);}
  revoke(id){this.db.prepare('UPDATE users SET disabled=1 WHERE id=?').run(id);this.db.prepare('DELETE FROM sessions WHERE user_id=?').run(id);this.db.prepare('DELETE FROM invites WHERE user_id=?').run(id);}
  list(userId){return this.db.prepare('SELECT id,revision,name,updated FROM projects WHERE user_id=? ORDER BY updated DESC').all(userId);}
  project(userId,id){if(!validId(id))fail('PROJECT_NOT_FOUND',404);const row=this.db.prepare('SELECT revision,json FROM projects WHERE user_id=? AND id=?').get(userId,id);if(!row)fail('PROJECT_NOT_FOUND',404);return {revision:row.revision,project:JSON.parse(row.json)};}
@@ -72,3 +74,4 @@ export class BetaStore {
  }
  close(){this.db.close();}
 }
+
