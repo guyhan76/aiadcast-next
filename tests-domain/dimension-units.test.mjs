@@ -8,7 +8,9 @@ import {buildGenerationRequest} from '../src/generation.ts';
 import {parseBoxSize} from '../src/box-geometry.ts';
 test('cm and inch input convert exactly to mm, including fractional inches',()=>{
  for(const [value,unit,mm] of [['20','cm','200'],['1','inch','25.4'],['0.125','inch','3.175'],['1.234567','inch','31.3580018'],['0.000001','cm','0.00001'],['0.','cm','0']])assert.equal(toMillimeters(value,unit),mm);
- for(const raw of ['-3','Infinity','1e2','1,2','NaN','abc','1.2345678'])assert.equal(toMillimeters(raw,'inch'),'');
+ for(const raw of ['-3','Infinity','1e2','1,2','NaN','abc','1.23456789012'])assert.equal(toMillimeters(raw,'inch'),'');
+ assert.equal(toMillimeters('11.811023622','inch'),'300');
+ assert.equal(toMillimeters('12.811023622','inch'),'325.4');
  assert.equal(validMillimeters('31.3580018'),true);
  for(const raw of ['0','-1','','100001','0.000000001'])assert.equal(validMillimeters(raw),false);
 });

@@ -14,6 +14,7 @@ test('unit conversion preserves canonical size, selected unit and display option
   await wizard.getByLabel('규격 단위').selectOption('mm');await expect(wizard.getByLabel('가로 mm')).toHaveValue('254');
   await wizard.getByLabel('규격 단위').selectOption('cm');await expect(wizard.getByLabel('가로 cm')).toHaveValue('25.4');
  }
+ await wizard.getByLabel('가로 cm').fill('30');await wizard.getByLabel('규격 단위').selectOption('inch');await expect(wizard.getByLabel('가로 inch')).toHaveValue('11.811023622');await wizard.getByLabel('가로 inch').fill('12.811023622');await wizard.getByLabel('규격 단위').selectOption('mm');await expect(wizard.getByLabel('가로 mm')).toHaveValue('325.4');await wizard.getByLabel('가로 mm').fill('254');
  await wizard.getByLabel('규격 단위').selectOption('inch');await wizard.getByLabel('높이 inch').fill('-1');await wizard.getByRole('button',{name:'다음',exact:true}).click();await expect(wizard.getByRole('alert')).toContainText('규격');
  await wizard.getByLabel('높이 inch').fill('0.125');await wizard.getByLabel('광고에 규격 표시').check();
  await wizard.getByRole('button',{name:'다음',exact:true}).click();await wizard.getByRole('button',{name:'광고 만들기',exact:true}).click();

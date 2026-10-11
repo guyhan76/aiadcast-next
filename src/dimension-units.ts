@@ -7,12 +7,14 @@ function decimal(integer:bigint,places:number) {
  return places?(s.slice(0,-places)+'.'+s.slice(-places)).replace(/\.?0+$/,''):s;
 }
 export function toMillimeters(value:string,unit:DimensionUnit):string {
- if(!/^\d*(\.\d{0,6})?$/.test(value)||!/[0-9]/.test(value))return '';
+ if(!/^\d*(\.\d{0,10})?$/.test(value)||!/[0-9]/.test(value))return '';
  const [whole,fraction='']=value.split('.');
  const coefficient=BigInt((whole||'0')+fraction);
- if(unit==='inch')return decimal(coefficient*254n,fraction.length+1);
- if(unit==='cm')return decimal(coefficient*10n,fraction.length);
- return decimal(coefficient,fraction.length);
+ const integer=coefficient*(unit==='inch'?254n:unit==='cm'?10n:1n),places=fraction.length+(unit==='inch'?1:0);
+ // Only a numeric edit is rounded to the canonical 8-decimal precision.
+ // A unit switch never calls this conversion or rewrites the stored value.
+ if(places>8){const divisor=10n**BigInt(places-8);return decimal((integer+divisor/2n)/divisor,8);}
+ return decimal(integer,places);
 }
 export function fromMillimeters(value:string,unit:DimensionUnit):string {
  if(!/^\d+(\.\d{1,8})?$/.test(value))return value;
