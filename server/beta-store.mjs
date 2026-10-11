@@ -41,12 +41,15 @@ export class BetaStore {
    const row=this.db.prepare('SELECT u.* FROM invites i JOIN users u ON i.user_id=u.id WHERE i.hash=? AND i.expires>? AND u.disabled=0').get(digest(invite),this.now());
    if(!row)fail('INVALID_INVITE',401);
    this.db.prepare('DELETE FROM invites WHERE hash=?').run(digest(invite));
+   return this.createSession(row);
+  });
+ }
+ createSession(row){
    this.db.prepare('DELETE FROM sessions WHERE expires<=?').run(this.now());
    const count=this.db.prepare('SELECT COUNT(*) n FROM sessions WHERE user_id=?').get(row.id).n;
    if(count>=5)this.db.prepare('DELETE FROM sessions WHERE hash IN(SELECT hash FROM sessions WHERE user_id=? ORDER BY expires LIMIT 1)').run(row.id);
    const token=code(),expires=this.now()+24*60*60*1000;this.db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(digest(token),row.id,expires);
    return {token,expires,user:{id:row.id,label:row.label}};
-  });
  }
  authenticate(header){if(typeof header!=='string'||!/^Bearer [A-Za-z0-9_-]{43}$/.test(header))fail('AUTH_REQUIRED',401);const u=this.db.prepare('SELECT u.* FROM sessions s JOIN users u ON s.user_id=u.id WHERE s.hash=? AND s.expires>? AND u.disabled=0').get(digest(header.slice(7)),this.now());if(!u)fail('AUTH_REQUIRED',401);return u;}
  logout(header){if(typeof header==='string')this.db.prepare('DELETE FROM sessions WHERE hash=?').run(digest(header.slice(7)));}

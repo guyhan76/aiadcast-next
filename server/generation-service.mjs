@@ -101,6 +101,7 @@ export class GenerationService {
     this.ledger.expire();
   }
   period() { return new Date(this.now()).toISOString().slice(0, 7); }
+  recordTestPurchase({purchaseId,credits}) { this.ledger.recordVerifiedPurchase({purchaseId,userId:LOCAL_USER,credits});return this.wallet(); }
   wallet() { return { ...this.ledger.wallet(LOCAL_USER), kind: 'test-credits' }; }
   status() {
     this.ledger.expire();

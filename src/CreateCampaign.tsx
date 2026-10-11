@@ -1,6 +1,7 @@
+import type {WizardDraft} from './workspace-draft';
 import {DimensionInputs} from './DimensionInputs';
 import {useUiLanguage} from './ui-language';
-import {useId,useState} from 'react';
+import {useId,useState,useEffect} from 'react';
 import {ArrowLeft,ArrowRight,Check} from 'lucide-react';
 import {newProject} from './model';
 import type {Project} from './model';
@@ -20,11 +21,12 @@ import './create-campaign.css';
 export function starterProject(category:ProductCategory='other'):Project{
  const p=withCategory(newProject(),category);return {...p,name:'',format:'4:5',presentation:'campaign',generation:{mode:'creative',brief:''},background:{...p.background,color:'#f8f7f4'},productProfile:{...p.productProfile,specType:'none'},dimensions:{...p.dimensions,displayUnit:'cm',width:'',depth:'',height:'',visible:false,lines:false},campaign:{...defaultCampaign(),creative:defaultCreative()},footer:{company:true,contact:true,email:true,website:true},copy:{ko:{...p.copy.ko,company:''},en:{...p.copy.en,company:''}}};
 }
-export function CreateCampaign({initialKind,onReady}:{initialKind?:IndustryKind;onReady:(p:Project)=>Promise<void>}){
+export function CreateCampaign({initialKind,onReady,draft,onDraft}:{initialKind?:IndustryKind;onReady:(p:Project)=>Promise<void>;draft?:WizardDraft;onDraft?:(draft:WizardDraft)=>void}){
  const {language,t,text}=useUiLanguage();
  const fieldsId=useId();
- const [project,setProject]=useState(()=>({...starterProject(initialKind==='service'?'services':'other'),locale:language}));
- const [step,setStep]=useState(0),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ const [project,setProject]=useState(()=>draft?.project??({...starterProject(initialKind==='service'?'services':'other'),locale:language}));
+ const [step,setStep]=useState(draft?.step??0),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ useEffect(()=>{onDraft?.({project,step});},[project,step,onDraft]);
  const axes=dimensionAxes(project.productProfile),service=isServiceCategory(project.productProfile.category);
  function change(fn:(p:Project)=>Project){setProject(fn);setError('');}
  async function next(){
