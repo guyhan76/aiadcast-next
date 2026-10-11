@@ -1,3 +1,4 @@
+import {validMillimeters,type DimensionUnit} from './dimension-units.ts';
 import {parsePublishing} from './publishing.ts';
 import type {Publishing} from './publishing.ts';
 import {defaultGeneration,parseGeneration} from './generation.ts';
@@ -27,7 +28,7 @@ export type Project = {
  product:Asset|null;references?:Asset[];footer?:Record<FooterField,boolean>;presentation?:'campaign';productName:string;productProfile:ProductProfile;generation:GenerationSettings;scale:number;
  background:{color:string;image:Asset|null};ink:'dark'|'light';
  publishing?:Publishing;campaign?:Campaign;referenceCheck?:ReferenceCheck;conversation?:Conversation;generated?:GeneratedAsset;boxProjection?:BoxProjection;
- dimensions:{width:string;depth:string;height:string;visible:boolean;lines:boolean;anchors:Record<Axis,[Point,Point]>};
+ dimensions:{displayUnit?:DimensionUnit;width:string;depth:string;height:string;visible:boolean;lines:boolean;anchors:Record<Axis,[Point,Point]>};
  copy:Record<Locale,Copy>;
 };
 export function newProject():Project {
@@ -52,7 +53,7 @@ export function exportErrors(p:Project) {
  if(p.generation?.mode==='creative'&&!hasUsableCreative(p))errors.push('새 광고 결과가 아직 준비되지 않았거나 원본·규격이 변경되었습니다. AI 연결 후 현재 조건으로 생성하고 결과를 승인해주세요.');
  if(!p.product&&!isServiceCategory(p.productProfile.category))errors.push('원본 상품 사진을 먼저 추가해주세요.');
  if(!p.copy[p.locale].title.trim())errors.push('제목을 입력해주세요.');
- if(p.dimensions.visible && dimensionAxes(p.productProfile).some(a=>!/^\d+(\.\d{1,3})?$/.test(p.dimensions[a])||Number(p.dimensions[a])<=0||Number(p.dimensions[a])>100000))errors.push('규격은 0보다 크고 100,000 mm 이하인 숫자로 입력해주세요. 소수점은 세 자리까지 가능합니다.');
+ if(p.dimensions.visible && dimensionAxes(p.productProfile).some(a=>!validMillimeters(p.dimensions[a])))errors.push('규격은 0보다 크고 100,000 mm 이하인 숫자로 입력해주세요.');
  return errors;
 }
 // Project imports are picked and validated, never executed or inserted as HTML.
@@ -70,6 +71,7 @@ export async function importProject(raw:unknown):Promise<Project> {
  if(r.footer!==undefined){if(!r.footer||typeof r.footer!=='object'||['company','contact','email','website'].some(k=>typeof r.footer![k as FooterField]!=='boolean'))throw Error('하단 표시 설정을 확인해주세요.');p.footer={company:r.footer.company,contact:r.footer.contact,email:r.footer.email,website:r.footer.website};}
  if(r.presentation==='campaign')p.presentation='campaign';
  for(const lang of ['ko','en'] as const)if(r.copy[lang].email!==undefined)p.copy[lang].email=string(r.copy[lang].email,100);
+ if(r.dimensions.displayUnit!==undefined){if(!['cm','mm','inch'].includes(r.dimensions.displayUnit))throw Error('규격 단위를 확인해주세요.');p.dimensions.displayUnit=r.dimensions.displayUnit;}
  p.dimensions.visible=r.dimensions.visible;p.dimensions.lines=r.dimensions.lines;p.conversation=parseConversation(r.conversation);p.generated=await parseGenerated(r.generated,asset);p.boxProjection=parseBoxProjection(r.boxProjection);p.publishing=parsePublishing(r.publishing);return p;
 }
 

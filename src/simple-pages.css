@@ -1,0 +1,37 @@
+.studio-shell .projects-page,.studio-shell .guide-page{max-width:1040px;margin:auto}
+.studio-shell .projects-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px}
+.studio-shell .projects-heading h1,.studio-shell .guide-page>h1{font-size:clamp(27px,4vw,36px);line-height:1.4;letter-spacing:-.04em;margin:0;word-break:keep-all}
+.studio-shell .projects-heading .primary-action{font-size:16px;min-width:110px;min-height:48px;padding:12px 16px;gap:6px;border-radius:12px}
+.studio-shell .project-search{display:flex;margin:0 0 24px;padding:12px 16px;gap:12px;background:var(--brand-light);border:0;border-radius:12px;min-height:52px}
+.studio-shell .project-search input{font-size:16px;min-width:0;width:100%;background:transparent;color:var(--brand-black)}
+.studio-shell .project-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:32px 20px}
+.studio-shell .project-tile{min-width:0;text-align:left}
+.studio-shell .project-thumb{aspect-ratio:4/5;min-height:0;padding:12px;background:var(--brand-light);border-radius:14px;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center}
+.studio-shell .project-thumb img,.studio-shell .project-thumb canvas{width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain}
+.studio-shell .project-thumb [hidden]{display:none}
+.studio-shell .project-thumb>strong{padding:20px;font-size:22px;word-break:keep-all;color:var(--brand-black)}
+.studio-shell .project-thumb>span{background:var(--brand-white);color:var(--brand-black);font-size:14px;bottom:12px;right:12px}
+.studio-shell .project-tile-caption{padding:14px 0 0;gap:8px}
+.studio-shell .project-tile-caption>strong{font-size:18px;line-height:1.5;overflow-wrap:anywhere}
+.studio-shell .project-tile-caption>small{font-size:14px;color:var(--brand-muted);line-height:1.5}
+.studio-shell .library-backup{margin-top:36px;border-top:1px solid var(--brand-line);font-size:16px;line-height:1.7;word-break:keep-all}
+.studio-shell .library-backup summary{padding:20px 0;display:flex;gap:8px;justify-content:space-between;cursor:pointer;font-size:15px}
+.studio-shell .library-backup summary span{color:var(--brand-muted)}
+.studio-shell .library-backup p{max-width:42ch;margin:0 0 12px}
+.studio-shell .library-backup a{display:inline-flex;align-items:center;gap:8px;min-height:44px;font-weight:600}
+.studio-shell .guide-page{max-width:760px}
+.studio-shell .simple-guide-steps{list-style:none;margin:32px 0;padding:0;display:grid;gap:24px}
+.studio-shell .simple-guide-steps li{display:flex;gap:16px;align-items:flex-start}
+.studio-shell .simple-guide-steps li>span{display:grid;place-items:center;flex:0 0 32px;height:32px;background:var(--brand-light);color:var(--brand-orange);border-radius:50%;font-size:17px;font-weight:700}
+.studio-shell .simple-guide-steps h2{font-size:19px;line-height:1.6;margin:0 0 6px;word-break:keep-all}
+.studio-shell .simple-guide-steps p{font-size:16px;line-height:1.7;margin:0;max-width:35ch;color:var(--brand-muted);word-break:keep-all}
+.studio-shell .guide-page>.primary-action{width:100%;min-height:54px;justify-content:center;font-size:16px;border-radius:12px}
+.studio-shell .guide-faq{margin-top:40px}
+.studio-shell .guide-faq>h2{font-size:19px;margin:0 0 12px}
+.studio-shell .guide-faq details{border-bottom:1px solid var(--brand-line)}
+.studio-shell .guide-faq summary{cursor:pointer;padding:18px 0;min-height:52px;font-size:16px;font-weight:500;line-height:1.6;word-break:keep-all}
+.studio-shell .guide-faq p{font-size:16px;line-height:1.8;max-width:42ch;word-break:keep-all;margin:0 0 20px;color:var(--brand-muted)}
+.studio-shell .dimension-unit-select{max-width:140px;margin-top:16px}
+.studio-shell .dimension-visibility{display:flex;align-items:center;gap:10px;font-size:16px;margin:20px 0 0;line-height:1.5}
+.studio-shell .dimension-visibility input{width:20px;height:20px;flex-shrink:0}
+@media(max-width:600px){.studio-shell .project-grid{grid-template-columns:1fr;gap:28px}.studio-shell .project-thumb{max-height:480px}.studio-shell .projects-heading h1{font-size:27px}.studio-shell .library-backup summary{font-size:14px}.studio-shell .guide-page>h1{font-size:27px;max-width:15ch}}

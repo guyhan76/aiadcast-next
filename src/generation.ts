@@ -1,3 +1,4 @@
+import {validMillimeters} from './dimension-units.ts';
 import {dimensionAxes,isServiceCategory} from './product.ts';
 import {getImageFormat} from './formats.ts';
 import type {Project} from './model.ts';
@@ -23,7 +24,7 @@ export function generationIssues(p:Project):string[] {
   const service=isServiceCategory(p.productProfile.category);
   if(!p.product&&!service)errors.push(creative?'참고할 상품 사진을 추가해주세요.':'원본 상품 사진을 추가해주세요.');
   if(creative&&service&&!p.product&&!p.generation.brief.trim()&&!p.campaign?.creative&&!p.conversation?.turns.some(t=>t.state==='recorded'))errors.push('사진 없이 만들 광고의 내용과 요청사항을 입력해주세요.');
-  if(axes.some(axis=>!/^\d+(\.\d{1,3})?$/.test(p.dimensions[axis])||Number(p.dimensions[axis])<=0||Number(p.dimensions[axis])>100000))errors.push('생성에 참고할 규격은 0보다 크고 100,000 mm 이하로 입력해주세요.');
+  if(axes.some(axis=>!validMillimeters(p.dimensions[axis])))errors.push('생성에 참고할 규격은 0보다 크고 100,000 mm 이하로 입력해주세요.');
   const assessment=assessReference(p);if(['mismatch','invalid'].includes(assessment.status))errors.push(assessment.message);
   return errors;
 }

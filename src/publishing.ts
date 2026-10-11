@@ -1,3 +1,4 @@
+import {dimensionLabel,dimensionUnit,validMillimeters} from './dimension-units.ts';
 import type {Locale,Project} from './model.ts';
 import type {ImageFormat} from './formats.ts';
 import {industryGroupFor,industryLabel} from './industry.ts';
@@ -22,7 +23,7 @@ export function parsePublishing(raw:unknown):Publishing|undefined{
 }
 // Captions follow the ad language, not UI language. View changes and image exports do not stale copy.
 export function publishingBasis(p:Project):string{
- return JSON.stringify({version:1,locale:p.locale,productName:p.productName,profile:p.productProfile,copy:p.copy[p.locale],goal:p.campaign?.goal??'awareness',cta:requestedCallToAction(p.campaign?.creative?.note??''),attributes:p.campaign?.attributes??[],dimensions:p.dimensions.visible?dimensionAxes(p.productProfile).map(a=>[a,p.dimensions[a]]):[]});
+ return JSON.stringify({version:1,locale:p.locale,productName:p.productName,profile:p.productProfile,copy:p.copy[p.locale],goal:p.campaign?.goal??'awareness',cta:requestedCallToAction(p.campaign?.creative?.note??''),attributes:p.campaign?.attributes??[],dimensions:p.dimensions.visible?dimensionAxes(p.productProfile).map(a=>[a,p.dimensions[a],dimensionUnit(p.dimensions.displayUnit)]):[]});
 }
 export function recommendedChannels(p:Project):PublishingChannel[]{
  const group=industryGroupFor(p.productProfile.category).id;
@@ -58,7 +59,7 @@ export function suggestedDraft(p:Project,channel:PublishingChannel):PublishingDr
  const title=copy.title.trim()||subject;
  const facts=unique([p.productProfile.material.trim(),...(p.campaign?.attributes??[]).map(a=>`${a.name}: ${a.value}`)].filter(Boolean));
  const dims=dimensionAxes(p.productProfile);
- if(p.dimensions.visible&&dims.length&&dims.every(a=>/^\d+(\.\d{1,3})?$/.test(p.dimensions[a])&&Number(p.dimensions[a])>0&&Number(p.dimensions[a])<=100000))facts.push(dims.map(a=>`${axisLabel(a,p.locale,p.productProfile)} ${p.dimensions[a]} mm`).join(' · '));
+ if(p.dimensions.visible&&dims.length&&dims.every(a=>validMillimeters(p.dimensions[a])))facts.push(dims.map(a=>`${axisLabel(a,p.locale,p.productProfile)} ${dimensionLabel(p.dimensions[a],p.dimensions.displayUnit)}`).join(' · '));
  const contact=[copy.contact.trim(),copy.website.trim()].filter(Boolean).join('\n');
  const action=requestedCallToAction(p.campaign?.creative?.note??'');
  const cta=contact?(action?`${action==='requested'?t('문의·자세한 안내','Inquiries and details'):action}\n${contact}`:contact):'';

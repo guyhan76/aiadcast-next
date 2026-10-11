@@ -392,6 +392,7 @@ export const uiEnglish:Record<string,string>={
  "참고할 상품 사진을 추가해주세요.": "Add a product reference photo.",
  "원본 상품 사진을 추가해주세요.": "Add your original product photo.",
  "사진 없이 만들 광고의 내용과 원하는 분위기를 입력해주세요.": "Describe the ad and the mood you want when starting without a photo.",
+ "규격은 0보다 크고 100,000 mm 이하인 숫자로 입력해주세요.": "Enter dimensions greater than 0 and up to 100,000 mm.",
  "생성에 참고할 규격은 0보다 크고 100,000 mm 이하로 입력해주세요.": "Enter dimensions greater than 0 and up to 100,000 mm.",
  "대화의 빠른 편집 변경안을 적용하거나 제외한 뒤 생성 요청을 준비해주세요.": "Apply or exclude pending quick edits before preparing a generation request.",
  "상품 인쇄·색상을 수정하려면 실제 상품 사진을 추가해주세요.": "Add an actual product photo before requesting a print or color change.",

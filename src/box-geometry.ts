@@ -1,3 +1,4 @@
+import {validMillimeters} from './dimension-units.ts';
 // Numerical cuboid reference only; this does not reconstruct or verify a photo.
 export type BoxSize = {width:number;depth:number;height:number};
 export type BoxPoint = {x:number;y:number};
@@ -6,7 +7,7 @@ export function parseBoxSize(values:Record<BoxAxis,string>):BoxSize {
  const result={} as BoxSize;
  for(const axis of ['width','depth','height'] as const){
   const value=values[axis];
-  if(typeof value!=='string'||!/^\d+(\.\d{1,3})?$/.test(value)||Number(value)<=0||Number(value)>100000)throw Error('INVALID_BOX_SIZE');
+  if(typeof value!=='string'||!validMillimeters(value))throw Error('INVALID_BOX_SIZE');
   result[axis]=Number(value);
  }
  return result;

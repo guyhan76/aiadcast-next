@@ -56,6 +56,12 @@ test('request validation ignores client model/prices and rejects unimplemented r
  assert.throws(()=>normalizeGenerationRequest({...request(),output:{format:'99:1',locale:'ko'}}));
  assert.throws(()=>normalizeGenerationRequest({...request(),specifications:[{axis:'width',value:'-4',unit:'mm'}]}));
 });
+test('server accepts fractional-inch conversions in canonical mm only',()=>{
+ const specifications=[{axis:'width',value:'31.3580018',unit:'mm'}];
+ assert.deepEqual(normalizeGenerationRequest({...request(),specifications}).specifications,specifications);
+ for(const value of ['0','100001','2.123456789'])assert.throws(()=>normalizeGenerationRequest({...request(),specifications:[{axis:'width',value,unit:'mm'}]}));
+ assert.throws(()=>normalizeGenerationRequest({...request(),specifications:[{axis:'width',value:'1',unit:'inch'}]}));
+});
 test('asset bytes, hash, format and decoded dimensions are validated',async()=>{
  const parsed=await parseSourceAsset(source); assert.equal(parsed.sha256,source.sha256);
  await assert.rejects(parseSourceAsset({...source,sha256:'spoof'}),/SOURCE_MISMATCH/);

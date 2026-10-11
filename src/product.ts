@@ -1,3 +1,4 @@
+import {dimensionUnit,fromMillimeters,type DimensionUnit} from './dimension-units.ts';
 import type {Project} from './model.ts';
 import {isPhysicalCategory,resolveIndustryCategory} from './industry.ts';
 import type {ProductCategory} from './industry.ts';
@@ -31,7 +32,7 @@ export function axisLabel(axis:'width'|'depth'|'height',locale:'ko'|'en',profile
   if(axis==='width'&&profile?.specType==='cylindrical')return locale==='ko'?'지름':'Diameter';
   return ({ko:{width:'가로',depth:'세로',height:'높이'},en:{width:'Width',depth:'Depth',height:'Height'}})[locale][axis];
 }
-export function specSummary(values:Record<'width'|'depth'|'height',string>,profile?:ProductProfile) {
+export function specSummary(values:Record<'width'|'depth'|'height',string>&{displayUnit?:DimensionUnit},profile?:ProductProfile) {
   if(!dimensionAxes(profile).length)return '';
-  return (profile?.specType==='cylindrical'?'Ø ':'')+dimensionAxes(profile).map(axis=>values[axis]).join(' × ')+' mm';
+  return (profile?.specType==='cylindrical'?'Ø ':'')+dimensionAxes(profile).map(axis=>fromMillimeters(values[axis],dimensionUnit(values.displayUnit))).join(' × ')+' '+dimensionUnit(values.displayUnit);
 }

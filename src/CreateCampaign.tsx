@@ -1,9 +1,10 @@
+import {DimensionInputs} from './DimensionInputs';
 import {useUiLanguage} from './ui-language';
 import {useId,useState} from 'react';
 import {ArrowLeft,ArrowRight,Check} from 'lucide-react';
 import {newProject} from './model';
 import type {Project} from './model';
-import {axisLabel,dimensionAxes,specTypes,withCategory,isServiceCategory} from './product';
+import {dimensionAxes,specTypes,withCategory,isServiceCategory} from './product';
 import type {SpecType} from './product';
 import {defaultCampaign} from './campaign';
 import {generationIssues} from './generation';
@@ -17,7 +18,7 @@ import {BrandFooter} from './BrandFooter';
 import './create-campaign.css';
 
 export function starterProject(category:ProductCategory='other'):Project{
- const p=withCategory(newProject(),category);return {...p,name:'',format:'4:5',presentation:'campaign',generation:{mode:'creative',brief:''},background:{...p.background,color:'#f8f7f4'},productProfile:{...p.productProfile,specType:'none'},dimensions:{...p.dimensions,width:'',depth:'',height:'',visible:false,lines:false},campaign:{...defaultCampaign(),creative:defaultCreative()},footer:{company:true,contact:true,email:true,website:true},copy:{ko:{...p.copy.ko,company:''},en:{...p.copy.en,company:''}}};
+ const p=withCategory(newProject(),category);return {...p,name:'',format:'4:5',presentation:'campaign',generation:{mode:'creative',brief:''},background:{...p.background,color:'#f8f7f4'},productProfile:{...p.productProfile,specType:'none'},dimensions:{...p.dimensions,displayUnit:'cm',width:'',depth:'',height:'',visible:false,lines:false},campaign:{...defaultCampaign(),creative:defaultCreative()},footer:{company:true,contact:true,email:true,website:true},copy:{ko:{...p.copy.ko,company:''},en:{...p.copy.en,company:''}}};
 }
 export function CreateCampaign({initialKind,onReady}:{initialKind?:IndustryKind;onReady:(p:Project)=>Promise<void>}){
  const {language,t,text}=useUiLanguage();
@@ -51,8 +52,9 @@ export function CreateCampaign({initialKind,onReady}:{initialKind?:IndustryKind;
     <details className="quiet-details create-industry-settings"><summary>{t('업종·규격','Category & dimensions')}<span>{t('선택','Optional')}</span></summary>
      <IndustryPicker simple value={project.productProfile.category} onChange={category=>change(p=>withCategory(p,category))}/>
      {!service&&<>
-      <label className="field">{t('상품 크기','Product dimensions')}<select aria-label={t('규격 형식','Dimension type')} value={project.productProfile.specType} onChange={e=>change(p=>({...p,productProfile:{...p.productProfile,specType:e.target.value as SpecType},dimensions:{...p.dimensions,visible:e.target.value!=='none',lines:false}}))}>{specTypes.map(([id,label])=><option key={id} value={id}>{text(label)}</option>)}</select></label>
-      {!!axes.length&&<div className="dimension-inputs">{axes.map(axis=><label className="field" key={axis}>{axisLabel(axis,language,project.productProfile)} (mm)<input inputMode="decimal" value={project.dimensions[axis]} maxLength={12} onChange={e=>change(p=>({...p,dimensions:{...p.dimensions,[axis]:e.target.value}}))}/></label>)}</div>}
+      <label className="field">{t('상품 크기','Product dimensions')}<select aria-label={t('규격 형식','Dimension type')} value={project.productProfile.specType} onChange={e=>change(p=>({...p,productProfile:{...p.productProfile,specType:e.target.value as SpecType},dimensions:{...p.dimensions,visible:e.target.value==='none'?false:p.dimensions.visible,lines:false}}))}>{specTypes.map(([id,label])=><option key={id} value={id}>{text(label)}</option>)}</select></label>
+      <DimensionInputs project={project} change={change}/>
+      {!!axes.length&&<label className="check-field dimension-visibility"><input type="checkbox" checked={project.dimensions.visible} onChange={e=>change(p=>({...p,dimensions:{...p.dimensions,visible:e.target.checked}}))}/>{t('광고에 규격 표시','Show dimensions on ad')}</label>}
       <p className="help">{t('규격이 중요한 상품만 입력하세요.','Add dimensions when they matter.')}</p>
      </>}
     </details>

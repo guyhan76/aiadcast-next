@@ -142,7 +142,7 @@ test('automotive, education, insurance and services export without dimension fie
   const bytes=await readFile((await (await event).path())!);const metadata=await sharp(bytes).metadata();expect([metadata.width,metadata.height]).toEqual([1080,1920]);
   // The previous spec card's corner is now plain background, not a white spec block.
   const pixel=await sharp(bytes).extract({left:85,top:1580,width:1,height:1}).removeAlpha().raw().toBuffer();expect([...pixel]).toEqual([244,240,232]);
-  const p=await backup(page);expect(p.productProfile.specType).toBe('none');expect(p.dimensions.width).toBe('-1');expect(p.dimensions.visible).toBe(false);expect(p.product.data).toBe('data:image/png;base64,'+fixture.toString('base64'));
+  const p=await backup(page);expect(p.productProfile.specType).toBe('none');expect(p.dimensions.width).toBe('');expect(p.dimensions.visible).toBe(false);expect(p.product.data).toBe('data:image/png;base64,'+fixture.toString('base64'));
  }
 });
 test('photo-free service ads save, restore and export while creative requests stay pending',async({page})=>{

@@ -1,3 +1,4 @@
+import {validMillimeters} from './dimension-units.ts';
 import {dimensionAxes,parseProfile} from './product.ts';
 import type {Asset,Project} from './model.ts';
 
@@ -46,7 +47,7 @@ export async function parseGenerated(value:unknown,readAsset:(value:unknown)=>Pr
  if(details.sourceHash!==r.sourceHash||details.mode!==r.mode||!Array.isArray(details.specifications))throw Error('생성 결과의 원본·규격 정보가 일치하지 않습니다.');
  if(!details.productProfile||typeof details.productProfile!=='object'||Array.isArray(details.productProfile))throw Error('생성 결과의 상품 정보를 확인해주세요.');
  const profile=parseProfile(details.productProfile),axes=dimensionAxes(profile);
- if(details.specifications.length!==axes.length||details.specifications.some((entry,index)=>!entry||typeof entry!=='object'||entry.axis!==axes[index]||entry.unit!=='mm'||typeof entry.value!=='string'||!/^\d+(\.\d{1,3})?$/.test(entry.value)||Number(entry.value)<=0||Number(entry.value)>100000))throw Error('생성 결과의 규격 정보를 확인해주세요.');
+ if(details.specifications.length!==axes.length||details.specifications.some((entry,index)=>!entry||typeof entry!=='object'||entry.axis!==axes[index]||entry.unit!=='mm'||typeof entry.value!=='string'||!validMillimeters(entry.value)))throw Error('생성 결과의 규격 정보를 확인해주세요.');
  const asset=await readAsset(r.asset);
  if(!asset)throw Error('생성 결과 이미지가 누락되었습니다.');
  return {jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey};

@@ -36,7 +36,7 @@ export function normalizeGenerationRequest(value) {
   if (value.operation !== expected) fail('INVALID_REQUEST');
   if (typeof value.brief !== 'string' || value.brief.length > 600 || !['ko','en'].includes(value.output.locale)) fail('INVALID_REQUEST');
   const specifications = value.specifications ?? [];
-  if (!Array.isArray(specifications) || specifications.length > 3 || specifications.some(s => !['width','depth','height','diameter'].includes(s?.axis) || s.unit !== 'mm' || typeof s.value !== 'string' || !/^\d+(\.\d{1,3})?$/.test(s.value) || Number(s.value) <= 0 || Number(s.value) > 100000)) fail('INVALID_SPECIFICATIONS');
+  if (!Array.isArray(specifications) || specifications.length > 3 || specifications.some(s => !['width','depth','height','diameter'].includes(s?.axis) || s.unit !== 'mm' || typeof s.value !== 'string' || !/^\d+(\.\d{1,8})?$/.test(s.value) || Number(s.value) <= 0 || Number(s.value) > 100000)) fail('INVALID_SPECIFICATIONS');
   // Pick only supported context; never accept client model, price, credits, identity or API configuration.
   return boundedObject({ version: 1, mode: value.mode, operation: expected, subjectType: value.subjectType, productName: value.productName, productProfile: value.productProfile ?? {}, brief: value.brief, campaign: value.campaign ?? {}, direction: value.direction ?? {}, creativeDirection: value.creativeDirection ?? null, scene: value.scene ?? {}, specifications, copy: value.copy ?? {}, source: value.source ?? null, references: value.references ?? [], output: { format: value.output.format, locale: value.output.locale, showDimensions: value.output.showDimensions === true, showDimensionLines: value.output.showDimensionLines === true } });
 }

@@ -49,6 +49,7 @@ export function PricingDialog(){
      <ul className="pack-features">{t.features.map(feature=><li key={feature}><Check size={14} aria-hidden="true"/>{feature}</li>)}</ul>
     </article>)}
    </div>
+   <a href="#checkout" className="pricing-checkout-link" onClick={()=>dialog.current?.close()}>{uiText('이용권 선택','Choose credits')}</a>
    <p className="credit-rules"><strong>{t.creditRules}</strong><span>{t.reuse}</span></p>
    <section className="pricing-policy"><h3>{t.policyTitle}</h3><ul>{t.policies.map(text=><li key={text}>{text}</li>)}</ul></section>
    <div className="pricing-notes"><p>{currency==='KRW'?t.taxKRW:t.taxUSD}</p><p>{t.billing}</p><p>{t.checkout}</p></div>

@@ -27,9 +27,9 @@ test('creation essentials and expanded optional fields stay readable on narrow s
  await wizard.locator('.create-purpose-settings>summary').click();
  await wizard.getByLabel('업종',{exact:true}).selectOption('packaging');
  await wizard.getByLabel('규격 형식',{exact:true}).selectOption('cylindrical');
- await expect(wizard.getByLabel('지름 (mm)',{exact:true})).toBeVisible();
- await expect(wizard.getByLabel('높이 (mm)',{exact:true})).toBeVisible();
- await expect(wizard.getByLabel('세로 (mm)',{exact:true})).toHaveCount(0);
+ await expect(wizard.getByLabel('지름 cm',{exact:true})).toBeVisible();
+ await expect(wizard.getByLabel('높이 cm',{exact:true})).toBeVisible();
+ await expect(wizard.getByLabel('세로 cm',{exact:true})).toHaveCount(0);
  const request=wizard.getByRole('textbox',{name:'요청사항',exact:true});await request.fill('금색 인쇄를 강조');
  await expect(wizard.locator('.create-note-heading')).toContainText('9 / 600');
  const purpose=wizard.locator('.creative-purpose-card').nth(1);await purpose.click();await expect(purpose).toHaveAttribute('aria-pressed','true');

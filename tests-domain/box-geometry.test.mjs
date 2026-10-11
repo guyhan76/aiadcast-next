@@ -28,7 +28,7 @@ test('dimension labels use the same values as geometry and update when height ch
  assert.equal(size.height,210);
 });
 test('zero, omitted, malformed or unbounded dimensions never produce a plausible guide',()=>{
- for(const value of ['','0','-1','NaN','Infinity','1e2','100001','2.1234',' 340 ','<script>'])assert.throws(()=>parseBoxSize({width:value,depth:'250',height:'210'}));
+ for(const value of ['','0','-1','NaN','Infinity','1e2','100001','2.123456789',' 340 ','<script>'])assert.throws(()=>parseBoxSize({width:value,depth:'250',height:'210'}));
  for(const value of [0,NaN,Infinity,-1,100001])assert.throws(()=>boxGeometry({...size,height:value}));
  assert.throws(()=>boxGeometry({width:340,depth:250}));
  assert.throws(()=>boxGeometry(size,{width:100,height:100,padding:50}));
