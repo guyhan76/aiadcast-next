@@ -1,18 +1,20 @@
 {
   "file": "aiadcast-test-20261010.apk",
-  "sourceCommit": "b8b1233e97399ab3079504b7f4f74b2c6f32f037",
-  "sha256": "21376f2549217746952bbf53e41ddf28c977e400710deed69609599ab0806a06",
-  "bytes": 12812983,
+  "sourceCommit": "7c72d98a7b6b61f54743d2c2c4abceee9101b05a",
+  "sha256": "31a21f65633c986465dd069a409afdb49571f7ce83b8128a6f294535b0084a24",
+  "bytes": 12818755,
   "applicationId": "com.selluplabs.aiadcast.next.dev",
   "appName": "aiadcast Dev",
-  "versionName": "0.2.14-dev",
-  "versionCode": 16,
+  "versionName": "0.2.15-dev",
+  "versionCode": 17,
   "minAndroid": "10",
   "matchedWebAssets": 147,
   "publicGenerationServerConnected": false,
   "physicalDeviceValidation": "pending",
   "signingCertificateSha256": "5c4ba8b2a39e0b7c48584bff486cd44b5d489c46af1cb3f4eed18a354f2627f8",
   "requiresReinstallFromPreviousDevApk": false,
-  "compatibleUpgradeFrom": "0.2.0-dev through 0.2.13-dev",
-  "requiresReinstallFrom": "0.1.0-dev (different development signing key)"
+  "compatibleUpgradeFrom": "0.2.0-dev through 0.2.14-dev",
+  "requiresReinstallFrom": "0.1.0-dev (different development signing key)",
+  "emailProviderConnected": false,
+  "paymentProviderConnected": false
 }
