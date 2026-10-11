@@ -49,6 +49,11 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  function go(next:Page){location.hash=next;setPage(next);window.scrollTo(0,0);}
  useEffect(()=>{
   const back=(event:Event)=>{
+   if(event.defaultPrevented)return;
+   // Window-targeted native events run in registration order. Close the active
+   // dialog before navigating, using the same cancellable path as Escape.
+   const modal=(document.activeElement?.closest('dialog[open]')??Array.from(document.querySelectorAll('dialog[open]')).at(-1)) as HTMLDialogElement|undefined;
+   if(modal){event.preventDefault();event.stopImmediatePropagation();if(modal.dispatchEvent(new Event('cancel',{cancelable:true})))modal.close();return;}
    if(page==='home')return;
    event.preventDefault();
    if(page!=='studio'){go('home');return;}
@@ -92,3 +97,4 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
   <nav className="mobile-app-nav" aria-label={text("모바일 메뉴")}>{navigation.map(([id,label,Icon])=><a key={id} href={'#'+id} aria-current={page===id?'page':undefined}><Icon size={20}/><span>{text(label)}</span></a>)}</nav>
  </div>;
 }
+
