@@ -4,6 +4,8 @@ import { dirname } from 'node:path';
 import { BillingLedger } from './billing.mjs';
 import { GENERATION_SIZES, IMAGE_MODEL, IMAGE_REVISION, hashBytes, parseSourceAsset, ProviderFailure } from './openai-image-adapter.mjs';
 import { normalizeAssistantRequest, TEXT_MODEL, TEXT_MAX_HOLD_MICROS } from './text-assistant.mjs';
+import {createMarketingPlan} from '../src/marketing-plan.ts';
+import {parseCampaign} from '../src/campaign.ts';
 
 const LOCAL_USER = 'aiadcast-next-local-developer';
 const MODEL_COST_HOLD_MICROS = 500_000; // Admission reservation, not a provider-enforced per-call spending cap.
@@ -37,8 +39,15 @@ export function normalizeGenerationRequest(value) {
   if (typeof value.brief !== 'string' || value.brief.length > 600 || !['ko','en'].includes(value.output.locale)) fail('INVALID_REQUEST');
   const specifications = value.specifications ?? [];
   if (!Array.isArray(specifications) || specifications.length > 3 || specifications.some(s => !['width','depth','height','diameter'].includes(s?.axis) || s.unit !== 'mm' || typeof s.value !== 'string' || !/^\d+(\.\d{1,8})?$/.test(s.value) || Number(s.value) <= 0 || Number(s.value) > 100000)) fail('INVALID_SPECIFICATIONS');
+  if(new Set(specifications.map(s=>s.axis)).size!==specifications.length||(value.subjectType==='service'&&specifications.length))fail('INVALID_SPECIFICATIONS');
+  let campaign;try{campaign=parseCampaign(Object.keys(value.campaign??{}).length?value.campaign:undefined);}catch{fail('INVALID_REQUEST');}
+  const material=value.productProfile?.material??'';
+  if(typeof material!=='string'||material.length>2000||typeof(value.copy?.company??'')!=='string'||typeof(value.productProfile?.category??'other')!=='string'||(value.productProfile?.category??'other').length>80)fail('INVALID_REQUEST');
+  const attributes=[...(material?[{name:'소재',value:material}]:[]),...campaign.attributes];
+  // Rebuild the guide on the server. Client-supplied targets, keywords and verification claims are not authoritative.
+  const marketingPlan=createMarketingPlan({name:value.productName,category:value.productProfile?.category??'other',subjectType:value.subjectType,locale:value.output.locale,mode:value.mode,sourceHash:value.source?.sha256??null,brand:value.copy?.company??'',goal:campaign.goal,contentType:campaign.contentType,attributes,specifications});
   // Pick only supported context; never accept client model, price, credits, identity or API configuration.
-  return boundedObject({ version: 1, mode: value.mode, operation: expected, subjectType: value.subjectType, productName: value.productName, productProfile: value.productProfile ?? {}, brief: value.brief, campaign: value.campaign ?? {}, direction: value.direction ?? {}, creativeDirection: value.creativeDirection ?? null, scene: value.scene ?? {}, specifications, copy: value.copy ?? {}, source: value.source ?? null, references: value.references ?? [], output: { format: value.output.format, locale: value.output.locale, showDimensions: value.output.showDimensions === true, showDimensionLines: value.output.showDimensionLines === true } });
+  return boundedObject({ version: 1, mode: value.mode, operation: expected, subjectType: value.subjectType, productName: value.productName, productProfile: value.productProfile ?? {}, brief: value.brief, campaign, direction: value.direction ?? {}, creativeDirection: value.creativeDirection ?? null, scene: value.scene ?? {}, specifications, attributes, target:{...marketingPlan.target,method:marketingPlan.method},contentType:campaign.contentType,marketingPlan,copy: value.copy ?? {}, source: value.source ?? null, references: value.references ?? [], output: { format: value.output.format, locale: value.output.locale, showDimensions: value.output.showDimensions === true, showDimensionLines: value.output.showDimensionLines === true } });
 }
 function persistentLock(path) {
   if (path === ':memory:') return () => {};
@@ -129,7 +138,7 @@ export class GenerationService {
     const request = JSON.parse(row.request_json);
     const requestIds = this.db.prepare('SELECT request_id FROM generation_keys WHERE job_id=? ORDER BY rowid DESC').all(id).map(key => key.request_id);
     const state = row.error_code === 'PROVIDER_UNCERTAIN' ? 'uncertain' : row.error_code ? 'failed' : billing.status === 'released' ? (billing.reason === 'customer_rejected' ? 'rejected' : 'expired') : billing.status === 'refunded' ? 'refunded' : billing.status === 'reserved' ? 'running' : billing.status;
-    return { id, requestId: requestIds[0] ?? null, requestIds, projectId: row.project_id, state, mode: request.mode, sourceHash: row.source_hash, createdAt: new Date(row.created_at).toISOString(), model: IMAGE_MODEL, quality: 'high', outputFormat: request.output.format, artifact: ['ready','accepted'].includes(state) && includeArtifact && row.artifact_hash ? { ...this.asset(row.artifact_hash), role: row.artifact_role } : null, artifactId: row.artifact_hash, errorCode: row.error_code, usage: metadata?.usage ?? null, cost: metadata?.cost ?? null, providerRequestId: metadata?.providerRequestId ?? null, review: 'human-review-required', billingStatus: billing.status, expiresAt: billing.expires_at };
+    return { id, requestId: requestIds[0] ?? null, requestIds, projectId: row.project_id, state, mode: request.mode, sourceHash: row.source_hash, createdAt: new Date(row.created_at).toISOString(), model: IMAGE_MODEL, quality: 'high', outputFormat: request.output.format, artifact: ['ready','accepted'].includes(state) && includeArtifact && row.artifact_hash ? { ...this.asset(row.artifact_hash), role: row.artifact_role } : null, artifactId: row.artifact_hash, errorCode: row.error_code, usage: metadata?.usage ?? null, cost: metadata?.cost ?? null, providerRequestId: metadata?.providerRequestId ?? null, marketingPlan: request.marketingPlan ?? null, review: 'human-review-required', billingStatus: billing.status, expiresAt: billing.expires_at };
   }
   history(projectId) {
     if (projectId !== undefined && !identifier(projectId)) fail('INVALID_PROJECT_ID');
@@ -269,3 +278,4 @@ export class GenerationService {
   async waitForIdle() { await Promise.all([...this.tasks]); }
   async close() { await this.waitForIdle(); this.ledger.close(); this.unlock(); }
 }
+

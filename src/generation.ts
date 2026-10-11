@@ -2,7 +2,8 @@ import {validMillimeters} from './dimension-units.ts';
 import {dimensionAxes,isServiceCategory} from './product.ts';
 import {getImageFormat} from './formats.ts';
 import type {Project} from './model.ts';
-import {campaignGuide,parseCampaign} from './campaign.ts';
+import {parseCampaign} from './campaign.ts';
+import {marketingPlanForProject} from './marketing-plan.ts';
 import {assessReference,specificationContract} from './specification.ts';
 import {conversationContract} from './conversation.ts';
 import {creativeContract} from './creative.ts';
@@ -36,7 +37,7 @@ export function buildGenerationRequest(p:Project) {
   const creative=generation.mode==='creative';
   const service=isServiceCategory(p.productProfile.category);
   const format=getImageFormat(p.format);
-  const campaign=parseCampaign(p.campaign),guide=campaignGuide(p);
+  const campaign=parseCampaign(p.campaign),marketingPlan=marketingPlanForProject(p);
   const direction=conversationContract(p),appearanceEdit=direction.productPolicy.maskRequired;
   if(direction.pendingQuickEditIds.length)throw Error('대화의 빠른 편집 변경안을 적용하거나 제외한 뒤 생성 요청을 준비해주세요.');
   if(appearanceEdit&&!p.product)throw Error('상품 인쇄·색상을 수정하려면 실제 상품 사진을 추가해주세요.');
@@ -50,9 +51,10 @@ export function buildGenerationRequest(p:Project) {
     scene:{backgroundColor:p.background.color,backgroundImageHash:p.background.image?.sha256??null,ink:p.ink,productScale:p.scale},
     subjectType:service?'service':'physical-product',copy:p.copy[p.locale],
     campaign,creativeDirection:p.campaign?.creative?creativeContract(p):null,attributes:[...(p.productProfile.material?[{name:service?'서비스 내용':'소재',value:p.productProfile.material}]:[]),...campaign.attributes],
-    target:{label:guide.target,method:guide.method,reason:guide.reason},contentType:campaign.contentType,specificationContract:specificationContract(p),
+    marketingPlan,target:{...marketingPlan.target,method:marketingPlan.method},contentType:campaign.contentType,specificationContract:specificationContract(p),
     specifications:dimensionAxes(p.productProfile).map(axis=>({axis:axis==='width'&&p.productProfile.specType==='cylindrical'?'diameter':axis,value:p.dimensions[axis],unit:'mm'})),
     output:{format:p.format,width:format.width,height:format.height,locale:p.locale,showDimensions:p.dimensions.visible&&dimensionAxes(p.productProfile).length>0,showDimensionLines:p.dimensions.visible&&p.dimensions.lines&&dimensionAxes(p.productProfile).length>0},
     claims:{sameProduct:!creative&&!appearanceEdit&&!service&&!!p.product&&!boxProjectionActive(p),exactGeometry:false},
   };
 }
+

@@ -1,3 +1,5 @@
+import {MarketingSummary} from './MarketingSummary';
+import {parseMarketingPlan} from './marketing-plan';
 import {storageNamespace} from './beta-session';
 import {useEffect,useRef,useState} from 'react';
 import {Check,RefreshCw,Sparkles,X} from 'lucide-react';
@@ -49,11 +51,12 @@ export function GenerationPanel({project,change}:{project:Project;change:(fn:(p:
   if(!job||!compatible||!reviewed||busy)return;setBusy(true);setError('');
   try{
    // Validate and decode before accepting the charge. Recheck the project after every async boundary.
+   const marketingPlan=parseMarketingPlan(job.marketingPlan??undefined);if(marketingPlan&&(marketingPlan.input.sourceHash!==job.sourceHash||marketingPlan.input.mode!==job.mode))throw Error('INVALID_ARTIFACT');
    const asset=await verifiedArtifact(job),record=pending.current;if(!record||record.key!==generatedCompatibilityKey(latest.current))throw Error('STALE_PROJECT');
    const result=job.state==='accepted'?{job,wallet:status!.wallet}:await apiRequest<JobResponse>(`/api/generations/${job.id}/accept`,{artifactId:job.artifactId});
    if(!alive.current)return;
    if(record.key!==generatedCompatibilityKey(latest.current))throw Error('STALE_PROJECT');
-   change(p=>record.key!==generatedCompatibilityKey(p)?p:{...p,generated:{jobId:job.id,mode:job.mode,sourceHash:job.sourceHash,asset,role:job.artifact!.role,model:job.model,createdAt:job.createdAt,specificationKey:record.key},background:job.artifact!.role==='background'?{...p.background,image:asset}:p.background});
+   change(p=>record.key!==generatedCompatibilityKey(p)?p:{...p,generated:{jobId:job.id,mode:job.mode,sourceHash:job.sourceHash,asset,role:job.artifact!.role,model:job.model,createdAt:job.createdAt,specificationKey:record.key,...(marketingPlan?{marketingPlan}:{})},background:job.artifact!.role==='background'?{...p.background,image:asset}:p.background});
    setJob(result.job);setStatus(s=>s?{...s,wallet:result.wallet}:s);setNotice(t('확인한 시안을 적용했습니다. 문구와 비율을 수정하고 저장할 수 있습니다.','Your reviewed visual is applied. Edit the copy or format, then save your ad.'));
   }catch(e){failure(e);}finally{if(alive.current)setBusy(false);}
  }
@@ -69,6 +72,7 @@ export function GenerationPanel({project,change}:{project:Project;change:(fn:(p:
   <button className="generate-button" disabled={!status?.generation.enabled||busy||active||issues.length>0||!!pending.current&&!job} onClick={()=>void start()}><Sparkles size={17}/>{busy?t('처리 중…','Working…'):project.generation.mode==='original'?t('AI 배경 요청 · 1개','Create backdrop · 1 credit'):t('AI 새 시안 요청 · 1개','Create visual · 1 credit')}</button>
   {pending.current&&!job&&<p role="status">{t('이전 요청 상태를 확인하고 있습니다. 중복 생성을 막기 위해 새 요청을 보류합니다.','Checking the earlier request. New requests are paused to prevent duplicate generation.')}</p>}
   {job&&<div className="generation-result"><strong role="status">{labels[job.state]}</strong>{job.artifact&&<><img src={job.artifact.dataUrl} alt={t('AI 생성 시안 검토','Review the generated visual')}/><button type="button" className="generation-enlarge" onClick={()=>setEnlarged(true)}>{t('확대 검수','Inspect enlarged visual')}</button><small>{t('상품의 형태·색상·로고와 잡티를 확인하세요. 문구는 적용 후 별도로 검수합니다.','Check shape, color, logos and stray marks. Review the typeset copy after applying.')}</small><details className="generation-checklist"><summary>{t('검수 항목','Review checklist')}</summary><ul><li>{t('원본과 상품·재질·비례 비교','Compare product, material and proportions with the source')}</li><li>{t('로고·인쇄·손·장식의 변형과 잡티 확인','Inspect logos, printing, hands, decoration and stray marks')}</li><li>{t('적용 후 상품명·규격·가격·글자 잘림 확인','After applying, check names, dimensions, prices and text cropping')}</li></ul>{project.product&&<img src={project.product.data} alt={t('검수용 원본 사진','Original photo for review')}/>}</details></>}
+   {job.artifact&&job.marketingPlan&&<MarketingSummary plan={job.marketingPlan} saved/>}
    {(job.state==='ready'||job.state==='accepted')&&<>{!compatible&&<p role="alert">{t('원본 사진 또는 상품 설정이 바뀌어 이 결과를 현재 작업에 적용할 수 없습니다.','The source photo or product settings changed. This result cannot be applied to the current project.')}</p>}<label className="generation-review"><input type="checkbox" checked={reviewed} disabled={!compatible} onChange={e=>setReviewed(e.target.checked)}/>{t('상품·배경·형태를 확인했습니다.','I reviewed the product, background and shape.')}</label><div className="generation-review-actions"><button disabled={busy||!reviewed||!compatible} onClick={()=>void accept()}><Check size={16}/>{job.state==='accepted'?t('저장한 시안 다시 적용','Reapply accepted visual'):t('사용 확정 · 1개 차감','Accept · use 1 credit')}</button>{job.state==='ready'&&<button disabled={busy} onClick={()=>void reject()}><X size={16}/>{t('반려 · 이용권 복원','Reject · restore credit')}</button>}</div></>}
    {job.state==='uncertain'&&<p>{t('AI 공급사의 사용량을 확인하기 전에는 동일 요청을 자동 재시도하지 않습니다.','This request will not be retried automatically while provider usage is unresolved.')}</p>}
   </div>}
@@ -76,4 +80,5 @@ export function GenerationPanel({project,change}:{project:Project;change:(fn:(p:
   {error&&<p role="alert" className="generation-error">{error}</p>}{notice&&<p role="status" className="generation-notice">{notice}</p>}
  </section>;
 }
+
 

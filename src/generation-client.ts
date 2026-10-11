@@ -1,7 +1,8 @@
+import type {MarketingPlan} from './marketing-plan';
 import {betaSession} from './beta-session';
 import {imageFile} from './model';
 import type {Asset} from './model';
-export type GenerationJob={id:string;projectId:string;requestId?:string;requestIds?:string[];state:'running'|'ready'|'accepted'|'rejected'|'failed'|'uncertain'|'expired'|'refunded';mode:'original'|'creative';sourceHash:string|null;createdAt:string;model:string;artifactId:string|null;artifact:{id:string;sha256:string;dataUrl:string;width:number;height:number;role:'background'|'creative'}|null;errorCode:string|null};
+export type GenerationJob={id:string;projectId:string;requestId?:string;requestIds?:string[];state:'running'|'ready'|'accepted'|'rejected'|'failed'|'uncertain'|'expired'|'refunded';mode:'original'|'creative';sourceHash:string|null;createdAt:string;model:string;artifactId:string|null;artifact:{id:string;sha256:string;dataUrl:string;width:number;height:number;role:'background'|'creative'}|null;errorCode:string|null;marketingPlan?:MarketingPlan|null};
 export type ApiStatus={mode:'local-development'|'invite-beta';commercialReady:false;generation:{enabled:boolean;model:string;reason:string|null};wallet:{available:number;reserved:number;kind:string};budget:{limitMicros:number;spentMicros:number;heldMicros:number};assistant?:{available:boolean}};
 export function apiUrl(path:string){
  // A public endpoint is configuration, never an API credential. Local builds use Vite's loopback proxy.
@@ -23,3 +24,4 @@ export async function verifiedArtifact(job:GenerationJob):Promise<Asset>{
  if(asset.sha256!==artifact.sha256||asset.sha256!==artifact.id||asset.sha256!==job.artifactId||asset.width!==artifact.width||asset.height!==artifact.height)throw Error('ARTIFACT_MISMATCH');
  return asset;
 }
+

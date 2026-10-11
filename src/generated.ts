@@ -1,10 +1,12 @@
+import {parseMarketingPlan} from './marketing-plan.ts';
+import type {MarketingPlan} from './marketing-plan.ts';
 import {validMillimeters} from './dimension-units.ts';
 import {dimensionAxes,parseProfile} from './product.ts';
 import type {Asset,Project} from './model.ts';
 
 export type GeneratedAsset = {
  jobId:string;mode:'original'|'creative';sourceHash:string|null;asset:Asset;
- role:'background'|'creative';model:string;createdAt:string;specificationKey:string;
+ role:'background'|'creative';model:string;createdAt:string;specificationKey:string;marketingPlan?:MarketingPlan;
 };
 
 // This is a local reuse key, not proof of provider origin or payment acceptance.
@@ -48,7 +50,10 @@ export async function parseGenerated(value:unknown,readAsset:(value:unknown)=>Pr
  if(!details.productProfile||typeof details.productProfile!=='object'||Array.isArray(details.productProfile))throw Error('생성 결과의 상품 정보를 확인해주세요.');
  const profile=parseProfile(details.productProfile),axes=dimensionAxes(profile);
  if(details.specifications.length!==axes.length||details.specifications.some((entry,index)=>!entry||typeof entry!=='object'||entry.axis!==axes[index]||entry.unit!=='mm'||typeof entry.value!=='string'||!validMillimeters(entry.value)))throw Error('생성 결과의 규격 정보를 확인해주세요.');
+ const marketingPlan=parseMarketingPlan(r.marketingPlan);
+ if(marketingPlan&&(marketingPlan.input.sourceHash!==r.sourceHash||marketingPlan.input.mode!==r.mode))throw Error('생성 결과의 광고 기획과 원본 정보가 일치하지 않습니다.');
  const asset=await readAsset(r.asset);
  if(!asset)throw Error('생성 결과 이미지가 누락되었습니다.');
- return {jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey};
+ return {jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey,...(marketingPlan?{marketingPlan}:{})};
 }
+

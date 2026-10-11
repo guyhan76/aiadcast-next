@@ -1,7 +1,8 @@
+import {marketingPlanForProject} from './marketing-plan.ts';
 import {dimensionLabel,dimensionUnit,validMillimeters} from './dimension-units.ts';
 import type {Locale,Project} from './model.ts';
 import type {ImageFormat} from './formats.ts';
-import {industryGroupFor,industryLabel} from './industry.ts';
+import {industryLabel} from './industry.ts';
 import {axisLabel,dimensionAxes} from './product.ts';
 import {uiEnglish} from './ui-translations.ts';
 import {requestedCallToAction} from './art-direction.ts';
@@ -26,11 +27,7 @@ export function publishingBasis(p:Project):string{
  return JSON.stringify({version:1,locale:p.locale,productName:p.productName,profile:p.productProfile,copy:p.copy[p.locale],goal:p.campaign?.goal??'awareness',cta:requestedCallToAction(p.campaign?.creative?.note??''),attributes:p.campaign?.attributes??[],dimensions:p.dimensions.visible?dimensionAxes(p.productProfile).map(a=>[a,p.dimensions[a],dimensionUnit(p.dimensions.displayUnit)]):[]});
 }
 export function recommendedChannels(p:Project):PublishingChannel[]{
- const group=industryGroupFor(p.productProfile.category).id;
- if(['packaging','industrial','business'].includes(group))return ['website','blog'];
- if(group==='fashion')return ['instagram','lookbook'];
- if(p.campaign?.goal==='inquiry'||['learning','health','finance','property','mobility'].includes(group))return ['blog','website'];
- return ['instagram','shortform'];
+ return marketingPlanForProject(p).channels;
 }
 export function channelInfo(channel:PublishingChannel,locale:Locale){
  const t=(ko:string,en:string)=>locale==='ko'?ko:en;
@@ -45,10 +42,7 @@ export function channelInfo(channel:PublishingChannel,locale:Locale){
 }
 function unique(values:string[]){return [...new Map(values.map(v=>[v.toLocaleLowerCase(),v])).values()];}
 export function keywordCandidates(p:Project):string[]{
- const label=industryLabel(p.productProfile.category),category=p.locale==='en'?(uiEnglish[label]??'Product or service'):label;
- // Only subject, brand, category and explicitly labelled places become keywords. Prices, phone numbers and arbitrary attribute values do not.
- const places=(p.campaign?.attributes??[]).filter(a=>/^(지역|제공 지역|서비스 지역|도시|location|city|service area)$/i.test(a.name.trim())).map(a=>a.value.trim());
- return unique([p.productName,p.copy[p.locale].company,category,...places.map(place=>`${place} ${category}`)].map(v=>v.trim()).filter(v=>v.length>1&&v.length<=60&&!/[\n\r@<>]|https?:|www\.|\d{2,4}[- ]\d{3,4}[- ]\d{4}/i.test(v))).slice(0,6);
+ return marketingPlanForProject(p).keywords;
 }
 export function hashtagText(keywords:string):string{
  return unique(keywords.split(/[,，\n]/).map(v=>v.replace(/[^\p{L}\p{N}_]/gu,'')).filter(v=>v.length>1&&v.length<=40)).slice(0,6).map(v=>`#${v}`).join(' ');
@@ -78,4 +72,5 @@ export function savePublishingDraft(p:Project,draft:PublishingDraft):Project{
  return {...p,publishing:parsePublishing({version:1,drafts:[...others,draft]})};
 }
 export function publicationText(draft:PublishingDraft){return [draft.title,draft.body,...(draft.channel==='instagram'||draft.channel==='shortform'?[hashtagText(draft.keywords)]:[])].filter(Boolean).join('\n\n');}
+
 

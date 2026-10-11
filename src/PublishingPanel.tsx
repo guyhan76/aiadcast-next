@@ -1,3 +1,5 @@
+import {MarketingSummary} from './MarketingSummary';
+import {marketingPlanForProject} from './marketing-plan';
 import {useEffect,useRef,useState} from 'react';
 import {ArrowDownToLine,Check,Copy,Send} from 'lucide-react';
 import type {Project} from './model';
@@ -8,8 +10,8 @@ import type {PublishingChannel,PublishingDraft} from './publishing';
 import {useUiLanguage} from './ui-language';
 import './publishing.css';
 export type PublishingImageTarget={format:ImageFormat;filename:string;label:string};
-type Props={project:Project;change:(fn:(p:Project)=>Project)=>void;onExportBrief:()=>void;onExportImage:(target:PublishingImageTarget)=>Promise<string|null>;imageDisabled:boolean;direction:{target:string;intent:string}};
-export function PublishingPanel({project,change,onExportBrief,onExportImage,imageDisabled,direction}:Props){
+type Props={project:Project;change:(fn:(p:Project)=>Project)=>void;onExportBrief:()=>void;onExportImage:(target:PublishingImageTarget)=>Promise<string|null>;imageDisabled:boolean};
+export function PublishingPanel({project,change,onExportBrief,onExportImage,imageDisabled}:Props){
  const {t,language}=useUiLanguage();
  const [channel,setChannel]=useState<PublishingChannel>(()=>recommendedChannels(project)[0]);
  const [exportMessage,setExportMessage]=useState('');
@@ -18,6 +20,8 @@ export function PublishingPanel({project,change,onExportBrief,onExportImage,imag
  useEffect(()=>{setChannel(recommendedChannels(project)[0]);setMore(false);},[project.id]);
  useEffect(()=>{sequence.current++;setNotice('');setManual(null);setExportMessage('');},[project,channel,language]);
  useEffect(()=>{if(manual!==null){manualField.current?.focus();manualField.current?.select();}},[manual]);
+ const currentPlan=marketingPlanForProject(project),savedPlan=project.generated?.marketingPlan;
+ const planChanged=!!savedPlan&&JSON.stringify(savedPlan.input)!==JSON.stringify(currentPlan.input);
  const recommended=recommendedChannels(project),info=channelInfo(channel,language),size=getImageFormat(info.format);
  const {draft,edited,stale}=currentDraft(project,channel);
  const displayed=more?publishingChannels:Array.from(new Set([...recommended,channel]));
@@ -40,8 +44,9 @@ export function PublishingPanel({project,change,onExportBrief,onExportImage,imag
   {!contentReady?<p className="publication-empty">{t('광고 정보에서 상품·서비스명을 입력하면 게시글과 검색어를 준비해드려요.','Enter the product or service name in Ad content to prepare your post and search phrases.')}</p>:<>
    <div className="publication-step"><b>01</b><h3>{t('먼저 사용할 매체','Where to start')}</h3><button type="button" onClick={()=>setMore(!more)} aria-expanded={more}>{more?t('추천 매체만 보기','Show recommendations'):t('모든 매체 보기','Show all channels')}</button></div>
    <div className="publication-channels" role="group" aria-label={t('게시할 매체','Publishing channel')}>{displayed.map(id=>{const item=channelInfo(id,language);return <button type="button" key={id} aria-pressed={channel===id} onClick={()=>setChannel(id)}><span>{item.name}{recommended.includes(id)&&<small>{t('추천','Suggested')}</small>}</span><p>{item.reason}</p></button>;})}</div>
-   <p className="publication-note">{t('업종과 광고 목적을 기준으로 추천합니다. 처음에는 한 매체부터 시작하세요.','Suggestions use your industry and ad goal. Start with one channel.')}</p>
-   <details className="publication-intent"><summary>{t('이 광고가 전할 메시지','The message behind this ad')}</summary><p>{direction.intent}</p><p>{t('먼저 떠올릴 고객: ','Suggested audience: ')}{direction.target}</p></details>
+   <p className="publication-note">{t('업종·규격에 따른 타깃과 광고 목적을 기준으로 추천합니다. 처음에는 한 매체부터 시작하세요.','Suggestions use your category, dimension-informed audience and ad goal. Start with one channel.')}</p>
+   <MarketingSummary plan={savedPlan??currentPlan} saved={!!savedPlan}/>
+   {planChanged&&<p className="publication-note">{t('위 제작 의도는 생성 당시 정보입니다. 현재 입력이 변경되어 아래 게시글 초안과 추천 매체는 최신 정보를 사용합니다.','The creation brief above is the saved generation snapshot. Current post drafts and channel suggestions use your updated details.')}</p>}
    <div className="publication-content">
     <div className="publication-writing"><div className="publication-step"><b>02</b><h3>{channel==='blog'?t('검색 제목과 본문 초안','Search title and article draft'):t('함께 올릴 글','Text to post with your image')}</h3><small>{project.locale==='ko'?'한국어':'English'}</small></div>
      <p className="publication-note">{t('입력한 문구·사업 정보로 준비한 초안입니다. 고객에게 전할 내용으로 다듬어주세요. 앱 언어를 바꿔도 게시글 언어는 유지됩니다.','A draft assembled from your copy and business details. Refine it for your customers. Changing the app language keeps the ad text in its original language.')}</p>
@@ -66,3 +71,4 @@ export function PublishingPanel({project,change,onExportBrief,onExportImage,imag
   </>}
  </section>;
 }
+

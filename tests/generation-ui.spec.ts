@@ -10,7 +10,7 @@ const generatedBytes=await sharp({create:{width:600,height:400,channels:4,backgr
 const hash=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const originalPhoto={name:'source.png',mimeType:'image/png',buffer:originalBytes};
 const expectedArtifactHash=hash(generatedBytes);
-type MockJob={id:string;projectId:string;requestIds:string[];state:string;mode:string;sourceHash:string|null;createdAt:string;model:string;artifactId:string;artifact:Record<string,unknown>|null;errorCode:null};
+type MockJob={id:string;projectId:string;requestIds:string[];state:string;mode:string;sourceHash:string|null;createdAt:string;model:string;artifactId:string;artifact:Record<string,unknown>|null;errorCode:null;marketingPlan:unknown};
 async function mockApi(page:Page,{dropResponse=false,corruptArtifact=false}={}){
  const state={generationPosts:0,acceptPosts:0,rejectPosts:0,historyReads:0,lastBody:null as Record<string,any>|null,job:null as MockJob|null,wallet:{available:10,reserved:0,kind:'test'}};
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
@@ -21,7 +21,7 @@ async function mockApi(page:Page,{dropResponse=false,corruptArtifact=false}={}){
   if(url.pathname==='/api/generations'&&req.method()==='POST'){
    state.generationPosts++;const body=req.postDataJSON();state.lastBody=body;
    state.wallet={available:9,reserved:1,kind:'test'};
-   state.job={id:'generation_fixture_1',projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:body.request.mode,sourceHash:body.source?.sha256??null,createdAt:'2026-10-10T01:00:00.000Z',model:'gpt-image-2.5-sunburst',artifactId:expectedArtifactHash,artifact:{id:expectedArtifactHash,sha256:corruptArtifact?'c'.repeat(64):expectedArtifactHash,dataUrl:'data:image/png;base64,'+generatedBytes.toString('base64'),width:600,height:400,role:body.request.mode==='original'?'background':'creative'},errorCode:null};
+   state.job={id:'generation_fixture_1',projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:body.request.mode,sourceHash:body.source?.sha256??null,createdAt:'2026-10-10T01:00:00.000Z',model:'gpt-image-2.5-sunburst',artifactId:expectedArtifactHash,artifact:{id:expectedArtifactHash,sha256:corruptArtifact?'c'.repeat(64):expectedArtifactHash,dataUrl:'data:image/png;base64,'+generatedBytes.toString('base64'),width:600,height:400,role:body.request.mode==='original'?'background':'creative'},errorCode:null,marketingPlan:body.request.marketingPlan};
    if(dropResponse)return route.abort('failed');
    return respond({job:state.job,wallet:state.wallet});
   }
@@ -107,4 +107,28 @@ test('artifact hash mismatch is detected before accepting a charge',async({page}
  await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  await expect(panel.getByRole('alert')).toContainText('파일 검증에 실패');
  expect(state.acceptPosts).toBe(0);expect(state.generationPosts).toBe(1);expect((await backup(page)).generated).toBeUndefined();
+});
+
+
+
+test('result shows and exports the generation plan, retaining it after product name changes',async({page})=>{
+ const {state,panel}=await mockApi(page);
+ await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();
+ const summary=panel.getByRole('region',{name:'광고 제작 의도와 활용 정보'});
+ await expect(summary).toBeVisible();await expect(summary).toContainText('생성 당시 기획');
+ await expect(summary.locator('.marketing-keywords li')).toHaveCount(6);
+ await expect(summary.locator('.marketing-channels li')).toHaveCount(2);
+ await panel.getByRole('checkbox',{name:'상품·배경·형태를 확인했습니다.',exact:true}).check();
+ await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+ const saved=await backup(page);expect(saved.generated.marketingPlan).toEqual(state.lastBody!.request.marketingPlan);
+ const originalName=saved.generated.marketingPlan.input.name;saved.productName='변경 후 상품명';
+ page.on('dialog',d=>d.accept());await page.getByLabel('프로젝트 파일 선택').setInputFiles({name:'changed.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(saved))});
+ await page.locator('#publishing-tools > summary').click();
+ const publishing=page.getByRole('region',{name:'광고 활용 가이드',exact:true});
+ await expect(publishing).toContainText('생성 당시 정보');
+ await expect(publishing.locator('.marketing-summary')).not.toContainText('변경 후 상품명');
+ expect((await backup(page)).generated.marketingPlan.input.name).toBe(originalName);
+ for(const width of [320,390,1440]){await page.setViewportSize({width,height:950});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
+ await page.setViewportSize({width:390,height:844});await publishing.locator('.marketing-summary').screenshot({path:'/tmp/aiadcast-patent-summary.png'});
+ expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(1);
 });

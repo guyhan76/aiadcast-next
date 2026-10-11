@@ -1,0 +1,6 @@
+.marketing-summary{margin:18px 0;padding:20px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;color:#202521;overflow-wrap:anywhere}
+.marketing-summary-title{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.marketing-summary h3{margin:0;font-size:17px}.marketing-summary small,.marketing-summary details{color:#5b635e;font-size:12px}
+.marketing-summary p{font-size:13px;line-height:1.7}.marketing-summary h4{font-size:12px;margin:18px 0 8px}.marketing-summary summary{cursor:pointer}
+.marketing-summary ul{display:flex;flex-wrap:wrap;gap:7px;margin:0;padding:0;list-style:none}
+.marketing-summary li{font-size:12px;padding:6px 10px;border-radius:6px;background:#f3f4f6;max-width:100%}.marketing-summary .marketing-channels li{background:#fff3ea;color:#95400f}
