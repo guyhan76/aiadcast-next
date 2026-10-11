@@ -1,22 +1,33 @@
-# Optional paid deployment blueprint; creating it here does not create a service.
-# Free ephemeral disks are not compatible with this SQLite beta.
+# Free beta: Render serves Node/sharp; Supabase persists SQL and private assets.
+# No disk or paid instance. OpenAI usage is billed separately.
 services:
   - type: web
     name: aiadcast-next-beta
     runtime: docker
     dockerfilePath: ./Dockerfile.beta
-    plan: starter
+    plan: free
     numInstances: 1
     autoDeployTrigger: off
     healthCheckPath: /api/health
-    disk:
-      name: aiadcast-next-beta-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: AIADCAST_NEXT_STAGING_OPENAI_API_KEY
+        sync: false
+      - key: AIADCAST_BETA_DATA_DIR
+        value: /tmp/aiadcast-beta
       - key: AIADCAST_BETA_MONTHLY_BUDGET_USD
-        value: "0"
+        value: "1"
       - key: AIADCAST_BETA_ENABLE_GENERATION
-        value: "false"
+        value: "true"
       - key: AIADCAST_BETA_ENABLE_ASSISTANT
         value: "false"
+      - key: AIADCAST_EMAIL_ENABLED
+        value: "false"
+      - key: AIADCAST_TOSS_TEST_ENABLED
+        value: "false"
+

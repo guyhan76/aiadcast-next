@@ -2,6 +2,7 @@
 import {BetaStore} from '../server/beta-store.mjs';
 import {writeFileSync,mkdirSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
+if(process.env.SUPABASE_URL||process.env.SUPABASE_SECRET_KEY||process.env.DATABASE_URL){console.error('Supabase mode: use the private SQL Editor owner invitation and web admin dashboard.');process.exit(1);}
 const [action,...args]=process.argv.slice(2),options={};
 for(let i=0;i<args.length;i+=2){if(!args[i]?.startsWith('--')||!args[i+1])throw Error('Expected --name value pairs');options[args[i].slice(2)]=args[i+1];}
 const directory=resolve(process.env.AIADCAST_BETA_DATA_DIR??'release/beta-runtime');

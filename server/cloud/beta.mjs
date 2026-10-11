@@ -1,0 +1,98 @@
+import {randomUUID} from 'node:crypto';
+import {BetaStore} from './beta-store-base.mjs';
+import {GenerationService} from './generation-base.mjs';
+import {PostgresDatabase,postgresConfiguration,createPool,cloudSchema,acquireInstanceLock} from './postgres.mjs';
+import {SupabaseStorage} from './storage.mjs';
+import {createBetaServer} from './http-base.mjs';
+import {OpenAIImageAdapter,hashBytes} from '../openai-image-adapter.mjs';
+import {ApiFailure} from '../generation-service.mjs';
+import {assistCopy} from '../text-assistant.mjs';
+import {accountConfiguration} from '../account-providers.mjs';
+import {providerGate} from '../beta-server.mjs';
+import {resolve} from 'node:path';
+import {readFileSync} from 'node:fs';
+const fail=(code,status=400)=>{throw new ApiFailure(code,status);};
+export class CloudBetaStore extends BetaStore {
+ async save(userId,id,body){
+  const p=body?.project,revision=body?.revision;
+  if(!/^[A-Za-z0-9_-]{8,100}$/.test(id??'')||!p||p.version!==1||p.id!==id||typeof p.name!=='string'||p.name.length>80||!Number.isSafeInteger(revision)||revision<0)fail('INVALID_PROJECT');
+  const bytes=Buffer.from(JSON.stringify(p));if(bytes.length>40000000)fail('PROJECT_TOO_LARGE',413);
+  const name='project-'+id+'-'+randomUUID()+'.json';
+  const path=await this.storage.put(userId,name,bytes,'application/json');
+  let oldPath;
+  try{
+   const result=await this.transaction(async()=>{
+    const old=await this.db.prepare('SELECT revision,bytes,json FROM projects WHERE user_id=? AND id=?').get(userId,id);
+    if((old?.revision??0)!==revision)fail('PROJECT_CONFLICT',409);
+    const stats=await this.db.prepare('SELECT COUNT(*) n FROM projects WHERE user_id=?').get(userId);
+    if(!old&&stats.n>=20)fail('STORAGE_LIMIT',413);
+    oldPath=old?JSON.parse(old.json).storagePath:undefined;
+    const next=revision+1,updated=new Date(this.now()).toISOString();
+    const ref=JSON.stringify({storagePath:path,sha256:hashBytes(bytes)});
+    await this.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id,id) DO UPDATE SET revision=excluded.revision,name=excluded.name,json=excluded.json,bytes=excluded.bytes,updated=excluded.updated').run(userId,id,next,p.name,ref,bytes.length,updated);
+    return {revision:next,updated};
+   });
+   if(oldPath)void this.storage.remove(userId,oldPath).catch(()=>{});
+   return result;
+  }catch(e){
+   // A confirmed conflict was rolled back. Unknown database outcomes retain the object.
+   if(e instanceof ApiFailure)void this.storage.remove(userId,path).catch(()=>{});throw e;
+  }
+ }
+ async project(userId,id){
+  const record=await super.project(userId,id),ref=record.project;
+  if(typeof ref.storagePath!=='string')fail('CLOUD_PROJECT_MIGRATION_REQUIRED',409);
+  const bytes=await this.storage.get(userId,ref.storagePath);
+  if(hashBytes(bytes)!==ref.sha256)fail('STORAGE_CONTENT_MISMATCH',503);
+  let project;try{project=JSON.parse(bytes.toString('utf8'));}catch{fail('STORAGE_CONTENT_MISMATCH',503);}
+  return {revision:record.revision,project};
+ }
+}
+export class CloudGenerationService extends GenerationService {
+ async create(body){
+  // The local implementation has synchronous admission. Cloud reads yield: serialize
+  // admission so concurrent retries see the persisted job before reserving again.
+  if((this.admissions??0)>=2)fail('GENERATION_ALREADY_RUNNING',409);
+  this.admissions=(this.admissions??0)+1;
+  const work=(this.admissionTail??Promise.resolve()).then(()=>super.create(body));
+  this.admissionTail=work.catch(()=>{});
+  try{return await work;}finally{this.admissions--;}
+ }
+ async storeAsset(asset){
+  if(hashBytes(asset.bytes)!==asset.sha256)fail('STORAGE_CONTENT_MISMATCH');
+  const extension=asset.mime==='image/png'?'png':asset.mime==='image/jpeg'?'jpeg':'webp';
+  await this.storage.put(this.cloudUser,asset.sha256+'.'+extension,asset.bytes,asset.mime);
+  await this.db.prepare('INSERT INTO generation_assets VALUES(?,?,?,?,?) ON CONFLICT(hash) DO NOTHING').run(asset.sha256,asset.mime,asset.width,asset.height,asset.bytes.length);
+ }
+ async asset(hash,{includeBytes=true}={}){
+  if(!hash)return null;const a=await this.db.prepare('SELECT * FROM generation_assets WHERE hash=?').get(hash);if(!a)return null;
+  const extension=a.mime==='image/png'?'png':a.mime==='image/jpeg'?'jpeg':'webp';
+  const bytes=includeBytes?await this.storage.get(this.cloudUser,this.cloudUser+'/'+hash+'.'+extension):null;
+  return {id:a.hash,sha256:a.hash,width:a.width,height:a.height,...(bytes?{dataUrl:`data:${a.mime};base64,${bytes.toString('base64')}`}:{})};
+ }
+}
+export async function createCloudBackend(config,env=process.env,{pool:injectedPool,storage:injectedStorage,storageFetch,adapter:injectedAdapter,extraOrigins=[],accounts:injectedAccounts,staticDirectory=resolve('dist'),skipInstanceLock=false,onStandby}={}){
+ const pool=injectedPool??createPool(postgresConfiguration(env.DATABASE_URL,env.SUPABASE_URL,env));
+ let instance,app,closing=false;
+ const lost=()=>{if(app&&!closing){closing=true;void app.close().finally(()=>pool.end()).finally(()=>{process.exitCode=1;});}};
+ try{
+  if(!skipInstanceLock)instance=await acquireInstanceLock(pool,lost,{onStandby});
+  const guard=()=>instance?.assert();
+  const accountsDb=await new PostgresDatabase(pool,'aiadcast_accounts',{guard}).initialize();
+  const store=await new CloudBetaStore().initialize(accountsDb,{monthlyBudgetMicros:config.monthlyBudgetMicros});
+  const storage=injectedStorage??await new SupabaseStorage({url:env.SUPABASE_URL,secretKey:env.SUPABASE_SECRET_KEY,accountsDb,fetchImpl:storageFetch}).initialize();store.storage=storage;
+  const gate=providerGate(2),adapter=injectedAdapter??new OpenAIImageAdapter({apiKey:config.key});
+  const supabaseMail=env.AIADCAST_EMAIL_ENABLED==='true'&&env.AIADCAST_EMAIL_PROVIDER==='supabase';
+  const accounts=injectedAccounts??accountConfiguration(supabaseMail?{...env,AIADCAST_EMAIL_ENABLED:'false'}:env);
+  if(!injectedAccounts&&supabaseMail)accounts.sendMail=options=>storage.sendAuthEmail(options);
+  app=await createBetaServer({store,publicUrl:config.publicUrl,extraOrigins,staticDirectory,accounts,serviceFactory:async user=>{
+   instance?.assert();const db=await new PostgresDatabase(pool,cloudSchema(user.id),{guard}).initialize();
+   const s=new CloudGenerationService();s.storage=storage;s.cloudUser=user.id;
+   await s.initialize({db,managedBudgetIncrease:true,enabled:config.enabled,assistantEnabled:config.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter),adapter:{generate:options=>{instance?.assert();return gate(()=>adapter.generate(options));}},assistantAdapter:options=>{instance?.assert();return gate(()=>assistCopy({...options,apiKey:config.key}));}});
+   await db.protectTables();return s;
+  }});
+  await accountsDb.exec(readFileSync(new URL('./bootstrap-owner.sql',import.meta.url),'utf8'));
+  await accountsDb.protectTables();
+  return {...app,store,storage,pool,close:async()=>{if(closing)return;closing=true;await app.close();await store.close();await instance?.close();await pool.end();}};
+ }catch(e){await instance?.close().catch(()=>{});await pool.end().catch(()=>{});throw e;}
+}

@@ -1,5 +1,7 @@
 # 비공개 모바일 테스트 서버
 
+**Render 무료 서버를 사용하는 현재 배포는 [무료 베타 연결 안내](free-beta-deployment.md)를 따른다.** Supabase PostgreSQL/비공개 Storage에 영구 보관하므로 Render 디스크가 필요 없다. 아래 영구 디스크·CLI 명령은 기존 SQLite 모드 안내다.
+
 2026-10-11. 이 단계는 최대20명의 비공개 시험용이다. 초대 로그인과 이메일 인증 가입을 지원하지만 실제 메일 공급사·외부 HTTPS 호스팅은 아직 연결하지 않았다. 실제 결제·Google Play 운영 출시가 아니다. 기존 회사 홈페이지 및 외주 MVP의 서버·계정·키를 연결하지 않는다.
 
 ## 구현한 범위
@@ -15,7 +17,7 @@
 
 ## 기본값과 배포 조건
 
-`npm run api:beta`는 `scripts/run-beta.sh`를 통해 프로세스 잠금을 잡고 시작한다. `flock`이 필요하다. 한 개 인스턴스와 영구 디스크가 필수이며 임시 파일시스템·다중 복제본에는 배포하지 않는다. 강제 종료 후에도 커널 잠금은 해제되며 다음 시작에서 불확실한 생성 작업은 자동 재호출하지 않는다.
+`npm run api:beta`는 `scripts/run-beta.sh`를 통해 프로세스 잠금을 잡고 시작한다. `flock`이 필요하다. **SQLite 모드**는 한 개 인스턴스와 영구 디스크가 필수다. **Supabase 모드**는 `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `DATABASE_URL`을 함께 설정하며 SQL/파일을 외부에 보관한다. 일부만 설정하면 SQLite로 자동 우회하지 않고 시작을 중단한다. 강제 종료 후 다음 시작에서 불확실한 생성 작업은 자동 재호출하지 않는다.
 
 환경 변수:
 
@@ -57,11 +59,11 @@ docker build -f Dockerfile.beta -t aiadcast-next-beta .
 
 Codex 환경 안에서 빌드할 때는 관리 환경 문서에 따라 proxy CA를 BuildKit secret으로 전달한다. 인증서 검증을 끄거나 인증서를 이미지에 복사하지 않는다.
 
-`render.yaml`은 **선택 가능한 유료 서버의 배포 초안**이다. 아직 계정을 만들거나 서비스를 개설하지 않았다. Starter와1GB 영구 디스크를 요청하며 자동 배포는 끈다. 현재 가격은 이 환경에서 공식 페이지 접근이 되지 않아 검증하지 못했다. 신청 화면에서 월 서버·디스크·트래픽·세금을 확인하고 사용자 동의 후 개설한다. Cloudflare Workers에 이 Node/SQLite/sharp 컨테이너를 그대로 올릴 수는 없다. 기존 Cloudflare 홈페이지를 변경하지 않는다. Render 이외의 영구 디스크를 제공하는 소형 Linux 서버에도 사용할 수 있다.
+`render.yaml`은 **Render Free + Supabase Free 배포 구성**이다. 디스크 없이 자동 배포를 끄고 서버 비밀값을 환경 변수로 받는다. 초기 OpenAI 시험 예산$1은 호스팅 요금과 별도이며 공급사 청구의 절대 상한이 아니다. 실제 서비스 배포·원격 생성은 아직 확인 전이다. Cloudflare Workers에 이 Node/SQLite/sharp 컨테이너를 그대로 올릴 수는 없다. 기존 Cloudflare 홈페이지는 변경하지 않는다.
 
 ## 운영자 초대 발급
 
-새로 배포한 서버의 private shell에서 실행한다. 관리자 승격·전체 예산 변경은 대시보드에서 할 수 없다.
+아래는 **SQLite 모드**의 private shell 명령이다. Render Free에는 shell이 없으며, Supabase 모드는 무료 베타 안내의 SQL Editor 일회용 관리자 초대를 사용한다. 관리자 승격·전체 예산 변경은 대시보드에서 할 수 없다.
 
 ```
 node scripts/beta-admin.mjs create --label "테스터 이름" --budget-usd 0 --credits 3 --output /data/invitations/tester.json

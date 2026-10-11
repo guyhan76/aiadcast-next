@@ -86,11 +86,27 @@ export function betaConfig(env=process.env){
 }
 async function main(){
  if(process.env.AIADCAST_BETA_PROCESS_LOCKED!=='1')throw Error('USE_BETA_LAUNCHER');
+ if(process.env.SUPABASE_URL||process.env.SUPABASE_SECRET_KEY||process.env.DATABASE_URL){
+  const c=betaConfig();
+  const {startCloudServer}=await import('./cloud/runtime.mjs');
+  const app=await startCloudServer(c);
+  console.log('Supabase-backed beta server started; real payments disabled.');
+  let closing=false;const stop=async()=>{if(closing)return;closing=true;await app.close();};process.once('SIGTERM',()=>void stop());process.once('SIGINT',()=>void stop());return;
+ }
  const c=betaConfig(),store=new BetaStore(c.directory,c),gate=providerGate(2);
  const adapter=new OpenAIImageAdapter({apiKey:c.key});
  const app=createBetaServer({store,publicUrl:c.publicUrl,accounts:accountConfiguration(),staticDirectory:resolve('dist'),serviceFactory:user=>new GenerationService({databasePath:join(c.directory,'users',user.id+'.sqlite'),databaseLockManagedExternally:true,managedBudgetIncrease:true,enabled:c.enabled,assistantEnabled:c.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(c.key),adapter:{generate:options=>gate(()=>adapter.generate(options))},assistantAdapter:options=>gate(()=>assistCopy({...options,apiKey:c.key}))})});
  app.server.listen(c.port,'0.0.0.0',()=>console.log('Invite beta server started; real payments disabled.'));
  let closing=false;const stop=async()=>{if(closing)return;closing=true;await app.close();store.close();};process.once('SIGTERM',()=>void stop());process.once('SIGINT',()=>void stop());
 }
-if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(()=>{console.error('Beta startup failed. Use the beta launcher and verify origin, data and budget configuration.');process.exitCode=1;});
+export function betaStartupCode(error){
+ const code=error?.code??error?.message;
+ const safe=new Set(['USE_BETA_LAUNCHER','DATABASE_URL_REQUIRED','SUPABASE_SESSION_POOLER_REQUIRED','INVALID_DATABASE_URL_OPTIONS','SUPABASE_URL_REQUIRED','SUPABASE_SECRET_CONFIGURATION_REQUIRED','CLOUD_SERVER_ALREADY_RUNNING','CLOUD_INSTANCE_LOCK_LOST','BETA_BUDGET_CONFIG_CHANGED','SUPABASE_CONNECTION_FAILED','SUPABASE_BUCKET_SETUP_FAILED','SUPABASE_PRIVATE_BUCKET_REQUIRED','TOSS_TEST_KEY_REQUIRED','TOSS_TEST_CLIENT_KEY_REQUIRED','HTTPS_ORIGIN_REQUIRED','INVALID_BETA_CONFIG']);
+ if(safe.has(code))return code;
+ if(['SELF_SIGNED_CERT_IN_CHAIN','DEPTH_ZERO_SELF_SIGNED_CERT','UNABLE_TO_VERIFY_LEAF_SIGNATURE'].includes(code))return 'SUPABASE_DB_CA_REQUIRED';
+ if(code==='28P01')return 'POSTGRES_AUTH_FAILED';
+ if(['ENOTFOUND','ETIMEDOUT','ECONNREFUSED'].includes(code))return 'DATABASE_CONNECTION_FAILED';
+ return 'CONFIGURATION_OR_CONNECTION_FAILED';
+}
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(e=>{console.error('Beta startup failed: '+betaStartupCode(e)+'. Verify private server configuration.');process.exitCode=1;});
 
