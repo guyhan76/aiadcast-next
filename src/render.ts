@@ -55,6 +55,8 @@ export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axi
  const footerDetails=(['contact','email','website'] as const).filter(key=>footerVisible(p,key)&&content[key]).map(key=>content[key]!).join(campaign?'\n':'  |  ');
  if(footerCompany||footerDetails){ctx.fillStyle=color;ctx.globalAlpha=.25;ctx.fillRect(footerLine.x,footerLine.y,footerLine.w,footerLine.h);ctx.globalAlpha=1;}
  placed(footerCompany,layout.company,'기업명',700);placed(footerDetails,layout.contact,'연락처');
+ if(p.generated?.model==='local-demo.composition'){ctx.save();ctx.fillStyle='#ffffffdf';ctx.fillRect(10,height-35,390,28);ctx.fillStyle='#222';ctx.font=`18px ${font}`;ctx.textBaseline='top';ctx.fillText(p.locale==='ko'?'체험 합성 · AI 생성 미사용':'DEMO COMPOSITION · NO AI CALL',20,height-30);ctx.restore();}
  return errors;
 }
+
 

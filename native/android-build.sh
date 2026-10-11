@@ -20,7 +20,12 @@ cd android
 tasks=("test${variant}UnitTest" "lint${variant}" "assemble${variant}")
 # A cached Preview packaging run produced an unsigned APK in this environment.
 # Rebuild Preview packaging cleanly and reject any unverifiable output.
-if [[ "$variant" == Preview ]]; then tasks=(clean "${tasks[@]}"); fi
+if [[ "$variant" == Preview ]]; then
+  # Finish cleanup before scheduling packaging tasks. A combined task graph can
+  # retain a stale incremental archive on the shared build filesystem.
+  ./gradlew --no-daemon clean
+  rm -rf app/build
+fi
 ./gradlew --no-daemon "${tasks[@]}"
 sdk_root="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
 case "$variant" in

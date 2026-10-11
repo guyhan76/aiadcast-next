@@ -55,3 +55,13 @@
 .campaign-rotation{display:inline-flex;align-items:center;gap:6px;padding:9px 12px;min-height:44px;color:#171717;border:1px solid #dedede;border-radius:8px;background:#fff;font:inherit;cursor:pointer}
 .campaign-rotation:focus-visible,.campaign-navigation button:focus-visible{outline:2px solid #b65a35;outline-offset:2px}
 @media(max-width:600px){.campaign-category-group{display:block}.campaign-group-label{display:block;width:auto;margin:0 0 4px}.home-showcase .campaign-tabs button{padding:9px 7px;font-size:12px}.campaign-paging{font-size:11px}.campaign-navigation{gap:2px}.campaign-navigation>span{font-size:11px}.campaign-rotation{padding:9px 8px}.editorial-cover .cover-detail{font-size:3cqw}}
+
+/* 0.2.20 full-bleed hero + detail photographs. Text is deterministic and bilingual. */
+.editorial-cover.generated-home-ad>img{aspect-ratio:9/16;object-fit:contain}
+.editorial-cover.generated-home-ad figcaption{color:#101921;text-shadow:none;background:linear-gradient(180deg,#fffffff2 0%,#ffffffa8 15%,#ffffff00 29%)}
+.editorial-cover .cover-headline,.editorial-cover.campaign-luxury .cover-headline,.editorial-cover.campaign-travel .cover-headline{top:4%;left:7%;width:86%;text-align:left}
+.editorial-cover.generated-home-ad h2{font-size:6.7cqw;line-height:1.28;letter-spacing:-.05em}
+.editorial-cover .cover-category,.editorial-cover.campaign-luxury .cover-category,.editorial-cover.campaign-travel .cover-category{font-size:2.5cqw;letter-spacing:.16em;margin-bottom:2cqw}
+.editorial-cover .cover-detail,.editorial-cover.campaign-luxury .cover-detail,.editorial-cover.campaign-travel .cover-detail{font-size:2.65cqw;margin-top:2.3cqw;max-width:100%}
+.editorial-cover.campaign-fashion .cover-headline{width:43%;top:5%}.editorial-cover.campaign-fashion h2{font-size:5.2cqw}.editorial-cover.campaign-fashion .cover-detail{font-size:2.4cqw}
+.editorial-cover.campaign-fashion figcaption{background:linear-gradient(110deg,#fffffff2 0%,#ffffffaa 20%,transparent 45%)}

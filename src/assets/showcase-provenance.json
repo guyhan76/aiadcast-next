@@ -1,123 +1,48 @@
-[
-  {
-    "key": "beauty",
-    "file": "src/assets/showcase-beauty.webp",
-    "sha256": "2825cf3dbaa91e70c723e68046167d9a3f965b88e6f1ef0cfa34cd658c77a9a3",
-    "generator": "built-in image_gen via imagegen skill",
-    "generatedFor": "AIAdcast unbranded homepage examples",
-    "prompt": "Two ORIGINAL unbranded cosmetic bottles: short rectangular rounded-shoulder smoky amber glass toner with brushed bronze flat cap, and taller frosted honey-toned rectangular lotion pump with bronze pump. Never AHC packaging, no cylinders from reference. On a translucent amber resin slab, translucent cosmetic gel ripple and small cream swipe in foreground. Bright ivory studio with dramatic broad champagne light, razor-controlled reflections, editorial still-life in lower 62% of frame, bottles full and large. Upper 28% clean warm white for black typography. No glitter, no cheap decorative gold.",
-    "copy": "Separate editable Korean/English typography; no embedded CTA",
-    "review": "Visually reviewed photograph; final typography checked separately",
-    "createdAt": "2026-10-11",
-    "commercialBrand": false
-  },
-  {
-    "key": "luxury",
-    "file": "src/assets/showcase-luxury.webp",
-    "sha256": "f6e5957c9196de9bd3c4276baaabbfcba0189afe09f1c8baf71beff0bf5024b6",
-    "generator": "built-in image_gen via imagegen skill",
-    "generatedFor": "AIAdcast unbranded homepage examples",
-    "prompt": "ORIGINAL luxury handbag, no Chanel: sculptural smooth oxblood leather curved trapezoid top-handle handbag with no quilting, no chain, no monograms, no interlocking clasp, asymmetric folded envelope panel and tiny plain brushed silver rectangular closure. Original architectural arched solid leather handle. Bag huge in lower center on dark burgundy lacquer plinth. Deep wine studio, sharp softbox edge lighting makes rich leather visible, black cherry gradients. Top 28% quiet dark wine for white editorial headline.",
-    "copy": "Separate editable Korean/English typography; no embedded CTA",
-    "review": "Visually reviewed photograph; final typography checked separately",
-    "createdAt": "2026-10-11",
-    "commercialBrand": false
-  },
-  {
-    "key": "fashion",
-    "file": "src/assets/showcase-fashion.webp",
-    "sha256": "3687777d7cbd336edea8aeed7ad3f2e578b1c56fe758b1a0d7fe6d6f9b6cd4af",
-    "generator": "built-in image_gen via imagegen skill",
-    "generatedFor": "AIAdcast unbranded homepage examples",
-    "prompt": "Fashion editorial of an adult East Asian woman walking dynamically through a monumental modern concrete plaza, wearing an original ivory tailored wide-leg trouser suit over charcoal knit, no labels. Long diagonal sunlight, architectural rhythm and fashion magazine sophistication. Full body with natural anatomy in right 60%, suit and movement readable, left upper 36% calm off-white wall for black title. Subtle motion in fabric, no blur on face or clothing.",
-    "copy": "Separate editable Korean/English typography; no embedded CTA",
-    "review": "Visually reviewed photograph; final typography checked separately",
-    "createdAt": "2026-10-11",
-    "commercialBrand": false
-  },
-  {
-    "key": "jewelry",
-    "file": "src/assets/showcase-jewelry.webp",
-    "sha256": "997b6b8296253e9355fe12d7f5e78d6e8ab72e979d55452443e26637d0b97779",
-    "generator": "built-in image_gen via imagegen skill",
-    "generatedFor": "AIAdcast unbranded homepage examples",
-    "prompt": "Original unbranded platinum sculptural oval gemstone ring with a single deep aquamarine cut stone and finely set tiny colorless stones, precise realistic prongs, a matching simple asymmetric earring behind. Ring hero huge lower right against deep midnight-blue glass, directional crystalline caustics and controlled macro specular highlights. Not a brand replica. Top left 30% quiet navy for white title. Extreme jewelry photographic clarity, no exaggerated stars.",
-    "copy": "Separate editable Korean/English typography; no embedded CTA",
-    "review": "Visually reviewed photograph; final typography checked separately",
-    "createdAt": "2026-10-11",
-    "commercialBrand": false
-  },
-  {
-    "key": "appliance",
-    "file": "src/assets/showcase-appliance.webp",
-    "sha256": "3e9a1a3b96a85d9e40624d3f2341c76e80d824ad5a5f005f19f4f67ec69e7ace",
-    "generator": "built-in image_gen via imagegen skill",
-    "generatedFor": "AIAdcast unbranded homepage examples",
-    "prompt": "Original compact premium brushed stainless espresso machine, matte warm white side body, one elegant round knob, no logos or text. Believable steam wand, portafilter inserted, small ceramic espresso cup under grouphead. On dark charcoal kitchen counter, huge hero at right bottom, rich morning shaft of light, realistic steam wisp, finely engineered surfaces. Upper left 32% calm charcoal wall for white title. Architectural designer kitchen, magazine product campaign, no imaginary mechanics.",
-    "copy": "Separate editable Korean/English typography; no embedded CTA",
-    "review": "Visually reviewed photograph; final typography checked separately",
-    "createdAt": "2026-10-11",
-    "commercialBrand": false,
-    "correction": "Targeted imagegen edit: keep the whole appliance inside the frame and remove the small mark above the knob; visually re-reviewed."
-  },
-  {
-    "key": "travel",
-    "file": "src/assets/showcase-travel.webp",
-    "sha256": "70f999eec00134194e7d7a2156f829551893dab6ce15d3ad109a4249cd565503",
-    "generator": "built-in image_gen via imagegen skill",
-    "generatedFor": "AIAdcast unbranded homepage examples",
-    "prompt": "Cinematic premium travel editorial: sunlit turquoise coastal inlet with terraced white stone village, believable fictional Mediterranean coastline, foreground adult traveler in sand-colored shirt leaning on stone terrace on lower left gazing toward sea, subject modest sized, sweeping diagonal coastline in lower 65%, intense sea blues and clear atmosphere. Upper 28% soft luminous pale blue sky quiet enough for dark large editorial title, vivid cinematic scale and place desire. No landmark imitation or hotel signage.",
-    "copy": "Separate editable Korean/English typography; no embedded CTA",
-    "review": "Visually reviewed photograph; final typography checked separately",
-    "createdAt": "2026-10-11",
-    "commercialBrand": false
-  },
-  {
-    "key": "hotel",
-    "file": "src/assets/showcase-hotel.webp",
-    "sha256": "8e7fc8170bc8f14e06bb4bdbe17c71665adcf097ca47bd053ca79355d6c7ce59",
-    "generator": "built-in image_gen via imagegen skill",
-    "generatedFor": "AIAdcast unbranded homepage examples",
-    "prompt": "Fictional unbranded boutique hotel: contemporary warm timber suite overlooking dark green forest through huge glazing on right, crisp linen king bed lower left, sculptural lounge chair lower right, cinematic late afternoon beam on linen, believable restrained architecture, elegant lived-in hospitality, no impossible stairs or furniture. Top-left 33% quiet warm light plaster wall for dark editorial headline, gorgeous full-frame room photograph, not a beige stock photo.",
-    "copy": "Separate editable Korean/English typography; no embedded CTA",
-    "review": "Visually reviewed photograph; final typography checked separately",
-    "createdAt": "2026-10-11",
-    "commercialBrand": false
-  },
-  {
-    "key": "insurance",
-    "file": "src/assets/showcase-insurance.webp",
-    "sha256": "db3cd2ab6be265c63de835bdf29b5d1031bdb8d3dbfbcfaedde184748318a6d6",
-    "generator": "built-in image_gen via imagegen skill",
-    "generatedFor": "AIAdcast unbranded homepage examples",
-    "prompt": "Premium emotional insurance service brand editorial, candid multigenerational East Asian family of four (two adult parents, one child, one elderly grandparent) in bright garden sunlight walking together, natural relaxed gestures, anatomically plausible hands, faces clearly different, small hug, genuine human connection. Elegant navy and cream clothing without logos. Family occupies lower 65% center-right, upper 27% softly defocused pale sage garden canopy quiet for dark type. Photographic high-end financial brand campaign, no shields or coins or graphs.",
-    "copy": "Separate editable Korean/English typography; no embedded CTA",
-    "review": "Visually reviewed photograph; final typography checked separately",
-    "createdAt": "2026-10-11",
-    "commercialBrand": false
-  },
-  {
-    "key": "hospital",
-    "file": "src/assets/showcase-hospital.webp",
-    "sha256": "461f632874369fa78daf2d38d56159152a35687a0d41a0472b03497990b82bba",
-    "generator": "built-in image_gen via imagegen skill",
-    "generatedFor": "AIAdcast unbranded homepage examples",
-    "prompt": "Fictional unbranded premium clinic, adult East Asian female physician in immaculate plain white coat sitting at eye level opposite adult patient, genuine attentive listening, no operating room, no medical procedure, no lab devices or fake credentials. Modern light oak consultation desk and white architectural room with subtle sage green, daylight and precise architectural lines. People and desk lower 60% center-right, top-left 32% clean luminous white wall for dark headline. Refined trustworthy healthcare editorial with natural hands, no logos.",
-    "copy": "Separate editable Korean/English typography; no embedded CTA",
-    "review": "Visually reviewed photograph; final typography checked separately",
-    "createdAt": "2026-10-11",
-    "commercialBrand": false
-  },
-  {
-    "key": "mobility",
-    "file": "src/assets/showcase-mobility.webp",
-    "sha256": "dcc98b210e9fbcd74e98b684e620de252743eb61a4f98351c734fad57a4d6e82",
-    "generator": "built-in image_gen via imagegen skill",
-    "generatedFor": "AIAdcast unbranded homepage examples",
-    "prompt": "Original unbranded graphite luxury electric crossover car, elegant unique silhouette, not any existing manufacturer grille/headlights, no emblem or readable license plate. Hero huge lower right photographed front three-quarter on polished concrete rooftop terrace, atmospheric dusk city skyline with blue hour horizon, confident low camera, immaculate sculpted metal, tasteful warm rim light. Upper left 30% quiet dark navy sky for white headline. Premium automotive leasing and rental campaign, no text or logos, all wheels credible.",
-    "copy": "Separate editable Korean/English typography; no embedded CTA",
-    "review": "Visually reviewed photograph; final typography checked separately",
-    "createdAt": "2026-10-11",
-    "commercialBrand": false
-  }
-]
+{
+  "created": "2026-10-11",
+  "method": "built-in imagegen, one call per category",
+  "text": "Bilingual typography is composed by the app, not generated into photos.",
+  "concepts": "Fictional original products/services. No real company affiliation or performance claims.",
+  "files": [
+    {
+      "path": "showcase-beauty.webp",
+      "sha256": "f0b25262f299c6bacc0ac9f1c7477d69c9fda3dfdecb3a44ff7380710cc568af"
+    },
+    {
+      "path": "showcase-luxury.webp",
+      "sha256": "ba51b79629a000b63a2283819587f94cf0d0004bc66cdc1e5f347fba6cfffca0"
+    },
+    {
+      "path": "showcase-fashion.webp",
+      "sha256": "ff037572d66ea766cab89b6e4b9d07ba26b62ac5efc048aa5214dbe99cd4d3f1"
+    },
+    {
+      "path": "showcase-jewelry.webp",
+      "sha256": "f003b1e17e667ad97e8a2c626d732ef4108b0882516c055f28aa5dafed4f1208"
+    },
+    {
+      "path": "showcase-appliance.webp",
+      "sha256": "ab6a871e0c57c94c13af963d45e013e239adc1ed4283de15c303ed3d4f5f0575"
+    },
+    {
+      "path": "showcase-travel.webp",
+      "sha256": "d5c563c9c34c832f6493c8eeef0cd4e42eefc1995e5355aaa0212d174a2bad15"
+    },
+    {
+      "path": "showcase-hotel.webp",
+      "sha256": "1c298124e0413c6beaf501943248cfa28ccf8adcd1481b8090813d8db2fd8676"
+    },
+    {
+      "path": "showcase-insurance.webp",
+      "sha256": "290a4a3073e6aaef4ca5f45b8bd9bc18b24582f2bd70bf083124ce0262d6c6f7"
+    },
+    {
+      "path": "showcase-hospital.webp",
+      "sha256": "9ca45f2fa64708c5a2b6c0ca90b1ee0756c4429220ffb0a16e8ba6c6cc15f52a"
+    },
+    {
+      "path": "showcase-mobility.webp",
+      "sha256": "afbfc3ce9a6450ef4b875ba66e7acfd4c0c2bc2d82bb2c0ae041c2cd12ef7bf3"
+    }
+  ]
+}

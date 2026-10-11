@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 const files=fs.readdirSync('dist/assets');
-const js=files.find(f=>f.endsWith('.js'));const css=files.find(f=>f.endsWith('.css'));
+const index=fs.readFileSync('dist/index.html','utf8');
+const js=path.basename(index.match(/<script[^>]+src="([^"]+)"/)?.[1]??'');const css=path.basename(index.match(/<link[^>]+href="([^"]+\.css)"/)?.[1]??'');
 if(!js||!css)throw Error('Missing build assets');
 let styles=fs.readFileSync('dist/assets/'+css,'utf8');
 styles=styles.replace(/url\(([^)]+)\)/g,(match,url)=>{const name=path.basename(url.replace(/['"]/g,''));if(!name.endsWith('.woff2'))return match;return `url(data:font/woff2;base64,${fs.readFileSync('dist/assets/'+name).toString('base64')})`;});
@@ -18,4 +19,5 @@ const html=`<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta nam
 fs.mkdirSync('release',{recursive:true});fs.writeFileSync('release/aiadcast-studio.html',html);console.log('Standalone HTML: '+(Buffer.byteLength(html)/1048576).toFixed(1)+' MB');
 fs.copyFileSync('docs/preview-guide.txt','release/사용안내.txt');
 for(const name of ['FONT-LICENSE.txt','THIRD-PARTY-NOTICES.txt'])fs.copyFileSync('licenses/'+name,'release/'+name);
+
 

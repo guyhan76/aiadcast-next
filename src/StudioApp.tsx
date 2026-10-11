@@ -1,3 +1,5 @@
+import {DemoNotice,OfflineDemoControls} from './OfflineDemoControls';
+import {offlineDemo} from './demo-mode';
 import {loadWorkspace,saveWorkspace,type WorkspaceDraft,type WizardDraft} from './workspace-draft';
 import {betaSession} from './beta-session';
 import {EmailAccountPage,CheckoutPage,VerifyEmailPage,PaymentBrowserPage} from './AccountPages';
@@ -81,7 +83,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
 
  return <div className={`studio-shell ${page==='studio'?'editor-route':''}`}>
   <aside className="app-sidebar"><a href="#home" className="app-brand" aria-label={text("aiadcast 홈")}><Brand/><small>{language==='ko'?'내 브랜드의 광고 제작 파트너':'YOUR CREATIVE PARTNER'}</small></a><nav aria-label={text("주 메뉴")}>{navigation.map(([id,label,Icon])=><a href={'#'+id} key={id} aria-current={page===id?'page':undefined}><Icon size={19}/><span>{text(label)}</span>{id==='create'&&<span className="nav-plus">+</span>}</a>)}</nav><div className="sidebar-bottom"><div className="studio-mark"><ShieldCheck size={20}/><span>{text("당신의 상품.")}<br/><strong>{text("당신의 브랜드.")}</strong></span></div><span>aiadcast Studio<br/>by selluplabs</span></div></aside>
-  <div className="app-content"><details className="account-drawer"><summary>{language==='ko'?'테스트 계정 · 서버 연결':'Test account & connection'}</summary><TestConnection preserve={preserve} beforeChange={async()=>{await preserve();await saveWorkspace(snapshot,'guest');}}/><BetaAccount current={current} onOpen={p=>open(p,true)}/></details>
+  <div className="app-content"><DemoNotice/><details className="account-drawer"><summary>{language==='ko'?'테스트 계정 · 서버 연결':'Test account & connection'}</summary><OfflineDemoControls preserve={preserve} beforeChange={async()=>{await preserve();await saveWorkspace(snapshot,'guest');}}/>{!offlineDemo()&&<TestConnection preserve={preserve} beforeChange={async()=>{await preserve();await saveWorkspace(snapshot,'guest');}}/>}{!offlineDemo()&&<BetaAccount current={current} onOpen={p=>open(p,true)}/>}</details>
    {switchError&&<p className="wizard-error" role="alert">{switchError}</p>}
    {page!=='studio'&&<header className="app-header"><a href="#home" className="mobile-brand" aria-label={text("aiadcast 홈")}><Brand/></a><span className="workspace-label">{language==='ko'?'내 상품과 서비스를 위한 광고 작업실':'SELLUPLABS / CREATIVE WORKSPACE'}</span><div className="app-header-actions"><LanguageSwitcher/><PricingDialog/><a className="account-link" href={betaSession()?"#checkout":"#login"}>{text(betaSession()?"내 이용권":"로그인")}</a></div></header>}
    <div hidden={page!=='home'} className="home-page app-page">

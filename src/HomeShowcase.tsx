@@ -23,7 +23,7 @@ export function HomeShowcase({enabled=true}:{enabled?:boolean}){
  useEffect(()=>{const image=new Image();image.src=nextImage;},[nextImage]);
  function select(index:number,focus=false){const next=(index+campaigns.length)%campaigns.length;setPlaying(false);setActive(next);if(focus)document.getElementById(`${id}-tab-${next}`)?.focus();}
  const artwork=()=> <figure className={`generated-home-ad editorial-cover campaign-${campaign.key}`} data-campaign={campaign.key}>
-  <img src={campaign.image} width={1122} height={1402} fetchPriority={active===0?'high':'auto'} alt={campaign.alt}/>
+  <img src={campaign.image} width={1080} height={1920} fetchPriority={active===0?'high':'auto'} alt={campaign.alt}/>
   <figcaption><div className="cover-headline"><span className="cover-category">{campaign.label}</span><h2>{campaign.title.map((line,i)=><span key={i}>{line}</span>)}</h2><p className="cover-detail">{campaign.detail}</p></div></figcaption>
  </figure>;
  return <section ref={root} className="home-showcase" onPointerEnter={e=>{if(e.pointerType==='mouse')setHovered(true);}} onPointerLeave={()=>setHovered(false)} onFocusCapture={e=>{if(!(e.target as HTMLElement).closest('.campaign-rotation'))setPlaying(false);}} aria-label={t('AI로 제작한 프리미엄 광고 예시','AI-generated premium ad example')}>
@@ -39,3 +39,4 @@ export function HomeShowcase({enabled=true}:{enabled?:boolean}){
   {enlarged&&<ImageReview label={t(`${campaign.label} 광고`,`Advertisement · ${campaign.label}`)} onClose={()=>setEnlarged(false)}>{artwork()}</ImageReview>}
  </section>;
 }
+

@@ -2,7 +2,7 @@ import {apiRequest,ApiRequestFailure} from './generation-client';
 import type {BetaSession} from './beta-session';
 export type Capabilities={email:{enabled:boolean};checkout:{enabled:boolean;test:true;currency:'KRW'}};
 export type EmailRequest={requestId:string;pollToken:string;expires:number};
-export type TestOrder={id:string;pack:string;credits:number;amount:number;currency:'KRW';state:'pending'|'verified'|'paid';created:number;test:true;checkoutUrl?:string};
+export type TestOrder={id:string;pack:string;credits:number;amount:number;currency:'KRW';state:'pending'|'verified'|'paid'|'canceled';created:number;test:true;checkoutUrl?:string};
 const exchanges=new Map<string,Promise<{state:'pending'|'verified';session?:BetaSession}>>();
 export function exchangeEmail(request:EmailRequest){
  let p=exchanges.get(request.requestId);
@@ -20,8 +20,10 @@ export function accountError(error:unknown,ko:boolean){
   AUTH_REQUIRED:['다시 로그인해주세요. 작성한 광고는 유지됩니다.','Please sign in again. Your ad is kept.'],
   ORDER_EXPIRED:['결제창이 만료되었습니다. 앱에서 이용권을 다시 선택해주세요.','Checkout expired. Select your credits again in the app.'],
   PAYMENT_UNCERTAIN:['결제 상태를 확인 중입니다. 다시 결제하지 말고 상태를 확인해주세요.','Payment status is uncertain. Check the status before paying again.'],
+  DEMO_DECLINED:['체험 결제를 실패 처리했습니다. 이용권은 추가되지 않았습니다.','Simulated checkout failed. No credits were added.'],
   PAYMENT_MISMATCH:['결제 정보를 확인하지 못했습니다. 이용권은 추가되지 않았습니다.','Payment details did not match. No credits were added.'],
  };
  return messages[code]?.[ko?0:1]??(ko?'연결하지 못했습니다. 입력 내용은 유지됩니다. 잠시 후 다시 시도해주세요.':'Could not connect. Your input is kept. Please try again.');
 }
 export function readSession<T>(key:string):T|undefined{try{return JSON.parse(sessionStorage.getItem(key)??'null')??undefined;}catch{return undefined;}}
+

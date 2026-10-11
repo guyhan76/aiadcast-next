@@ -1,3 +1,4 @@
+import type {PhotoView} from './automatic-proportion.ts';
 import {validMillimeters,type DimensionUnit} from './dimension-units.ts';
 import {parsePublishing} from './publishing.ts';
 import type {Publishing} from './publishing.ts';
@@ -29,6 +30,7 @@ export type Project = {
  background:{color:string;image:Asset|null};ink:'dark'|'light';
  publishing?:Publishing;campaign?:Campaign;referenceCheck?:ReferenceCheck;conversation?:Conversation;generated?:GeneratedAsset;boxProjection?:BoxProjection;
  dimensions:{displayUnit?:DimensionUnit;width:string;depth:string;height:string;visible:boolean;lines:boolean;anchors:Record<Axis,[Point,Point]>};
+ proportionViews?:{confirmed:boolean;views:Record<string,PhotoView>;resultView?:PhotoView};
  copy:Record<Locale,Copy>;
 };
 export function newProject():Project {
@@ -68,6 +70,7 @@ export async function importProject(raw:unknown):Promise<Project> {
  for(const axis of axes){p.dimensions[axis]=string(r.dimensions[axis],20);const points=r.dimensions.anchors?.[axis];if(!Array.isArray(points)||points.length!==2||points.some(pt=>!pt||!Number.isFinite(pt.x)||!Number.isFinite(pt.y)||pt.x<0||pt.x>1||pt.y<0||pt.y>1))throw new Error('치수선 위치가 올바르지 않습니다.');p.dimensions.anchors[axis]=points.map(pt=>({x:pt.x,y:pt.y})) as [Point,Point];}
  p.references=[];if(r.references!==undefined){if(!Array.isArray(r.references)||r.references.length>9)throw Error('참조사진은 최대 10장입니다.');for(const ref of r.references){const a=await asset(ref);if(!a)throw Error('참조사진을 확인해주세요.');p.references.push(a);}}
  validateReferences(p);
+ if(r.proportionViews!==undefined){const v=r.proportionViews;if(!v||typeof v.confirmed!=='boolean'||!v.views||Array.isArray(v.views)||Object.keys(v.views).length>10||(v.resultView!==undefined&&!['unconfirmed','front','side','top','perspective'].includes(v.resultView))||Object.entries(v.views).some(([hash,view])=>!referenceAssets(p).some(a=>a.sha256===hash)||!['unconfirmed','front','side','top','perspective'].includes(view)))throw Error('사진 촬영면 정보를 확인해주세요.');p.proportionViews={confirmed:v.confirmed,views:{...v.views},...(v.resultView?{resultView:v.resultView}:{})};}
  if(r.footer!==undefined){if(!r.footer||typeof r.footer!=='object'||['company','contact','email','website'].some(k=>typeof r.footer![k as FooterField]!=='boolean'))throw Error('하단 표시 설정을 확인해주세요.');p.footer={company:r.footer.company,contact:r.footer.contact,email:r.footer.email,website:r.footer.website};}
  if(r.presentation==='campaign')p.presentation='campaign';
  for(const lang of ['ko','en'] as const)if(r.copy[lang].email!==undefined)p.copy[lang].email=string(r.copy[lang].email,100);
@@ -83,8 +86,9 @@ export function validateReferences(p:Project){
  if(assets.reduce((n,a)=>n+Math.floor((a.data.length-a.data.indexOf(',')-1)*3/4),0)>10*1024*1024)throw Error('참조사진 전체 용량은 10 MB 이하로 선택해주세요.');
 }
 export function withReferences(p:Project,assets:Asset[]):Project{
- const next={...p,product:assets[0]??null,references:assets.slice(1)};validateReferences(next);
+ const next={...p,product:assets[0]??null,references:assets.slice(1),...(p.proportionViews?{proportionViews:{confirmed:p.proportionViews.confirmed,views:Object.fromEntries(Object.entries(p.proportionViews.views).filter(([hash])=>assets.some(a=>a.sha256===hash)))}}:{})};validateReferences(next);
  if(next.product?.sha256!==p.product?.sha256&&next.boxProjection)next.boxProjection={...next.boxProjection,confirmedSourceHash:null,markedCorners:[]};
  return next;
 }
 export const footerVisible=(p:Project,field:FooterField)=>p.footer?.[field]??true;
+
