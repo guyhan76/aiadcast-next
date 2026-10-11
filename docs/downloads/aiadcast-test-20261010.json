@@ -1,8 +1,8 @@
 {
   "file": "aiadcast-test-20261010.apk",
-  "sourceCommit": "e819cf7983394be62752ae164dd3e16c21f4da97",
-  "sha256": "7beefeb35d21ea856f26236978a5f34d91b9c4bb5cde56a993375b2b3c30c77d",
-  "bytes": 12812955,
+  "sourceCommit": "b8b1233e97399ab3079504b7f4f74b2c6f32f037",
+  "sha256": "21376f2549217746952bbf53e41ddf28c977e400710deed69609599ab0806a06",
+  "bytes": 12812983,
   "applicationId": "com.selluplabs.aiadcast.next.dev",
   "appName": "aiadcast Dev",
   "versionName": "0.2.14-dev",
