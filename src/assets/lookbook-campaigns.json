@@ -1,152 +1,262 @@
 [
   {
     "key": "beauty",
+    "kind": "product",
     "label": [
       "화장품",
       "Cosmetics"
     ],
     "title": [
       [
-        "나를 위한,",
-        "아름다운 루틴."
+        "매일의 케어에,",
+        "골든 루틴."
       ],
       [
-        "Your daily",
-        "beauty ritual."
+        "A daily ritual,",
+        "a golden moment."
       ]
     ],
     "detail": [
-      "세럼의 투명함과 크림의 부드러운 텍스처",
-      "Clear serum. Soft cream. A moment for yourself."
+      "토너의 맑음과 로션의 부드러움",
+      "Clear toner. Silky lotion."
     ],
     "alt": [
-      "세럼과 크림의 제형과 용기를 보여주는 AI 생성 화장품 광고",
-      "AI-generated cosmetics ad showing serum and cream textures"
+      "독자적으로 디자인한 앰버 토너와 골드빛 로션의 화장품 광고",
+      "AI-generated cosmetics concept advertisement without real commercial branding"
     ]
   },
   {
     "key": "luxury",
+    "kind": "product",
     "label": [
       "패션소품",
       "Accessories"
     ],
     "title": [
       [
-        "손에 담긴,",
-        "나만의 취향."
+        "유행을 넘어,",
+        "취향으로 남다."
       ],
       [
-        "Carried with",
-        "character."
+        "Beyond trends,",
+        "true to your taste."
       ]
     ],
     "detail": [
-      "가죽의 결 · 섬세한 스티치 · 작은 금속 잠금장치",
-      "Leather grain · Fine stitching · A precise metal clasp"
+      "가죽의 깊이와 조형적인 실루엣",
+      "Rich leather. A sculptural silhouette."
     ],
     "alt": [
-      "손에 든 브라운 가죽 가방의 구조와 스티치를 보여주는 AI 생성 패션소품 광고",
-      "AI-generated accessories ad showing leather craftsmanship in a carrying gesture"
-    ]
-  },
-  {
-    "key": "jewelry",
-    "label": [
-      "주얼리",
-      "Jewelry"
-    ],
-    "title": [
-      [
-        "작은 디테일,",
-        "깊은 존재감."
-      ],
-      [
-        "Quiet detail.",
-        "Lasting presence."
-      ]
-    ],
-    "detail": [
-      "빛을 나누는 컷과 정교한 세팅",
-      "Faceted light. A precisely crafted setting."
-    ],
-    "alt": [
-      "반지와 귀걸이의 세팅과 빛을 근접 촬영한 AI 생성 주얼리 광고",
-      "AI-generated jewelry ad with a close view of ring and stud settings"
+      "독자적으로 디자인한 버건디 가죽 가방의 패션소품 광고",
+      "AI-generated accessories concept advertisement without real commercial branding"
     ]
   },
   {
     "key": "fashion",
+    "kind": "product",
     "label": [
       "패션",
       "Fashion"
     ],
     "title": [
       [
-        "움직임에,",
-        "품격을 입다."
+        "움직일수록,",
+        "선명한 스타일."
       ],
       [
-        "Elegance,",
-        "in motion."
+        "Style,",
+        "in every stride."
       ]
     ],
     "detail": [
-      "재킷의 재단선과 걸음에 따라 흐르는 실루엣",
-      "Tailored lines. A silhouette that moves with you."
+      "재단의 선, 자연스러운 움직임",
+      "Tailored lines. Natural movement."
     ],
     "alt": [
-      "네이비 재킷과 아이보리 바지를 입고 걷는 성인 모델의 AI 생성 패션 광고",
-      "AI-generated fashion ad of an adult model walking in a navy blazer and ivory trousers"
+      "아이보리 정장을 입고 걷는 성인 여성의 패션 광고",
+      "AI-generated fashion concept advertisement without real commercial branding"
+    ]
+  },
+  {
+    "key": "jewelry",
+    "kind": "product",
+    "label": [
+      "주얼리",
+      "Jewelry"
+    ],
+    "title": [
+      [
+        "작은 빛,",
+        "깊은 존재감."
+      ],
+      [
+        "A little light,",
+        "a lasting presence."
+      ]
+    ],
+    "detail": [
+      "정교한 세팅에 담긴 푸른 빛",
+      "Blue light. A precise setting."
+    ],
+    "alt": [
+      "블루 스톤 반지와 귀걸이의 디테일을 보여주는 주얼리 광고",
+      "AI-generated jewelry concept advertisement without real commercial branding"
+    ]
+  },
+  {
+    "key": "appliance",
+    "kind": "product",
+    "label": [
+      "소형가전",
+      "Small appliances"
+    ],
+    "title": [
+      [
+        "일상을 바꾸는",
+        "작은 차이."
+      ],
+      [
+        "Small details.",
+        "A better everyday."
+      ]
+    ],
+    "detail": [
+      "한 잔의 순간을 완성하는 디자인",
+      "Designed around a moment of coffee."
+    ],
+    "alt": [
+      "상표 없는 스테인리스 소형 에스프레소 머신 광고",
+      "AI-generated small appliances concept advertisement without real commercial branding"
     ]
   },
   {
     "key": "travel",
+    "kind": "service",
     "label": [
       "여행",
       "Travel"
     ],
     "title": [
       [
-        "낯선 풍경,",
-        "새로운 나."
+        "일상을 벗어나,",
+        "오래 남을 순간."
       ],
       [
-        "New horizons.",
-        "A new you."
+        "Beyond everyday,",
+        "into lasting moments."
       ]
     ],
     "detail": [
-      "바다를 따라 걷는 길, 일상을 벗어난 순간",
-      "A coastal path. A moment beyond the everyday."
+      "풍경보다 오래 남는 여행의 기억",
+      "An experience beyond the view."
     ],
     "alt": [
-      "해안길과 푸른 바다를 걷는 여행자의 AI 생성 여행 광고",
-      "AI-generated travel ad with a traveler walking a scenic coastal path"
+      "가상의 해안 풍경과 여행자의 경험을 표현한 여행 광고",
+      "AI-generated travel concept advertisement without real commercial branding"
     ]
   },
   {
     "key": "hotel",
+    "kind": "service",
     "label": [
       "호텔",
       "Hotel"
     ],
     "title": [
       [
-        "머무는 순간,",
-        "쉼이 되다."
+        "머무는 시간까지,",
+        "특별하게."
       ],
       [
-        "Stay a while.",
-        "Find your calm."
+        "Every moment,",
+        "beautifully spent."
       ]
     ],
     "detail": [
-      "창밖의 숲과 아침빛이 채우는 휴식",
-      "Forest views. Morning light. Room to unwind."
+      "빛과 공간이 완성하는 쉼",
+      "Light. Space. A moment to unwind."
     ],
     "alt": [
-      "숲을 향한 큰 창과 침구가 있는 객실의 AI 생성 호텔 광고",
-      "AI-generated hotel ad showing a forest-facing bedroom in morning light"
+      "숲 전망의 가상 호텔 객실을 보여주는 호텔 광고",
+      "AI-generated hotel concept advertisement without real commercial branding"
+    ]
+  },
+  {
+    "key": "insurance",
+    "kind": "service",
+    "label": [
+      "보험",
+      "Insurance"
+    ],
+    "title": [
+      [
+        "소중한 일상,",
+        "준비하는 마음."
+      ],
+      [
+        "Everyday matters.",
+        "Thoughtfully prepared."
+      ]
+    ],
+    "detail": [
+      "함께하는 오늘을 생각합니다",
+      "Thinking of the everyday we share."
+    ],
+    "alt": [
+      "일상의 가족 장면으로 준비의 의미를 표현한 보험 서비스 광고",
+      "AI-generated insurance concept advertisement without real commercial branding"
+    ]
+  },
+  {
+    "key": "hospital",
+    "kind": "service",
+    "label": [
+      "병원",
+      "Healthcare"
+    ],
+    "title": [
+      [
+        "당신의 이야기를",
+        "듣는 진료."
+      ],
+      [
+        "Care begins",
+        "with listening."
+      ]
+    ],
+    "detail": [
+      "진료의 시작은 차분한 소통",
+      "A thoughtful conversation comes first."
+    ],
+    "alt": [
+      "의료진과 성인 환자의 소통을 표현한 가상 병원 광고",
+      "AI-generated healthcare concept advertisement without real commercial branding"
+    ]
+  },
+  {
+    "key": "mobility",
+    "kind": "service",
+    "label": [
+      "리스·렌탈",
+      "Leasing & rental"
+    ],
+    "title": [
+      [
+        "나의 일상에 맞는",
+        "드라이브."
+      ],
+      [
+        "A drive that fits",
+        "your everyday."
+      ]
+    ],
+    "detail": [
+      "자동차 리스·렌탈의 새로운 시선",
+      "A fresh perspective on vehicle use."
+    ],
+    "alt": [
+      "상표 없는 독자적인 차량의 자동차 리스·렌탈 광고",
+      "AI-generated leasing & rental concept advertisement without real commercial branding"
     ]
   }
 ]

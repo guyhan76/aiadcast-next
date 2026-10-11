@@ -1,6 +1,7 @@
 import type {Project} from './model.ts';
 import {defaultCampaign} from './campaign.ts';
 import {industryDirections,industryGroupFor,industryLabel} from './industry.ts';
+import {artDirectionFor,requestedCallToAction} from './art-direction.ts';
 
 export const creativeLooks=[
  {id:'editorial',label:'에디토리얼',description:'넓은 여백과 선명한 타이포',color:'#f8f7f4',ink:'dark',accent:'#a27853'},
@@ -29,12 +30,20 @@ export function chooseCreativeLook(p:Project,id:CreativeLook):Project{
 export function creativeCopy(p:Project):{title:string;description:string}{
  const settings=creativeSettings(p),direction=industryDirections(p.productProfile.category).find(d=>d.id===settings.directionId)!;
  const name=p.productName.trim();
- if(p.locale==='en')return {title:name||'Your brand, in focus',description:(p.productProfile.material.trim().length<=80?p.productProfile.material.trim():'')||({brand:'Discover what we offer.',offer:'Explore the details. Get in touch to learn more.',trust:'Get to know our business and services.'}[settings.directionId])};
- return {title:name?`${name}\n${direction.headline}`:direction.headline,description:(p.productProfile.material.trim().length<=80?p.productProfile.material.trim():'')||direction.cta};
+ const requested=requestedCallToAction(settings.note);
+ const cta=requested==='requested'?direction.cta:requested;
+ const description=p.productProfile.material.trim().length<=80?p.productProfile.material.trim():'';
+ const action=p.locale==='en'&&requested==='requested'?'Get in touch.':cta;
+ const base=description||(p.locale==='en'?{brand:'A distinctive everyday presence.',offer:'Details that make the difference.',trust:'Thoughtfully prepared for your everyday.'}[settings.directionId]:direction.description);
+ if(p.locale==='en')return {title:name||'Your brand, in focus',description:[base,action].filter(Boolean).join(' ')};
+ // The initial title describes the offer; purpose labels never imply an unsolicited CTA.
+ return {title:name||'일상에 더하는 새로운 가치',description:[base,action].filter(Boolean).join(' ')};
 }
 export function creativeContract(p:Project){
  const settings=creativeSettings(p),category=p.productProfile.category,group=industryGroupFor(category),direction=industryDirections(category).find(d=>d.id===settings.directionId)!;
- return {version:1,industry:{id:category,label:industryLabel(category),groupId:group.id,groupLabel:group.label},direction:{id:direction.id,label:direction.label,description:direction.description,callToAction:direction.cta},visual:{id:'auto',label:'상품에 맞춘 AI 연출',approvedSceneOverridesStyle:true,backgroundColor:p.background.color,ink:p.ink,composition:'Choose one high-end editorial concept from the product features, references and customer requests. Select relevant setting, composition, materials, lighting and palette for this specific category. Do not impose a saved mood preset. Keep advertising copy in separate editable text layers.'},additionalInstructions:settings.note,
+ const requested=requestedCallToAction(settings.note);
+ return {version:1,industry:{id:category,label:industryLabel(category),groupId:group.id,groupLabel:group.label},direction:{id:direction.id,label:direction.label,description:direction.description,callToAction:requested==='requested'?direction.cta:requested},artDirection:artDirectionFor(category,p.format,settings.note),ctaPolicy:requested?'customer-requested':'omit',visual:{id:'auto',label:'상품에 맞춘 AI 연출',approvedSceneOverridesStyle:true,backgroundColor:p.background.color,ink:p.ink,composition:'Choose one high-end editorial concept from the product features, references and customer requests. Use the supplied copyZone for a shared photograph/type layout; choose the strongest relevant lighting, setting and material treatment from the production brief. Do not impose a saved mood preset. Keep advertising copy in separate editable text layers.'},additionalInstructions:settings.note,
   factPolicy:'Use only supplied or confirmed business facts. Do not invent prices, performance, returns, medical outcomes, certifications, testimonials or eligibility. Ask for missing facts when needed.',
   status:'direction-prepared',providerStatus:'not-connected'};
 }
+
