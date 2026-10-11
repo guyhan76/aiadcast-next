@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';
 import {mkdir,readFile} from 'node:fs/promises';
-import campaigns from '../src/assets/lookbook-campaigns.json';
+import campaigns from '../src/assets/lookbook-campaigns.json' with {type:'json'};
 
 test('single-file preview embeds all ten campaign photos',async({page})=>{
  const html=await readFile('release/aiadcast-studio.html','utf8');
