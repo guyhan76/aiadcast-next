@@ -7,9 +7,9 @@ test.describe('Independent Korean and English interface',()=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('lang','en');
-  await expect(page.getByRole('heading',{name:/Your product/})).toBeVisible();
+  await expect(page.getByRole('heading',{name:/Your products and services/})).toBeVisible();
   await page.getByRole('combobox',{name:'App language',exact:true}).selectOption('ko');
-  await expect(page.getByRole('heading',{name:/내 상품과 서비스로/})).toBeVisible();
+  await expect(page.getByRole('heading',{name:/내 상품과 서비스를/})).toBeVisible();
   await page.reload();await expect(page.locator('html')).toHaveAttribute('lang','ko');
   await page.getByRole('combobox',{name:'앱 언어',exact:true}).selectOption('en');
   for(const route of ['home','create','projects','guide']){

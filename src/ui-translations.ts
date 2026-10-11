@@ -5,6 +5,7 @@ export const uiEnglish:Record<string,string>={
 
  "홈": "Home",
  "광고 만들기": "Create an ad",
+ "내 광고 만들기": "Create an ad",
  "내 프로젝트": "My projects",
  "사용 안내": "How it works",
  "이 기기의 저장된 작업을 읽지 못했습니다.": "We could not read the projects on this device.",

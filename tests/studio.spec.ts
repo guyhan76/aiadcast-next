@@ -6,10 +6,10 @@ const pixels=await sharp({create:{width:600,height:200,channels:4,background:'#b
 async function backup(page:Page){const d=page.waitForEvent('download');await page.getByRole('button',{name:'프로젝트 백업',exact:true}).click();return JSON.parse(await readFile((await(await d).path())!,'utf8'));}
 test('home, creation, library and guide fit narrow screens with an honest offline notice',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));for(const route of ['home','create','projects','guide']){await page.goto('/#'+route);for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}}
- await page.goto('/');await expect(page.getByRole('heading',{name:/내 상품과 서비스로/})).toBeVisible();await expect(page.locator('.home-scope:visible')).toContainText('연결 전');await expect(page.locator('.home-showcase')).toHaveAttribute('aria-label',/AI로 제작한/);await expect(page.locator('.generated-home-ad img')).toBeVisible();await expect.poll(()=>page.locator('.generated-home-ad img').evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBeGreaterThan(1000);expect(errors).toEqual([]);
+ await page.goto('/');await expect(page.getByRole('heading',{name:/내 상품과 서비스를/})).toBeVisible();await expect(page.locator('.home-scope:visible')).toContainText('연결 전');await expect(page.locator('.home-showcase')).toHaveAttribute('aria-label',/AI로 제작한/);await expect(page.locator('.generated-home-ad img')).toBeVisible();await expect.poll(()=>page.locator('.generated-home-ad img').evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBeGreaterThan(1000);expect(errors).toEqual([]);
 });
 test('service wizard keeps details when going back, supports manual export and restores projects',async({page})=>{
- await page.goto('/');await page.getByRole('button',{name:'광고 만들기',exact:true}).click();await page.locator('.ad-subject-kind').getByRole('button',{name:'서비스',exact:true}).click();const wizard=page.locator('.create-page');await selectIndustry(page,'education',wizard);await wizard.getByRole('button',{name:'다음',exact:true}).click();await expect(wizard.getByRole('alert')).toContainText('이름');
+ await page.goto('/');await page.getByRole('button',{name:'내 광고 만들기',exact:true}).click();await page.locator('.ad-subject-kind').getByRole('button',{name:'서비스',exact:true}).click();const wizard=page.locator('.create-page');await selectIndustry(page,'education',wizard);await wizard.getByRole('button',{name:'다음',exact:true}).click();await expect(wizard.getByRole('alert')).toContainText('이름');
  await wizard.getByLabel('상품·서비스 이름').fill('성인 영어 회화');await wizard.getByLabel('상품 상세설명').fill('주 2회 소규모 수업');await wizard.getByRole('button',{name:'다음',exact:true}).click();await wizard.getByRole('button',{name:'이전',exact:true}).click();await expect(wizard.getByLabel('상품 상세설명')).toHaveValue('주 2회 소규모 수업');await wizard.getByRole('button',{name:'다음',exact:true}).click();await wizard.getByText('다른 크기 · 언어 · 제작 방식',{exact:true}).click();await wizard.getByLabel('제작 방식',{exact:true}).selectOption('original');await wizard.getByRole('button',{name:'광고 제작으로',exact:true}).click();
  const saved=await backup(page);expect(saved.product).toBeNull();expect(saved.productProfile.specType).toBe('none');expect(saved.productProfile.category).toBe('education');const d=page.waitForEvent('download');await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();expect((await sharp(await readFile((await(await d).path())!)).metadata()).height).toBe(1350);
  await page.goto('/#projects');await page.getByRole('button',{name:/성인 영어 회화 광고/}).click();await page.locator('.editor-details>summary').click();await expect(page.getByRole('textbox',{name:'상품·서비스명',exact:true})).toHaveValue('성인 영어 회화');
@@ -33,10 +33,10 @@ test('six-category lookbook supports tabs, keyboard boundaries and touch without
 
 test('home has one creation path and projects recover in-progress edits without duplicate tiles',async({page})=>{
  await page.goto('/');const home=page.locator('.home-page');
- await expect(home.getByRole('button',{name:'광고 만들기',exact:true})).toHaveCount(1);
+ await expect(home.getByRole('button',{name:'내 광고 만들기',exact:true})).toHaveCount(1);
  await expect(home.locator('.premium-shortcuts,.continue-work,.premium-value')).toHaveCount(0);
  await expect(page.locator('.app-footer a')).toHaveCount(0);
- await home.getByRole('button',{name:'광고 만들기',exact:true}).click();
+ await home.getByRole('button',{name:'내 광고 만들기',exact:true}).click();
  const kinds=page.locator('.ad-subject-kind');await expect(kinds.getByRole('button',{name:'상품',exact:true})).toHaveAttribute('aria-pressed','true');
  await kinds.getByRole('button',{name:'서비스',exact:true}).click();
  await page.locator('.create-page').getByLabel('상품·서비스 이름').fill('이어갈 서비스');

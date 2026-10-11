@@ -24,3 +24,7 @@
 /* Cover typography is shared with the public preview. */
 
 .ad-subject-kind{border:0;padding:0;margin:0 0 28px;min-width:0}.ad-subject-kind legend{font-size:14px;font-weight:600;margin-bottom:12px}.ad-subject-kind>div{display:grid;grid-template-columns:1fr 1fr;gap:10px}.ad-subject-kind button{padding:14px;border:1px solid var(--brand-line);border-radius:10px;background:transparent;color:inherit;font:inherit}.ad-subject-kind button[aria-pressed="true"]{background:var(--brand-black);color:var(--brand-white);border-color:var(--brand-black)}
+
+/* Keep the homepage intro to a headline and a single supporting sentence. */
+.premium-home{padding-top:32px}.premium-home h1{margin-top:0;word-break:keep-all}.premium-home>p{word-break:keep-all;overflow-wrap:anywhere}
+@media(max-width:600px){.premium-home{padding-top:28px}.premium-home h1{font-size:clamp(24px,7.2vw,32px);letter-spacing:-1.2px}.premium-home h1>span{white-space:nowrap}.premium-home>p{font-size:13px}}
