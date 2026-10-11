@@ -19,6 +19,10 @@ export function CreativeOptions({project,change,compact=false}:Props){
   change(p=>{const copy=creativeCopy(p);return {...p,copy:{...p.copy,[p.locale]:{...p.copy[p.locale],title:copy.title,description:copy.description}}};});
   setApplied(true);
  }
+ if(!compact)return <details className="quiet-details create-purpose-settings"><summary>{t('광고 목적·요청','Ad purpose & requests')}<span>{t('선택','Optional')}</span></summary>
+  <fieldset className="creative-direction-choices"><legend>{t('광고 목적','Ad purpose')}</legend><div className="creative-direction-grid">{directions.map(item=><button type="button" className="creative-purpose-card" key={item.id} aria-pressed={settings.directionId===item.id} onClick={()=>change(p=>withCreative(p,{directionId:item.id}))}>{text(item.label)}</button>)}</div><p className="help creative-purpose-help" aria-live="polite">{text(direction.description)}</p></fieldset>
+  <div className="creative-extra-note"><div className="create-note-heading"><label htmlFor={noteId}>{t('요청사항','Your requests')}</label><span>{settings.note.length} / 600</span></div><textarea id={noteId} maxLength={600} rows={3} value={settings.note} placeholder={t('예: 따뜻하고 편안한 분위기','Example: A warm, relaxed atmosphere')} onChange={e=>change(p=>withCreative(p,{note:e.target.value}))}/></div>
+ </details>;
  const content=<div className="creative-options-body">
   <details className="quiet-details"><summary>{text("광고의 목적")}</summary><fieldset className="creative-direction-choices">
    <legend><span>01</span>{text("광고의 목적")}</legend>
@@ -36,3 +40,4 @@ export function CreativeOptions({project,change,compact=false}:Props){
  if(compact)return <details className="creative-options creative-options-compact"><summary><span><Palette size={18} aria-hidden="true"/><strong>{t("광고 목적과 요청사항","Ad purpose & requests")}</strong></span><span><ChevronDown size={16} aria-hidden="true"/></span></summary>{content}</details>;
  return <section className="creative-options" aria-label={t("광고 목적과 요청사항","Ad purpose & requests")}>{content}</section>;
 }
+

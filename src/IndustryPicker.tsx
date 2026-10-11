@@ -9,10 +9,10 @@ import './industry-picker.css';
 
 export const industryGroupIcons:Record<string,LucideIcon>={electronics:Monitor,packaging:Package,products:Shapes,fashion:Shirt,industrial:Factory,food:Wheat,beauty:Sparkles,home:Sofa,automotive:Car,dining:UtensilsCrossed,travel:Plane,learning:GraduationCap,sports:Dumbbell,health:HeartPulse,property:Building2,finance:Landmark,mobility:Car,fortune:Sparkles,business:BriefcaseBusiness};
 export function IndustryIcon({groupId,size=22}:{groupId:string;size?:number}){const Icon=industryGroupIcons[groupId]??BriefcaseBusiness;return <Icon size={size} strokeWidth={1.5} aria-hidden="true"/>;}
-type Props={value?:ProductCategory;onChange:(category:ProductCategory)=>void;compact?:boolean;initialKind?:IndustryKind;onClearSelection?:()=>void};
+type Props={value?:ProductCategory;onChange:(category:ProductCategory)=>void;compact?:boolean;simple?:boolean;initialKind?:IndustryKind;onClearSelection?:()=>void};
 const normalize=(text:string)=>text.toLocaleLowerCase().replace(/[\s·・,\-]/g,'');
 
-export function IndustryPicker({value,onChange,compact=false,initialKind,onClearSelection}:Props){
+export function IndustryPicker({value,onChange,compact=false,simple=false,initialKind,onClearSelection}:Props){
  const {t,text}=useUiLanguage();
  const id=useId(),[expanded,setExpanded]=useState(!compact),[query,setQuery]=useState('');
  const [kind,setKind]=useState<IndustryKind|undefined>(()=>value?industryKindFor(value):initialKind);
@@ -42,6 +42,10 @@ export function IndustryPicker({value,onChange,compact=false,initialKind,onClear
   if(!expanded){setKind(value?industryKindFor(value):initialKind);setGroupId(committedGroup?.id);setQuery('');}
   setExpanded(!expanded);
  }
+ if(simple){
+  const selectedKind=value?industryKindFor(value):initialKind??'product';
+  return <div className="industry-simple" role="group" aria-label={text('업종 선택')}><div className="field"><label htmlFor={`${id}-category`}>{t('업종','Industry')}</label><select id={`${id}-category`} value={value==='other'||value==='services'?'':value??''} onChange={e=>onChange((e.target.value||(selectedKind==='service'?'services':'other')) as ProductCategory)}><option value="">{t('업종 선택','Choose an industry')}</option>{industryGroupsFor(selectedKind).map(item=><optgroup key={item.id} label={text(item.label)}>{item.categoryIds.map(category=><option key={category} value={category}>{text(industryLabel(category))}</option>)}</optgroup>)}</select></div></div>;
+ }
  return <section className={`industry-picker${compact?' industry-picker-compact':''}${!kind?' industry-picker-unselected':''}`} role="group" aria-label={text("업종 선택")}>
   {compact?<button type="button" ref={toggleRef} className="industry-picker-toggle" aria-expanded={expanded} aria-controls={`${id}-choices`} onClick={toggle}><span className="industry-selected-icon"><IndustryIcon groupId={committedGroup?.id??'products'} size={19}/></span><span><small>{text("업종 변경")}</small><strong>{value?text(industryLabel(value)):text('광고 대상 선택')}</strong></span><ChevronDown size={17} aria-hidden="true"/></button>:<div className="industry-picker-heading"><strong>{text("무엇을 광고하고 싶으세요?")}</strong><span>{text("상품과 서비스 중 먼저 골라주세요.")}</span></div>}
   {(!compact||expanded)&&<div id={`${id}-choices`} className="industry-picker-choices">
@@ -57,3 +61,4 @@ export function IndustryPicker({value,onChange,compact=false,initialKind,onClear
   </div>}
  </section>;
 }
+
