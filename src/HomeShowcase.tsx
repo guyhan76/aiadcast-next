@@ -5,7 +5,8 @@ import hotelImage from './assets/premium-hotel-generated.png';
 import jewelryImage from './assets/premium-jewelry-generated.png';
 import luxuryImage from './assets/premium-luxury-generated.png';
 import fashionImage from './assets/premium-fashion-generated.png';
-import {MessageSquareText,RotateCcw,Pause,Play} from 'lucide-react';
+import {Pause,Play} from 'lucide-react';
+import {imageFormats} from './formats';
 import premiumBeauty from './assets/premium-beauty-generated.png';
 import {useUiLanguage} from './ui-language';
 
@@ -41,8 +42,13 @@ export function HomeShowcase({enabled=true}:{enabled?:boolean}){
    </figure>
   </div>
   <div className="campaign-paging"><span aria-live={rotating?'off':'polite'}>{campaign.label} · {active+1} / {campaigns.length}</span><button type="button" className="campaign-rotation" aria-label={playing?t('자동 넘김 일시정지','Pause automatic slideshow'):t('자동 넘김 시작','Start automatic slideshow')} onClick={()=>setPlaying(value=>!value)}>{playing?<Pause size={13} aria-hidden="true"/>:<Play size={13} aria-hidden="true"/>}{playing?t('자동 넘김 · 3초','Auto · 3 sec'):t('자동 넘김 시작','Start slideshow')}</button></div>
-  <div className="showcase-formats"><span>{t('원하는 매체 크기로 저장하세요','Save in the size for your channel')}</span><div><b>{t('인스타 피드','Feed')} <small>4:5</small></b><b>{t('스토리','Story')} <small>9:16</small></b><b>{t('블로그·홈페이지','Blog · Website')}</b></div></div>
-  <div className="showcase-benefits"><p><MessageSquareText size={17} aria-hidden="true"/>{t('게시글·키워드도 함께 준비','Prepare captions & keywords')}</p><p><RotateCcw size={17} aria-hidden="true"/>{t('저장한 광고는 고쳐서 다시 사용','Edit and reuse saved ads')}</p></div>
-  <small className="showcase-status">{t('메인 소개용으로 AI로 제작한 이미지입니다. 휴대폰 AI 생성은 서버 연결 준비 중입니다.','AI-generated artwork for this introduction. Mobile AI generation is awaiting server connection.')}</small>
+  <div className="showcase-uses">
+   <h3>{t('다양한 매체에 활용하세요','Create for every channel')}</h3>
+   <ul className="showcase-channels">{[
+    t('인스타그램','Instagram'),t('블로그','Blog'),t('홈페이지','Website'),
+    t('매장 홍보','In-store promotion'),t('광고 브로셔','Ad brochures'),t('숏폼 이미지','Short-form images')
+   ].map(channel=><li key={channel}>{channel}</li>)}</ul>
+   <div className="showcase-ratios"><span>{t('이미지 비율','Image ratios')}</span><ul>{imageFormats.map(format=><li key={format.id}>{format.id}</li>)}</ul></div>
+  </div>
  </section>;
 }
