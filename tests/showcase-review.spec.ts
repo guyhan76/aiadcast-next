@@ -22,7 +22,7 @@ test('ten unbranded campaigns keep readable exact copy in both languages and exp
  await expect(gallery.locator('.campaign-category-group').nth(0).getByRole('tab')).toHaveCount(5);
  await expect(gallery.locator('.campaign-category-group').nth(1).getByRole('tab')).toHaveCount(5);
  for(const locale of ['ko','en'] as const){
-  await page.locator('.ui-language-switch select').selectOption(locale);
+  await page.getByRole('combobox',{name:/^(앱 언어|App language)$/}).selectOption(locale);
   await page.evaluate(()=>document.fonts.ready);
   const dir=`artifacts/showcase/${testInfo.project.name}-${locale}`;await mkdir(dir,{recursive:true});
   for(const campaign of campaigns){
@@ -39,7 +39,7 @@ test('ten unbranded campaigns keep readable exact copy in both languages and exp
   }
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
  }
- await page.locator('.ui-language-switch select').selectOption('ko');
+ await page.getByRole('combobox',{name:/^(앱 언어|App language)$/}).selectOption('ko');
  await gallery.getByRole('tab',{name:'화장품',exact:true}).click();
  await page.screenshot({path:`artifacts/showcase/${testInfo.project.name}-home.png`,fullPage:true});
 });
@@ -54,6 +54,9 @@ test('keyboard, previous/next and enlarged inspection preserve selected campaign
  const dialog=page.getByRole('dialog',{name:'패션소품 광고',exact:true});await expect(dialog).toBeVisible();
  await dialog.getByRole('button',{name:'확대',exact:true}).click();await expect(dialog.locator('.image-review-content')).toHaveClass(/zoomed/);
  await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);await expect(enlarge).toBeFocused();
+ await enlarge.click();
+ expect(await page.evaluate(()=>window.dispatchEvent(new CustomEvent('aiadcast-native-back',{cancelable:true})))).toBe(false);
+ await expect(dialog).toHaveCount(0);await expect(page).toHaveURL(/\/$/);
 });
 
 

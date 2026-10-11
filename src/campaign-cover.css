@@ -12,9 +12,10 @@
 .editorial-cover.campaign-beauty .cover-headline{width:64%;top:6%}
 .editorial-cover.campaign-beauty h2{font-size:7cqw}
 .editorial-cover.campaign-luxury figcaption{color:#fff7ef}
-.editorial-cover.campaign-luxury .cover-headline{text-align:center;top:6.5%}
-.editorial-cover.campaign-luxury h2{font-size:8.1cqw}
-.editorial-cover.campaign-luxury .cover-category{letter-spacing:.25em}
+.editorial-cover.campaign-luxury .cover-headline{text-align:center;top:2.5%}
+.editorial-cover.campaign-luxury h2{font-size:7cqw}
+.editorial-cover.campaign-luxury .cover-category{letter-spacing:.25em;font-size:2.3cqw;margin-bottom:2cqw}
+.editorial-cover.campaign-luxury .cover-detail{margin-top:2.2cqw}
 .editorial-cover.campaign-fashion .cover-headline{width:48%;top:14%}
 .editorial-cover.campaign-fashion h2{font-size:6.1cqw;line-height:1.4}
 .editorial-cover.campaign-fashion .cover-detail{max-width:90%;font-size:2.8cqw}
@@ -24,7 +25,9 @@
 .editorial-cover.campaign-appliance figcaption{color:#fff}
 .editorial-cover.campaign-appliance .cover-headline{width:60%;top:8%}
 .editorial-cover.campaign-appliance h2{font-size:7cqw}
-.editorial-cover.campaign-travel .cover-headline{top:5.5%}
+.editorial-cover.campaign-travel .cover-headline{top:2.5%;text-align:center}
+.editorial-cover.campaign-travel .cover-category{font-size:2.3cqw;margin-bottom:2cqw}
+.editorial-cover.campaign-travel .cover-detail{margin-top:2.2cqw}
 .editorial-cover.campaign-travel h2{font-size:7.3cqw}
 .editorial-cover.campaign-hotel figcaption{color:#fff9ef;text-shadow:0 1px 8px #38220966}
 .editorial-cover.campaign-hotel .cover-headline{width:56%;top:8%}
