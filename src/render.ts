@@ -10,6 +10,7 @@ import {boxTexture} from './box-texture.ts';
 import {artDirectionFor} from './art-direction.ts';
 import {fitAdText} from './ad-type.ts';
 import {splitAdOffer} from './ad-copy.ts';
+import {paintCampaignAd} from './campaign-ad.ts';
 export {geometry} from './layout.ts';
 export const font='"Noto Sans KR Variable", sans-serif';
 const editorialFont='"Noto Serif KR Variable", serif';
@@ -20,6 +21,7 @@ export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axi
  await document.fonts.load(`700 32px ${titleFont}`,content.title);
  const visual=visualAsset(p);
  const [product,background]=await Promise.all([visual?loadImage(visual.data):null,p.background.image?loadImage(p.background.image.data):null]);
+ if(p.presentation==='campaign'&&hasUsableCreative(p)&&product&&visual&&!p.dimensions.lines&&!boxProjectionActive(p))return paintCampaignAd(canvas,p,product,visual);
  canvas.width=width;canvas.height=height;const ctx=canvas.getContext('2d')!;const errors:string[]=[];
  let projected:ReturnType<typeof boxTexture>|null=null;
  if(product&&boxProjectionReady(p)){try{projected=boxTexture(product,p,photo.w,photo.h);}catch{errors.push(p.locale==='ko'?'원본 면을 투영하지 못했습니다. 사진 모서리와 규격을 확인해주세요.':'Could not project the source faces. Check the corners and dimensions.');}}

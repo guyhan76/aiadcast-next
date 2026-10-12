@@ -73,7 +73,7 @@ test('complete review and accepted project preserve source, editable facts, dime
  const before=structuredClone(p),review=projectWithGenerated(p,result);
  assert.deepEqual(p,before);assert.deepEqual(review.product,p.product);assert.deepEqual(review.copy,p.copy);assert.deepEqual(review.dimensions,p.dimensions);
  assert.equal(hasUsableCreative(review),true);assert.equal(review.generated,result);
- const g=geometry(review);assert.ok(g.offer.y>g.description.y);assert.ok(g.offer.y+g.offer.size*1.4<g.summary.y);
+ const g=geometry(review);assert.ok(g.offer.y>g.description.y);assert.ok(g.offer.x>=g.summary.x+g.summary.w);assert.ok(g.offer.y+g.offer.size*1.22<g.footerLine.y);
  const accepted=projectWithGenerated(review,result);assert.deepEqual(accepted,review);
  assert.throws(()=>projectWithGenerated({...p,dimensions:{...p.dimensions,width:'341'}},result),/STALE_PROJECT/);
 });

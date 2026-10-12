@@ -6,7 +6,11 @@ export function fitAdText(value:string,width:number,initial:number,min:number,ma
   for(const paragraph of value.split('\n')){
    let line='';
    for(const char of Array.from(paragraph)){
-    if(line&&measure(line+char,size)>width){lines.push(line);line=char;}else line+=char;
+    if(line&&measure(line+char,size)>width){
+     const boundary=line.lastIndexOf(' ');
+     if(boundary>0){lines.push(line.slice(0,boundary+1));line=line.slice(boundary+1)+char;}
+     else{lines.push(line);line=char;}
+    }else line+=char;
    }
    lines.push(line);
   }
@@ -16,3 +20,4 @@ export function fitAdText(value:string,width:number,initial:number,min:number,ma
  while(size>min&&(lines.length>maxLines||lines.some(line=>measure(line,size)>width))){size=Math.max(min,size-1);lines=wrap(size);}
  return {size,lines,overflow:lines.length>maxLines||lines.some(line=>measure(line,size)>width)};
 }
+

@@ -20,6 +20,8 @@ test('price emphasis preserves context when multiple amounts are supplied and ne
  assert.equal(splitAdOffer('10개 19,800원').offer,'10개 19,800원');
  assert.equal(splitAdOffer('10매에 19800원').offer,'10매에 19800원');
  assert.equal(splitAdOffer('Premium finish. $19.80').offer,'$19.80');
+ assert.equal(splitAdOffer('월 19,800원부터').offer,'월 19,800원부터');
+ assert.equal(splitAdOffer('판매가 19,800원').offer,'판매가 19,800원');
  const long='제공한 상품 특징을 자세하게 설명합니다. '.repeat(15)+' 10개 19,800원';
  const compact=compactAdDescription(long);assert.ok(compact.length<=160);assert.ok(compact.endsWith('10개 19,800원'));
  const comparison='확정한 상세 설명 '.repeat(20)+'정가 29,800원, 판매가 19,800원';assert.equal(compactAdDescription(comparison),comparison.trim());

@@ -3,6 +3,7 @@
 export type CopyZone='top'|'bottom'|'left';
 export type ArtDirection={id:string;copyZone:CopyZone;techniques:string[];concepts:string[];constraints:string[]};
 const directions:Record<string,ArtDirection>={
+ packaging:{id:'packaging-construction',copyZone:'top',techniques:['kraft fibre and folded-edge definition','controlled red-print color fidelity','directional studio product light'],concepts:['confident packaging hero on a clean industrial work surface','precise construction portrait with dimensional depth','credible dispatch preparation with the real carton prominent'],constraints:['Keep the exact reference printing, panel joins, flute construction and closed/open state. Do not add ribbons, new brand slogans, contents or waterproof demonstrations. A kraft material alone does not prove water resistance. Avoid anonymous beige warehouses and distant conveyor-belt catalog photos.']},
  beauty:{id:'beauty-material',copyZone:'top',techniques:['controlled glass reflections','cosmetic texture macro','editorial still life'],concepts:['ingredient-inspired studio still life','texture and packaging close-up','credible daily-care setting'],constraints:['Do not invent ingredients, clinical results or change supplied packaging.']},
  bags:{id:'accessory-craft',copyZone:'top',techniques:['leather-grain macro','architectural product portrait','hardware edge light'],concepts:['sculptural studio portrait','craftsmanship close-up','natural carrying gesture'],constraints:['Preserve handle, seams, closures, logos and leather color from supplied references.','Keep body width, body height, gusset depth, handle rise, attachment spacing and closure size mutually consistent with the same reference bag. Distinguish body height from overall height including the handle; never invent an unspecified measurement. Use a perspective that communicates the silhouette without an exaggerated near side, elongated handle or stretched body. If a hand holds the handle, use plausible relative scale, contact and weight.']},
  jewelry:{id:'jewelry-light',copyZone:'bottom',techniques:['macro focus','facet and metal illumination','sculptural shadow'],concepts:['jewel as sculptural hero','precise setting detail','restrained wearing portrait'],constraints:['Preserve stone shape, setting and proportions; no extra prongs or fake sparkle.']},
@@ -16,7 +17,7 @@ const directions:Record<string,ArtDirection>={
  other:{id:'editorial-product',copyZone:'top',techniques:['editorial product portrait','material-specific lighting','natural use setting'],concepts:['distinct studio hero','detail-focused campaign','credible use editorial'],constraints:['Preserve product identity and all supplied facts.']},
 };
 export function artDirectionFor(category:string,ratio:string,notes=''):ArtDirection{
- const aliases:Record<string,string>={accessories:'bags',shoes:'fashion',rental:'lease',biotech:'hospital'};
+ const aliases:Record<string,string>={accessories:'bags',shoes:'fashion',rental:'lease',biotech:'hospital',boxes:'packaging',corrugated:'packaging',kraft:'packaging'};
  const base=directions[aliases[category]??category]??directions.other;
  // Customer layout requests take priority, but never execute arbitrary instructions.
  let copyZone=base.copyZone;

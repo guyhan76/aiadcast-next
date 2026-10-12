@@ -52,4 +52,6 @@ test('type fitting preserves exact numbers and characters while shrinking; impos
  assert.equal(fit.overflow,false);assert.ok(fit.size<24);assert.equal(fit.lines.join(''),copy);assert.ok(fit.lines.every(line=>measure(line,fit.size)<=150));
  const overflow=fitAdText(copy,50,24,16,2,measure);assert.equal(overflow.overflow,true);assert.equal(overflow.lines.join(''),copy);
  const multiline=fitAdText('첫 줄\n둘째 줄',150,16,10,2,measure);assert.deepEqual(multiline.lines,['첫 줄','둘째 줄']);
+ const words=fitAdText('택배물류 박스에 표준규격',8,1,1,4,text=>text.length);assert.equal(words.lines.join(''),'택배물류 박스에 표준규격');assert.equal(words.lines[0].trim(),'택배물류');
 });
+

@@ -2,9 +2,10 @@ import {getImageFormat} from './formats.ts';
 import {dimensionAxes,isServiceCategory} from './product.ts';
 import type {Project} from './model.ts';
 import {hasUsableCreative,visualAsset} from './generated.ts';
-import {boxProjectionReady} from './box-projection.ts';
+import {boxProjectionReady,boxProjectionActive} from './box-projection.ts';
 import {artDirectionFor} from './art-direction.ts';
 import {splitAdOffer} from './ad-copy.ts';
+import {campaignAdGeometry} from './campaign-ad.ts';
 type Rect={x:number;y:number;w:number;h:number};
 type TextBox={x:number;y:number;w:number;size:number;lines:number};
 const box=(x:number,y:number,w:number,size:number,lines=1):TextBox=>({x,y,w,size,lines});
@@ -12,6 +13,8 @@ const box=(x:number,y:number,w:number,size:number,lines=1):TextBox=>({x,y,w,size
 // A layout change never crops or stretches the source photo. Annotation anchors stay
 // normalized to that photo, so they follow it when the output format changes.
 export function geometry(p:Project){
+ const campaignVisual=visualAsset(p);
+ if(p.presentation==='campaign'&&campaignVisual&&hasUsableCreative(p)&&!p.dimensions.lines&&!boxProjectionActive(p))return campaignAdGeometry(p,campaignVisual);
  const {width,height}=getImageFormat(p.format);
  let area:Rect,summary:Rect,brand:TextBox,title:TextBox,description:TextBox,company:TextBox,contact:TextBox,footerLine:Rect;
  let markScale=1;
