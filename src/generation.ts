@@ -8,6 +8,7 @@ import {assessReference,specificationContract} from './specification.ts';
 import {conversationContract} from './conversation.ts';
 import {creativeContract} from './creative.ts';
 import {boxProjectionActive,boxProjectionError} from './box-projection.ts';
+import {publicAdCopy,completeAdKey} from './complete-ad.ts';
 export type GenerationMode = 'original' | 'creative';
 export type GenerationSettings = {mode:GenerationMode;brief:string};
 export const defaultGeneration = ():GenerationSettings => ({mode:'original',brief:''});
@@ -49,11 +50,11 @@ export function buildGenerationRequest(p:Project) {
     requestedEditOperation:appearanceEdit?'masked-product-appearance-edit':direction.instructions.length?'creative-direction':'none',
     productName:p.productName,productProfile:p.productProfile,
     scene:{backgroundColor:p.background.color,backgroundImageHash:p.background.image?.sha256??null,ink:p.ink,productScale:p.scale},
-    subjectType:service?'service':'physical-product',copy:p.copy[p.locale],
+    subjectType:service?'service':'physical-product',copy:publicAdCopy(p),
     campaign,creativeDirection:p.campaign?.creative?creativeContract(p):null,attributes:[...(p.productProfile.material?[{name:service?'서비스 내용':'소재',value:p.productProfile.material}]:[]),...campaign.attributes],
     marketingPlan,target:{...marketingPlan.target,method:marketingPlan.method},contentType:campaign.contentType,specificationContract:specificationContract(p),
     specifications:dimensionAxes(p.productProfile).map(axis=>({axis:axis==='width'&&p.productProfile.specType==='cylindrical'?'diameter':axis,value:p.dimensions[axis],unit:'mm'})),
-    output:{format:p.format,width:format.width,height:format.height,locale:p.locale,showDimensions:p.dimensions.visible&&dimensionAxes(p.productProfile).length>0,showDimensionLines:p.dimensions.visible&&p.dimensions.lines&&dimensionAxes(p.productProfile).length>0},
+    output:{format:p.format,width:format.width,height:format.height,locale:p.locale,displayUnit:p.dimensions.displayUnit??'mm',compositionKey:completeAdKey(p),showDimensions:p.dimensions.visible&&dimensionAxes(p.productProfile).length>0,showDimensionLines:p.dimensions.visible&&p.dimensions.lines&&dimensionAxes(p.productProfile).length>0},
     claims:{sameProduct:!creative&&!appearanceEdit&&!service&&!!p.product&&!boxProjectionActive(p),exactGeometry:false},
   };
 }

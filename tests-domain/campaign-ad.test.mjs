@@ -37,10 +37,11 @@ test('all seven sizes keep the complete source photograph undistorted and inform
   }
  }
 });
-test('campaign hero photograph framing is independent of final output ratio and does not request a giant empty copy area',()=>{
- const r={mode:'creative',subjectType:'physical-product',productProfile:{category:'boxes'},output:{format:'9:16'},creativeDirection:{visual:{id:'auto'}}};
- assert.equal(photographSize(r),'1536x864');assert.equal(photographSize({...r,output:{format:'16:9'}}),'1024x1024');
+test('new campaigns generate whole ads at the requested native page ratio',()=>{
+ const r={mode:'creative',subjectType:'physical-product',productProfile:{category:'boxes'},output:{format:'9:16',compositionKey:'{}'},creativeDirection:{visual:{id:'auto'}}};
+ assert.equal(photographSize(r),'864x1536');assert.equal(photographSize({...r,output:{format:'16:9',compositionKey:'{}'}}),'1536x864');
  assert.equal(photographSize({...r,mode:'original'}),'864x1536');assert.equal(photographSize({...r,output:{format:'invalid'}}),undefined);
- const prompt=promptFor(r);assert.match(prompt,/HERO PLATE/);assert.match(prompt,/70–85%/);assert.match(prompt,/faithful/);assert.match(prompt,/human review/);
- assert.match(prompt,/not proof of true 3D/);assert.match(prompt,/Never render a CTA/);assert.match(prompt,/Avoid anonymous beige warehouses/);
+ const prompt=promptFor(r);assert.match(prompt,/ONE FINISHED/);assert.match(prompt,/human identity review/);
+ assert.match(prompt,/not evidence of reconstructed physical 3D/);assert.match(prompt,/Do not add a CTA/);
+ assert.match(prompt,/Never force every industry into a carton brochure/);assert.doesNotMatch(prompt,/HERO PLATE/);
 });

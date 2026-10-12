@@ -11,10 +11,18 @@ import {artDirectionFor} from './art-direction.ts';
 import {fitAdText} from './ad-type.ts';
 import {splitAdOffer} from './ad-copy.ts';
 import {paintCampaignAd} from './campaign-ad.ts';
+import {hasCompleteAd,completeAdPlacement} from './complete-ad.ts';
 export {geometry} from './layout.ts';
 export const font='"Noto Sans KR Variable", sans-serif';
 const editorialFont='"Noto Serif KR Variable", serif';
 export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axis):Promise<string[]> {
+ if(hasCompleteAd(p)){
+  const frame=completeAdPlacement(p),image=await loadImage(p.generated!.asset.data);
+  canvas.width=frame.width;canvas.height=frame.height;const ctx=canvas.getContext('2d')!;
+  ctx.fillStyle=p.background.color;ctx.fillRect(0,0,frame.width,frame.height);
+  ctx.drawImage(image,frame.x,frame.y,frame.w,frame.h);
+  return hasUsableCreative(p)?[]:[p.locale==='ko'?'광고 정보가 변경되었습니다. 이전 문구가 포함된 이미지는 저장할 수 없습니다. 현재 정보로 새 시안을 요청해주세요.':'Ad details changed. The image still contains the previous copy. Request a new visual before exporting.'];
+ }
  const layout=geometry(p);const {width,height,area,photo,summary,footerLine}=layout;const content=p.copy[p.locale];
  await Promise.all([400,500,700].map(weight=>document.fonts.load(`${weight} 32px ${font}`,Object.values(content).join('')+'가로세로높이상품규격')));
  const titleFont=p.presentation==='campaign'?editorialFont:font;

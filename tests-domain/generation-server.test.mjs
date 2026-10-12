@@ -49,6 +49,15 @@ test('default startup remains opt-in with zero budget even when a key exists',t=
  assert.throws(()=>localServerConfiguration({AIADCAST_SERVER_HOST:'0.0.0.0'}));
  assert.throws(()=>localServerConfiguration({NODE_ENV:'production'}));
 });
+test('complete-ad metadata persists by result, never by the current revision or caller claims',async t=>{
+ const {service}=setup(t,{adapter:{generate:async()=>({...result('creative'),composition:'complete-ad'})}});
+ const input=body('creative');input.request.output.compositionKey='{"copy":{"title":"봄 신상품"}}';
+ input.request.composition='fake-attestation';const created=await service.create(input);await service.waitForIdle();
+ const ready=service.job(created.job.id);assert.equal(ready.composition,'complete-ad');assert.equal(ready.compositionKey,input.request.output.compositionKey);
+ service.accept(ready.id,ready.artifactId);assert.equal(service.job(ready.id).compositionKey,ready.compositionKey);
+ const old=setup(t);const first=await old.service.create(body('creative'));await old.service.waitForIdle();
+ assert.equal(old.service.job(first.job.id).composition,undefined);assert.equal(old.service.job(first.job.id).compositionKey,undefined);
+});
 test('request validation ignores client model/prices and rejects unimplemented region editing',()=>{
  const normalized=normalizeGenerationRequest({...request(),model:'free-model',credits:-999,price:0,userId:'other'});
  assert.equal(normalized.model,undefined); assert.equal(normalized.credits,undefined);
@@ -209,3 +218,4 @@ test('multi-image adapter serializes every input and premium direction as image 
  assert.match(sent.body.get('prompt'),/FIRST reference/);assert.match(sent.body.get('prompt'),/full-frame luxury brand campaign/);assert.match(sent.body.get('prompt'),/Choose the art direction automatically/);assert.doesNotMatch(sent.body.get('prompt'),/Follow only the selected style/);assert.match(sent.body.get('prompt'),/Honor recorded changes/);
  for(const image of sent.body.getAll('image[]'))assert.deepEqual(Buffer.from(await image.arrayBuffer()),bytes);
 });
+

@@ -52,7 +52,7 @@ export async function loadImage(data:string):Promise<HTMLImageElement> {const im
 export function exportErrors(p:Project) {
  const errors:string[]=[];
  const projectionError=boxProjectionError(p);if(projectionError)errors.push(projectionError);
- if(p.generation?.mode==='creative'&&!hasUsableCreative(p))errors.push('새 광고 결과가 아직 준비되지 않았거나 원본·규격이 변경되었습니다. AI 연결 후 현재 조건으로 생성하고 결과를 승인해주세요.');
+ if(p.generation?.mode==='creative'&&!hasUsableCreative(p))errors.push('새 광고 결과가 아직 준비되지 않았거나 원본·규격·문구·연락처가 변경되었습니다. AI 연결 후 현재 조건으로 생성하고 결과를 승인해주세요.');
  if(!p.product&&!isServiceCategory(p.productProfile.category))errors.push('원본 상품 사진을 먼저 추가해주세요.');
  if(!p.copy[p.locale].title.trim())errors.push('제목을 입력해주세요.');
  if(p.dimensions.visible && dimensionAxes(p.productProfile).some(a=>!validMillimeters(p.dimensions[a])))errors.push('규격은 0보다 크고 100,000 mm 이하인 숫자로 입력해주세요.');

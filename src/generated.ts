@@ -5,10 +5,12 @@ import {dimensionAxes,parseProfile} from './product.ts';
 import type {Asset,Project} from './model.ts';
 import {creativeCopy} from './creative.ts';
 import {industryDirections} from './industry.ts';
+import {completeAdKey} from './complete-ad.ts';
 
 export type GeneratedAsset = {
  jobId:string;mode:'original'|'creative';sourceHash:string|null;asset:Asset;
  role:'background'|'creative';model:string;createdAt:string;specificationKey:string;marketingPlan?:MarketingPlan;
+ composition?:'complete-ad'|'photo-plate';compositionKey?:string;
 };
 
 // This is a local reuse key, not proof of provider origin or payment acceptance.
@@ -26,7 +28,7 @@ export function hasUsableCreative(p:Project):boolean {
  const result=p.generated;
  return !!result&&p.generation.mode==='creative'&&result.mode==='creative'&&result.role==='creative'
   &&result.sourceHash===(p.product?.sha256??null)&&result.specificationKey===generatedCompatibilityKey(p)
-  &&!!result.asset;
+  &&!!result.asset&&(result.composition!=='complete-ad'||result.compositionKey===completeAdKey(p));
 }
 export function visualAsset(p:Project):Asset|null {
  return hasUsableCreative(p)?p.generated!.asset:p.product;
@@ -37,6 +39,10 @@ export function visualAsset(p:Project):Asset|null {
 export function projectWithGenerated(p:Project,result:GeneratedAsset):Project {
  if(result.sourceHash!==(p.product?.sha256??null)||result.mode!==p.generation.mode
   ||result.specificationKey!==generatedCompatibilityKey(p)||result.role!==(result.mode==='original'?'background':'creative'))throw Error('STALE_PROJECT');
+ if(result.composition==='complete-ad'){
+  if(result.compositionKey!==completeAdKey(p))throw Error('STALE_AD_COPY');
+  return {...p,generated:result,...(p.proportionViews&&p.generated?.asset.sha256!==result.asset.sha256?{proportionViews:{...p.proportionViews,resultView:'unconfirmed' as const}}:{})};
+ }
  const copy=p.copy[p.locale],proposed=creativeCopy(p);
  // Repair the old >80-character fallback, but retain individually edited advertising copy.
  const legacyFallback=p.productProfile.material.trim().length>80&&industryDirections(p.productProfile.category).some(d=>d.description===copy.description.trim());
@@ -60,6 +66,14 @@ export async function parseGenerated(value:unknown,readAsset:(value:unknown)=>Pr
  if(!/^[A-Za-z0-9_-]+$/.test(jobId)||!/^[A-Za-z0-9._:/-]+$/.test(model)||!['original','creative'].includes(r.mode)||!validHash(r.sourceHash)
   ||r.role!==(r.mode==='original'?'background':'creative')||!Number.isFinite(Date.parse(createdAt))||new Date(createdAt).toISOString()!==createdAt)throw Error('생성 결과의 제작 정보가 올바르지 않습니다.');
  // Reject malformed metadata before decoding any imported data URL.
+ if(r.composition!==undefined&&!['complete-ad','photo-plate'].includes(r.composition))throw Error('생성 결과의 광고 형식을 확인해주세요.');
+ let compositionKey:string|undefined;
+ if(r.composition==='complete-ad'){
+  if(r.mode!=='creative')throw Error('생성 결과의 광고 형식을 확인해주세요.');
+  compositionKey=metadataString(r.compositionKey,8192);
+  let snapshot:unknown;try{snapshot=JSON.parse(compositionKey);}catch{throw Error('생성 결과의 문구 정보를 확인해주세요.');}
+  if(!snapshot||typeof snapshot!=='object'||Array.isArray(snapshot))throw Error('생성 결과의 문구 정보를 확인해주세요.');
+ }
  let key:unknown;try{key=JSON.parse(specificationKey);}catch{throw Error('생성 결과의 규격 정보를 확인해주세요.');}
  if(!key||typeof key!=='object'||Array.isArray(key))throw Error('생성 결과의 규격 정보를 확인해주세요.');
  const details=key as {sourceHash:unknown;mode:unknown;productProfile:unknown;specifications:unknown};
@@ -71,6 +85,6 @@ export async function parseGenerated(value:unknown,readAsset:(value:unknown)=>Pr
  if(marketingPlan&&(marketingPlan.input.sourceHash!==r.sourceHash||marketingPlan.input.mode!==r.mode))throw Error('생성 결과의 광고 기획과 원본 정보가 일치하지 않습니다.');
  const asset=await readAsset(r.asset);
  if(!asset)throw Error('생성 결과 이미지가 누락되었습니다.');
- return {jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey,...(marketingPlan?{marketingPlan}:{})};
+ return {jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey,...(marketingPlan?{marketingPlan}:{}),...(r.composition?{composition:r.composition}:{}),...(compositionKey?{compositionKey}:{})};
 }
 
