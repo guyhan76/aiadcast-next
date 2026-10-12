@@ -2,6 +2,7 @@ import type {Project} from './model.ts';
 import {defaultCampaign} from './campaign.ts';
 import {industryDirections,industryGroupFor,industryLabel} from './industry.ts';
 import {artDirectionFor,requestedCallToAction} from './art-direction.ts';
+import {compactAdDescription} from './ad-copy.ts';
 
 export const creativeLooks=[
  {id:'editorial',label:'에디토리얼',description:'넓은 여백과 선명한 타이포',color:'#f8f7f4',ink:'dark',accent:'#a27853'},
@@ -32,12 +33,13 @@ export function creativeCopy(p:Project):{title:string;description:string}{
  const name=p.productName.trim();
  const requested=requestedCallToAction(settings.note);
  const cta=requested==='requested'?direction.cta:requested;
- const description=p.productProfile.material.trim().length<=80?p.productProfile.material.trim():'';
+ const description=compactAdDescription(p.productProfile.material);
  const action=p.locale==='en'&&requested==='requested'?'Get in touch.':cta;
  const base=description||(p.locale==='en'?{brand:'A distinctive everyday presence.',offer:'Details that make the difference.',trust:'Thoughtfully prepared for your everyday.'}[settings.directionId]:direction.description);
  if(p.locale==='en')return {title:name||'Your brand, in focus',description:[base,action].filter(Boolean).join(' ')};
  // The initial title describes the offer; purpose labels never imply an unsolicited CTA.
- return {title:name||'일상에 더하는 새로운 가치',description:[base,action].filter(Boolean).join(' ')};
+ const packagingTrust=(industryGroupFor(p.productProfile.category).id==='packaging'||/박스/.test(name))&&/튼튼|내구성|든든/.test(description);
+ return {title:name?(packagingTrust?`${name}\n배송의 시작, 든든하게.`:name):'일상에 더하는 새로운 가치',description:[base,action].filter(Boolean).join(' ')};
 }
 export function creativeContract(p:Project){
  const settings=creativeSettings(p),category=p.productProfile.category,group=industryGroupFor(category),direction=industryDirections(category).find(d=>d.id===settings.directionId)!;
@@ -46,4 +48,5 @@ export function creativeContract(p:Project){
   factPolicy:'Use only supplied or confirmed business facts. Do not invent prices, performance, returns, medical outcomes, certifications, testimonials or eligibility. Ask for missing facts when needed.',
   status:'direction-prepared',providerStatus:'not-connected'};
 }
+
 

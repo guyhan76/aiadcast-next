@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {newProject,exportErrors,importProject} from '../src/model.ts';
-import {generatedCompatibilityKey,hasUsableCreative,visualAsset,parseGenerated} from '../src/generated.ts';
+import {generatedCompatibilityKey,hasUsableCreative,visualAsset,parseGenerated,projectWithGenerated} from '../src/generated.ts';
 import {withCategory} from '../src/product.ts';
 import {geometry} from '../src/layout.ts';
 const original={name:'original.png',data:'data:image/png;base64,original',sha256:'a'.repeat(64),width:400,height:600};
@@ -64,3 +64,28 @@ test('additional reference changes invalidate a prior creative but footer visibi
  p.footer={company:false,contact:false,email:false,website:true};p.copy.ko.email='studio@example.com';assert.equal(hasUsableCreative(p),true);
  p.references[0]={...p.references[0],sha256:'f'.repeat(64)};assert.equal(hasUsableCreative(p),false);
 });
+
+test('complete review and accepted project preserve source, editable facts, dimensions and contacts',()=>{
+ const p=fixture();p.presentation='campaign';p.dimensions={...p.dimensions,width:'340',depth:'250',height:'210',visible:true,displayUnit:'mm'};
+ p.productName='우체국3호박스';p.productProfile.material='B골 크라프트';
+ p.copy.ko={title:'배송의 시작, 든든하게.',description:'B골 크라프트 · 빠른배송 · 10개 19,800원',company:'셀업랩스',contact:'010-5635-6211',email:'selluplabs@gmail.com',website:'https://aiadcast-next.onrender.com'};
+ const result={...p.generated,specificationKey:generatedCompatibilityKey(p)};delete p.generated;
+ const before=structuredClone(p),review=projectWithGenerated(p,result);
+ assert.deepEqual(p,before);assert.deepEqual(review.product,p.product);assert.deepEqual(review.copy,p.copy);assert.deepEqual(review.dimensions,p.dimensions);
+ assert.equal(hasUsableCreative(review),true);assert.equal(review.generated,result);
+ const g=geometry(review);assert.ok(g.offer.y>g.description.y);assert.ok(g.offer.y+g.offer.size*1.4<g.summary.y);
+ const accepted=projectWithGenerated(review,result);assert.deepEqual(accepted,review);
+ assert.throws(()=>projectWithGenerated({...p,dimensions:{...p.dimensions,width:'341'}},result),/STALE_PROJECT/);
+});
+test('review repairs the old long-description fallback without overwriting user-authored copy or hidden dimensions',()=>{
+ const p=fixture();p.productProfile.category='boxes';p.productName='우체국3호박스';
+ p.productProfile.material='크라프트재질로 내구성이 튼튼하고 습기에 강하다. 택배물류 박스에 표준규격. 우체국박스로 믿을 수 있는 든든함. 빠른배송. B골 크라프트재질. 10개 19,800원';
+ p.copy.ko.title=p.productName;p.copy.ko.description='박스와 브랜드의 분위기';p.dimensions.visible=false;
+ const result={...p.generated,specificationKey:generatedCompatibilityKey(p)};
+ const review=projectWithGenerated(p,result);assert.ok(review.copy.ko.description.includes('10개 19,800원'));assert.ok(review.copy.ko.description.includes('크라프트'));assert.equal(review.dimensions.visible,false);
+ p.copy.ko.description='확정한 가격 10개 19,800원';p.copy.ko.title='대표님이 확정한 제목';
+ assert.deepEqual(projectWithGenerated(p,result).copy,p.copy);
+ p.generation.mode='original';const originalResult={...result,mode:'original',role:'background',specificationKey:generatedCompatibilityKey(p)};
+ const background=projectWithGenerated(p,originalResult);assert.equal(background.product,p.product);assert.equal(background.background.image,originalResult.asset);assert.equal(visualAsset(background),p.product);
+});
+

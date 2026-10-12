@@ -103,10 +103,30 @@ test('rejecting a ready visual restores the test credit without applying the art
 
 test('artifact hash mismatch is detected before accepting a charge',async({page})=>{
  const {state,panel}=await mockApi(page,{corruptArtifact:true});
- await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();await panel.getByRole('checkbox',{name:'상품·배경·형태를 확인했습니다.',exact:true}).check();
- await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+ await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();
  await expect(panel.getByRole('alert')).toContainText('파일 검증에 실패');
+ await expect(panel.getByRole('checkbox',{name:'상품·배경·형태를 확인했습니다.',exact:true})).toBeDisabled();
+ await expect(panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true})).toBeDisabled();
  expect(state.acceptPosts).toBe(0);expect(state.generationPosts).toBe(1);expect((await backup(page)).generated).toBeUndefined();
+});
+
+test('complete ad preview is composed before charging and matches PNG after local dimension edits',async({page})=>{
+ const {state,panel}=await mockApi(page);const p=await backup(page);
+ p.presentation='campaign';p.generation.mode='creative';p.productName='우체국3호박스';p.productProfile={category:'boxes',specType:'rectangular',material:'크라프트재질로 내구성이 튼튼하고 습기에 강하다. 택배물류 박스에 표준규격. 우체국박스로 믿을 수 있는 든든함. 빠른배송. B골 크라프트재질. 10개 19,800원'};
+ p.dimensions={...p.dimensions,width:'340',depth:'250',height:'210',displayUnit:'mm',visible:true};
+ p.copy.ko={title:p.productName,description:'박스와 브랜드의 분위기',company:'셀업랩스',contact:'010-5635-6211',email:'selluplabs@gmail.com',website:'https://aiadcast-next.onrender.com'};
+ page.on('dialog',d=>d.accept());await page.getByLabel('프로젝트 파일 선택').setInputFiles({name:'postal-box.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(p))});
+ await panel.getByRole('button',{name:'AI 새 시안 요청 · 1개',exact:true}).click();
+ const preview=panel.getByRole('img',{name:'광고카피와 상품 정보가 합성된 광고 미리보기',exact:true});await expect(preview).toBeVisible();
+ const first=await preview.getAttribute('src');expect(first).not.toBe(state.job!.artifact!.dataUrl);
+ expect(await sharp(Buffer.from(first!.split(',')[1],'base64')).metadata()).toMatchObject({width:1080,height:1920});
+ expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(0);
+ const spec=panel.getByRole('checkbox',{name:'광고에 규격 표시',exact:false});await spec.uncheck();await expect(preview).not.toHaveAttribute('src',first!);
+ await spec.check();await expect(preview).toHaveAttribute('src',first!);expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(0);
+ await panel.getByRole('checkbox',{name:'상품·배경·형태를 확인했습니다.',exact:true}).check();await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+ const saved=await backup(page);expect(saved.copy.ko.description).toContain('10개 19,800원');expect(saved.copy.ko.contact).toBe('010-5635-6211');
+ const event=page.waitForEvent('download');await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();const bytes=await readFile((await(await event).path())!);
+ expect(bytes).toEqual(Buffer.from(first!.split(',')[1],'base64'));expect(state.acceptPosts).toBe(1);expect(state.generationPosts).toBe(1);
 });
 
 

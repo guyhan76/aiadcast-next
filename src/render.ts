@@ -9,11 +9,15 @@ import {boxProjectionActive,boxProjectionReady} from './box-projection.ts';
 import {boxTexture} from './box-texture.ts';
 import {artDirectionFor} from './art-direction.ts';
 import {fitAdText} from './ad-type.ts';
+import {splitAdOffer} from './ad-copy.ts';
 export {geometry} from './layout.ts';
 export const font='"Noto Sans KR Variable", sans-serif';
+const editorialFont='"Noto Serif KR Variable", serif';
 export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axis):Promise<string[]> {
  const layout=geometry(p);const {width,height,area,photo,summary,footerLine}=layout;const content=p.copy[p.locale];
  await Promise.all([400,500,700].map(weight=>document.fonts.load(`${weight} 32px ${font}`,Object.values(content).join('')+'가로세로높이상품규격')));
+ const titleFont=p.presentation==='campaign'?editorialFont:font;
+ await document.fonts.load(`700 32px ${titleFont}`,content.title);
  const visual=visualAsset(p);
  const [product,background]=await Promise.all([visual?loadImage(visual.data):null,p.background.image?loadImage(p.background.image.data):null]);
  canvas.width=width;canvas.height=height;const ctx=canvas.getContext('2d')!;const errors:string[]=[];
@@ -33,17 +37,19 @@ export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axi
   ctx.fillStyle=wash;ctx.fillRect(0,0,width,height);
   const footerWash=ctx.createLinearGradient(0,height*.80,0,height);footerWash.addColorStop(0,`rgba(${shade},0)`);footerWash.addColorStop(1,`rgba(${shade},.94)`);ctx.fillStyle=footerWash;ctx.fillRect(0,height*.80,width,height*.20);
  }else paintCreativeFrame(ctx,p,width,height);
- const text=(value:string,x:number,y:number,size:number,maxWidth:number,maxLines:number,name:string,weight=400)=>{
+ const text=(value:string,x:number,y:number,size:number,maxWidth:number,maxLines:number,name:string,weight=400,family=font)=>{
   if(!value)return;
-  const fit=fitAdText(value,maxWidth,size,size*.68,maxLines,(line,s)=>{ctx.font=`${weight} ${s}px ${font}`;return ctx.measureText(line).width;});
-  ctx.fillStyle=color;ctx.font=`${weight} ${fit.size}px ${font}`;ctx.textBaseline='top';
+  const fit=fitAdText(value,maxWidth,size,size*.68,maxLines,(line,s)=>{ctx.font=`${weight} ${s}px ${family}`;return ctx.measureText(line).width;});
+  ctx.fillStyle=color;ctx.font=`${weight} ${fit.size}px ${family}`;ctx.textBaseline='top';
   if(fit.overflow||y+fit.lines.length*fit.size*1.4>height||x+maxWidth>width)errors.push(`${name}이(가) 영역을 넘습니다. 문구를 줄이거나 줄바꿈을 조정해주세요.`);
   fit.lines.slice(0,maxLines).forEach((line,i)=>ctx.fillText(line,x,y+i*fit.size*1.4));
  };
  const placed=(value:string,region:typeof layout.title,name:string,weight=400)=>text(value,region.x,region.y,region.size,region.w,region.lines,name,weight);
  if(!p.footer)placed(content.company||(layout.textOnly?'BRAND STORY':'PRODUCT STORY'),layout.brand,'상단 기업명',500);
- placed(content.title,layout.title,'제목',700);
- placed(content.description,layout.description,'설명');
+ text(content.title,layout.title.x,layout.title.y,layout.title.size,layout.title.w,layout.title.lines,'제목',700,titleFont);
+ const adCopy=splitAdOffer(content.description);
+ placed(adCopy.description,layout.description,'설명');
+ placed(adCopy.offer,layout.offer,'가격',700);
  if(product&&!campaign){if(projected)ctx.drawImage(projected.canvas,photo.x,photo.y);else ctx.drawImage(product,photo.x,photo.y,photo.w,photo.h);}else if(!product&&!layout.textOnly){
   ctx.save();ctx.strokeStyle=p.ink==='dark'?'#b2afa5':'#aaa';ctx.lineWidth=2;ctx.setLineDash([12,12]);ctx.strokeRect(area.x,area.y,area.w,area.h);ctx.restore();ctx.save();ctx.globalAlpha=.65;text(p.locale==='ko'?'이곳에 실제 상품 사진이 표시됩니다.':'Your original product photo goes here.',area.x+24,area.y+area.h/2,28*layout.markScale,area.w-48,2,'사진 안내');ctx.restore();
  }

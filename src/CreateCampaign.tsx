@@ -54,7 +54,7 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft}:{initialKind?
     <details className="quiet-details create-industry-settings"><summary>{t('업종·규격','Category & dimensions')}<span>{t('선택','Optional')}</span></summary>
      <IndustryPicker simple value={project.productProfile.category} onChange={category=>change(p=>withCategory(p,category))}/>
      {!service&&<>
-      <label className="field">{t('상품 크기','Product dimensions')}<select aria-label={t('규격 형식','Dimension type')} value={project.productProfile.specType} onChange={e=>change(p=>({...p,productProfile:{...p.productProfile,specType:e.target.value as SpecType},dimensions:{...p.dimensions,visible:e.target.value==='none'?false:p.dimensions.visible,lines:false}}))}>{specTypes.map(([id,label])=><option key={id} value={id}>{text(label)}</option>)}</select></label>
+      <label className="field">{t('상품 크기','Product dimensions')}<select aria-label={t('규격 형식','Dimension type')} value={project.productProfile.specType} onChange={e=>change(p=>({...p,productProfile:{...p.productProfile,specType:e.target.value as SpecType},dimensions:{...p.dimensions,visible:e.target.value!=='none',lines:false}}))}>{specTypes.map(([id,label])=><option key={id} value={id}>{text(label)}</option>)}</select></label>
       <DimensionInputs project={project} change={change}/>
       {!!axes.length&&<label className="check-field dimension-visibility"><input type="checkbox" checked={project.dimensions.visible} onChange={e=>change(p=>({...p,dimensions:{...p.dimensions,visible:e.target.checked}}))}/>{t('광고에 규격 표시','Show dimensions on ad')}</label>}
       <p className="help">{t('규격이 중요한 상품만 입력하세요.','Add dimensions when they matter.')}</p>
@@ -80,3 +80,4 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft}:{initialKind?
   </div>
  </div>;
 }
+

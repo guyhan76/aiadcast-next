@@ -3,6 +3,8 @@ import type {MarketingPlan} from './marketing-plan.ts';
 import {validMillimeters} from './dimension-units.ts';
 import {dimensionAxes,parseProfile} from './product.ts';
 import type {Asset,Project} from './model.ts';
+import {creativeCopy} from './creative.ts';
+import {industryDirections} from './industry.ts';
 
 export type GeneratedAsset = {
  jobId:string;mode:'original'|'creative';sourceHash:string|null;asset:Asset;
@@ -28,6 +30,21 @@ export function hasUsableCreative(p:Project):boolean {
 }
 export function visualAsset(p:Project):Asset|null {
  return hasUsableCreative(p)?p.generated!.asset:p.product;
+}
+
+// A temporary complete ad for review and the accepted project use exactly the same composition.
+// This does not persist or charge a provider result, and never replaces source bytes.
+export function projectWithGenerated(p:Project,result:GeneratedAsset):Project {
+ if(result.sourceHash!==(p.product?.sha256??null)||result.mode!==p.generation.mode
+  ||result.specificationKey!==generatedCompatibilityKey(p)||result.role!==(result.mode==='original'?'background':'creative'))throw Error('STALE_PROJECT');
+ const copy=p.copy[p.locale],proposed=creativeCopy(p);
+ // Repair the old >80-character fallback, but retain individually edited advertising copy.
+ const legacyFallback=p.productProfile.material.trim().length>80&&industryDirections(p.productProfile.category).some(d=>d.description===copy.description.trim());
+ const repair=!copy.description.trim()||legacyFallback;
+ const completedCopy={...copy,...(!copy.title.trim()?{title:proposed.title}:{}),...(repair?{description:proposed.description,...(copy.title===p.productName?{title:proposed.title}:{})}:{})};
+ return {...p,copy:{...p.copy,[p.locale]:completedCopy},
+  ...(p.proportionViews&&p.generated?.asset.sha256!==result.asset.sha256?{proportionViews:{...p.proportionViews,resultView:'unconfirmed' as const}}:{}),
+  generated:result,background:result.role==='background'?{...p.background,image:result.asset}:p.background};
 }
 
 function metadataString(value:unknown,max:number):string {
