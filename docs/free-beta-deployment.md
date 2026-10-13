@@ -15,7 +15,9 @@ Supabase 프로젝트 상단 **Connect → Connection string → Method: Session
 | `AIADCAST_BETA_ENABLE_GENERATION` | `true` |
 | `AIADCAST_BETA_ENABLE_ASSISTANT` | `false` |
 | `AIADCAST_BETA_MONTHLY_BUDGET_USD` | `1` |
-| `AIADCAST_EMAIL_ENABLED` | `false` — 첫 시험은 관리자 초대 로그인 |
+| `AIADCAST_EMAIL_ENABLED` | `false` — 이메일/비밀번호 테스트 가입·로그인 |
+| `AIADCAST_TEST_AUTH_ENABLED` | `true` — 이메일 인증을 생략하는 테스트 계정 모드. 메일 인증이 꺼진 베타에서는 기본 활성화 |
+| `AIADCAST_TEST_ADMIN_PASSWORD` | 운영자가 직접 정한 관리자 비밀번호, 12~128자. 채팅·저장소에 공유하지 않음 |
 | `AIADCAST_TOSS_TEST_ENABLED` | `false` — 결제사 시험 키 연결 전 |
 
 `DATABASE_URL` 형식은 다음과 같다. 대괄호가 남아 있으면 안 된다.
@@ -61,6 +63,14 @@ postgresql://postgres.PROJECT_REF:URL_ENCODED_DATABASE_PASSWORD@EXACT_POOLER_HOS
 TLS 인증서 검증은 켜져 있다. CA 오류를 해결하려고 검증을 끄지 않는다. 서버 로그는 API 키·DB 비밀번호·원시 공급사 응답을 출력하지 않는다.
 
 ## 3. 관리자 첫 로그인
+
+2026-10-13 변경: 웹 기본 경로는 초대코드를 요구하지 않는다. **Render → aiadcast-next → Environment**에 `AIADCAST_TEST_ADMIN_PASSWORD`를 한 번 추가하고 Save, rebuild, and deploy 한다. 값은 운영자가 직접 정한 12~128자 비밀번호이며, 미설정 상태에서는 관리자 로그인을 활성화하지 않는다. 대표 이메일 기본값은 `selluplabs@gmail.com`이다. 변경이 필요하면 `AIADCAST_TEST_ADMIN_EMAIL`에 기존 관리자 주소를 넣는다.
+
+웹 **로그인 → 관리자 로그인**에서 설정한 비밀번호로 들어간다. 기존 관리자 계정이 있으면 계정 ID·사진·작업·이용권·할당 예산·사용량을 이어 사용한다. 첫 관리자 계정은 서버에서만 만들며 미배정 예산과 시험 이용권 3개를 한 번 받는다. 재시작·재배포·재로그인으로 이용권을 다시 지급하지 않는다. 비밀번호 변경 시 기존 관리자 세션은 해제한다. 다른 관리자 주소가 이미 있으면 자동으로 새 관리자를 만들거나 교체하지 않는다.
+
+일반 회원은 **회원가입**에서 선택적 이름·이메일·비밀번호·비밀번호 확인을 입력하면 즉시 로그인한다. 이메일 인증은 보내지 않는다. 이는 실제 서버 계정/세션/작업 저장 시험이며 이메일 소유 확인을 시험한 것은 아니다. 새 일반 회원의 실제 생성 예산·이용권은 0이며 기존 관리자 지급 흐름을 따른다. 회원 최대 20명과 총 API 예산은 유지한다. 비밀번호는 개별 무작위 salt와 scrypt 해시로 저장하고, 계정별 잘못된 로그인 5회에 10분 제한·공통 로그인 요청 한도를 적용한다.
+
+메일 인증을 사용할 때는 `AIADCAST_TEST_AUTH_ENABLED=false`로 테스트 가입을 끄고 아래 이메일 가입 설정을 따른다. 아래 SQL 초대는 과거 클라이언트·운영자 복구용 호환 경로이며 현재 웹 사용자의 필수 단계가 아니다.
 
 **Live가 된 뒤** Supabase **SQL Editor → New query**에서 아래 한 줄을 실행한다. SQL Editor의 프로젝트 운영자 권한으로만 실행할 수 있으며, 앱/일반 회원에게 관리자 승격 API는 없다.
 

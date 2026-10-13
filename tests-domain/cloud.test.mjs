@@ -68,6 +68,26 @@ async function setup(t,{adapter,accounts}={}){
  };
  return {get app(){return app;},bucket,call,calls:()=>calls,async restart(){await app.close();app=null;return start();},async member(label='Tester',budgetMicros=0,credits=0){const i=await app.store.provision({label,budgetMicros,credits});const r=await call('/api/auth/login',{body:{invite:i.invite}});assert.equal(r.status,200,JSON.stringify(r.data));return r.data;}};
 }
+test('cloud test password accounts and owner login survive restart without invitation or repeated credits',async t=>{
+ const password='Fixture-private-admin-2026!',memberPassword='Fixture-private-member-2026!';
+ const s=await setup(t,{accounts:{password:{enabled:true,adminEmail:'selluplabs@gmail.com',adminPassword:password}}});
+ assert.equal((await s.call('/api/account/capabilities')).data.password.adminReady,true);
+ const login=await s.call('/api/auth/test/login',{body:{email:'selluplabs@gmail.com',password}});assert.equal(login.status,200,JSON.stringify(login.data));
+ const admin=login.data;assert.equal(admin.user.role,'admin');
+ const member=(await s.call('/api/auth/test/signup',{body:{email:'member@example.com',password:memberPassword,role:'admin'}})).data;
+ assert.equal(member.user.role,'member');assert.equal((await s.call('/api/admin/overview',{token:member.token})).status,403);
+ const p={version:1,id:'password-project',name:'Saved test'};assert.equal((await s.call('/api/projects/'+p.id,{token:admin.token,body:{project:p,revision:0}})).status,200);
+ assert.equal((await s.call('/api/projects/'+p.id,{token:member.token})).status,404);
+ await s.restart();
+ assert.equal((await s.call('/api/projects/'+p.id,{token:admin.token})).data.project.name,p.name);
+ assert.equal((await s.call('/api/auth/test/login',{body:{email:'member@example.com',password:memberPassword}})).data.user.id,member.user.id);
+ assert.equal((await s.call('/api/status',{token:admin.token})).data.wallet.available,3);
+ assert.equal((await s.call('/api/admin/overview',{token:admin.token})).status,200);
+ const stored=await s.app.store.db.prepare('SELECT * FROM test_passwords').all();assert.ok(!JSON.stringify(stored).includes(password));
+ for(let i=0;i<5;i++)assert.equal((await s.call('/api/auth/test/login',{body:{email:'member@example.com',password:'Wrong-fixture-password'}})).status,401);
+ assert.equal((await s.call('/api/auth/test/login',{body:{email:'member@example.com',password:memberPassword}})).status,429);
+ assert.equal(s.calls(),0);
+});
 test('cloud database configuration requires the project session pooler with strict TLS',()=>{
  const uri=`postgresql://postgres.${ref}:fixture%21password@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres`;
  assert.equal(postgresConfiguration(uri,env.SUPABASE_URL).ssl.rejectUnauthorized,true);

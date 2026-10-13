@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { ApiFailure } from '../generation-service.mjs';
 import { ProviderFailure } from '../openai-image-adapter.mjs';
 import { EmailAuth } from './email-auth-base.mjs';
+import { PasswordAuth } from './password-auth-base.mjs';
 import { TestCheckout } from './test-checkout-base.mjs';
 import { AdminApi } from './admin-api-base.mjs';
 export const ANDROID_ORIGIN = 'https://appassets.androidplatform.net';
@@ -42,6 +43,8 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, now =
     const service = async (user) => { if (!services.has(user.id))
         services.set(user.id, Promise.resolve().then(() => serviceFactory(user))); return await services.get(user.id); };
     const email = await new EmailAuth().initialize(store, { sendMail: accounts.sendMail, publicOrigin: origin, now });
+    const password = await new PasswordAuth().initialize(store, accounts.password, now);
+    await password.bootstrapOwner();
     const checkout = await new TestCheckout().initialize(store, { ...accounts, publicOrigin: origin, now, creditPurchase: async (id, purchase) => { const user = await store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id); if (!user)
             throw new ApiFailure('AUTH_REQUIRED', 401); return await (await service(user)).recordTestPurchase(purchase); } });
     const admin = await new AdminApi().initialize(store, { service, accounts, checkout, now });
@@ -82,7 +85,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, now =
                 res.end(bytes);
                 return;
             }
-            limit(['/api/auth/login', '/api/auth/email/request', '/api/auth/email/verify', '/api/checkout/confirm', '/api/checkout/launch'].includes(url.pathname));
+            limit(['/api/auth/login', '/api/auth/test/signup', '/api/auth/test/login', '/api/auth/email/request', '/api/auth/email/verify', '/api/checkout/confirm', '/api/checkout/launch'].includes(url.pathname));
             if (req.headers.origin && !cors)
                 throw new ApiFailure('ORIGIN_NOT_ALLOWED', 403);
             if (req.method === 'OPTIONS') {
@@ -106,7 +109,12 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, now =
                 return;
             }
             if (req.method === 'GET' && url.pathname === '/api/account/capabilities') {
-                send(res, 200, { email: { enabled: Boolean(accounts.sendMail) }, checkout: { enabled: checkout.available(), test: true, currency: 'KRW' } }, cors);
+                send(res, 200, { email: { enabled: Boolean(accounts.sendMail) }, ...(password.available() ? { password: { enabled: true, test: true, adminReady: await password.ownerReady(), adminEmail: password.adminEmail } } : {}), checkout: { enabled: checkout.available(), test: true, currency: 'KRW' } }, cors);
+                return;
+            }
+            if (req.method === 'POST' && ['/api/auth/test/signup', '/api/auth/test/login'].includes(url.pathname)) {
+                const b = await read(req, 2048);
+                send(res, 200, url.pathname.endsWith('/signup') ? await password.signup(b) : await password.signIn(b), cors);
                 return;
             }
             if (req.method === 'POST' && url.pathname.startsWith('/api/auth/email/')) {
@@ -179,7 +187,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, now =
             }
             if (req.method === 'GET' && url.pathname === '/api/status') {
                 const s = await (await service(user)).status();
-                send(res, 200, { ...s, mode: 'invite-beta', limitations: s.limitations.filter(x => !['local-single-user', 'no-production-auth'].includes(x)).concat(['invite-only', 'single-instance-beta', 'no-live-payment']), user: { id: user.id, label: user.label } }, cors);
+                send(res, 200, { ...s, mode: password.available() ? 'test-account-beta' : 'invite-beta', limitations: s.limitations.filter(x => !['local-single-user', 'no-production-auth'].includes(x)).concat([password.available() ? 'test-email-unverified' : 'invite-only', 'single-instance-beta', 'no-live-payment']), user: { id: user.id, label: user.label } }, cors);
                 return;
             }
             if (req.method === 'GET' && url.pathname === '/api/generations') {

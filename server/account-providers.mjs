@@ -29,5 +29,6 @@ export function accountConfiguration(env=process.env){
  const clientKey=env.AIADCAST_TOSS_TEST_CLIENT_KEY??'';
  const paymentEnabled=env.AIADCAST_TOSS_TEST_ENABLED==='true';
  if(paymentEnabled&&!/^test_ck_[A-Za-z0-9_-]+$/.test(clientKey))throw Error('TOSS_TEST_CLIENT_KEY_REQUIRED');
- return {sendMail:email,clientKey:paymentEnabled?clientKey:null,provider:paymentEnabled?new TossTestProvider({secretKey:env.AIADCAST_TOSS_TEST_SECRET_KEY_FILE?readFileSync(env.AIADCAST_TOSS_TEST_SECRET_KEY_FILE,'utf8').trim():env.AIADCAST_TOSS_TEST_SECRET_KEY}):undefined};
+ return {sendMail:email,password:{enabled:env.AIADCAST_TEST_AUTH_ENABLED===undefined?!emailEnabled:env.AIADCAST_TEST_AUTH_ENABLED==='true',adminEmail:env.AIADCAST_TEST_ADMIN_EMAIL??'selluplabs@gmail.com',adminPassword:env.AIADCAST_TEST_ADMIN_PASSWORD},clientKey:paymentEnabled?clientKey:null,provider:paymentEnabled?new TossTestProvider({secretKey:env.AIADCAST_TOSS_TEST_SECRET_KEY_FILE?readFileSync(env.AIADCAST_TOSS_TEST_SECRET_KEY_FILE,'utf8').trim():env.AIADCAST_TOSS_TEST_SECRET_KEY}):undefined};
 }
+

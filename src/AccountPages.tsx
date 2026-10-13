@@ -11,6 +11,38 @@ import './account-pages.css';
 export {PaymentBrowserPage} from './PaymentBrowserPage';
 type Context={preserve:()=>Promise<void>;returnPage:'create'|'studio'|'home'};
 function useCapabilities(){const [value,setValue]=useState<Capabilities|null>(null);useEffect(()=>{let active=true;apiRequest<Capabilities>('/api/account/capabilities').then(v=>{if(active)setValue(v);}).catch(()=>{});return()=>{active=false};},[]);return value;}
+function PasswordAccountPage({mode,preserve,returnPage,cap}:Context&{mode:'signup'|'login';cap:NonNullable<Capabilities['password']>}){
+ const {t,language}=useUiLanguage(),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[confirm,setConfirm]=useState(''),[name,setName]=useState(''),[admin,setAdmin]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
+ const signup=mode==='signup'&&!admin,locked=useRef(false);
+ async function submit(){
+  if(locked.current)return;
+  if(signup&&password!==confirm){setMessage(t('비밀번호가 일치하지 않습니다.','Passwords do not match.'));return;}
+  locked.current=true;setBusy(true);setMessage('');
+  try{
+   await preserve();
+   const session=await apiRequest<BetaSession>(signup?'/api/auth/test/signup':'/api/auth/test/login',{email,password,...(signup?{name}:{})});
+   await carryGuestWorkspace(accountNamespace(session.user.id));setPassword('');setConfirm('');
+   setBetaSession(session,admin&&returnPage==='home'?'admin':returnPage);
+  }catch(e){setMessage(accountError(e,language==='ko'));}finally{locked.current=false;setBusy(false);}
+ }
+ function selectAdmin(value:boolean){setAdmin(value);setEmail(value?cap.adminEmail:'');setPassword('');setConfirm('');setMessage('');}
+ return <section className="account-page"><a className="page-back" href={'#'+returnPage}><ArrowLeft size={18}/>{t('돌아가기','Back')}</a>
+  <h1>{admin?t('관리자 로그인','Administrator sign-in'):signup?t('테스트 회원가입','Test signup'):t('로그인','Sign in')}</h1>
+  <p className="page-intro">{admin?t('초대코드 없이 관리자 계정으로 로그인하세요.','Sign in to your administrator account without an invitation.'):signup?t('이메일과 비밀번호로 바로 시작하세요.','Start with your email and password.'):t('가입한 계정으로 광고를 이어서 만드세요.','Continue your ad with your account.')}</p>
+  <form onSubmit={e=>{e.preventDefault();void submit();}}>
+   {signup&&<label className="field">{t('이름 · 선택','Name · optional')}<input autoComplete="name" maxLength={80} value={name} onChange={e=>setName(e.target.value)}/></label>}
+   <label className="field">{t('이메일','Email')}<input type="email" autoComplete="username" inputMode="email" required maxLength={254} value={email} readOnly={admin} onChange={e=>setEmail(e.target.value)}/></label>
+   <label className="field">{t('비밀번호','Password')}<input type="password" autoComplete={signup?'new-password':'current-password'} required minLength={8} maxLength={128} value={password} onChange={e=>setPassword(e.target.value)}/></label>
+   {signup&&<label className="field">{t('비밀번호 확인','Confirm password')}<input type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={confirm} onChange={e=>setConfirm(e.target.value)}/></label>}
+   {admin&&!cap.adminReady&&<p role="status" className="connection-notice">{t('관리자 비밀번호를 서버에 한 번 설정해야 합니다. 설정 후 바로 로그인할 수 있습니다.','Set the administrator password on the server once, then sign in directly.')}</p>}
+   <button className="primary-action" disabled={busy||Boolean(admin&&!cap.adminReady)}>{busy?t('처리 중…','Working…'):signup?t('가입하고 시작하기','Sign up and start'):t('로그인하고 계속','Sign in and continue')}</button>
+  </form>
+  <p className="account-help">{t('테스트 모드 · 이메일 인증을 생략합니다. 입력한 이메일의 소유 여부는 확인하지 않습니다.','Test mode · Email verification is skipped. Ownership of the email address is not verified.')}</p>
+  {!admin&&<p className="account-switch">{signup?t('이미 가입하셨나요?','Already have an account?'):t('처음 이용하시나요?','New here?')} <a href={signup?'#login':'#signup'}>{signup?t('로그인','Sign in'):t('회원가입','Sign up')}</a></p>}
+  <button className="guest-link" onClick={()=>selectAdmin(!admin)}>{admin?t('일반 회원으로 이용하기','Use a member account'):t('관리자 로그인','Administrator sign-in')}</button>
+  {message&&<p role="alert">{message}</p>}
+ </section>;
+}
 function InviteAccountPage({preserve,returnPage}:Context){
  const {t}=useUiLanguage(),[invite,setInvite]=useState(''),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
  async function login(){if(busy)return;setBusy(true);setMessage('');try{await preserve();const session=await apiRequest<BetaSession>('/api/auth/login',{invite:invite.trim()});await carryGuestWorkspace(accountNamespace(session.user.id));setBetaSession(session,returnPage);}catch(e){setMessage(e instanceof Error&&e.message==='INVALID_INVITE'?t('초대코드를 확인해주세요. 만료된 코드는 관리자에게 다시 요청해주세요.','Check the invitation code. Ask the administrator for a new code if it expired.'):t('로그인하지 못했습니다. 초대코드와 연결 상태를 확인해주세요.','Could not sign in. Check the invitation code and connection.'));}finally{setBusy(false);}}
@@ -29,6 +61,7 @@ export function EmailAccountPage({mode,preserve,returnPage}:Context&{mode:'signu
  }catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;}}
  useEffect(()=>{if(!request||expired)return;const timer=setInterval(()=>{if(document.visibilityState==='visible')void check();},3000);return()=>clearInterval(timer);},[request,expired,ko]);
  async function submit(){if(locked.current)return;locked.current=true;setBusy(true);setMessage('');try{await preserve();const result=await apiRequest<EmailRequest>('/api/auth/email/request',{email});sessionStorage.setItem(key,JSON.stringify(result));setRequest(result);setExpired(false);}catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;setBusy(false);}}
+ if(!betaSession()&&cap?.password?.enabled&&!demo)return <PasswordAccountPage mode={mode} preserve={preserve} returnPage={returnPage} cap={cap.password}/>;
  if(!betaSession()&&cap&&!cap.email.enabled&&!demo)return <InviteAccountPage preserve={preserve} returnPage={returnPage}/>;
  if(betaSession())return <section className="account-page"><h1>{t('로그인되었습니다','You are signed in')}</h1><a className="primary-action" href={'#'+returnPage}>{t('광고 이어 만들기','Continue your ad')}</a><a href="#checkout">{t('내 이용권','My credits')}</a></section>;
  return <section className="account-page"><a href={'#'+returnPage} className="page-back"><ArrowLeft size={18}/>{t('돌아가기','Back')}</a><h1>{signup?t('회원가입','Sign up'):t('로그인','Sign in')}</h1><p className="page-intro">{demo?t('기기 내 체험 계정을 만듭니다. 실제 이메일을 보내지 않습니다.','Create a local demo account. No email is sent.'):t('이메일 하나로 시작하세요.','Start with just your email.')}</p>

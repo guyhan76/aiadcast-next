@@ -8,7 +8,7 @@ const root=new URL('../',import.meta.url),out=new URL('server/cloud/',root);
 mkdirSync(out,{recursive:true});
 const read=name=>readFileSync(new URL('server/'+name+'.mjs',root),'utf8');
 const pure=new Set(['period','available','view','require']);
-const methods=new Set(['close','transaction','job','wallet','event','recordVerifiedPurchase','reserve','markReady','accept','releaseInside','release','refundConfirmedDefect','expire','beginAttempt','markAttemptUncertain','settleAttempt','budget','provision','setBudget','setAllocation','issueInvite','login','createSession','authenticate','logout','setRole','revoke','list','project','save','increaseBudget','recordTestPurchase','status','storeAsset','asset','history','create','reject','assist','waitForIdle','user','audit','overview','grant','allocate','request','verify','exchange','byTicket','launch','serialize','settle','confirm','service']);
+const methods=new Set(['close','transaction','job','wallet','event','recordVerifiedPurchase','reserve','markReady','accept','releaseInside','release','refundConfirmedDefect','expire','beginAttempt','markAttemptUncertain','settleAttempt','budget','provision','setBudget','setAllocation','issueInvite','login','createSession','authenticate','logout','setRole','revoke','list','project','save','increaseBudget','recordTestPurchase','status','storeAsset','asset','history','create','reject','assist','waitForIdle','user','audit','overview','grant','allocate','request','verify','exchange','ownerReady','bootstrapOwner','signup','signIn','byTicket','launch','serialize','settle','confirm','service']);
 const factory=ts.factory;
 function hasAwait(node){let yes=false;function walk(n){if(ts.isAwaitExpression(n)){yes=true;return;}if(n!==node&&(ts.isFunctionLike(n)||ts.isClassDeclaration(n)))return;ts.forEachChild(n,walk);}walk(node);return yes;}
 function asyncModifiers(modifiers){return modifiers?.some(m=>m.kind===ts.SyntaxKind.AsyncKeyword)?modifiers:[...(modifiers??[]),factory.createModifier(ts.SyntaxKind.AsyncKeyword)];}
@@ -59,7 +59,7 @@ s=constructorToInitialize(s,`async initialize({db,adapter,assistantAdapter,assis
 s=s.replace('ORDER BY rowid DESC','ORDER BY request_id DESC');
 const imports=`import {randomUUID} from 'node:crypto';import {BillingLedger} from './billing-base.mjs';import {normalizeGenerationRequest,ApiFailure} from '../generation-service.mjs';import {GENERATION_SIZES,IMAGE_MODEL,IMAGE_REVISION,hashBytes,parseSourceAsset,ProviderFailure} from '../openai-image-adapter.mjs';import {normalizeAssistantRequest,TEXT_MODEL,TEXT_MAX_HOLD_MICROS} from '../text-assistant.mjs';const LOCAL_USER='aiadcast-next-local-developer';const MODEL_COST_HOLD_MICROS=500000;const fail=(c,s)=>{throw new ApiFailure(c,s)};function identifier(v){return typeof v==='string'&&/^[A-Za-z0-9_-]{8,100}$/.test(v);}`;
 writeFileSync(new URL('generation-base.mjs',out),transform(imports+s));
-for(const [name,kind] of [['email-auth','EmailAuth'],['test-checkout','TestCheckout'],['admin-api','AdminApi']]){
+for(const [name,kind] of [['email-auth','EmailAuth'],['password-auth','PasswordAuth'],['test-checkout','TestCheckout'],['admin-api','AdminApi']]){
  let t=read(name).replace("from './generation-service.mjs'","from '../generation-service.mjs'");
  const af=ts.createSourceFile(name,t,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS),cl=af.statements.find(ts.isClassDeclaration),constructor=cl.members.find(ts.isConstructorDeclaration);
  t=t.slice(0,constructor.pos)+'\nasync initialize'+constructor.getText(af).slice('constructor'.length,-1)+'return this;}'+t.slice(constructor.end);
@@ -74,10 +74,10 @@ s=read('beta-server');s=s.slice(0,s.indexOf('export function betaConfig'));
 s=s.replace("import {BetaStore} from './beta-store.mjs';",'').replace("import {GenerationService,ApiFailure} from './generation-service.mjs';","import {ApiFailure} from '../generation-service.mjs';");
 s=s.replace("import {OpenAIImageAdapter,ProviderFailure} from './openai-image-adapter.mjs';","import {ProviderFailure} from '../openai-image-adapter.mjs';");
 s=s.replace("import {assistCopy} from './text-assistant.mjs';",'').replace("import {accountConfiguration} from './account-providers.mjs';",'');
-s=s.replace("from './email-auth.mjs'","from './email-auth-base.mjs'").replace("from './test-checkout.mjs'","from './test-checkout-base.mjs'").replace("from './admin-api.mjs'","from './admin-api-base.mjs'");
+s=s.replace("from './email-auth.mjs'","from './email-auth-base.mjs'").replace("from './password-auth.mjs'","from './password-auth-base.mjs'").replace("from './test-checkout.mjs'","from './test-checkout-base.mjs'").replace("from './admin-api.mjs'","from './admin-api-base.mjs'");
 s=s.replace("const service=user=>{if(!services.has(user.id))services.set(user.id,serviceFactory(user));return services.get(user.id);};","const service=async user=>{if(!services.has(user.id))services.set(user.id,Promise.resolve().then(()=>serviceFactory(user)));return await services.get(user.id);};");
 s=s.replace("{mode:'invite-beta',commercialReady:false}","{mode:'invite-beta',ready:true,storage:'supabase',commercialReady:false}");
-s=s.replace('new EmailAuth(store,','await new EmailAuth().initialize(store,').replace('new TestCheckout(store,','await new TestCheckout().initialize(store,').replace('new AdminApi(store,','await new AdminApi().initialize(store,');
+s=s.replace('new EmailAuth(store,','await new EmailAuth().initialize(store,').replace('new PasswordAuth(store,','await new PasswordAuth().initialize(store,').replace('new TestCheckout(store,','await new TestCheckout().initialize(store,').replace('new AdminApi(store,','await new AdminApi().initialize(store,');
 s=s.replace('[...services.values()].map(s=>s.close())','[...services.values()].map(async s=>(await s).close())');
 writeFileSync(new URL('http-base.mjs',out),transform(s));
 console.log(check?'PostgreSQL async variants match local business rules.':'PostgreSQL async business-rule variants refreshed.');

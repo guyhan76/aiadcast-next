@@ -83,7 +83,7 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
   const storage=injectedStorage??await new SupabaseStorage({url:env.SUPABASE_URL,secretKey:env.SUPABASE_SECRET_KEY,accountsDb,fetchImpl:storageFetch}).initialize();store.storage=storage;
   const gate=providerGate(2),adapter=injectedAdapter??new OpenAIImageAdapter({apiKey:config.key});
   const supabaseMail=env.AIADCAST_EMAIL_ENABLED==='true'&&env.AIADCAST_EMAIL_PROVIDER==='supabase';
-  const accounts=injectedAccounts??accountConfiguration(supabaseMail?{...env,AIADCAST_EMAIL_ENABLED:'false'}:env);
+  const accounts=injectedAccounts??accountConfiguration(env);
   if(!injectedAccounts&&supabaseMail)accounts.sendMail=options=>storage.sendAuthEmail(options);
   app=await createBetaServer({store,publicUrl:config.publicUrl,extraOrigins,staticDirectory,accounts,serviceFactory:async user=>{
    instance?.assert();const db=await new PostgresDatabase(pool,cloudSchema(user.id),{guard}).initialize();
