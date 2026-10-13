@@ -2,82 +2,56 @@ import type {WizardDraft} from './workspace-draft';
 import {DimensionInputs} from './DimensionInputs';
 import {useUiLanguage} from './ui-language';
 import {useId,useState,useEffect} from 'react';
-import {ArrowLeft,ArrowRight,Check} from 'lucide-react';
-import {newProject} from './model';
-import type {Project} from './model';
-import {dimensionAxes,specTypes,withCategory,isServiceCategory} from './product';
+import {Sparkles} from 'lucide-react';
+import type {Project,FooterField} from './model';
+import {dimensionAxes,withCategory,isServiceCategory} from './product';
 import type {SpecType} from './product';
-import {defaultCampaign} from './campaign';
 import {generationIssues} from './generation';
 import {imageFormats} from './formats';
-import {IndustryPicker} from './IndustryPicker';
+import {industryGroups,industryLabel} from './industry';
 import type {IndustryKind,ProductCategory} from './industry';
-import {CreativeOptions} from './CreativeOptions';
-import {defaultCreative,creativeCopy} from './creative';
+import {creativeSettings,withCreative} from './creative';
 import {ReferencePhotos} from './ReferencePhotos';
-import {BrandFooter} from './BrandFooter';
 import './create-campaign.css';
 
-export function starterProject(category:ProductCategory='other'):Project{
- const p=withCategory(newProject(),category);return {...p,name:'',format:'4:5',presentation:'campaign',generation:{mode:'creative',brief:''},background:{...p.background,color:'#f8f7f4'},productProfile:{...p.productProfile,specType:'none'},dimensions:{...p.dimensions,displayUnit:'cm',width:'',depth:'',height:'',visible:false,lines:false},campaign:{...defaultCampaign(),creative:defaultCreative()},footer:{company:true,contact:true,email:true,website:true},copy:{ko:{...p.copy.ko,company:''},en:{...p.copy.en,company:''}}};
-}
+export {starterProject,prepareCampaign} from './consumer-campaign';
+import {starterProject,prepareCampaign} from './consumer-campaign';
 export function CreateCampaign({initialKind,onReady,draft,onDraft}:{initialKind?:IndustryKind;onReady:(p:Project)=>Promise<void>;draft?:WizardDraft;onDraft?:(draft:WizardDraft)=>void}){
- const {language,t,text}=useUiLanguage();
- const fieldsId=useId();
+ const {language,t,text}=useUiLanguage(),id=useId();
  const [project,setProject]=useState(()=>draft?.project??({...starterProject(initialKind==='service'?'services':'other'),locale:language}));
- const [step,setStep]=useState(draft?.step??0),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- useEffect(()=>{onDraft?.({project,step});},[project,step,onDraft]);
- const axes=dimensionAxes(project.productProfile),service=isServiceCategory(project.productProfile.category);
+ const [chosen,setChosen]=useState(!!draft),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ useEffect(()=>{onDraft?.({project,step:0});},[project,onDraft]);
+ const service=isServiceCategory(project.productProfile.category),axes=dimensionAxes(project.productProfile),settings=creativeSettings(project),copy=project.copy[project.locale];
+ const copyMode=settings.copyMode??'ai';
  function change(fn:(p:Project)=>Project){setProject(fn);setError('');}
- async function next(){
-  if(step===0){
-   if(!project.productName.trim()){setError(t('상품·서비스 이름을 입력해주세요.','Enter your product or service name.'));return;}
-   const issues=generationIssues(project);if(issues.length){setError(issues.map(text).join(' '));return;}
-  }
-  if(step<1){setStep(step+1);window.scrollTo(0,0);return;}
-  setBusy(true);
-  try{await onReady({...project,name:project.productName+t(' 광고',' ad'),updatedAt:new Date().toISOString(),copy:{...project.copy,[project.locale]:{...project.copy[project.locale],...creativeCopy(project)}}});}
-  catch{setError(t('저장하지 못했습니다. 입력 내용은 유지됩니다. 기기 저장 공간을 확인해주세요.','Could not save. Your input is kept here. Check device storage.'));}
-  finally{setBusy(false);}
+ function setCopy(field:'title'|'description'|FooterField,value:string){change(p=>({...p,copy:{...p.copy,[p.locale]:{...p.copy[p.locale],[field]:value}},...(field!=='title'&&field!=='description'?{footer:{company:p.footer?.company??true,contact:p.footer?.contact??true,email:p.footer?.email??true,website:p.footer?.website??true,[field]:true}}:{})}));}
+ async function submit(){
+  if(busy)return;
+  if(!chosen){setError(t('광고할 산업을 선택해주세요.','Choose your industry.'));document.getElementById(id+'-industry')?.focus();return;}
+  if(!project.productName.trim()||!project.productProfile.material.trim()){setError(t('상품·서비스 이름과 상세설명을 입력해주세요.','Enter the name and description.'));return;}
+  if(copyMode==='manual'&&!copy.title.trim()){setError(t('직접 사용할 광고 제목을 입력해주세요.','Enter your advertising headline.'));return;}
+  const prepared=prepareCampaign(withCreative(project,{copyMode})),issues=generationIssues(prepared);
+  if(issues.length){setError(issues.map(text).join(' '));return;}
+  setBusy(true);try{await onReady(prepared);}catch{setError(t('입력 내용을 보관하지 못했습니다. 다시 시도해주세요.','Could not keep your inputs. Please try again.'));}finally{setBusy(false);}
  }
- return <div className="create-page">
-  <div className="create-heading"><h1>{t('광고 만들기','Create an ad')}</h1></div>
-  <ol className="create-steps" aria-label={t('제작 단계','Creation steps')}>
-   {[t('광고 정보','Ad details'),t('크기·연락처','Size & contact')].map((label,i)=><li key={label} aria-current={step===i?'step':undefined} className={i<=step?'current':''}><span>{i<step?<Check size={14} aria-hidden="true"/>:i+1}</span>{label}</li>)}
-  </ol>
-  <div className="create-card">
-   {step===0&&<>
-    <fieldset className="ad-subject-kind"><legend>{t('광고 대상','Ad subject')}</legend><div>{(['product','service'] as const).map(kind=><button type="button" key={kind} aria-pressed={service===(kind==='service')} onClick={()=>change(p=>isServiceCategory(p.productProfile.category)===(kind==='service')?p:withCategory(p,kind==='service'?'services':'other'))}>{kind==='product'?t('상품','Product'):t('서비스','Service')}</button>)}</div></fieldset>
-    <ReferencePhotos project={project} change={change} onBusyChange={setBusy}/>
-    <div className="field create-name-field"><label htmlFor={`${fieldsId}-name`}>{service?t('서비스명','Service name'):t('상품명','Product name')}</label><textarea id={`${fieldsId}-name`} rows={2} value={project.productName} maxLength={100} placeholder={service?t('예: 제주 감성 숙소','Example: Jeju boutique stay'):t('예: 바이탈 골드 콜라겐 토너 150ml 2개','Example: Vital Gold Collagen Toner 150ml, 2 bottles')} onChange={e=>change(p=>({...p,productName:e.target.value}))}/></div>
-    <div className="field"><label htmlFor={`${fieldsId}-description`}>{service?t('서비스 소개','Service description'):t('상품 설명','Product description')}</label><textarea id={`${fieldsId}-description`} rows={3} maxLength={2000} value={project.productProfile.material} placeholder={t('특징과 장점을 알려주세요.','Describe the features and benefits.')} onChange={e=>change(p=>({...p,productProfile:{...p.productProfile,material:e.target.value}}))}/></div>
-    <details className="quiet-details create-industry-settings"><summary>{t('업종·규격','Category & dimensions')}<span>{t('선택','Optional')}</span></summary>
-     <IndustryPicker simple value={project.productProfile.category} onChange={category=>change(p=>withCategory(p,category))}/>
-     {!service&&<>
-      <label className="field">{t('상품 크기','Product dimensions')}<select aria-label={t('규격 형식','Dimension type')} value={project.productProfile.specType} onChange={e=>change(p=>({...p,productProfile:{...p.productProfile,specType:e.target.value as SpecType},dimensions:{...p.dimensions,visible:e.target.value!=='none',lines:false}}))}>{specTypes.map(([id,label])=><option key={id} value={id}>{text(label)}</option>)}</select></label>
-      <DimensionInputs project={project} change={change}/>
-      {!!axes.length&&<label className="check-field dimension-visibility"><input type="checkbox" checked={project.dimensions.visible} onChange={e=>change(p=>({...p,dimensions:{...p.dimensions,visible:e.target.checked}}))}/>{t('광고에 규격 표시','Show dimensions on ad')}</label>}
-      <p className="help">{t('규격이 중요한 상품만 입력하세요.','Add dimensions when they matter.')}</p>
-     </>}
-    </details>
-    <CreativeOptions project={project} change={change}/>
-   </>}
-   {step===1&&<>
-    <fieldset className="delivery-formats"><legend>{t('이미지 비율','Image ratio')}</legend>{(['1:1','4:5','9:16'] as const).map((id,i)=><button type="button" key={id} aria-pressed={project.format===id} onClick={()=>change(p=>({...p,format:id}))}><i style={{aspectRatio:id.replace(':','/')}} aria-hidden="true"/><strong>{id}</strong><span>{[t('정사각형','Square'),t('세로형','Portrait'),t('긴 세로형','Tall portrait')][i]}</span></button>)}</fieldset>
-    <details className="quiet-details create-other-ratios"><summary>{t('다른 비율 보기','More ratios')}</summary><label className="field">{t('출력 비율','Output ratio')}<select aria-label={t('출력 비율','Output ratio')} value={project.format} onChange={e=>change(p=>({...p,format:e.target.value as Project['format']}))}>{imageFormats.map(f=><option key={f.id} value={f.id}>{f.id} · {text(f.use)}</option>)}</select></label></details>
-    <p className="help create-ratio-help">{t('인스타그램·블로그·홈페이지·매장 홍보·브로셔·숏폼 이미지에 활용하세요.','Use images for Instagram, blogs, websites, store promotions, brochures and short-form content.')}</p>
-    <BrandFooter project={project} change={change}/>
-    <details className="quiet-details"><summary>{t('추가 설정','Additional settings')}</summary>
-     <label className="field">{t('광고 문구 언어','Ad copy language')}<select aria-label={t('광고 문구 언어','Ad copy language')} value={project.locale} onChange={e=>change(p=>({...p,locale:e.target.value as 'ko'|'en'}))}><option value="ko">한국어</option><option value="en">English</option></select></label>
-     <label className="field">{t('제작 방식','Creation mode')}<select aria-label={t('제작 방식','Creation mode')} value={project.generation.mode} onChange={e=>change(p=>({...p,generation:{...p.generation,mode:e.target.value as 'original'|'creative'}}))}><option value="creative">{t('AI 광고 연출','AI art direction')}</option><option value="original">{t('원본 사진 그대로 합성','Compose with original photo')}</option></select></label>
-    </details>
-   </>}
-  </div>
-  {error&&<p className="wizard-error" role="alert">{error}</p>}
-  <div className="wizard-actions">
-   {step>0&&<button disabled={busy} onClick={()=>{setStep(step-1);setError('');window.scrollTo(0,0);}}><ArrowLeft size={17} aria-hidden="true"/>{t('이전','Back')}</button>}
-   <button className="primary-action" disabled={busy} onClick={()=>void next()}>{busy?t('준비 중…','Preparing…'):step===1?t('광고 만들기','Create ad'):t('다음','Continue')}<ArrowRight size={17} aria-hidden="true"/></button>
-  </div>
+ const companyFields:[FooterField,string,string][]=[['company',t('회사명','Company'),'셀업랩스'],['contact',t('연락처','Phone'),'010-0000-0000'],['email',t('이메일 주소','Email'),'hello@brand.com'],['website',t('홈페이지','Website'),'https://www.brand.com']];
+ return <div className="create-page consumer-create">
+  <div className="create-heading"><h1>{t('광고 만들기','Create an ad')}</h1><p>{t('내 정보를 넣으면, AI가 한 장의 광고로 만듭니다.','Add your details. AI creates one finished ad.')}</p></div>
+  <form onSubmit={e=>{e.preventDefault();void submit();}}>
+   <section className="creation-section" data-order="1"><h2><span>1</span>{t('광고할 산업','Your industry')}</h2>
+    <label className="field" htmlFor={id+'-industry'}>{t('산업 선택','Choose an industry')}<select id={id+'-industry'} value={chosen?project.productProfile.category:''} onChange={e=>{if(!e.target.value)return;setChosen(true);change(p=>withCategory(p,e.target.value as ProductCategory));}}><option value="">{t('산업을 선택해주세요','Select your industry')}</option>{industryGroups.map(g=><optgroup key={g.id} label={`${g.kind==='product'?t('상품','Products'):t('서비스','Services')} · ${text(g.label)}`}>{g.categoryIds.map(c=><option key={c} value={c}>{text(industryLabel(c))}</option>)}</optgroup>)}</select></label>
+   </section>
+   <section className="creation-section" data-order="2"><details className="optional-block"><summary><span className="section-title"><b>2</b>{t('회사 정보','Company details')}</span><small>{t('선택','Optional')}</small></summary><p className="help">{t('입력한 정보만 광고에 표시합니다.','Only the details you enter will appear on the ad.')}</p><div className="company-fields">{companyFields.map(([field,label,placeholder])=><div className="field company-field" key={field}><label htmlFor={id+'-'+field}>{label}</label><input id={id+'-'+field} type={field==='email'?'email':field==='contact'?'tel':'text'} maxLength={field==='company'?80:field==='website'?200:100} placeholder={placeholder} value={copy[field]??''} onChange={e=>setCopy(field,e.target.value)}/><label className="company-visible"><input type="checkbox" aria-label={label+t(' 광고에 표시',' shown on ad')} checked={project.footer?.[field]??true} onChange={e=>change(p=>({...p,footer:{company:p.footer?.company??true,contact:p.footer?.contact??true,email:p.footer?.email??true,website:p.footer?.website??true,[field]:e.target.checked}}))}/>{t('광고에 표시','Show on ad')}</label></div>)}</div></details></section>
+   <section className="creation-section" data-order="3"><h2><span>3</span>{t('사진 첨부','Add photos')}{service&&<small>{t('선택','Optional')}</small>}</h2><ReferencePhotos project={project} change={change} onBusyChange={setBusy}/></section>
+   <section className="creation-section" data-order="4"><h2><span>4</span>{t('상품 규격','Product dimensions')}<small>{t('선택','Optional')}</small></h2>
+    {service?<p className="help">{t('서비스 광고는 규격 없이 만듭니다.','Service ads do not need product dimensions.')}</p>:<><div className="simple-choice" role="group" aria-label={t('규격 입력 여부','Use dimensions')}>{[false,true].map(on=><button type="button" key={String(on)} aria-pressed={!!axes.length===on} onClick={()=>change(p=>({...p,productProfile:{...p.productProfile,specType:on?'rectangular':'none'},dimensions:{...p.dimensions,visible:on,lines:false}}))}>{on?t('규격 넣기','Add dimensions'):t('규격 없이','No dimensions')}</button>)}</div>{!!axes.length&&<div className="dimension-form"><label className="field">{t('상품 형태','Product shape')}<select aria-label={t('규격 형식','Dimension type')} value={project.productProfile.specType} onChange={e=>change(p=>({...p,productProfile:{...p.productProfile,specType:e.target.value as SpecType}}))}><option value="rectangular">{t('가로 · 세로 · 높이','Width · Depth · Height')}</option><option value="flat">{t('가로 · 세로','Width · Depth')}</option><option value="cylindrical">{t('지름 · 높이','Diameter · Height')}</option></select></label><DimensionInputs project={project} change={change}/><label className="check-field"><input type="checkbox" checked={project.dimensions.visible} onChange={e=>change(p=>({...p,dimensions:{...p.dimensions,visible:e.target.checked}}))}/>{t('광고에 규격 표시','Show dimensions on ad')}</label><p className="help">{t('표시를 꺼도 입력 규격은 상품 비례 참고에 사용합니다.','Hidden dimensions are still used as proportional guidance.')}</p></div>}</>}
+   </section>
+   <section className="creation-section" data-order="5"><h2><span>5</span>{t('상품·서비스 상세설명','Product or service details')}</h2><label className="field">{service?t('서비스명','Service name'):t('상품명','Product name')}<input maxLength={100} value={project.productName} placeholder={service?t('예: 제주 감성 숙소','Example: Jeju boutique stay'):t('예: 우체국3호박스','Example: No. 3 shipping carton')} onChange={e=>change(p=>({...p,productName:e.target.value}))}/></label><label className="field">{t('상세설명','Description')}<textarea rows={4} maxLength={2000} value={project.productProfile.material} placeholder={t('재질, 특징, 장점, 가격, 배송 등 광고에 담을 정보를 적어주세요.','Describe the material, features, benefits, price and delivery information.')} onChange={e=>change(p=>({...p,productProfile:{...p.productProfile,material:e.target.value}}))}/></label></section>
+   <section className="creation-section" data-order="6"><h2><span>6</span>{t('광고 문구','Advertising copy')}</h2><div className="simple-choice" role="group" aria-label={t('광고 문구 작성 방식','Copy mode')}>{(['ai','manual'] as const).map(mode=><button type="button" key={mode} aria-pressed={copyMode===mode} onClick={()=>change(p=>withCreative(p,{copyMode:mode}))}>{mode==='ai'?t('AI가 만들기','Let AI write it'):t('직접 입력','Write my own')}</button>)}</div>{copyMode==='ai'?<p className="help">{t('상세설명을 바탕으로 AI가 광고 제목과 문구를 함께 만듭니다.','AI writes the headline and supporting copy from your description.')}</p>:<><label className="field">{t('광고 제목','Ad headline')}<textarea rows={2} maxLength={400} value={copy.title} onChange={e=>setCopy('title',e.target.value)}/></label><label className="field">{t('광고 설명','Ad supporting copy')}<textarea rows={3} maxLength={400} value={copy.description} onChange={e=>setCopy('description',e.target.value)}/></label></>}</section>
+   <section className="creation-section" data-order="7"><h2><span>7</span>{t('광고 목적','Ad purpose')}<small>{t('선택','Optional')}</small></h2><label className="field">{t('목적 선택','Choose a purpose')}<select value={settings.directionId} onChange={e=>change(p=>withCreative(p,{directionId:e.target.value as 'brand'|'offer'|'trust'}))}><option value="brand">{t('AI가 정하기','Let AI decide')}</option><option value="offer">{t('상품·서비스 홍보','Promote the offer')}</option><option value="trust">{t('브랜드·신뢰 강조','Build brand trust')}</option></select></label><details className="optional-block additional-requests"><summary>{t('추가 요청','Additional requests')}<small>{t('선택','Optional')}</small></summary><label className="field">{t('요청사항','Your requests')}<textarea rows={2} maxLength={600} value={settings.note} placeholder={t('예: 밝은 배경, 가격을 크게 강조','Example: Bright setting, prominent price')} onChange={e=>change(p=>withCreative(p,{note:e.target.value}))}/></label></details></section>
+   <section className="creation-section" data-order="8"><h2><span>8</span>{t('광고 이미지 비율','Image ratio')}<small>{t('선택','Optional')}</small></h2><div className="ratio-options">{(['9:16','4:5','1:1'] as const).map((ratio,i)=><button type="button" key={ratio} aria-pressed={project.format===ratio} onClick={()=>change(p=>({...p,format:ratio}))}><strong>{ratio}</strong><small>{[t('릴스·스토리','Reels · Stories'),t('SNS 피드','Social feed'),t('정사각형','Square')][i]}</small></button>)}</div><details className="optional-block additional-requests"><summary>{t('다른 비율·문구 언어','More ratios · Copy language')}</summary><label className="field">{t('출력 비율','Output ratio')}<select value={project.format} onChange={e=>change(p=>({...p,format:e.target.value as Project['format']}))}>{imageFormats.map(f=><option key={f.id} value={f.id}>{f.id} · {text(f.use)}</option>)}</select></label><label className="field">{t('광고 문구 언어','Ad copy language')}<select value={project.locale} onChange={e=>change(p=>({...p,locale:e.target.value as 'ko'|'en'}))}><option value="ko">한국어</option><option value="en">English</option></select></label></details></section>
+   {error&&<p className="wizard-error" role="alert">{error}</p>}
+   <div className="wizard-actions"><button className="primary-action" type="submit" disabled={busy}><Sparkles size={18}/>{busy?t('준비 중…','Preparing…'):t('광고 생성','Generate ad')}</button></div><p className="help submit-help">{t('새 시안 1개에 테스트 이용권 1개. 로그인 후 생성할 수 있습니다.','One test credit per new visual. Sign in to generate.')}</p>
+  </form>
  </div>;
 }
-

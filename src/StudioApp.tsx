@@ -15,6 +15,7 @@ import {useUiLanguage,LanguageSwitcher} from './ui-language';
 import {useEffect,useState} from 'react';
 import {ArrowUpRight,BookOpen,FolderOpen,Home,Plus,ShieldCheck} from 'lucide-react';
 import Editor from './App';
+import {SimpleAdResult} from './SimpleAdResult';
 import {CreateCampaign} from './CreateCampaign';
 import {PricingDialog} from './PricingDialog';
 import {newProject} from './model';
@@ -23,9 +24,9 @@ import {projects,saveProject} from './storage';
 import './studio.css';
 import './premium.css';
 import './campaign-cover.css';
-type Page='home'|'create'|'projects'|'guide'|'studio'|'signup'|'login'|'checkout'|'verify'|'pay'|'payment-return'|'admin';
+type Page='home'|'create'|'projects'|'guide'|'studio'|'signup'|'login'|'checkout'|'verify'|'pay'|'payment-return'|'admin'|'editor';
 const navigation=[['home','홈',Home],['create','광고 만들기',Plus],['projects','내 프로젝트',FolderOpen],['guide','사용 안내',BookOpen]] as const;
-function currentPage():Page {if(new URLSearchParams(location.search).get('checkout')==='return')return 'payment-return';const route=location.hash.slice(1).split('?')[0];return ['home','create','projects','guide','studio','signup','login','checkout','verify','pay','payment-return','admin'].includes(route)?route as Page:'home';}
+function currentPage():Page {if(new URLSearchParams(location.search).get('checkout')==='return')return 'payment-return';const route=location.hash.slice(1).split('?')[0];return ['home','create','projects','guide','studio','signup','login','checkout','verify','pay','payment-return','admin','editor'].includes(route)?route as Page:'home';}
 export default function StudioApp(){
  const [route,setRoute]=useState(currentPage);
  useEffect(()=>{const update=()=>setRoute(currentPage());window.addEventListener('hashchange',update);return()=>window.removeEventListener('hashchange',update);},[]);
@@ -42,7 +43,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  const {language,text}=useUiLanguage();
  const [page,setPage]=useState<Page>(currentPage),[seed,setSeed]=useState<Project>(()=>restored?.editor??({...newProject(),locale:language})),[current,setCurrent]=useState<Project>(seed),[editorKey,setEditorKey]=useState(0);
  const [wizardKey,setWizardKey]=useState(0),[items,setItems]=useState<Project[]>([]),[libraryError,setLibraryError]=useState('');
- const [switchError,setSwitchError]=useState('');
+ const [switchError,setSwitchError]=useState('');const [generationIntent,setGenerationIntent]=useState<string|undefined>();
  const [wizard,setWizard]=useState<WizardDraft|undefined>(restored?.wizard),[wizardSeed,setWizardSeed]=useState(restored?.wizard);
  const [returnPage,setReturnPage]=useState<WorkspaceDraft['returnPage']>(restored?.returnPage??'home');
  useEffect(()=>{if(page==='create'||page==='studio')setReturnPage(page);},[page]);
@@ -61,7 +62,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
    if(modal){event.preventDefault();event.stopImmediatePropagation();if(modal.dispatchEvent(new Event('cancel',{cancelable:true})))modal.close();return;}
    if(page==='home')return;
    event.preventDefault();
-   if(page!=='studio'){go('home');return;}
+   if(page!=='studio'&&page!=='editor'){go('home');return;}
    void (async()=>{
     try{
      if(JSON.stringify(current)!==JSON.stringify(seed)){
@@ -80,14 +81,16 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
   try{const changed=JSON.stringify(current)!==JSON.stringify(seed);const snapshot=changed?{...current,updatedAt:new Date().toISOString()}:current;if(changed)await saveProject(snapshot);if(preferIncoming&&p.id===current.id&&JSON.stringify(p)!==JSON.stringify(current))await saveProject({...snapshot,id:crypto.randomUUID(),name:(snapshot.name+' '+(language==='ko'?'기기 보관본':'local copy')).slice(0,80)});const next=changed&&p.id===current.id&&!preferIncoming?snapshot:p;setSeed(next);setCurrent(next);setEditorKey(k=>k+1);setSwitchError('');go('studio');return true;}
   catch{setSwitchError(text('현재 편집 내용을 저장하지 못해 작업 전환을 멈췄습니다. 편집기로 돌아가 프로젝트 파일을 백업해주세요.'));return false;}
  }
- async function ready(p:Project){await saveProject(p);if(!await open(p))throw Error(text('현재 작업 저장 실패'));}
+ async function ready(p:Project){await saveProject(p);if(!await open(p,true))throw Error(text('현재 작업 저장 실패'));setGenerationIntent(crypto.randomUUID());}
+ function editDetails(){setWizardSeed({project:current,step:0});setWizard({project:current,step:0});setWizardKey(k=>k+1);setGenerationIntent(undefined);go('create');}
+ const simpleStudio=page==='studio'&&current.presentation==='campaign'&&current.generation.mode==='creative';
  const libraryItems=JSON.stringify(current)!==JSON.stringify(seed)?[current,...items.filter(p=>p.id!==current.id)]:items;
 
- return <div className={`studio-shell ${page==='studio'?'editor-route':''}`}>
+ return <div className={`studio-shell ${(page==='editor'||page==='studio'&&!simpleStudio)?'editor-route':''}`}>
   <aside className="app-sidebar"><a href="#home" className="app-brand" aria-label={text("aiadcast 홈")}><Brand/><small>{language==='ko'?'내 브랜드의 광고 제작 파트너':'YOUR CREATIVE PARTNER'}</small></a><nav aria-label={text("주 메뉴")}>{navigation.map(([id,label,Icon])=><a href={'#'+id} key={id} aria-current={page===id?'page':undefined}><Icon size={19}/><span>{text(label)}</span>{id==='create'&&<span className="nav-plus">+</span>}</a>)}</nav><div className="sidebar-bottom"><div className="studio-mark"><ShieldCheck size={20}/><span>{text("당신의 상품.")}<br/><strong>{text("당신의 브랜드.")}</strong></span></div><span>aiadcast Studio<br/>by selluplabs</span></div></aside>
-  <div className="app-content"><DemoNotice/><details className="account-drawer"><summary>{language==='ko'?'테스트 계정 · 서버 연결':'Test account & connection'}</summary><OfflineDemoControls preserve={preserve} beforeChange={async()=>{await preserve();await saveWorkspace(snapshot,'guest');}}/>{!offlineDemo()&&<TestConnection preserve={preserve} beforeChange={async()=>{await preserve();await saveWorkspace(snapshot,'guest');}}/>}{!offlineDemo()&&<BetaAccount current={current} onOpen={p=>open(p,true)}/>}</details>
+  <div className="app-content"><DemoNotice/>{page==='guide'&&<details className="account-drawer"><summary>{language==='ko'?'테스트 계정 · 서버 연결':'Test account & connection'}</summary><OfflineDemoControls preserve={preserve} beforeChange={async()=>{await preserve();await saveWorkspace(snapshot,'guest');}}/>{!offlineDemo()&&<TestConnection preserve={preserve} beforeChange={async()=>{await preserve();await saveWorkspace(snapshot,'guest');}}/>}{!offlineDemo()&&<BetaAccount current={current} onOpen={p=>open(p,true)}/>}</details>}
    {switchError&&<p className="wizard-error" role="alert">{switchError}</p>}
-   {page!=='studio'&&<header className="app-header"><a href="#home" className="mobile-brand" aria-label={text("aiadcast 홈")}><Brand/></a><span className="workspace-label">{language==='ko'?'내 상품과 서비스를 위한 광고 작업실':'SELLUPLABS / CREATIVE WORKSPACE'}</span><div className="app-header-actions"><LanguageSwitcher/><PricingDialog/>{betaSession()?.user.role==='admin'&&<a className="account-link" href="#admin">{language==='ko'?'관리자':'Admin'}</a>}<a className="account-link" href={betaSession()?"#checkout":"#login"}>{text(betaSession()?"내 이용권":"로그인")}</a></div></header>}
+   {(page!=='studio'||simpleStudio)&&page!=='editor'&&<header className="app-header"><a href="#home" className="mobile-brand" aria-label={text("aiadcast 홈")}><Brand/></a><span className="workspace-label">{language==='ko'?'내 상품과 서비스를 위한 광고 작업실':'SELLUPLABS / CREATIVE WORKSPACE'}</span><div className="app-header-actions"><LanguageSwitcher/><PricingDialog/>{betaSession()?.user.role==='admin'&&<a className="account-link" href="#admin">{language==='ko'?'관리자':'Admin'}</a>}<a className="account-link" href={betaSession()?"#checkout":"#login"}>{text(betaSession()?"내 이용권":"로그인")}</a></div></header>}
    <div hidden={page!=='home'} className="home-page app-page">
     <section className="premium-home"><h1>{language==='ko'?<><span>내 상품과 서비스를,</span><br/><em>프리미엄 광고로.</em></>:<>Your products and services.<br/><em>Premium ads.</em></>}</h1><p>{language==='ko'?<>사진과 설명을 넣으면,<br/>AI광고가 광고이미지와 문구를 만듭니다.</>:'Add photos and a description. AI creates your ad images and copy.'}</p><HomeShowcase enabled={page==='home'}/><button className="primary-action premium-start" onClick={()=>begin()}>{text('내 광고 만들기')}<ArrowUpRight size={21}/></button></section>
    </div>
@@ -97,8 +100,8 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
    {(page==='signup'||page==='login')&&<div className="app-page"><EmailAccountPage key={page} mode={page} preserve={preserve} returnPage={returnPage}/></div>}
    {page==='admin'&&<div className="app-page"><AdminPage/></div>}
    {page==='checkout'&&<div className="app-page"><CheckoutPage preserve={preserve} returnPage={returnPage}/></div>}
-   <div hidden={page!=='studio'} className="editor-container"><Editor key={editorKey} initialProject={seed} onProjectChange={setCurrent}/></div>
-   {page!=='studio'&&<AppFooter/>}
+   {simpleStudio?<div className="app-page"><SimpleAdResult project={current} change={fn=>setCurrent(p=>fn(p))} onEdit={editDetails} autoRequest={generationIntent} onAutoHandled={()=>setGenerationIntent(undefined)}/></div>:(page==='studio'||page==='editor')&&<div className="editor-container"><Editor key={editorKey} initialProject={seed} onProjectChange={setCurrent}/></div>}
+   {(page!=='studio'||simpleStudio)&&page!=='editor'&&<AppFooter/>}
   </div>
   <nav className="mobile-app-nav" aria-label={text("모바일 메뉴")}>{navigation.map(([id,label,Icon])=><a key={id} href={'#'+id} aria-current={page===id?'page':undefined}><Icon size={20}/><span>{text(label)}</span></a>)}</nav>
  </div>;

@@ -4,13 +4,18 @@ import {ArrowLeft,Check,Mail} from 'lucide-react';
 import {useUiLanguage} from './ui-language';
 import {formatPrice,pricingCatalog,type PricingCurrency} from './pricing';
 import {apiRequest} from './generation-client';
-import {betaSession,setBetaSession,storageNamespace,accountNamespace} from './beta-session';
+import {betaSession,setBetaSession,storageNamespace,accountNamespace,type BetaSession} from './beta-session';
 import {carryGuestWorkspace} from './workspace-draft';
 import {accountError,exchangeEmail,readSession,type Capabilities,type EmailRequest,type TestOrder} from './account-client';
 import './account-pages.css';
 export {PaymentBrowserPage} from './PaymentBrowserPage';
 type Context={preserve:()=>Promise<void>;returnPage:'create'|'studio'|'home'};
 function useCapabilities(){const [value,setValue]=useState<Capabilities|null>(null);useEffect(()=>{let active=true;apiRequest<Capabilities>('/api/account/capabilities').then(v=>{if(active)setValue(v);}).catch(()=>{});return()=>{active=false};},[]);return value;}
+function InviteAccountPage({preserve,returnPage}:Context){
+ const {t}=useUiLanguage(),[invite,setInvite]=useState(''),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
+ async function login(){if(busy)return;setBusy(true);setMessage('');try{await preserve();const session=await apiRequest<BetaSession>('/api/auth/login',{invite:invite.trim()});await carryGuestWorkspace(accountNamespace(session.user.id));setBetaSession(session,returnPage);}catch(e){setMessage(e instanceof Error&&e.message==='INVALID_INVITE'?t('초대코드를 확인해주세요. 만료된 코드는 관리자에게 다시 요청해주세요.','Check the invitation code. Ask the administrator for a new code if it expired.'):t('로그인하지 못했습니다. 초대코드와 연결 상태를 확인해주세요.','Could not sign in. Check the invitation code and connection.'));}finally{setBusy(false);}}
+ return <section className="account-page"><a className="page-back" href={'#'+returnPage}><ArrowLeft size={18}/>{t('돌아가기','Back')}</a><h1>{t('테스트 로그인','Test sign-in')}</h1><p className="page-intro">{t('받으신 초대코드로 로그인하면 입력한 광고를 이어서 생성할 수 있습니다.','Sign in with your invitation code to continue generating your ad.')}</p><form onSubmit={e=>{e.preventDefault();void login();}}><label className="field">{t('초대코드','Invitation code')}<input type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={43} value={invite} onChange={e=>setInvite(e.target.value)}/></label><button className="primary-action" disabled={busy||invite.trim().length!==43}>{busy?t('로그인 중…','Signing in…'):t('로그인하고 계속','Sign in and continue')}</button></form><p className="account-help">{t('현재 비공개 베타입니다. 이메일 회원가입은 아직 연결되지 않았습니다. 초대코드는 관리자에게 받으세요.','This is a private beta. Email signup is not connected yet. Ask the administrator for an invitation.')}</p>{message&&<p role="alert">{message}</p>}</section>;
+}
 export function EmailAccountPage({mode,preserve,returnPage}:Context&{mode:'signup'|'login'}){
  const {t,language}=useUiLanguage(),ko=language==='ko',cap=useCapabilities(),key='aiadcast.email-request:'+storageNamespace();
  const [email,setEmail]=useState(''),[request,setRequest]=useState<EmailRequest|undefined>(()=>readSession(key));
@@ -24,6 +29,7 @@ export function EmailAccountPage({mode,preserve,returnPage}:Context&{mode:'signu
  }catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;}}
  useEffect(()=>{if(!request||expired)return;const timer=setInterval(()=>{if(document.visibilityState==='visible')void check();},3000);return()=>clearInterval(timer);},[request,expired,ko]);
  async function submit(){if(locked.current)return;locked.current=true;setBusy(true);setMessage('');try{await preserve();const result=await apiRequest<EmailRequest>('/api/auth/email/request',{email});sessionStorage.setItem(key,JSON.stringify(result));setRequest(result);setExpired(false);}catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;setBusy(false);}}
+ if(!betaSession()&&cap&&!cap.email.enabled&&!demo)return <InviteAccountPage preserve={preserve} returnPage={returnPage}/>;
  if(betaSession())return <section className="account-page"><h1>{t('로그인되었습니다','You are signed in')}</h1><a className="primary-action" href={'#'+returnPage}>{t('광고 이어 만들기','Continue your ad')}</a><a href="#checkout">{t('내 이용권','My credits')}</a></section>;
  return <section className="account-page"><a href={'#'+returnPage} className="page-back"><ArrowLeft size={18}/>{t('돌아가기','Back')}</a><h1>{signup?t('회원가입','Sign up'):t('로그인','Sign in')}</h1><p className="page-intro">{demo?t('기기 내 체험 계정을 만듭니다. 실제 이메일을 보내지 않습니다.','Create a local demo account. No email is sent.'):t('이메일 하나로 시작하세요.','Start with just your email.')}</p>
  {!cap?.email.enabled&&<div className="connection-notice" id="email-availability">{t('이메일 인증 연결 준비 중입니다.','Email verification is not connected yet.')}</div>}

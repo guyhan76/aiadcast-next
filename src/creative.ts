@@ -11,12 +11,12 @@ export const creativeLooks=[
  {id:'precision',label:'모던 테크',description:'차분한 네이비와 정제된 구성',color:'#132235',ink:'light',accent:'#8baec6'},
 ] as const;
 export type CreativeLook=typeof creativeLooks[number]['id'];
-export type CreativeSettings={directionId:'brand'|'offer'|'trust';look:CreativeLook|'auto';note:string};
-export const defaultCreative=():CreativeSettings=>({directionId:'brand',look:'auto',note:''});
+export type CreativeSettings={directionId:'brand'|'offer'|'trust';look:CreativeLook|'auto';note:string;copyMode?:'ai'|'manual'};
+export const defaultCreative=():CreativeSettings=>({directionId:'brand',look:'auto',note:'',copyMode:'ai'});
 export function parseCreative(raw:unknown):CreativeSettings{
  if(raw===undefined)return defaultCreative();const c=raw as CreativeSettings;
- if(!c||!['brand','offer','trust'].includes(c.directionId)||(c.look!=='auto'&&!creativeLooks.some(x=>x.id===c.look))||typeof c.note!=='string'||c.note.length>600)throw Error('광고 목적과 요청사항을 확인해주세요.');
- return {directionId:c.directionId,look:c.look,note:c.note};
+ if(!c||!['brand','offer','trust'].includes(c.directionId)||(c.look!=='auto'&&!creativeLooks.some(x=>x.id===c.look))||typeof c.note!=='string'||c.note.length>600||(c.copyMode!==undefined&&!['ai','manual'].includes(c.copyMode)))throw Error('광고 목적과 요청사항을 확인해주세요.');
+ return {directionId:c.directionId,look:c.look,note:c.note,...(c.copyMode?{copyMode:c.copyMode}:{})};
 }
 export function creativeSettings(p:Project):CreativeSettings{return parseCreative(p.campaign?.creative);}
 export function withCreative(p:Project,patch:Partial<CreativeSettings>):Project{
@@ -44,7 +44,7 @@ export function creativeCopy(p:Project):{title:string;description:string}{
 export function creativeContract(p:Project){
  const settings=creativeSettings(p),category=p.productProfile.category,group=industryGroupFor(category),direction=industryDirections(category).find(d=>d.id===settings.directionId)!;
  const requested=requestedCallToAction(settings.note);
- return {version:1,industry:{id:category,label:industryLabel(category),groupId:group.id,groupLabel:group.label},direction:{id:direction.id,label:direction.label,description:direction.description,callToAction:requested==='requested'?direction.cta:requested},artDirection:artDirectionFor(category,p.format,settings.note),ctaPolicy:requested?'customer-requested':'omit',visual:{id:'auto',label:'상품에 맞춘 AI 연출',approvedSceneOverridesStyle:true,backgroundColor:p.background.color,ink:p.ink,composition:'Produce a finished one-page campaign including a prominent reference-based hero, readable marketing copy, supplied benefits and offer, optional dimension labels and visible contacts. Choose useful detail views only when supported by facts and references. Preserve exact material and product construction. No giant empty copy area or saved mood preset. Generated typography is part of the finished bitmap and must be reviewed.'},additionalInstructions:settings.note,
+ return {version:1,copyMode:settings.copyMode??'manual',industry:{id:category,label:industryLabel(category),groupId:group.id,groupLabel:group.label},direction:{id:direction.id,label:direction.label,description:direction.description,callToAction:requested==='requested'?direction.cta:requested},artDirection:artDirectionFor(category,p.format,settings.note),ctaPolicy:requested?'customer-requested':'omit',visual:{id:'auto',label:'상품에 맞춘 AI 연출',approvedSceneOverridesStyle:true,backgroundColor:p.background.color,ink:p.ink,composition:'Produce a finished one-page campaign including a prominent reference-based hero, readable marketing copy, supplied benefits and offer, optional dimension labels and visible contacts. Choose useful detail views only when supported by facts and references. Preserve exact material and product construction. No giant empty copy area or saved mood preset. Generated typography is part of the finished bitmap and must be reviewed.'},additionalInstructions:settings.note,
   factPolicy:'Use only supplied or confirmed business facts. Do not invent prices, performance, returns, medical outcomes, certifications, testimonials or eligibility. Ask for missing facts when needed.',
   status:'direction-prepared',providerStatus:'not-connected'};
 }
