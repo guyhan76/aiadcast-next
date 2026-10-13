@@ -28,7 +28,8 @@ export class PasswordAuth {
    if(!user){
     if(this.db.prepare('SELECT COUNT(*) n FROM users').get().n>=20)throw Error('TEST_AUTH_OWNER_LIMIT');
     const allocated=this.db.prepare('SELECT COALESCE(SUM(budget),0) n FROM users').get().n;
-    const id=randomUUID();this.db.prepare("INSERT INTO users(id,label,budget,credits,role) VALUES(?,?,?,3,'admin')").run(id,'셀업랩스 관리자',Math.max(0,this.store.cap-allocated));
+    // Leave an unallocated test reservation for a new member as well as the owner.
+    const id=randomUUID();this.db.prepare("INSERT INTO users(id,label,budget,credits,role) VALUES(?,?,?,3,'admin')").run(id,'셀업랩스 관리자',Math.min(500_000,Math.max(0,this.store.cap-allocated)));
     this.db.prepare('INSERT INTO email_identities VALUES(?,?)').run(this.adminEmail,id);
     user=this.db.prepare('SELECT * FROM users WHERE id=?').get(id);
    }else if(user.role!=='admin'){

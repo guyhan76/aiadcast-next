@@ -143,9 +143,9 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, now =
                     send(res, 200, await admin.overview(user), cors);
                     return;
                 }
-                if (req.method === 'POST' && ['/api/admin/grants', '/api/admin/allocations', '/api/admin/revoke'].includes(url.pathname)) {
+                if (req.method === 'POST' && ['/api/admin/grants', '/api/admin/allocations', '/api/admin/test-ready', '/api/admin/revoke'].includes(url.pathname)) {
                     const body = await read(req, 2048);
-                    send(res, 200, url.pathname.endsWith('/grants') ? await admin.grant(user, body) : url.pathname.endsWith('/allocations') ? await admin.allocate(user, body) : await admin.revoke(user, body), cors);
+                    send(res, 200, url.pathname.endsWith('/grants') ? await admin.grant(user, body) : url.pathname.endsWith('/allocations') ? await admin.allocate(user, body) : url.pathname.endsWith('/test-ready') ? await admin.prepareTest(user, body) : await admin.revoke(user, body), cors);
                     return;
                 }
                 throw new ApiFailure('NOT_FOUND', 404);

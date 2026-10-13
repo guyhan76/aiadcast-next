@@ -35,8 +35,9 @@ export class PasswordAuth {
                 if ((await this.db.prepare('SELECT COUNT(*) n FROM users').get()).n >= 20)
                     throw Error('TEST_AUTH_OWNER_LIMIT');
                 const allocated = (await this.db.prepare('SELECT COALESCE(SUM(budget),0) n FROM users').get()).n;
+                // Leave an unallocated test reservation for a new member as well as the owner.
                 const id = randomUUID();
-                await this.db.prepare("INSERT INTO users(id,label,budget,credits,role) VALUES(?,?,?,3,'admin')").run(id, '셀업랩스 관리자', Math.max(0, this.store.cap - allocated));
+                await this.db.prepare("INSERT INTO users(id,label,budget,credits,role) VALUES(?,?,?,3,'admin')").run(id, '셀업랩스 관리자', Math.min(500000, Math.max(0, this.store.cap - allocated)));
                 await this.db.prepare('INSERT INTO email_identities VALUES(?,?)').run(this.adminEmail, id);
                 user = await this.db.prepare('SELECT * FROM users WHERE id=?').get(id);
             }

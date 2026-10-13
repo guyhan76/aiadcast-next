@@ -55,8 +55,8 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
    if(url.pathname.startsWith('/api/admin/')){
     admin.require(user);
     if(req.method==='GET'&&url.pathname==='/api/admin/overview'){send(res,200,admin.overview(user),cors);return;}
-    if(req.method==='POST'&&['/api/admin/grants','/api/admin/allocations','/api/admin/revoke'].includes(url.pathname)){
-     const body=await read(req,2048);send(res,200,url.pathname.endsWith('/grants')?admin.grant(user,body):url.pathname.endsWith('/allocations')?admin.allocate(user,body):admin.revoke(user,body),cors);return;
+    if(req.method==='POST'&&['/api/admin/grants','/api/admin/allocations','/api/admin/test-ready','/api/admin/revoke'].includes(url.pathname)){
+     const body=await read(req,2048);send(res,200,url.pathname.endsWith('/grants')?admin.grant(user,body):url.pathname.endsWith('/allocations')?admin.allocate(user,body):url.pathname.endsWith('/test-ready')?admin.prepareTest(user,body):admin.revoke(user,body),cors);return;
     }
     throw new ApiFailure('NOT_FOUND',404);
    }

@@ -32,7 +32,7 @@ test('members signup and sign in without invitation, never self-grant roles or b
 });
 test('owner password bootstrap reuses the existing account and preserves credits, costs and projects on restart',t=>{
  const {store,auth,options}=setup(t),session=auth.signIn({email:owner,password:ownerPassword});
- const u=store.authenticate('Bearer '+session.token);assert.equal(u.role,'admin');assert.equal(u.budget,1_000_000);assert.equal(u.credits,3);
+ const u=store.authenticate('Bearer '+session.token);assert.equal(u.role,'admin');assert.equal(u.budget,500_000);assert.equal(u.credits,3);
  store.save(u.id,'owner-project',{project:{id:'owner-project',version:1,name:'Keep'},revision:0});
  store.db.prepare('UPDATE users SET credits=1 WHERE id=?').run(u.id);
  const next=new PasswordAuth(store,options);next.bootstrapOwner();

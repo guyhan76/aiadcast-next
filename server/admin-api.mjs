@@ -47,6 +47,24 @@ export class AdminApi {
   this.audit(actor,'allocation-increase',user.id,{fromMicros:user.budget,toMicros:micros});
   return {budget:s.status().budget};
  }
+ prepareTest(actor,body){
+  this.require(actor);const user=this.user(body?.userId),requestId=body?.requestId;
+  if(user.role!=='member')fail('TEST_MEMBER_REQUIRED');
+  if(typeof requestId!=='string'||!/^[A-Za-z0-9_-]{8,80}$/.test(requestId))fail('INVALID_TEST_GRANT');
+  const grantId='ready-'+requestId,s=this.service(user),status=s.status();
+  if(!status.generation.enabled&&['GENERATION_DISABLED','PROVIDER_NOT_CONFIGURED'].includes(status.generation.reason))fail(status.generation.reason,503);
+  // Replays cannot allocate another reservation or grant an extra credit.
+  const old=this.db.prepare('SELECT * FROM admin_grants WHERE actor_id=? AND request_id=?').get(actor.id,grantId);
+  if(!old){
+   const reservation=Math.round(status.generation.perRequestReservationUsd*1e6);
+   if(!Number.isSafeInteger(reservation)||reservation<1)fail('GENERATION_DISABLED',503);
+   const required=Math.max(user.budget,status.budget.spentMicros+status.budget.heldMicros+reservation);
+   if(required>this.store.cap)fail('BETA_ALLOCATION_EXCEEDED',409);
+   if(required>user.budget)this.allocate(actor,{userId:user.id,budgetMicros:required});
+  }
+  this.grant(actor,{userId:user.id,credits:1,requestId:grantId});
+  return {test:true,...s.status()};
+ }
  revoke(actor,body){
   this.require(actor);const user=this.user(body?.userId);
   if(user.role==='admin')fail('ADMIN_REVOKE_REQUIRES_CLI',409);

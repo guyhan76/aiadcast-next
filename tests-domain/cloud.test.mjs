@@ -76,12 +76,17 @@ test('cloud test password accounts and owner login survive restart without invit
  const admin=login.data;assert.equal(admin.user.role,'admin');
  const member=(await s.call('/api/auth/test/signup',{body:{email:'member@example.com',password:memberPassword,role:'admin'}})).data;
  assert.equal(member.user.role,'member');assert.equal((await s.call('/api/admin/overview',{token:member.token})).status,403);
+ const readyBody={userId:member.user.id,requestId:'cloud-member-ready'};
+ assert.equal((await s.call('/api/admin/test-ready',{token:member.token,body:readyBody})).status,403);
+ const ready=await s.call('/api/admin/test-ready',{token:admin.token,body:readyBody});assert.equal(ready.status,200,JSON.stringify(ready.data));assert.equal(ready.data.generation.enabled,true);assert.equal(ready.data.wallet.available,1);
+ assert.equal((await s.call('/api/admin/test-ready',{token:admin.token,body:readyBody})).data.wallet.available,1);
  const p={version:1,id:'password-project',name:'Saved test'};assert.equal((await s.call('/api/projects/'+p.id,{token:admin.token,body:{project:p,revision:0}})).status,200);
  assert.equal((await s.call('/api/projects/'+p.id,{token:member.token})).status,404);
  await s.restart();
  assert.equal((await s.call('/api/projects/'+p.id,{token:admin.token})).data.project.name,p.name);
  assert.equal((await s.call('/api/auth/test/login',{body:{email:'member@example.com',password:memberPassword}})).data.user.id,member.user.id);
  assert.equal((await s.call('/api/status',{token:admin.token})).data.wallet.available,3);
+ assert.equal((await s.call('/api/status',{token:member.token})).data.wallet.available,1);assert.equal((await s.call('/api/status',{token:member.token})).data.budget.limitMicros,500000);
  assert.equal((await s.call('/api/admin/overview',{token:admin.token})).status,200);
  const stored=await s.app.store.db.prepare('SELECT * FROM test_passwords').all();assert.ok(!JSON.stringify(stored).includes(password));
  for(let i=0;i<5;i++)assert.equal((await s.call('/api/auth/test/login',{body:{email:'member@example.com',password:'Wrong-fixture-password'}})).status,401);
