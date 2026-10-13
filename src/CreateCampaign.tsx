@@ -24,7 +24,7 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft}:{initialKind?
  const service=isServiceCategory(project.productProfile.category),axes=dimensionAxes(project.productProfile),settings=creativeSettings(project),copy=project.copy[project.locale];
  const copyMode=settings.copyMode??'ai';
  function change(fn:(p:Project)=>Project){setProject(fn);setError('');}
- function setCopy(field:'title'|'description'|FooterField,value:string){change(p=>({...p,copy:{...p.copy,[p.locale]:{...p.copy[p.locale],[field]:value}},...(field!=='title'&&field!=='description'?{footer:{company:p.footer?.company??true,contact:p.footer?.contact??true,email:p.footer?.email??true,website:p.footer?.website??true,[field]:true}}:{})}));}
+ function setCopy(field:'title'|'description'|FooterField,value:string){change(p=>({...p,copy:{...p.copy,[p.locale]:{...p.copy[p.locale],[field]:value}}}));}
  async function submit(){
   if(busy)return;
   if(!chosen){setError(t('광고할 산업을 선택해주세요.','Choose your industry.'));document.getElementById(id+'-industry')?.focus();return;}
