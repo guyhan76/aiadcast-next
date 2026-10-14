@@ -23,7 +23,7 @@ async function details(page:Page,service=true){await page.goto('/#create');const
 
 test('eight inputs submit actual generation request once and a complete accepted PNG can be saved',async({page})=>{
  const state=await mocks(page),form=await details(page,false);
- await form.locator('[data-order="2"] summary').click();await form.getByLabel('회사명',{exact:true}).fill('셀업랩스');await form.getByLabel('연락처',{exact:true}).fill('010-5635-6211');await form.getByLabel('이메일 주소').fill('selluplabs@gmail.com');
+ await form.locator('[data-order="2"] summary').click();await form.getByLabel('회사명',{exact:true}).fill('테스트 업체');await form.getByLabel('연락처',{exact:true}).fill('010-0000-0000');await form.getByLabel('이메일 주소').fill('example@example.com');
  await form.getByLabel('참조사진 추가').setInputFiles([{name:'front.png',mimeType:'image/png',buffer:first},{name:'side.png',mimeType:'image/png',buffer:second}]);
  await expect(form.locator('.reference-item')).toHaveCount(2);
  await form.getByRole('button',{name:'규격 넣기',exact:true}).click();await form.getByLabel('규격 단위').selectOption('mm');
@@ -31,9 +31,11 @@ test('eight inputs submit actual generation request once and a complete accepted
  await form.getByRole('button',{name:'직접 입력',exact:true}).click();await form.getByLabel('광고 제목',{exact:true}).fill('보내는 마음까지, 든든하게.');await form.getByLabel('광고 설명',{exact:true}).fill('10개 19,800원 · 빠른배송');
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();
  const result=page.locator('.simple-ad-result');await expect(result.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();await expect(result.locator('.generation-ad-preview')).toBeVisible();
+ await expect(result.getByRole('heading',{name:'이 광고의 제작 의도',exact:true})).toBeVisible();await expect(result.getByRole('heading',{name:'추천 채널',exact:true})).toBeVisible();await expect(result.locator('.marketing-keywords li')).toHaveCount(state.body.request.marketingPlan.keywordCount);
  expect(state.posts).toBe(1);expect(state.body.references).toHaveLength(1);expect(state.body.request.copy.title).toBe('보내는 마음까지, 든든하게.');expect(state.body.request.creativeDirection.copyMode).toBe('manual');expect(state.body.request.output.format).toBe('9:16');expect(state.body.request.output.showDimensions).toBe(true);expect(state.body.request.specifications.map((s:any)=>s.value)).toEqual(['340','250','210']);
  await expect(result.locator('.automatic-proportion')).toHaveCount(0);await expect(result.locator('.editor-details')).toHaveCount(0);
  await result.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await result.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+ await expect(result.locator('.marketing-summary')).toHaveCount(1);await expect(result.locator('.accepted-ad .marketing-summary')).toBeVisible();
  const save=result.getByRole('button',{name:'이미지 저장',exact:true});await expect(save).toBeEnabled();const pending=page.waitForEvent('download');await save.click();expect((await pending).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
  await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByLabel('광고 제목',{exact:true})).toHaveValue('보내는 마음까지, 든든하게.');
 });

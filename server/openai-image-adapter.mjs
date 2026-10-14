@@ -2,10 +2,11 @@ import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import {artDirectionFor} from '../src/art-direction.ts';
 import {dimensionLabel,dimensionUnit} from '../src/dimension-units.ts';
+import {imageSkillBrief} from '../src/image-skills.ts';
 
 // Pinned, opt-in development adapter. No model discovery or automatic upgrades.
 export const IMAGE_MODEL = 'gpt-image-2.5-sunburst';
-export const IMAGE_REVISION = 'gpt-image-2.5-sunburst/aiadcast-images-v8-complete-ad/2026-10-13';
+export const IMAGE_REVISION = 'gpt-image-2.5-sunburst/aiadcast-images-v9-requested-recipes/2026-10-15';
 export const PRICE_VERSION = 'openai-direct-images-2026-10-10';
 export const GENERATION_SIZES = Object.freeze({
   '1:1': '1024x1024', '4:5': '1024x1280', '3:4': '960x1280',
@@ -86,7 +87,7 @@ export function promptFor(request) {
   const original = request.mode === 'original';
   const notes=typeof request.creativeDirection?.additionalInstructions==='string'?request.creativeDirection.additionalInstructions:'';
   const production=artDirectionFor(request.productProfile?.category??'other',request.output.format,notes);
-  if(completeAdRequest(request))return completeAdPrompt(request,production);
+  if(completeAdRequest(request))return completeAdPrompt(request,production)+imageSkillBrief([notes,typeof request.brief==='string'?request.brief:''].join('\n'));
   const zones={top:'Keep the upper 30% quiet for editable headline and description. Place the hero below that zone, large enough to read on mobile.',bottom:'Keep the lower 32% quiet for editable headline and description, and the lowest 14% for optional facts/contact. Place the hero above that zone.',left:'Keep the left 42% quiet for editable headline and description. Place the hero mostly on the right; the lowest 14% stays calm for optional facts/contact.'};
   const base = original
     ? 'Create ONLY an empty premium advertising background for later compositing. Do not draw the advertised product, packaging, person, logo, or existing source photograph. Leave an uncluttered central placement area and ample headline space. The original photograph will be composited separately without modifying its pixels.'
