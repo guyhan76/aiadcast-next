@@ -11,7 +11,10 @@ const digest=value=>createHash('sha256').update(value).digest('hex');
 export class PasswordAuth {
  constructor(store,{enabled=false,adminEmail='selluplabs@gmail.com',adminPassword}={},now=()=>Date.now()){
   Object.assign(this,{store,db:store.db,enabled,adminEmail:normalize(adminEmail),adminPassword,now});
-  if(!validEmail(this.adminEmail)||(adminPassword!==undefined&&!validPassword(adminPassword,12)))throw Error('INVALID_TEST_AUTH_CONFIG');
+  const invalidFields=[];
+  if(!validEmail(this.adminEmail))invalidFields.push('AIADCAST_TEST_ADMIN_EMAIL');
+  if(adminPassword!==undefined&&!validPassword(adminPassword,12))invalidFields.push('AIADCAST_TEST_ADMIN_PASSWORD');
+  if(invalidFields.length)throw Object.assign(Error('INVALID_TEST_AUTH_CONFIG'),{invalidFields});
   this.db.exec(`CREATE TABLE IF NOT EXISTS email_identities(email TEXT PRIMARY KEY,user_id TEXT UNIQUE NOT NULL REFERENCES users(id));
    CREATE TABLE IF NOT EXISTS test_passwords(user_id TEXT PRIMARY KEY REFERENCES users(id),salt TEXT NOT NULL,password_hash TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS test_auth_attempts(email_hash TEXT PRIMARY KEY,failures INTEGER NOT NULL,window_start INTEGER NOT NULL);`);

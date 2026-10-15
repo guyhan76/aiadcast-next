@@ -5,7 +5,8 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {BetaStore} from '../server/beta-store.mjs';
 import {PasswordAuth} from '../server/password-auth.mjs';
-import {createBetaServer} from '../server/beta-server.mjs';
+import {createBetaServer,betaStartupMessage} from '../server/beta-server.mjs';
+import {PasswordAuth as CloudPasswordAuth} from '../server/cloud/password-auth-base.mjs';
 import {GenerationService} from '../server/generation-service.mjs';
 import {accountConfiguration} from '../server/account-providers.mjs';
 const owner='selluplabs@gmail.com',ownerPassword='Fixture-owner-2026!',memberPassword='Fixture-member-2026!';
@@ -78,4 +79,37 @@ test('HTTP test signup/login use real sessions and member cannot access administ
  assert.equal((await call('/api/auth/test/login',{email:owner,password:'Wrong-fixture-password'})).status,401);
  assert.equal((await call('/api/auth/logout',{},member.token)).status,200);
  assert.equal((await call('/api/status',undefined,member.token)).status,401);
+});
+test('invalid administrator settings identify every bad field before any local or cloud database access without logging values',async()=>{
+ const emailField='AIADCAST_TEST_ADMIN_EMAIL',passwordField='AIADCAST_TEST_ADMIN_PASSWORD';
+ const cases=[
+  {adminEmail:'not-an-address',adminPassword:ownerPassword,fields:[emailField]},
+  {adminEmail:owner,adminPassword:'',fields:[passwordField]},
+  {adminEmail:owner,adminPassword:'x'.repeat(11),fields:[passwordField]},
+  {adminEmail:owner,adminPassword:'x'.repeat(129),fields:[passwordField]},
+  {adminEmail:'',adminPassword:'short',fields:[emailField,passwordField]},
+ ];
+ for(const config of cases){
+  const store={db:{exec(){assert.fail('Invalid configuration must fail before database access');}}};
+  const check=error=>{
+   assert.equal(error.message,'INVALID_TEST_AUTH_CONFIG');assert.deepEqual(error.invalidFields,config.fields);
+   const log=betaStartupMessage(error);
+   for(const field of config.fields)assert.ok(log.includes(field));
+   for(const field of [emailField,passwordField].filter(field=>!config.fields.includes(field)))assert.ok(!log.includes(field));
+   for(const value of [config.adminEmail,config.adminPassword].filter(Boolean))assert.ok(!log.includes(value));
+   return true;
+  };
+  assert.throws(()=>new PasswordAuth(store,{enabled:true,...config}),check);
+  await assert.rejects(new CloudPasswordAuth().initialize(store,{enabled:true,...config}),check);
+ }
+});
+test('administrator password boundaries remain unchanged and startup logs discard untrusted error fields',async()=>{
+ for(const length of [12,128]){
+  let writes=0;const store={db:{exec(){writes++;}}},options={enabled:true,adminEmail:owner,adminPassword:'x'.repeat(length)};
+  new PasswordAuth(store,options);await new CloudPasswordAuth().initialize(store,options);assert.equal(writes,2);
+ }
+ const secret='not-for-logs-credential';
+ const message=betaStartupMessage(Object.assign(Error('INVALID_TEST_AUTH_CONFIG'),{invalidFields:['AIADCAST_TEST_ADMIN_PASSWORD',secret],cause:secret}));
+ assert.ok(message.includes('12-128'));assert.ok(!message.includes(secret));
+ assert.ok(!betaStartupMessage(Error(secret)).includes(secret));
 });

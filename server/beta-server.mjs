@@ -113,5 +113,13 @@ export function betaStartupCode(error){
  if(['ENOTFOUND','ETIMEDOUT','ECONNREFUSED'].includes(code))return 'DATABASE_CONNECTION_FAILED';
  return 'CONFIGURATION_OR_CONNECTION_FAILED';
 }
-if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(e=>{console.error('Beta startup failed: '+betaStartupCode(e)+'. Verify private server configuration.');process.exitCode=1;});
+export function betaStartupMessage(error){
+ const code=betaStartupCode(error);
+ // Only fixed field names and instructions may reach logs, never supplied values or error details.
+ const hints={AIADCAST_TEST_ADMIN_EMAIL:'AIADCAST_TEST_ADMIN_EMAIL must contain a valid email address (not an empty value).',AIADCAST_TEST_ADMIN_PASSWORD:'AIADCAST_TEST_ADMIN_PASSWORD must contain 12-128 characters (not an empty value).'};
+ const invalid=code==='INVALID_TEST_AUTH_CONFIG'&&Array.isArray(error?.invalidFields)?error.invalidFields:[];
+ const details=Object.entries(hints).filter(([field])=>invalid.includes(field)).map(([,hint])=>hint);
+ return 'Beta startup failed: '+code+'. '+(details.length?'Check Render Environment: '+details.join(' ')+' Save the values and deploy again.':'Verify private server configuration.');
+}
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(e=>{console.error(betaStartupMessage(e));process.exitCode=1;});
 
