@@ -6,7 +6,7 @@ import {imageSkillBrief} from '../src/image-skills.ts';
 
 // Pinned, opt-in development adapter. No model discovery or automatic upgrades.
 export const IMAGE_MODEL = 'gpt-image-2.5-sunburst';
-export const IMAGE_REVISION = 'gpt-image-2.5-sunburst/aiadcast-images-v11-automotive-campaigns/2026-10-15';
+export const IMAGE_REVISION = 'gpt-image-2.5-sunburst/aiadcast-images-v12-service-composition/2026-10-15';
 export const PRICE_VERSION = 'openai-direct-images-2026-10-10';
 export const GENERATION_SIZES = Object.freeze({
   '1:1': '1024x1024', '4:5': '1024x1280', '3:4': '960x1280',
@@ -26,6 +26,21 @@ export function displayedSpecifications(request){
  if(request.subjectType==='service'||!request.output?.showDimensions)return [];
  const labels=request.output.locale==='en'?{width:'Width',depth:'Depth',height:'Height',diameter:'Diameter'}:{width:'가로',depth:'세로',height:'높이',diameter:'지름'};
  return (request.specifications??[]).map(s=>({axis:s.axis,label:labels[s.axis],value:dimensionLabel(s.value,dimensionUnit(request.output.displayUnit))}));
+}
+function serviceCampaignBrief(request){
+ if(request.subjectType!=='service')return '';
+ const category=request.productProfile?.category;
+ const approaches=['finance','banking','securities','stocks','crypto'].includes(category)
+  ? 'a credible everyday service scene with a clean transition into readable copy; a single clearly symbolic 3D-style metaphor for the supplied customer problem; or a typography-led explanation of the supplied terms'
+  : category==='realestate'
+   ? 'the actual supplied property photo or architectural rendering with a clear project name; an orderly offer board dominated by the supplied contract conditions; or a clearly conceptual property-service illustration when actual listing imagery is absent'
+   : category==='education'
+    ? 'a supplied instructor portrait paired with a strong audience-specific headline; an actual learning activity; or a typography-led explanation of the supplied course and curriculum'
+    : '';
+ if(!approaches)return '';
+ return `SERVICE AD COMPOSITION: Select one treatment from ${approaches}, based on the customer request, purpose and available facts. These are alternatives, not a fixed template or a requirement to combine all treatments. Photography is optional: a clear graphic metaphor or a strong typographic offer can carry the page. A bright, restrained layout can be as deliberate as a dark campaign. Choose a consistent palette, one focal point, strong headline/supporting-copy contrast and uncluttered margins.
+For a photographic treatment, preserve the supplied identities and use a controlled transition or quiet area behind the headline. For a symbolic treatment, use one coherent visual metaphor with convincing lighting and material; it is an illustration, not evidence of an actual property, facility, financial outcome or reconstructed physical object. For a terms-led treatment, group each exact amount or percentage with its meaning and supplied qualifiers; do not detach a deposit, payment stage, eligibility requirement or period from the number to make it appear more favorable. Preserve every approved manual-copy word; do not create extra captions in manual-copy mode. Let a compact supplied-terms panel be the main composition when that best explains the offer, without forcing a large photograph into it.
+Use only the supplied business identity, project rendering and actual instructor evidence. A portrait does not establish credentials, a testimonial or an endorsement. Do not borrow a reference advertiser's name, registration number, rate, approval claim, regulatory exemption, property count, transport time, gifts or contact details. Keep the established contact visibility, no-unsolicited-CTA rule and ratio-specific working insets.\n`;
 }
 function automotiveCampaignBrief(request){
  const category=request.productProfile?.category;
@@ -53,11 +68,13 @@ export function completeAdPrompt(request,production){
   : purpose==='trust'
    ? 'Make supplied process, construction or service details legible and credible. Use documented evidence only; do not manufacture reviews, awards, certification badges or statistics to imply trust.'
    : 'Build a memorable brand introduction around the actual product or service, one strong visual idea and a clear headline. Avoid unrelated luxury props and repeated generic marble, silk or gold.';
- return `Create ONE FINISHED premium advertising image, including photographs, advertising typography, supplied benefits, offer, optional dimensions and visible business contacts. Deliver the whole ready-to-review page at ${photographSize(request)}. Do not return only a photograph or leave blank spaces for another app to add copy. The final ad is a single flattened image.
+ return `Create ONE FINISHED premium advertising image using suitable photography, illustration or graphic design, advertising typography, supplied benefits, offer, optional dimensions and visible business contacts. Deliver the whole ready-to-review page at ${photographSize(request)}. Do not return only a photograph or leave blank spaces for another app to add copy. The final ad is a single flattened image.
 ${referenceBrief}
+REFERENCE SCREENSHOTS: When a reference contains a webpage or platform interface, use the relevant advertising artwork and visual hierarchy only. Do not reproduce phone status bars, browser navigation, website menus, carousel dots, thumbnail strips or platform-added action bars as part of the finished ad. Reference CTA buttons do not override the customer's CTA policy. A carousel screenshot does not authorize invented extra products or multiple output pages.
 Art-direct a coherent one-page campaign with a dominant, fully visible hero, a prominent product/service name and mobile-readable marketing headline. Use purposeful lighting and a credible category-specific setting. Link supplied benefits to restrained icons and one or two useful detail views when they are supported by the references and supplied facts. Never force every industry into a carton brochure or fixed numbered columns. Integrate offer and specifications with the hero, and optional contacts in a clean compact footer. Avoid giant blank header areas, disconnected stock photos and an empty black footer. Concepts: ${production.concepts.join('; ')}. Techniques: ${production.techniques.join('; ')}. ${production.constraints.join(' ')}
 DESIGN CHOICE: Choose one coherent concept suited to this specific subject and the customer's request, not a collage of all three concepts. The named industry is context; supplied facts and user instructions determine the actual subject. Use deliberate type scale and contrast readable on a phone. ${purposeBrief}
 ${automotiveCampaignBrief(request)}
+${serviceCampaignBrief(request)}
 FACT LOCK: Use only the supplied product name, description, material, attributes, quantities, prices and conditions. ${request.creativeDirection?.copyMode==='ai'?'AI COPY: Write a concise marketing headline and supporting copy from the supplied description and benefits. The supplied title/description are starting facts and drafting context, not a mandatory fixed headline. Keep the exact product/service name prominent. Do not add factual promises.':'MANUAL COPY: Typeset the supplied title and description verbatim. Do not rewrite, replace or supplement the customer\'s advertising copy.'} Preserve each number, currency, unit, name, phone, email and URL character. Do not invent or upgrade benefits, certifications, delivery terms, guaranteed outcomes, financial returns, discounts or testimonials. ${materialBrief} A self-check is not certification or an automatic fact-verification result.
 ${service?'SERVICE LAYOUT: Build the composition around the supplied activity and audience, not a product specification sheet. Missing dimensions remain unknown.':'GEOMETRY: Reconcile named width, depth, height or diameter with the reference silhouette using supplied millimetres and normalized ratios. Canvas ratio is separate from physical proportions. Never stretch a product to fill the page. Missing dimensions remain unknown.'} ${specifications.length?'Display ONLY the axis labels, values and units in displayedSpecifications, with a compact summary. If dimension lines are requested, put each on its corresponding visible axis; use a labelled specification panel if that axis is occluded. Never invent a measurement.':'Do NOT add numeric dimensions, measurement arrows, a specification panel, or inferred sizes.'} ${!service&&!specifications.length?'Supplied internal dimensions are for proportions only and are not visible advertising copy.':''}
 ${request.subjectType==='service'?'SERVICE: Build a service campaign around the supplied experience and audience, with optional reference scenes. No fabricated physical product, product dimensions, medical before/after, insurance cover, interest rate, lease term, accreditation or results.':'PHYSICAL PRODUCT: Preserve the actual product across the hero and supported detail views. A supplied size is guidance for generation, not evidence of reconstructed physical 3D accuracy.'}
