@@ -30,11 +30,11 @@ test('category and supplied dimensions influence the target; missing specs never
  p.productProfile.specType='none';const plan=marketingPlanForProject(p);assert.equal(plan.target.segment,'general');assert.deepEqual(plan.normalizedRatios,[]);assert.doesNotMatch(plan.target.label,/mm/);
  const appliance=withCategory(product(),'electronics');appliance.campaign.goal='awareness';assert.equal(marketingPlanForProject(appliance).channels[0],'website');appliance.productProfile.specType='none';assert.equal(marketingPlanForProject(appliance).channels[0],'instagram');
 });
-test('every category and language has exactly six normalized unique search phrases without phone or email leakage',()=>{
+test('every category and language has bounded relevant unique SEO phrases without phone or email leakage or filler',()=>{
  for(const [category] of productCategories)for(const locale of ['ko','en']){
   const p=withCategory(product(),category);p.locale=locale;p.productName='ABC BOX';p.copy[locale].company='ＡＢＣＢＯＸ';p.campaign.attributes.push({name:'내부 연락처',value:'010-9999-8888'},{name:'이메일',value:'secret@example.com'});
   const plan=marketingPlanForProject(p),keys=plan.keywords.map(s=>s.normalize('NFKC').toLowerCase().replace(/[\s\p{P}\p{S}]/gu,''));
-  assert.equal(plan.keywords.length,6);assert.equal(new Set(keys).size,6);assert.ok(plan.keywords.every(k=>!/@|010-9999/.test(k)));
+  assert.ok(plan.keywords.length>0&&plan.keywords.length<=6);assert.equal(new Set(keys).size,plan.keywordCount);assert.ok(plan.keywords.every(k=>!/@|010-9999|소개|선택 가이드|상세 정보|overview|selection guide|details/i.test(k)));
  }
 });
 test('server recomputes client suggestions and rejects duplicated axes before dispatch',()=>{
