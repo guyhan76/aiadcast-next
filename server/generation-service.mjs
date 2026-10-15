@@ -40,6 +40,11 @@ export function normalizeGenerationRequest(value) {
   const specifications = value.specifications ?? [];
   if (!Array.isArray(specifications) || specifications.length > 3 || specifications.some(s => !['width','depth','height','diameter'].includes(s?.axis) || s.unit !== 'mm' || typeof s.value !== 'string' || !/^\d+(\.\d{1,8})?$/.test(s.value) || Number(s.value) <= 0 || Number(s.value) > 100000)) fail('INVALID_SPECIFICATIONS');
   if(new Set(specifications.map(s=>s.axis)).size!==specifications.length||(value.subjectType==='service'&&specifications.length))fail('INVALID_SPECIFICATIONS');
+  if(!Array.isArray(value.references??[])||(value.references??[]).length>9)fail('INVALID_IMAGE');
+  const photoInputs=[...(value.source?[value.source]:[]),...value.references??[]];
+  if(photoInputs.some(photo=>!photo||!['subject','style'].includes(photo.purpose??'subject')))fail('INVALID_IMAGE');
+  if(value.mode==='original'&&value.source?.purpose==='style')fail('INVALID_IMAGE');
+  if(value.subjectType==='physical-product'&&photoInputs.length&&photoInputs.every(photo=>photo.purpose==='style'))fail('SOURCE_REQUIRED');
   let campaign;try{campaign=parseCampaign(Object.keys(value.campaign??{}).length?value.campaign:undefined);}catch{fail('INVALID_REQUEST');}
   const material=value.productProfile?.material??'';
   if(typeof material!=='string'||material.length>2000||typeof(value.copy?.company??'')!=='string'||typeof(value.productProfile?.category??'other')!=='string'||(value.productProfile?.category??'other').length>80)fail('INVALID_REQUEST');
@@ -127,7 +132,7 @@ export class GenerationService {
     const available = this.budgetMicros - (budget?.spent_micros ?? 0) - (budget?.held_micros ?? 0);
     const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : this.budgetMicros < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : this.wallet().available < 1 ? 'NO_TEST_CREDITS' : null;
     const assistantReason = !this.assistantEnabled ? 'ASSISTANT_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : available < TEXT_MAX_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : null;
-    return { mode: 'local-development', commercialReady: false, generation: { enabled: reason === null, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet: this.wallet(), budget: { currency: 'USD', period: this.period(), limitMicros: this.budgetMicros, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
+    return { mode: 'local-development', commercialReady: false, generation: { enabled: reason === null, photoPurposes: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet: this.wallet(), budget: { currency: 'USD', period: this.period(), limitMicros: this.budgetMicros, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
   }
   storeAsset(asset) {
     this.db.prepare('INSERT INTO generation_assets VALUES (?,?,?,?,?) ON CONFLICT(hash) DO NOTHING').run(asset.sha256, asset.mime, asset.width, asset.height, asset.bytes);

@@ -1,4 +1,5 @@
 import type {PhotoView} from './automatic-proportion.ts';
+import {parsePhotoRoles,photoRole,type PhotoRole} from './photo-roles.ts';
 import {validMillimeters,type DimensionUnit} from './dimension-units.ts';
 import {parsePublishing} from './publishing.ts';
 import type {Publishing} from './publishing.ts';
@@ -26,7 +27,7 @@ export type Copy = {title:string;description:string;company:string;contact:strin
 export type FooterField = 'company'|'contact'|'email'|'website';
 export type Project = {
  version:1;id:string;name:string;updatedAt:string;locale:Locale;format:ImageFormat;
- product:Asset|null;references?:Asset[];footer?:Record<FooterField,boolean>;presentation?:'campaign';productName:string;productProfile:ProductProfile;generation:GenerationSettings;scale:number;
+ product:Asset|null;references?:Asset[];referenceRoles?:Record<string,PhotoRole>;footer?:Record<FooterField,boolean>;presentation?:'campaign';productName:string;productProfile:ProductProfile;generation:GenerationSettings;scale:number;
  background:{color:string;image:Asset|null};ink:'dark'|'light';
  publishing?:Publishing;campaign?:Campaign;referenceCheck?:ReferenceCheck;conversation?:Conversation;generated?:GeneratedAsset;boxProjection?:BoxProjection;
  dimensions:{displayUnit?:DimensionUnit;width:string;depth:string;height:string;visible:boolean;lines:boolean;anchors:Record<Axis,[Point,Point]>};
@@ -54,6 +55,7 @@ export function exportErrors(p:Project) {
  const projectionError=boxProjectionError(p);if(projectionError)errors.push(projectionError);
  if(p.generation?.mode==='creative'&&!hasUsableCreative(p))errors.push('새 광고 결과가 아직 준비되지 않았거나 원본·규격·문구·연락처가 변경되었습니다. AI 연결 후 현재 조건으로 생성하고 결과를 승인해주세요.');
  if(!p.product&&!isServiceCategory(p.productProfile.category))errors.push('원본 상품 사진을 먼저 추가해주세요.');
+ if(p.generation.mode==='original'&&p.product&&photoRole(p,p.product.sha256)==='style')errors.push('실사 그대로 사용하려면 실제 상품·공간 사진을 대표로 지정해주세요.');
  if(!p.copy[p.locale].title.trim())errors.push('제목을 입력해주세요.');
  if(p.dimensions.visible && dimensionAxes(p.productProfile).some(a=>!validMillimeters(p.dimensions[a])))errors.push('규격은 0보다 크고 100,000 mm 이하인 숫자로 입력해주세요.');
  return errors;
@@ -70,6 +72,7 @@ export async function importProject(raw:unknown):Promise<Project> {
  for(const axis of axes){p.dimensions[axis]=string(r.dimensions[axis],20);const points=r.dimensions.anchors?.[axis];if(!Array.isArray(points)||points.length!==2||points.some(pt=>!pt||!Number.isFinite(pt.x)||!Number.isFinite(pt.y)||pt.x<0||pt.x>1||pt.y<0||pt.y>1))throw new Error('치수선 위치가 올바르지 않습니다.');p.dimensions.anchors[axis]=points.map(pt=>({x:pt.x,y:pt.y})) as [Point,Point];}
  p.references=[];if(r.references!==undefined){if(!Array.isArray(r.references)||r.references.length>9)throw Error('참조사진은 최대 10장입니다.');for(const ref of r.references){const a=await asset(ref);if(!a)throw Error('참조사진을 확인해주세요.');p.references.push(a);}}
  validateReferences(p);
+ p.referenceRoles=parsePhotoRoles(r.referenceRoles,referenceAssets(p));
  if(r.proportionViews!==undefined){const v=r.proportionViews;if(!v||typeof v.confirmed!=='boolean'||!v.views||Array.isArray(v.views)||Object.keys(v.views).length>10||(v.resultView!==undefined&&!['unconfirmed','front','side','top','perspective'].includes(v.resultView))||Object.entries(v.views).some(([hash,view])=>!referenceAssets(p).some(a=>a.sha256===hash)||!['unconfirmed','front','side','top','perspective'].includes(view)))throw Error('사진 촬영면 정보를 확인해주세요.');p.proportionViews={confirmed:v.confirmed,views:{...v.views},...(v.resultView?{resultView:v.resultView}:{})};}
  if(r.footer!==undefined){if(!r.footer||typeof r.footer!=='object'||['company','contact','email','website'].some(k=>typeof r.footer![k as FooterField]!=='boolean'))throw Error('하단 표시 설정을 확인해주세요.');p.footer={company:r.footer.company,contact:r.footer.contact,email:r.footer.email,website:r.footer.website};}
  if(r.presentation==='campaign')p.presentation='campaign';
@@ -87,6 +90,7 @@ export function validateReferences(p:Project){
 }
 export function withReferences(p:Project,assets:Asset[]):Project{
  const next={...p,product:assets[0]??null,references:assets.slice(1),...(p.proportionViews?{proportionViews:{confirmed:p.proportionViews.confirmed,views:Object.fromEntries(Object.entries(p.proportionViews.views).filter(([hash])=>assets.some(a=>a.sha256===hash)))}}:{})};validateReferences(next);
+ if(p.referenceRoles)next.referenceRoles=Object.fromEntries(Object.entries(p.referenceRoles).filter(([hash])=>assets.some(a=>a.sha256===hash)));
  if(next.product?.sha256!==p.product?.sha256&&next.boxProjection)next.boxProjection={...next.boxProjection,confirmedSourceHash:null,markedCorners:[]};
  return next;
 }

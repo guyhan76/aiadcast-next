@@ -17,7 +17,8 @@ import {saveProject} from './storage';
 import {ImageReview} from './ImageReview';
 import {completeAdKey} from './complete-ad';
 import {betaSession} from './beta-session';
-import {hasUsableCreative} from './generated';
+import {hasUsableCreative,hasUsableOriginal} from './generated';
+import {needsPhotoPurposeServer} from './photo-roles';
 import './generation-panel.css';
 type Pending={projectId:string;requestId:string;key:string;jobId?:string};
 type JobResponse={job:GenerationJob;wallet:ApiStatus['wallet']};
@@ -69,6 +70,7 @@ export function GenerationPanel({project,change,simple=false,autoRequest,onAutoH
  const previewReady=!!preview&&preview.source===project&&preview.jobId===job?.id&&!preview.errors.length;
  useEffect(()=>{if(!autoRequest||autoHandled.current===autoRequest||(!status&&!statusError)||(!!pending.current&&!job))return;autoHandled.current=autoRequest;onAutoHandled?.();if(status?.generation.enabled&&(!job||!['running','ready','uncertain'].includes(job.state)))void start();},[autoRequest,status,statusError,job?.id,job?.state]);
  async function start(){
+  if(needsPhotoPurposeServer(latest.current,status?.generation.photoPurposes))return;
   const snapshot=latest.current;if(busy||active||pending.current&&!job)return;
   setBusy(true);setError('');setNotice('');setReviewed(false);
   try{
@@ -91,7 +93,8 @@ export function GenerationPanel({project,change,simple=false,autoRequest,onAutoH
   }catch(e){failure(e);}finally{if(alive.current)setBusy(false);}
  }
  async function reject(){if(!job||busy)return;setBusy(true);try{const result=await apiRequest<JobResponse>(`/api/generations/${job.id}/reject`,{});if(!alive.current)return;setJob(result.job);setStatus(s=>s?{...s,wallet:result.wallet}:s);remember(null);setReviewed(false);setNotice(t('시안을 반려하고 테스트 이용권을 복원했습니다.','The visual was rejected and the test credit was restored.'));}catch(e){failure(e);}finally{if(alive.current)setBusy(false);}}
- const demo=offlineDemo();const applied=simple&&job?.state==='accepted'&&project.generated?.jobId===job.id&&hasUsableCreative(project);
+ const demo=offlineDemo();const applied=simple&&job?.state==='accepted'&&project.generated?.jobId===job.id&&(hasUsableCreative(project)||hasUsableOriginal(project));
+ const referenceBlocked=!!status&&needsPhotoPurposeServer(project,status.generation.photoPurposes);
  const reason=status?.generation.reason;
  const blocked=statusError==='AUTH_REQUIRED'?t('이미지를 생성하려면 로그인해주세요. 입력한 광고 정보는 보관했습니다.','Sign in to generate your image. Your ad details are kept.'):statusError?t('서버 상태를 확인하지 못했습니다. 다시 확인해주세요.','Could not check the server. Please retry.'):reason==='BUDGET_NOT_AVAILABLE'?t('테스트 생성 한도에 도달했습니다. 관리자에게 한도 확인을 요청해주세요.','The test generation budget is exhausted. Ask your administrator to check it.'):reason==='NO_TEST_CREDITS'?t('생성 이용권이 부족합니다. 내 이용권을 확인해주세요.','You need a generation credit. Check your credits.'):reason==='PROVIDER_NOT_CONFIGURED'?t('이미지 생성 연결을 준비 중입니다. 관리자 설정이 필요합니다.','Image generation needs administrator configuration.'):status&&!status.generation.enabled?t('현재 이미지 생성을 사용할 수 없습니다. 관리자에게 문의해주세요.','Image generation is unavailable. Contact your administrator.'):t('생성 준비 상태를 확인하고 있습니다…','Checking generation readiness…');
  const labels:Record<GenerationJob['state'],string>={running:t('시안 제작 중','Creating your visual'),ready:t('결과를 확인해주세요','Review your result'),accepted:t('사용 확정한 시안','Accepted visual'),rejected:t('반려 · 이용권 복원','Rejected · credit restored'),failed:t('실패 · 이용권 복원','Failed · credit restored'),uncertain:t('처리 확인 중 · 이용권 복원','Provider status uncertain · credit restored'),expired:t('검토 만료 · 이용권 복원','Review expired · credit restored'),refunded:t('이용권 복원됨','Credit restored')};
@@ -100,9 +103,10 @@ export function GenerationPanel({project,change,simple=false,autoRequest,onAutoH
   {!simple&&<p>{demo?t('체험 시안은 기기에서 사진과 준비된 배경을 합성합니다. 새로운 AI 연출·품질이나 실물 3D 복원 시험은 아닙니다.','Demo visuals compose photos with prepared backgrounds on this device. This does not test new AI direction, quality or physical 3D reconstruction.'):project.generation.mode==='original'?t('원본 사진은 유지하고 새로운 배경을 요청합니다. 사진 안에 있는 배경은 자동 제거되지 않습니다.','Keep your original photo and request a new backdrop. Any background inside the original photo stays in place.'):t('참고 사진과 광고 방향으로 새로운 시안을 요청합니다. 상품의 형태·색상은 원본과 달라질 수 있습니다.','Create a new visual from your reference and direction. Product shape and color may differ from the original.')}</p>}
   {!simple&&<div className="generation-status"><span>{demo?t('서버 없는 체험 합성','Offline demo composition'):status?.generation.enabled?t('생성 테스트 연결됨','Generation test connected'):t('생성 테스트 준비 중','Generation test pending')}</span>{status&&<span>{t('테스트 이용권','Test credits')} {status.wallet.available} · {t('처리 중','Reserved')} {status.wallet.reserved}</span>}</div>}
   {simple&&!status?.generation.enabled&&<div className="simple-generation-block"><p role="status">{blocked}</p>{statusError==='AUTH_REQUIRED'?<a className="primary-action" href="#login">{t('로그인하고 생성하기','Sign in to generate')}</a>:<button type="button" onClick={()=>void refresh()}>{t('다시 확인','Check again')}</button>}{betaSession()?.user.role==='admin'&&reason&&<a href="#admin">{t('관리자 설정 확인','Check administrator settings')}</a>}</div>}
+  {referenceBlocked&&<div className="simple-generation-block"><p role="alert">{t('디자인 참고 사진을 사용하려면 서버 업데이트가 필요합니다. 관리자에게 문의해주세요.','Design references need a server update. Please contact your administrator.')}</p><button type="button" onClick={()=>void refresh()}>{t('다시 확인','Check again')}</button></div>}
   {!simple&&<p className="generation-hint">{t('새 시안 1개에 테스트 이용권 1개를 예약하며, 결과를 사용 확정할 때 차감합니다. 시스템 오류·반려는 복원합니다. 실제 결제는 연결되지 않았습니다.','One test credit is reserved per new visual and used only when you accept it. Errors and rejection restore it. Live payments are not connected.')}</p>}
   {issues.length>0&&<details><summary>{t('제작 전 확인할 내용','Before generating')}</summary><p>{t('광고 정보에서 사진·규격·제작 방향을 확인해주세요.','Check the photo, dimensions and creative direction in Ad details.')}</p></details>}
-  {(!simple||status?.generation.enabled)&&<button className="generate-button" disabled={!status?.generation.enabled||busy||active||issues.length>0||!!pending.current&&!job} onClick={()=>void start()}><Sparkles size={17}/>{simple?(busy?t('생성 준비 중…','Preparing…'):active?t('광고 생성·확인 중','Creating or reviewing'):job?.state==='accepted'?t('다른 시안 생성 · 1개','Create another visual · 1 credit'):t('광고 생성 · 1개','Generate ad · 1 credit')):busy?t('처리 중…','Working…'):demo?t('체험 시안 만들기 · 1개','Compose demo visual · 1 credit'):project.generation.mode==='original'?t('AI 배경 요청 · 1개','Create backdrop · 1 credit'):t('AI 새 시안 요청 · 1개','Create visual · 1 credit')}</button>}
+  {(!simple||status?.generation.enabled)&&<button className="generate-button" disabled={!status?.generation.enabled||referenceBlocked||busy||active||issues.length>0||!!pending.current&&!job} onClick={()=>void start()}><Sparkles size={17}/>{simple?(busy?t('생성 준비 중…','Preparing…'):active?t('광고 생성·확인 중','Creating or reviewing'):job?.state==='accepted'?t('다른 시안 생성 · 1개','Create another visual · 1 credit'):t('광고 생성 · 1개','Generate ad · 1 credit')):busy?t('처리 중…','Working…'):demo?t('체험 시안 만들기 · 1개','Compose demo visual · 1 credit'):project.generation.mode==='original'?t('AI 배경 요청 · 1개','Create backdrop · 1 credit'):t('AI 새 시안 요청 · 1개','Create visual · 1 credit')}</button>}
   {pending.current&&!job&&<p role="status">{t('이전 요청 상태를 확인하고 있습니다. 중복 생성을 막기 위해 새 요청을 보류합니다.','Checking the earlier request. New requests are paused to prevent duplicate generation.')}</p>}
   {job&&!applied&&<div className="generation-result"><strong role="status">{labels[job.state]}</strong>{job.artifact&&<>
    <p className="generation-preview-label"><b>{t('광고 전체 미리보기','Complete ad preview')}</b><span>{t('문구·가격·규격·연락처를 함께 확인하세요.','Review the copy, price, dimensions and contact details together.')}</span></p>

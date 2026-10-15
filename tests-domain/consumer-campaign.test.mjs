@@ -11,7 +11,7 @@ test('consumer defaults are one finished creative ad with optional dimensions an
  const p=starterProject();assert.equal(p.format,'9:16');assert.equal(p.productProfile.specType,'none');assert.equal(p.dimensions.visible,false);assert.equal(p.campaign.creative.copyMode,'ai');assert.equal(p.generation.mode,'creative');assert.equal(p.copy.ko.company,'');
 });
 test('manual copy is preserved on submit and supplier instructions do not rewrite it',()=>{
- let p=withCreative(fixture(),{copyMode:'manual'});p.copy.ko={...p.copy.ko,title:'보내는 마음까지, 든든하게.',description:'10개 19,800원 · 빠른배송',company:'셀업랩스',contact:'010-5635-6211',email:'selluplabs@gmail.com'};
+ let p=withCreative(fixture(),{copyMode:'manual'});p.copy.ko={...p.copy.ko,title:'보내는 마음까지, 든든하게.',description:'10개 19,800원 · 빠른배송',company:'셀업랩스',contact:'010-0000-0000',email:'example@example.com'};
  const prepared=prepareCampaign(p);assert.deepEqual(prepared.copy,p.copy);assert.equal(creativeContract(prepared).copyMode,'manual');
  const normalized=normalizeGenerationRequest(buildGenerationRequest(prepared));assert.equal(normalized.copy.title,p.copy.ko.title);assert.match(promptFor(normalized),/MANUAL COPY: Typeset.*verbatim/);
 });

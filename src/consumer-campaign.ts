@@ -9,5 +9,5 @@ export function starterProject(category:ProductCategory='other'):Project{
 }
 export function prepareCampaign(project:Project):Project{
  const automatic=creativeSettings(project).copyMode==='ai';
- return {...project,name:project.productName+(project.locale==='ko'?' 광고':' ad'),presentation:'campaign',generation:{...project.generation,mode:'creative'},updatedAt:new Date().toISOString(),copy:{...project.copy,[project.locale]:{...project.copy[project.locale],...(automatic?creativeCopy(project):{})}}};
+ return {...project,name:project.productName+(project.locale==='ko'?' 광고':' ad'),presentation:'campaign',updatedAt:new Date().toISOString(),copy:{...project.copy,[project.locale]:{...project.copy[project.locale],...(automatic?creativeCopy(project):{})}}};
 }

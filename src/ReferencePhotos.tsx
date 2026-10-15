@@ -3,6 +3,8 @@ import {ImagePlus,X} from 'lucide-react';
 import {imageFile,referenceAssets,withReferences} from './model';
 import type {Project} from './model';
 import {isServiceCategory} from './product';
+import {photoRole,withPhotoRole,type PhotoRole} from './photo-roles';
+import './reference-photos.css';
 import {useUiLanguage} from './ui-language';
 export function ReferencePhotos({project,change,onBusyChange,onAdded}:{project:Project;change:(fn:(p:Project)=>Project)=>void;onBusyChange?:(busy:boolean)=>void;onAdded?:()=>void}){
  const {t}=useUiLanguage();const [busy,setBusy]=useState(false),[error,setError]=useState('');const latest=useRef(project);latest.current=project;
@@ -18,6 +20,7 @@ export function ReferencePhotos({project,change,onBusyChange,onAdded}:{project:P
    <img src={photo.data} alt={`${t('참조사진','Reference')} ${i+1}`}/>
    <button type="button" className="reference-primary" disabled={busy||i===0} aria-label={`${i+1} ${t('대표 사진으로','Use as main photo')}`} onClick={()=>change(p=>withReferences(p,[photo,...referenceAssets(p).filter(a=>a.sha256!==photo.sha256)]))}>{i===0?t('대표','Main'):t('대표로','Set main')}</button>
    <button type="button" className="reference-remove" disabled={busy} aria-label={`${i+1} ${t('사진 삭제','Remove photo')}`} onClick={()=>change(p=>withReferences(p,referenceAssets(p).filter(a=>a.sha256!==photo.sha256)))}><X size={14} aria-hidden="true"/></button>
+   <select className="reference-role" aria-label={`${i+1} ${t('사진 용도','Photo purpose')}`} value={photoRole(project,photo.sha256)} disabled={busy} onChange={e=>change(p=>withPhotoRole(p,photo.sha256,e.target.value as PhotoRole))}><option value="subject">{t('실제 상품·공간','Actual subject')}</option><option value="style">{t('디자인 참고','Design reference')}</option></select>
   </div>)}</div>}
   {photos.length<10&&<div className="reference-upload-zone">
    <input ref={inputRef} type="file" multiple hidden disabled={busy} accept="image/png,image/jpeg,image/webp" aria-label={t('참조사진 추가','Add reference photos')} onChange={e=>{void add(Array.from(e.target.files??[]));e.target.value='';}}/>

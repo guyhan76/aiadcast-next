@@ -3,7 +3,8 @@ import type {MarketingPlan} from './marketing-plan.ts';
 import {validMillimeters} from './dimension-units.ts';
 import {dimensionAxes,parseProfile} from './product.ts';
 import type {Asset,Project} from './model.ts';
-import {creativeCopy} from './creative.ts';
+import {creativeCopy,creativeSettings} from './creative.ts';
+import {photoRole,stylePhotoHashes} from './photo-roles.ts';
 import {industryDirections} from './industry.ts';
 import {completeAdKey} from './complete-ad.ts';
 
@@ -19,6 +20,7 @@ export function generatedCompatibilityKey(p:Project):string {
  return JSON.stringify({
   sourceHash:p.product?.sha256??null,
   ...(p.references?.length?{referenceHashes:p.references.map(a=>a.sha256)}:{}),
+  ...(stylePhotoHashes(p).length?{stylePhotoHashes:stylePhotoHashes(p)}:{}),
   mode:p.generation.mode,
   productProfile:{category:p.productProfile.category,specType:p.productProfile.specType,material:p.productProfile.material},
   specifications:dimensionAxes(p.productProfile).map(axis=>({axis,value:p.dimensions[axis],unit:'mm'})),
@@ -32,6 +34,13 @@ export function hasUsableCreative(p:Project):boolean {
 }
 export function visualAsset(p:Project):Asset|null {
  return hasUsableCreative(p)?p.generated!.asset:p.product;
+}
+export function hasUsableOriginal(p:Project):boolean{
+ const result=p.generated;
+ return !!result&&p.generation.mode==='original'&&result.mode==='original'&&result.role==='background'
+  &&(!p.product||photoRole(p,p.product.sha256)==='subject')
+  &&result.sourceHash===(p.product?.sha256??null)&&result.specificationKey===generatedCompatibilityKey(p)
+  &&p.background.image?.sha256===result.asset.sha256;
 }
 
 // A temporary complete ad for review and the accepted project use exactly the same composition.
@@ -47,7 +56,7 @@ export function projectWithGenerated(p:Project,result:GeneratedAsset):Project {
  // Repair the old >80-character fallback, but retain individually edited advertising copy.
  const legacyFallback=p.productProfile.material.trim().length>80&&industryDirections(p.productProfile.category).some(d=>d.description===copy.description.trim());
  const repair=!copy.description.trim()||legacyFallback;
- const completedCopy={...copy,...(!copy.title.trim()?{title:proposed.title}:{}),...(repair?{description:proposed.description,...(copy.title===p.productName?{title:proposed.title}:{})}:{})};
+ const completedCopy=creativeSettings(p).copyMode==='manual'?copy:{...copy,...(!copy.title.trim()?{title:proposed.title}:{}),...(repair?{description:proposed.description,...(copy.title===p.productName?{title:proposed.title}:{})}:{})};
  return {...p,copy:{...p.copy,[p.locale]:completedCopy},
   ...(p.proportionViews&&p.generated?.asset.sha256!==result.asset.sha256?{proportionViews:{...p.proportionViews,resultView:'unconfirmed' as const}}:{}),
   generated:result,background:result.role==='background'?{...p.background,image:result.asset}:p.background};

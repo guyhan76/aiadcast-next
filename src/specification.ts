@@ -1,4 +1,5 @@
 import type {Project} from './model.ts';
+import {photoRole} from './photo-roles.ts';
 import {dimensionAxes} from './product.ts';
 import {boxProjectionActive} from './box-projection.ts';
 export type ReferenceCheck={view:'perspective'|'front';confirmedSourceHash:string|null};
@@ -13,6 +14,7 @@ export function assessReference(p:Project){
  const axes=dimensionAxes(p.productProfile),check=p.referenceCheck??defaultReferenceCheck();
  if(!axes.length)return {status:'not-applicable',message:'규격 없이 만드는 광고입니다.',relativeError:null};
  if(!p.product)return {status:'unverified',message:'원본 사진을 추가하면 규격과 함께 확인할 수 있습니다.',relativeError:null};
+ if(photoRole(p,p.product.sha256)==='style')return {status:'unverified',message:'디자인 참고 이미지는 실제 상품 비례의 검증 자료로 사용하지 않습니다.',relativeError:null};
  if(check.view!=='front'||check.confirmedSourceHash!==p.product.sha256)return {status:'unverified',message:'사선 사진은 원근의 영향을 받습니다. 정면 사진의 두 변을 확인하기 전에는 비례 일치로 판정하지 않습니다.',relativeError:null};
  const vertical=p.productProfile.specType==='flat'?'depth':'height';
  const length=(axis:'width'|'depth'|'height')=>{const [a,b]=p.dimensions.anchors[axis];return Math.hypot((a.x-b.x)*p.product!.width,(a.y-b.y)*p.product!.height);};
@@ -28,3 +30,4 @@ export function specificationContract(p:Project){
  const basis=values[0]?.value;
  return {values,normalizedRatios:values.map(s=>({axis:s.axis,ratio:s.value/basis!})),sourceHash:p.product?.sha256??null,referenceAssessment:assessReference(p),preservation:boxProjectionActive(p)?'source-face-projection':p.generation.mode==='original'?'protected-source-layer':'creative-reference',geometryVerified:false};
 }
+

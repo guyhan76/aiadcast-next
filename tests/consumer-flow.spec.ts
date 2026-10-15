@@ -10,9 +10,9 @@ async function mocks(page:Page,{auth=false,enabled=true}: {auth?:boolean;enabled
  await page.route('**/api/**',async route=>{const request=route.request(),path=new URL(request.url()).pathname;
  const send=(body:any,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
  if(path==='/api/account/capabilities')return send({email:{enabled:false},checkout:{enabled:false,test:true,currency:'KRW'}});
- if(path==='/api/status')return auth?send({error:{code:'AUTH_REQUIRED'}},401):send({mode:'local-development',commercialReady:false,generation:{enabled,model:'gpt-image-2.5-sunburst',reason:enabled?null:'BUDGET_NOT_AVAILABLE'},wallet:{available:3,reserved:0,kind:'test'},budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}});
+ if(path==='/api/status')return auth?send({error:{code:'AUTH_REQUIRED'}},401):send({mode:'local-development',commercialReady:false,generation:{enabled,photoPurposes:true,model:'gpt-image-2.5-sunburst',reason:enabled?null:'BUDGET_NOT_AVAILABLE'},wallet:{available:3,reserved:0,kind:'test'},budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}});
  if(path==='/api/generations'&&request.method()==='POST'){state.posts++;state.body=request.postDataJSON();const body=state.body;
- state.job={id:'consumer_fixture_1',projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:'creative',sourceHash:body.source?.sha256??null,createdAt:'2026-10-13T00:00:00.000Z',model:'verification.fixture',artifactId:hash,composition:'complete-ad',compositionKey:body.request.output.compositionKey,artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+ad.toString('base64'),width:864,height:1536,role:'creative'},marketingPlan:body.request.marketingPlan,errorCode:null};return send({job:state.job,wallet:{available:2,reserved:1,kind:'test'}});}
+ state.job={id:'consumer_fixture_1',projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:body.request.mode,sourceHash:body.source?.sha256??null,createdAt:'2026-10-13T00:00:00.000Z',model:'verification.fixture',artifactId:hash,...(body.request.mode==='creative'?{composition:'complete-ad',compositionKey:body.request.output.compositionKey}:{}),artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+ad.toString('base64'),width:864,height:1536,role:body.request.mode==='original'?'background':'creative'},marketingPlan:body.request.marketingPlan,errorCode:null};return send({job:state.job,wallet:{available:2,reserved:1,kind:'test'}});}
  if(path.endsWith('/accept')){state.accepts++;state.job.state='accepted';return send({job:state.job,wallet:{available:2,reserved:0,kind:'test'}});}
  if(path==='/api/generations/consumer_fixture_1')return send({job:state.job,wallet:{available:2,reserved:1,kind:'test'}});
  if(path==='/api/generations')return send({jobs:state.job?[state.job]:[]});
@@ -48,4 +48,34 @@ test('unauthenticated creation keeps details and offers visible login rather tha
 });
 test('budget blockage gives a clear reason and never dispatches a provider request',async({page})=>{
  const state=await mocks(page,{enabled:false}),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByText('테스트 생성 한도에 도달했습니다. 관리자에게 한도 확인을 요청해주세요.')).toBeVisible();expect(state.posts).toBe(0);
+});
+
+test('photo purpose survives draft reload and travels with the correct uploaded image',async({page},info)=>{
+ const state=await mocks(page),form=await details(page,false);
+ await form.getByLabel('참조사진 추가').setInputFiles([{name:'actual.png',mimeType:'image/png',buffer:first},{name:'design.png',mimeType:'image/png',buffer:second}]);
+ await expect(form.locator('.reference-item')).toHaveCount(2);
+ await form.getByLabel('2 사진 용도',{exact:true}).selectOption('style');
+ await page.reload();await expect(form.getByLabel('2 사진 용도',{exact:true})).toHaveValue('style');
+ await expect(form.getByLabel('1 사진 용도',{exact:true})).toHaveValue('subject');
+ await form.locator('[data-order="3"]').scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('photo-options.png')});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();
+ expect(state.body.request.source.purpose).toBe('subject');expect(state.body.request.references[0].purpose).toBe('style');
+ expect(state.body.source.sha256).toBe(createHash('sha256').update(first).digest('hex'));
+ expect(state.body.references[0].sha256).toBe(createHash('sha256').update(second).digest('hex'));
+});
+
+test('original photo choice reaches review acceptance and download without opening the advanced editor',async({page})=>{
+ const state=await mocks(page),form=await details(page,false);
+ await form.getByLabel('참조사진 추가').setInputFiles({name:'actual.png',mimeType:'image/png',buffer:first});
+ await expect(form.locator('.reference-item')).toHaveCount(1);
+ await form.getByRole('button',{name:'실사 그대로 사용',exact:true}).click();
+ await form.getByRole('button',{name:'직접 입력',exact:true}).click();await form.getByLabel('광고 제목',{exact:true}).fill('확정 문구');
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();const result=page.locator('.simple-ad-result');
+ await expect(result.locator('.generation-ad-preview')).toBeVisible();expect(state.body.request.mode).toBe('original');
+ await expect(page.locator('.editor-container')).toHaveCount(0);
+ await result.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await result.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+ const save=result.getByRole('button',{name:'이미지 저장',exact:true});await expect(save).toBeEnabled();
+ const download=page.waitForEvent('download');await save.click();expect((await download).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.posts).toBe(1);
+ await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('button',{name:'실사 그대로 사용',exact:true})).toHaveAttribute('aria-pressed','true');await expect(form.getByLabel('광고 설명',{exact:true})).toHaveValue('');
 });

@@ -4,7 +4,7 @@ import type {Project} from './model';
 import {exportErrors} from './model';
 import {GenerationPanel} from './GenerationPanel';
 import {MarketingSummary} from './MarketingSummary';
-import {hasUsableCreative} from './generated';
+import {hasUsableCreative,hasUsableOriginal} from './generated';
 import {saveProject} from './storage';
 import {render} from './render';
 import {useUiLanguage} from './ui-language';
@@ -12,7 +12,7 @@ import './simple-ad-result.css';
 export function SimpleAdResult({project,change,onEdit,autoRequest,onAutoHandled}:{project:Project;change:(fn:(p:Project)=>Project)=>void;onEdit:()=>void;autoRequest?:string;onAutoHandled:()=>void}){
  const {t}=useUiLanguage(),canvas=useRef<HTMLCanvasElement>(null),latest=useRef(project);latest.current=project;
  const [message,setMessage]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[valid,setValid]=useState(false);
- const usable=hasUsableCreative(project);
+ const usable=hasUsableCreative(project)||hasUsableOriginal(project);
  useEffect(()=>{let active=true;setValid(false);if(!usable)return;const scratch=document.createElement('canvas');void render(scratch,project).then(errors=>{if(!active||!canvas.current)return;if(errors.length){setError(errors.join(' '));return;}canvas.current.width=scratch.width;canvas.current.height=scratch.height;canvas.current.getContext('2d')!.drawImage(scratch,0,0);setValid(true);setError('');}).catch(()=>{if(active)setError(t('광고를 불러오지 못했습니다.','Could not load the ad.'));});return()=>{active=false};},[project,usable]);
  useEffect(()=>{const exported=(e:Event)=>{const status=(e as CustomEvent).detail?.status;setMessage(status==='saved'?t('이미지를 저장했습니다.','Image saved.'):status==='requested'?t('저장 위치를 선택해주세요.','Choose a save location.'):status==='cancelled'?t('저장을 취소했습니다.','Save canceled.'):status==='error'?t('저장하지 못했습니다. 다시 시도해주세요.','Could not save. Please retry.'):t('공유할 앱을 열었습니다.','Sharing app opened.'));};window.addEventListener('aiadcast-native-export',exported);return()=>window.removeEventListener('aiadcast-native-export',exported);},[t]);
  async function download(){if(busy||!usable||!valid)return;setBusy(true);setError('');try{const p=latest.current,errors=exportErrors(p);if(errors.length)throw Error(errors.join(' '));const output=document.createElement('canvas'),layoutErrors=await render(output,p);if(layoutErrors.length)throw Error(layoutErrors.join(' '));if(latest.current!==p)throw Error(t('광고 정보가 변경되었습니다. 다시 확인해주세요.','Ad details changed. Please review again.'));await saveProject({...p,updatedAt:new Date().toISOString()});const blob=await new Promise<Blob>((resolve,reject)=>output.toBlob(b=>b?resolve(b):reject(Error('PNG')), 'image/png'));const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`aiadcast-${p.format.replace(':','x')}.png`;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);setMessage(t('이미지 저장을 요청했습니다.','Image download requested.'));}catch(e){setError(e instanceof Error?e.message:t('이미지를 저장하지 못했습니다.','Could not save the image.'));}finally{setBusy(false);}}

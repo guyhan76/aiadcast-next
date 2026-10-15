@@ -83,7 +83,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  }
  async function ready(p:Project){await saveProject(p);if(!await open(p,true))throw Error(text('현재 작업 저장 실패'));setGenerationIntent(crypto.randomUUID());}
  function editDetails(){setWizardSeed({project:current,step:0});setWizard({project:current,step:0});setWizardKey(k=>k+1);setGenerationIntent(undefined);go('create');}
- const simpleStudio=page==='studio'&&current.presentation==='campaign'&&current.generation.mode==='creative';
+ const simpleStudio=page==='studio'&&current.presentation==='campaign';
  const libraryItems=JSON.stringify(current)!==JSON.stringify(seed)?[current,...items.filter(p=>p.id!==current.id)]:items;
 
  return <div className={`studio-shell ${(page==='editor'||page==='studio'&&!simpleStudio)?'editor-route':''}`}>

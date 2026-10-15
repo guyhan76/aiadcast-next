@@ -1,0 +1,6 @@
+.reference-grid .reference-item{aspect-ratio:auto;display:flex;flex-direction:column;overflow:hidden}
+.reference-grid .reference-item img{height:auto;aspect-ratio:1;object-fit:contain}
+.reference-grid .reference-primary{bottom:45px}
+.reference-role{display:block;width:100%;min-width:0;min-height:38px;border:0;border-top:1px solid var(--brand-line,#ddd);background:#fff;color:#222;font:inherit;font-size:11px;padding:6px 3px}
+.photo-usage{margin:0 0 20px}
+@media(max-width:600px){.studio-shell .create-page .reference-photos .reference-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
