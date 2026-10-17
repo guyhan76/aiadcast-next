@@ -2,6 +2,15 @@
 
 2026-10-11 UTC. Render Free에서 웹 앱·Node·sharp·OpenAI 호출을 실행하고, Supabase Free에 회원·세션·프로젝트·사용량·원본/생성 이미지를 보관한다. 실제 원격 배포와 OpenAI 호출은 아직 확인하지 않았다. OpenAI 사용료는 호스팅 무료 요금과 별도다.
 
+## 2026-10-17 배포 대상 정정 — 아직 배포하지 않음
+
+- 최신 기능 기준은 draft PR #6의 `feat/image-skills-patent-results-20261015`, 커밋 `2151eb992d32dfb2e180c6310506acb682147be4`다. PR #6은 PR #5 (`feat/patent-product-generation-20261011`) 위에 쌓여 있다. 당시 `main`보다 81커밋 앞서므로 `main` 또는 PR #5만 배포하면 최신 사진·규격·관리자 기능을 포함하지 못한다.
+- 이번 CI/복구 수정 후보는 `fix/browser-draft-recovery-20261017`이다. 위 PR #6 head를 그대로 조상으로 유지한다. **이 수정 브랜치의 최종 커밋과 해당 원격 CI 통과 여부를 확인한 뒤** 배포할 정확한 SHA를 고정한다. draft PR은 배포 승인을 뜻하지 않는다. 강제 push나 기존 PR 병합은 필요하지 않다.
+- 사용자가 확인한 운영 상태(2026-10-17): 서비스 `aiadcast-next`, URL `https://aiadcast-next.onrender.com`, 연결 브랜치 `feat/patent-product-generation-20261011`, Live 커밋 `aa9c8d2`, Free Docker, 자동 배포 비활성(특정 커밋 배포 안내 배너). 이 상태는 이번 작업에서 변경하지 않는다. 최신 PR #6 및 CI 수정이 아직 운영에 반영된 상태가 아니다. 이 문서는 현재 연결된 서비스·환경·배포 완료 증거가 아니다. 실행 전에 서비스 ID/이름, 소유 계정, GitHub 저장소, 연결 브랜치와 SHA, Docker 설정, 공개 도메인, 연결 Supabase 프로젝트 및 기존 데이터, 환경변수의 존재와 준비 상태를 운영자와 확인한다. 비밀 값은 문서·채팅·로그에 복사하지 않는다.
+- 이번 작업은 로컬 공급사 대역 검사만 수행한다. 운영 배포, 실제 유료 AI 요청, API 키 생성/변경, 인증 권한 확대, 플랜 변경을 실행하지 않는다. 아래 배포·가입 설정은 후속 운영자 절차이며 자동 실행 지시가 아니다.
+- 관리자 이용권 면제는 서버 인증 역할과 작업별 정책에 따른다. 관리자 새 작업은 이용권을 예약·차감하지 않지만 실제 API 비용, 비용 보류, 총예산, 동시 작업 및 속도 제한은 유지한다. 일반 회원 정책은 유지한다. 관리자 이용권 무제한은 API 비용 무제한 승인이 아니다.
+- 배포 후에는 관리자 재로그인, 서버 기능 상태와 기존 프로젝트 복구를 먼저 확인한다. 실제 공급사 이미지·메일 소유 확인·결제 공급사·실기기 검증은 로컬 대역 통과와 별도로 기록한다. 실제 유료 호출은 별도 승인 범위가 확인된 경우에만 진행한다.
+
 ## 1. 현재 Render 화면에서 추가할 설정
 
 이미 입력한 `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `AIADCAST_NEXT_STAGING_OPENAI_API_KEY`를 유지한다. 새 OpenAI 키를 만들 필요는 없다.
@@ -33,7 +42,7 @@ postgresql://postgres.PROJECT_REF:URL_ENCODED_DATABASE_PASSWORD@EXACT_POOLER_HOS
 | 항목 | 설정 |
 |---|---|
 | GitHub 저장소 | `guyhan76/aiadcast-next` |
-| Branch | `feat/patent-product-generation-20261011` |
+| Branch | `fix/browser-draft-recovery-20261017` — 최종 SHA·CI·서비스 연결 확인 후 배포 후보 |
 | Runtime | Docker |
 | Dockerfile Path | `./Dockerfile.beta` |
 | Root Directory / Docker Command | 비워둠 |
@@ -42,7 +51,7 @@ postgresql://postgres.PROJECT_REF:URL_ENCODED_DATABASE_PASSWORD@EXACT_POOLER_HOS
 | Health Check Path | `/api/health` |
 | Auto Deploy | Off |
 
-**Deploy web service**를 누른다. 이미 서비스가 있으면 환경 변수 저장 후 **Manual Deploy → Deploy latest commit**을 실행한다. 성공 로그는 `Supabase-backed beta server started; real payments disabled.`다. 상태가 **Live**가 되면 Render가 제공한 `https://…onrender.com` 주소를 연다.
+운영자가 위 서비스·브랜치·환경 확인과 배포 승인을 마친 뒤 **Deploy web service**를 누른다. 이미 서비스가 있으면 환경 변수 저장 후 **Manual Deploy → Deploy latest commit**을 실행한다. 성공 로그는 `Supabase-backed beta server started; real payments disabled.`다. 상태가 **Live**가 되면 Render가 제공한 `https://…onrender.com` 주소를 연다.
 
 서버가 SQL 스키마와 비공개 `aiadcast-private-beta` 버킷을 자동으로 만든다. Supabase에 GitHub 저장소를 연결하거나 Render Postgres를 새로 만들 필요는 없다. 비용 DB를 Render 임시 디스크에 저장하지 않는다. 새 스키마는 공개 Data API에 추가하지 않는다.
 
@@ -84,7 +93,7 @@ SELECT * FROM aiadcast_accounts.create_owner_invitation('selluplabs@gmail.com');
 
 결과의 `invite`를 복사한다. 24시간 내 한 번만 쓸 수 있는 관리자 초대코드다. DB에는 해시만 저장된다. SQL Editor 결과와 코드는 공개하지 않는다. 첫 관리자는3개의 시험 이용권과 미배정된 전체 시험 예산을 받는다. 실제 구매/매출이 아니다. 이미 다른 관리자가 있으면 새 주소로 관리자 계정을 만들지 않는다. 같은 관리자 주소로 다시 실행하면 기존 로그인과 초대가 해제되고 새 코드가 발급된다.
 
-Render 웹 앱에서 **광고 만들기 → 테스트 로그인 → 초대코드**에 붙여넣는다. 로그인 후 상단 **관리자**를 열면 회원·생성 이력·이용권·실사용 비용을 조회할 수 있다. 먼저 관리자 본인 계정으로 이미지 한 장을 시험한다.
+Render 웹 앱에서 **광고 만들기 → 테스트 로그인 → 초대코드**에 붙여넣는다. 로그인 후 상단 **관리자**를 열면 회원·생성 이력·이용권·실사용 비용을 조회할 수 있다. 실제 공급사 비용 승인을 별도로 확인한 경우에만 관리자 이미지 생성을 시험한다.
 
 설치된 Preview0.2.21 APK에서는 **사용 안내 → 가입·결제 테스트 연결**에 공개 Render 주소만 입력하고 저장한다. APK를 다시 만들거나 API 키를 앱에 넣지 않는다. 기기 편집 작업은 유지하며 서버 주소 변경 시 로그인은 해제된다.
 
@@ -93,7 +102,7 @@ Render 웹 앱에서 **광고 만들기 → 테스트 로그인 → 초대코드
 1. 상품명·설명·가격·회사 정보와 원본 사진을 입력한다. 규격은 필요한 상품에 입력한다.
 2. **원본 보존 모드**에서는 상품 사진을 직접 보존하고 OpenAI가 배경을 만든다. **콘셉트 모드**는 상품을 다시 그릴 수 있으므로 실물 규격 정확도를 보증하지 않는다.
 3. **새 시안 생성**을 한 번 요청한다. 준비 상태만으로 실제 생성 성공이라 표시하지 않는다.
-4. 시안이 표시되면 문구·원본/상품 비율·출력 크기·릴스 안전 영역을 확인한다. **사용 확정**할 때 이용권이 한 번 차감된다. 고객 반려와 오류 처리에도 공급사에서 발생한 실제 비용 기록은 남는다.
+4. 시안이 표시되면 문구·원본/상품 비율·출력 크기·릴스 안전 영역을 확인한다. **사용 확정**할 때 일반 회원 이용권은 한 번 차감된다. 서버가 기록한 관리자 면제 작업은 이용권을 예약·차감하지 않는다. 고객 반려와 오류 처리에도 공급사에서 발생한 실제 비용 기록은 남는다.
 5. **현재 작업 서버 저장**, 로그아웃/재로그인, **서버 작업 열기**, PNG 다운로드를 시험한다. 다른 회원에게 같은 프로젝트 ID를 보내도 접근할 수 없다.
 
 이미지 호출당$0.50의 입장 예약을 잡으며 실제 응답의 사용량으로 정산한다. 월$1은 이 앱의 작은 시험 예산이며 공급사 청구의 절대 상한이 아니다. 계정의 남은 예산이 예약보다 작으면 호출 전에 멈춘다. 알 수 없는 호출 결과는 비용 보류를 유지하며 자동 재시도하지 않는다. OpenAI Usage 화면과 대조한다. 화면의 `$0.11` 월 사용량은 키를 사용해 발생한 누적 API 비용이며 키 자체의 월 회비가 아니다.

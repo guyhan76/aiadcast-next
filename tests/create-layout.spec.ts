@@ -13,5 +13,5 @@ test('consumer sees the eight inputs in order with compact optional fields on al
  await form.locator('[data-order="2"] summary').click();await form.getByLabel('이메일 주소',{exact:true}).fill('hello@brand.com');
  await form.locator('[data-order="8"] summary').click();await expect(form.getByLabel('출력 비율').locator('option')).toHaveCount(7);
  await expect(form.getByRole('button',{name:'광고 생성',exact:true})).toBeEnabled();
- await page.screenshot({path:`/workspace/scratch/2515c967f4b2/simple-${test.info().project.name}-form.png`,fullPage:true});
+ await page.screenshot({path:test.info().outputPath('simple-form.png'),fullPage:true});
 });

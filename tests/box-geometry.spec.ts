@@ -1,11 +1,11 @@
 import {test,expect} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 test('box shape follows dimensions and remains explicitly unverified',async({page},testInfo)=>{
- await page.goto('/#studio');await page.locator('.editor-details > summary').click();
+ await page.goto('/#editor');await page.locator('.editor-details > summary').click();
  await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();
  for(const [axis,value] of [['가로','340'],['세로','250'],['높이','210']])await page.getByLabel(`${axis} mm`,{exact:true}).fill(value);
- await page.locator('.box-geometry summary').click();
- const preview=page.locator('.box-geometry');
+ await page.getByRole('region',{name:'이미지 편집 도구',exact:true}).locator('.box-geometry > summary').click();
+ const preview=page.locator('.editor-details .box-geometry');
  await expect(preview).toContainText('원본 인쇄 미적용');
  await expect(preview.locator('[data-dimension="height"]')).toContainText('높이 210 mm');
  await mkdir('release/dimension-study',{recursive:true});

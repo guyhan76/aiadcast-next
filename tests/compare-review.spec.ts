@@ -5,7 +5,7 @@ import sharp from 'sharp';
 const source=await sharp({create:{width:400,height:300,channels:3,background:'#bf8e52'}}).png().toBuffer();
 test('comparison exports a fresh snapshot without changing the original or making paid requests',async({page})=>{
  const paid:string[]=[];page.on('request',r=>{if(r.method()==='POST'&&/\/api\/(generations|assistant)/.test(r.url()))paid.push(r.url());});
- await page.goto('/#studio');await page.locator('.editor-details > summary').click();
+ await page.goto('/#editor');await page.locator('.editor-details > summary').click();
  const open=page.getByRole('button',{name:'원본과 결과 비교',exact:true});await expect(open).toBeDisabled();
  await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:source});
  await expect(open).toBeEnabled();await open.click();
@@ -30,7 +30,7 @@ test('comparison exports a fresh snapshot without changing the original or makin
  expect(paid).toEqual([]);
 });
 test('unconfirmed box mapping cannot be exported as a finished comparison',async({page})=>{
- await page.goto('/#studio');await page.locator('.editor-details > summary').click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:source});
+ await page.goto('/#editor');await page.locator('.editor-details > summary').click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:source});
  await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();await page.getByLabel('규격 박스 구성 사용',{exact:true}).check();
  await page.getByRole('button',{name:'원본과 결과 비교',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'원본과 결과 비교'});await expect(dialog.getByRole('alert')).toContainText('일곱');
@@ -39,7 +39,7 @@ test('unconfirmed box mapping cannot be exported as a finished comparison',async
 
 test('optional numerical comparison exports exact image bytes and never passes perspective views',async({page})=>{
  const paid:string[]=[];page.on('request',r=>{if(r.method()==='POST'&&/\/api\/(generations|assistant)/.test(r.url()))paid.push(r.url());});
- await page.goto('/#studio');await page.locator('.editor-details > summary').click();
+ await page.goto('/#editor');await page.locator('.editor-details > summary').click();
  await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:source});
  await page.getByRole('button',{name:'원본과 결과 비교',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'원본과 결과 비교'});
@@ -66,14 +66,14 @@ test('optional numerical comparison exports exact image bytes and never passes p
 
 
 test('comparison handles Android back and Escape without leaving the editor',async({page})=>{
- await page.goto('/#studio');await page.locator('.editor-details > summary').click();
+ await page.goto('/#editor');await page.locator('.editor-details > summary').click();
  await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:source});
  const open=page.getByRole('button',{name:'원본과 결과 비교',exact:true});await open.click();
  const dialog=page.getByRole('dialog',{name:'원본과 결과 비교'});
  await expect(dialog.getByRole('img',{name:'비교할 광고 결과'})).toBeVisible();
  expect(await page.evaluate(()=>document.body.style.overflow)).toBe('hidden');
  expect(await page.evaluate(()=>window.dispatchEvent(new CustomEvent('aiadcast-native-back',{cancelable:true})))).toBe(false);
- await expect(dialog).not.toBeVisible();await expect(page).toHaveURL(/#studio$/);await expect(open).toBeFocused();
+ await expect(dialog).not.toBeVisible();await expect(page).toHaveURL(/#editor$/);await expect(open).toBeFocused();
  expect(await page.evaluate(()=>document.body.style.overflow)).not.toBe('hidden');
  await open.click();await expect(dialog).toBeVisible();await page.keyboard.press('Escape');
  await expect(dialog).not.toBeVisible();await expect(open).toBeFocused();
@@ -83,7 +83,7 @@ test('comparison handles Android back and Escape without leaving the editor',asy
 
 test('a swipe scrolls the mobile comparison while a tap marks exactly one point',async({page,isMobile})=>{
  test.skip(!isMobile,'Real touch gesture is exercised in the mobile project.');
- await page.goto('/#studio');await page.locator('.editor-details > summary').click();
+ await page.goto('/#editor');await page.locator('.editor-details > summary').click();
  await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:source});
  await page.getByRole('button',{name:'원본과 결과 비교',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'원본과 결과 비교'});await dialog.locator('.proportion-review > summary').click();
@@ -112,7 +112,7 @@ test('a swipe scrolls the mobile comparison while a tap marks exactly one point'
 test('comparison PNG and evidence reach the native bridge with honest save states',async({page},testInfo)=>{
  const bridge=await readFile('native/android-download-bridge.js','utf8');
  await page.addInitScript({content:'window.nativeMessages=[];window.AiadcastNative={postMessage(value){window.nativeMessages.push(JSON.parse(value));}};'+bridge});
- await page.goto('/#studio');await page.locator('.editor-details > summary').click();
+ await page.goto('/#editor');await page.locator('.editor-details > summary').click();
  await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:source});
  await page.getByRole('button',{name:'원본과 결과 비교',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'원본과 결과 비교'}),save=dialog.getByRole('button',{name:'비교 이미지 저장',exact:true}),status=dialog.locator('.comparison-export-status');

@@ -1,7 +1,7 @@
 import type {WizardDraft} from './workspace-draft';
 import {DimensionInputs} from './DimensionInputs';
 import {useUiLanguage} from './ui-language';
-import {useId,useState,useEffect} from 'react';
+import {useId,useState,useLayoutEffect} from 'react';
 import {Sparkles} from 'lucide-react';
 import type {Project,FooterField} from './model';
 import {dimensionAxes,withCategory,isServiceCategory} from './product';
@@ -22,7 +22,7 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft}:{initialKind?
  const {language,t,text}=useUiLanguage(),id=useId();
  const [project,setProject]=useState(()=>draft?.project??({...starterProject(initialKind==='service'?'services':'other'),locale:language}));
  const [chosen,setChosen]=useState(!!draft),[error,setError]=useState(''),[busy,setBusy]=useState(false),[photoImportIssue,setPhotoImportIssue]=useState('');
- useEffect(()=>{onDraft?.({project,step:0});},[project,onDraft]);
+ useLayoutEffect(()=>{onDraft?.({project,step:0});},[project,onDraft]);
  const service=isServiceCategory(project.productProfile.category),axes=dimensionAxes(project.productProfile),settings=creativeSettings(project),copy=project.copy[project.locale];
  const copyMode=settings.copyMode??'ai';
  function change(fn:(p:Project)=>Project){setProject(fn);setError('');}

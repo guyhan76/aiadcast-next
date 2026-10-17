@@ -19,26 +19,26 @@ test.describe('Independent Korean and English interface',()=>{
   expect(errors).toEqual([]);
  });
  test('finds industries in English and keeps the chosen ad language independent of the UI',async({page})=>{
-  await page.goto('/');await page.getByRole('button',{name:'Create an ad',exact:true}).click();await page.locator('.ad-subject-kind').getByRole('button',{name:'Service',exact:true}).click();
+  await page.goto('/');await page.getByRole('button',{name:'Create an ad',exact:true}).click();
   const wizard=page.locator('.create-page');
-  await wizard.locator('.quiet-details>summary').filter({hasText:'Category & dimensions'}).click();await wizard.getByRole('combobox',{name:'Industry',exact:true}).selectOption({label:'Yoga'});
+  await wizard.getByLabel('Choose an industry').selectOption('yoga');
   await wizard.getByLabel(/^(Product name|Service name)$/,{exact:true}).fill('Studio Bloom');
-  await wizard.getByLabel(/^(Product description|Service description)$/,{exact:true}).fill('Small-group yoga classes');
-  await wizard.getByRole('button',{name:'Continue',exact:true}).click();
-  await wizard.getByText('Additional settings',{exact:true}).click();
+  await wizard.getByRole('textbox',{name:'Description',exact:true}).fill('Small-group yoga classes');
+
+  await wizard.getByText('More ratios · Copy language',{exact:true}).click();
   await expect(wizard.getByRole('combobox',{name:'Ad copy language',exact:true})).toHaveValue('en');
   await wizard.getByRole('combobox',{name:'Ad copy language',exact:true}).selectOption('ko');
   await page.getByRole('combobox',{name:'App language',exact:true}).selectOption('ko');
   await page.getByRole('combobox',{name:'앱 언어',exact:true}).selectOption('en');
   await expect(wizard.getByRole('combobox',{name:'Ad copy language',exact:true})).toHaveValue('ko');
-  await wizard.getByRole('button',{name:'Create ad',exact:true}).click();
-  await expect(page).toHaveURL(/#studio$/);
+  await wizard.getByRole('button',{name:'Generate ad',exact:true}).click();
+  await expect(page).toHaveURL(/#studio$/);await page.goto('/#editor');
   await page.locator('#publishing-tools > summary').click();const download=page.waitForEvent('download');
   await page.getByRole('button',{name:'Save campaign brief',exact:true}).click();
   const brief=JSON.parse(await readFile((await (await download).path())!,'utf8'));
   expect(brief.request.output.locale).toBe('ko');expect(brief.request.productName).toBe('Studio Bloom');
   expect(brief.request.productProfile.category).toBe('yoga');expect(brief.request.specifications).toEqual([]);
-  expect(brief.guide.target).toContain('yoga');
+  expect(brief.guide.input.category).toBe('yoga');expect(brief.guide.input.locale).toBe('ko');expect(brief.guide.target.label).toContain('요가');
  });
  test('English quick-edit examples remain usable without a paid AI call',async({page})=>{
   await page.goto('/#studio');await page.locator('.editor-details > summary').click();
