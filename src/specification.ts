@@ -10,6 +10,7 @@ export function parseReferenceCheck(value:unknown):ReferenceCheck{
  return {view:r.view,confirmedSourceHash:r.confirmedSourceHash};
 }
 export function assessReference(p:Project){
+ if(p.generation.dimensionBased&&p.generation.mode==='creative')return {status:'unverified',message:'선택한 규격은 새 생성 대상입니다. 참조 사진과 같은 크기·비례로 검증하지 않습니다.',relativeError:null};
  if(boxProjectionActive(p))return {status:'unverified',message:'원본 면을 입력 규격의 박스에 투영합니다. 실제 상품의 실측 일치와 인쇄 정합성은 별도로 확인해야 합니다.',relativeError:null};
  const axes=dimensionAxes(p.productProfile),check=p.referenceCheck??defaultReferenceCheck();
  if(!axes.length)return {status:'not-applicable',message:'규격 없이 만드는 광고입니다.',relativeError:null};

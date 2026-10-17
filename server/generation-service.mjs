@@ -1,3 +1,5 @@
+import {makeDimensionPlan} from '../src/dimension-generation.ts';
+import {preparePlanarSource,requestPlanarRatio} from './planar-proportion.mjs';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, openSync, closeSync, writeFileSync, readFileSync, unlinkSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -55,6 +57,17 @@ export function normalizeGenerationRequest(value) {
   const compositionKey=value.output.compositionKey;
   if(compositionKey!==undefined&&(typeof compositionKey!=='string'||compositionKey.length>8192||!compositionKey.trim()))fail('INVALID_REQUEST');
   const normalized=boundedObject({ version: 1, mode: value.mode, operation: expected, subjectType: value.subjectType, productName: value.productName, productProfile: value.productProfile ?? {}, brief: value.brief, campaign, direction: value.direction ?? {}, creativeDirection: value.creativeDirection ?? null, scene: value.scene ?? {}, specifications, attributes, target:{...marketingPlan.target,method:marketingPlan.method},contentType:campaign.contentType,marketingPlan,copy: value.copy ?? {}, source: value.source ?? null, references: value.references ?? [], output: { format: value.output.format, locale: value.output.locale, displayUnit:['mm','cm','inch'].includes(value.output.displayUnit)?value.output.displayUnit:'mm', showDimensions: value.subjectType!=='service'&&specifications.length>0&&value.output.showDimensions === true, showDimensionLines: value.subjectType!=='service'&&specifications.length>0&&value.output.showDimensions === true&&value.output.showDimensionLines === true } });
+  if(value.dimensionPlan!==undefined){
+    if(value.mode!=='creative'||value.subjectType!=='physical-product'||!value.source||value.source.purpose==='style')fail('INVALID_DIMENSION_PLAN');
+    try{normalized.dimensionPlan=makeDimensionPlan({sourceHash:value.source.sha256,variantLabel:value.dimensionPlan.variantLabel,basis:value.dimensionPlan.basis,specType:value.productProfile?.specType,specifications});}catch{fail('INVALID_DIMENSION_PLAN');}
+  }
+  if(value.proportionControl!==undefined){
+    const control=value.proportionControl;
+    if(!normalized.dimensionPlan||normalized.dimensionPlan.basis!=='outer-body'||control?.kind!=='flat-front-v1'||value.mode!=='creative'||value.subjectType!=='physical-product'||value.productProfile?.specType!=='flat'||!value.source||value.source.purpose==='style'||control.confirmedSourceHash!==value.source.sha256)fail('INVALID_PLANAR_CONTROL');
+    try{requestPlanarRatio(normalized);}catch{fail('INVALID_PLANAR_CONTROL');}
+    if((control.variantLabel??'')!==normalized.dimensionPlan.variantLabel||control.variantLabel!==undefined&&(typeof control.variantLabel!=='string'||control.variantLabel.length>80))fail('INVALID_PLANAR_CONTROL');
+    normalized.proportionControl={kind:'flat-front-v1',confirmedSourceHash:value.source.sha256,variantLabel:control.variantLabel??''};
+  }
   if(compositionKey!==undefined)normalized.output.compositionKey=compositionKey;
   return normalized;
 }
@@ -135,7 +148,7 @@ export class GenerationService {
     const available = this.budgetMicros - (budget?.spent_micros ?? 0) - (budget?.held_micros ?? 0);
     const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : this.budgetMicros < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : !this.adminTestUnlimited && this.wallet().available < 1 ? 'NO_TEST_CREDITS' : null;
     const assistantReason = !this.assistantEnabled ? 'ASSISTANT_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : available < TEXT_MAX_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : null;
-    return { mode: 'local-development', commercialReady: false, generation: { enabled: reason === null, photoPurposes: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet: this.wallet(), budget: { currency: 'USD', period: this.period(), limitMicros: this.budgetMicros, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
+    return { mode: 'local-development', commercialReady: false, generation: { enabled: reason === null, photoPurposes: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet: this.wallet(), budget: { currency: 'USD', period: this.period(), limitMicros: this.budgetMicros, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
   }
   storeAsset(asset) {
     this.db.prepare('INSERT INTO generation_assets VALUES (?,?,?,?,?) ON CONFLICT(hash) DO NOTHING').run(asset.sha256, asset.mime, asset.width, asset.height, asset.bytes);
@@ -155,7 +168,7 @@ export class GenerationService {
     const request = JSON.parse(row.request_json);
     const requestIds = this.db.prepare('SELECT request_id FROM generation_keys WHERE job_id=? ORDER BY rowid DESC').all(id).map(key => key.request_id);
     const state = row.error_code === 'PROVIDER_UNCERTAIN' ? 'uncertain' : row.error_code ? 'failed' : billing.status === 'released' ? (billing.reason === 'customer_rejected' ? 'rejected' : 'expired') : billing.status === 'refunded' ? 'refunded' : billing.status === 'reserved' ? 'running' : billing.status;
-    return { id, ...(billing.creditExempt ? {creditPolicy:'admin-unlimited',creditCost:0} : {}), requestId: requestIds[0] ?? null, requestIds, projectId: row.project_id, state, mode: request.mode, sourceHash: row.source_hash, createdAt: new Date(row.created_at).toISOString(), model: metadata?.model??IMAGE_MODEL, quality: 'high', outputFormat: request.output.format, ...(metadata?.composition?{composition:metadata.composition,...(metadata.composition==='complete-ad'?{compositionKey:request.output.compositionKey}:{})}:{}), artifact: ['ready','accepted'].includes(state) && includeArtifact && row.artifact_hash ? { ...this.asset(row.artifact_hash), role: row.artifact_role } : null, artifactId: row.artifact_hash, errorCode: row.error_code, usage: metadata?.usage ?? null, cost: metadata?.cost ?? null, providerRequestId: metadata?.providerRequestId ?? null, marketingPlan: request.marketingPlan ?? null, review: 'human-review-required', billingStatus: billing.status, expiresAt: billing.expires_at };
+    return { id, ...(request.dimensionPlan?{dimensionPlan:request.dimensionPlan}:{}), ...(metadata?.planarReport?{planarReport:metadata.planarReport,...(includeArtifact?{planarOriginal:this.asset(metadata.planarReport.originalHash)}:{})}:{}), ...(billing.creditExempt ? {creditPolicy:'admin-unlimited',creditCost:0} : {}), requestId: requestIds[0] ?? null, requestIds, projectId: row.project_id, state, mode: request.mode, sourceHash: row.source_hash, createdAt: new Date(row.created_at).toISOString(), model: metadata?.model??IMAGE_MODEL, quality: 'high', outputFormat: request.output.format, ...(metadata?.composition?{composition:metadata.composition,...(metadata.composition==='complete-ad'?{compositionKey:request.output.compositionKey}:{})}:{}), artifact: ['ready','accepted'].includes(state) && includeArtifact && row.artifact_hash ? { ...this.asset(row.artifact_hash), role: row.artifact_role } : null, artifactId: row.artifact_hash, errorCode: row.error_code, usage: metadata?.usage ?? null, cost: metadata?.cost ?? null, providerRequestId: metadata?.providerRequestId ?? null, marketingPlan: request.marketingPlan ?? null, review: 'human-review-required', billingStatus: billing.status, expiresAt: billing.expires_at };
   }
   history(projectId) {
     if (projectId !== undefined && !identifier(projectId)) fail('INVALID_PROJECT_ID');
@@ -176,6 +189,7 @@ export class GenerationService {
     const all=[...(source?[source]:[]),...references];
     if((!source&&references.length)||new Set(all.map(a=>a.sha256)).size!==all.length||all.reduce((n,a)=>n+a.bytes.length,0)>10*1024*1024)fail('INVALID_IMAGE');
     if (!source && request.subjectType === 'physical-product') fail('SOURCE_REQUIRED');
+    if(request.proportionControl){try{await preparePlanarSource(source.bytes,requestPlanarRatio(request));}catch{fail('PLANAR_SOURCE_UNCONFIRMED');}}
     const fingerprint = hashBytes(JSON.stringify({ projectId: body.projectId, request, sourceHash: source?.sha256 ?? null, revision: IMAGE_REVISION }));
     const previous = this.db.prepare('SELECT * FROM generation_keys WHERE request_id=?').get(body.requestId);
     if (previous) {
@@ -217,8 +231,9 @@ export class GenerationService {
       began = true;
       const result = await this.adapter.generate({ request, source: request.mode === 'creative' ? source : null, references:request.mode==='creative'?references:[], attemptId });
       // Persist provider metadata before any customer capture. Pixel validity is not semantic quality approval.
+      if(result.planarOriginal)this.storeAsset(result.planarOriginal);
       this.storeAsset(result);
-      this.db.prepare('UPDATE generation_records SET artifact_hash=?,artifact_role=?,metadata_json=? WHERE id=?').run(result.sha256, result.role, JSON.stringify({ model: result.model, revision: result.revision, ...(result.composition?{composition:result.composition}:{}), usage: result.usage, cost: result.cost, providerRequestId: result.providerRequestId }), id);
+      this.db.prepare('UPDATE generation_records SET artifact_hash=?,artifact_role=?,metadata_json=? WHERE id=?').run(result.sha256, result.role, JSON.stringify({ model: result.model, revision: result.revision, ...(result.composition?{composition:result.composition}:{}), ...(result.planarReport?{planarReport:result.planarReport}:{}), usage: result.usage, cost: result.cost, providerRequestId: result.providerRequestId }), id);
       if (!result.cost) throw new ProviderFailure('PROVIDER_USAGE_UNCERTAIN');
       this.ledger.settleAttempt(attemptId, result.cost.microUsd, 'completed');
       this.ledger.markReady(id, result.sha256);

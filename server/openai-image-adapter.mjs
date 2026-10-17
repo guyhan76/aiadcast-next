@@ -1,3 +1,4 @@
+import {preparePlanarSource,requestPlanarRatio,controlPlanarResult} from './planar-proportion.mjs';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import {artDirectionFor} from '../src/art-direction.ts';
@@ -15,9 +16,10 @@ export const GENERATION_SIZES = Object.freeze({
 });
 export const hashBytes = bytes => createHash('sha256').update(bytes).digest('hex');
 // The snapshot also negotiates the new renderer. Older APKs must keep photograph-only results.
-export const completeAdRequest=request=>request.mode==='creative'&&request.creativeDirection?.visual?.id==='auto'&&typeof request.output?.compositionKey==='string'&&request.output.compositionKey.length>0;
+export const completeAdRequest=request=>!request.proportionControl&&request.mode==='creative'&&request.creativeDirection?.visual?.id==='auto'&&typeof request.output?.compositionKey==='string'&&request.output.compositionKey.length>0;
 // Finished campaigns use their native page ratio; the exported canvas is separate.
 export function photographSize(request){
+ if(request.proportionControl)return '1024x1024';
  if(!GENERATION_SIZES[request.output?.format])return undefined;
  if(request.mode==='creative'&&request.creativeDirection?.visual?.id==='auto'&&!completeAdRequest(request))return ['16:9','1.91:1','3:2'].includes(request.output.format)?'1024x1024':'1536x864';
  return GENERATION_SIZES[request.output.format];
@@ -143,7 +145,8 @@ export function imageUsageCost(usage) {
   if (!Number.isSafeInteger(microUsd) || microUsd > 1_000_000_000) return null;
   return { microUsd, usd: microUsd / 1_000_000, basis: 'provider-usage-estimate', priceVersion: PRICE_VERSION, inputTextTokens: text, inputImageTokens: image, outputTokens: output };
 }
-export function promptFor(request) {
+function basePromptFor(request) {
+ if(request.proportionControl)return planarPrompt(request);
   const original = request.mode === 'original';
   const notes=typeof request.creativeDirection?.additionalInstructions==='string'?request.creativeDirection.additionalInstructions:'';
   const production=artDirectionFor(request.productProfile?.category??'other',request.output.format,notes);
@@ -185,7 +188,8 @@ export class OpenAIImageAdapter {
     const size = photographSize(request);
     if (!size) throw new ProviderFailure('UNSUPPORTED_FORMAT', { uncertain: false });
     const prompt = promptFor(request);
-    const reference = request.mode === 'creative' ? source : null;
+    let reference = request.mode === 'creative' ? source : null;
+    if(request.proportionControl)reference={...source,bytes:await preparePlanarSource(source.bytes,requestPlanarRatio(request)),mime:'image/png'};
     const headers = { Authorization: `Bearer ${this.apiKey}`, 'X-Client-Request-Id': attemptId };
     let body;
     if (reference) {
@@ -211,15 +215,26 @@ export class OpenAIImageAdapter {
     catch (error) { throw error instanceof ProviderFailure ? error : new ProviderFailure('PROVIDER_UNCERTAIN'); }
     const raw = result?.data?.[0]?.b64_json;
     if (result.data?.length !== 1 || typeof raw !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(raw)) throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
-    const bytes = Buffer.from(raw, 'base64');
+    let bytes = Buffer.from(raw, 'base64');
     let meta;
     try {
       meta = await validateImage(bytes, 'image/png', { maximumPixels: 8_294_400, maximumBytes: 16_000_000 });
       if (`${meta.width}x${meta.height}` !== size) throw Error();
     } catch { throw new ProviderFailure('PROVIDER_INVALID_IMAGE'); }
     const cost = imageUsageCost(result.usage);
-    return { ...meta, bytes, usage: result.usage ?? null, cost, providerRequestId: response.headers.get('x-request-id')?.slice(0, 200) ?? null, model: IMAGE_MODEL, revision: IMAGE_REVISION, role: request.mode === 'original' ? 'background' : 'creative', composition: completeAdRequest(request)?'complete-ad':'photo-plate', size, quality: 'high' };
+    let planar={};
+    if(request.proportionControl){const original={...meta,bytes};const controlled=await controlPlanarResult(bytes,requestPlanarRatio(request));bytes=controlled.bytes;meta=await validateImage(bytes,'image/png',{maximumPixels:8_294_400,maximumBytes:16_000_000});planar={planarReport:{...controlled.report,variantLabel:request.proportionControl.variantLabel},planarOriginal:original};}
+    return { ...meta, bytes,...planar, usage: result.usage ?? null, cost, providerRequestId: response.headers.get('x-request-id')?.slice(0, 200) ?? null, model: IMAGE_MODEL, revision: IMAGE_REVISION, role: request.mode === 'original' ? 'background' : 'creative', composition: completeAdRequest(request)?'complete-ad':'photo-plate', size, quality: 'high' };
   }
 }
 
 
+
+function planarPrompt(request){
+ return `Create only ONE isolated flat rectangular product plate from the supplied reference. The first image is a deterministic guide made from the actual source pixels and named width/depth dimensions. Preserve product identity, material, intrinsic print and a straight-on orthographic front view. Keep all four straight sides fully visible, parallel to the image axes, with clear white margins. No perspective, depth, folds, occlusion, cast shadows, extra objects, advertising copy, dimension text or background scene. Do not copy business facts from styling references. Target visible plane width/depth ratio: ${requestPlanarRatio(request)}. This is a declared planar view, not reconstruction or verification of 3D geometry. Lighting/material rendering may be new; retain the documented product. The app checks and fits only the isolated plane, and composes advertising text separately. If hidden or ambiguous details are not established, do not invent them. Customer context: ${JSON.stringify({productName:request.productName,specifications:request.specifications,attributes:request.attributes,brief:request.brief,target:request.target})}`;
+}
+
+export function promptFor(request){
+ const prompt=basePromptFor(request);if(!request.dimensionPlan)return prompt;
+ return prompt+`\nDIMENSION-BASED SINGLE VARIANT: ${JSON.stringify(request.dimensionPlan)}. Generate only this selected size variant of the documented product. Preserve its construction, material, identity and approved advertising copy; do not create a size comparison montage or infer other variants. Use named measured axes rather than resizing the advertisement canvas. Outer body measurements exclude open packaging flaps, handles and shadows. For containers, diameter/height or other supplied dimensions constrain the outer shape; volume alone does not establish geometry or capacity accuracy. For garment-flat measurements, width is laid-flat chest width and depth is garment length, not cuboid depth or body circumference. Do not infer measurements from S/M/L labels or add undocumented fit claims. Missing dimensions remain unknown. These are generation constraints, not a certification of physical accuracy. Keep the existing complete-ad art direction and copy quality unless the explicitly selected isolated-plane mode applies.`;
+}
