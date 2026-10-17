@@ -13,6 +13,7 @@
 3. `tests/create-layout.spec.ts`의 특정 `/workspace/scratch/...` 경로는 GitHub runner에 없다. Playwright의 테스트별 `outputPath`로 저장한다. 사진 복구 테스트의 미정의 `warning` 스크린샷 참조는 실제 용량 경고 검사로 이동했다.
 4. 사진 용도 변경 직후 새로고침하면 두 번째 사진 제어가 사라지는 현상을 로컬에서 재현했다. **실제 미저장 입력 유실 위험**이다. 250ms debounce 제거만으로 작은 사진은 통과했지만 4MB 사진의 반복 변경에서는 마지막 역할 변경이 여전히 사라졌다. React의 늦은 draft 전달과 JavaScript 직렬 대기열에 남은 저장이 원인이었다.
 5. 편집 후 사용 안내/계정 화면을 거쳐 돌아오면 편집기가 초기 `seed`로 다시 마운트되었다. 최신 `current`로 복원하도록 수정했다. 계정 전환의 저장 namespace는 유지한다.
+6. 비교 화면 열기 버튼은 렌더링 중 disabled가 되면서 focus를 잃을 수 있었다. 비동기 effect에서 activeElement를 찾는 대신 실제 열기 버튼 ref로 닫은 뒤 focus를 복원한다. 연속 저장 중에는 새 파일 준비 상태를 즉시 표시하고, 네이티브 완료 이벤트 뒤 버튼 재활성화를 검증한다. 완성 광고 fixture도 최신 composition/상태 조회 계약으로 갱신하여 불완전한 가짜 응답이 회귀 결과를 왜곡하지 않게 했다.
 
 ## 복구 동작
 

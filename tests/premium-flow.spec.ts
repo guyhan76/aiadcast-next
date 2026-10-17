@@ -12,6 +12,8 @@ test('simple campaign supports 10 references, individual footer choices, reviewe
  await page.route('**/api/**',route=>{const req=route.request(),url=new URL(req.url());const respond=(b:any)=>route.fulfill({contentType:'application/json',body:JSON.stringify(b)});const wallet={available:3,reserved:0};
  if(url.pathname==='/api/status')return respond({mode:'local-development',commercialReady:false,generation:{enabled:true,photoPurposes:true},assistant:{available:false},wallet,budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}});
  if(url.pathname==='/api/generations'&&req.method()==='POST'){sent=req.postDataJSON();job={id:'premium_job_001',projectId:sent.projectId,requestIds:[sent.requestId],composition:'complete-ad',compositionKey:sent.request.output.compositionKey,state:'ready',mode:'creative',sourceHash:sent.source.sha256,createdAt:new Date().toISOString(),model:'gpt-image-2.5-sunburst',artifactId:hash(result),artifact:{id:hash(result),sha256:hash(result),dataUrl:'data:image/png;base64,'+result.toString('base64'),width:1024,height:1280,role:'creative'}};return respond({job,wallet});}
+ if(url.pathname==='/api/generations/premium_job_001')return respond({job,wallet});
+ if(url.pathname==='/api/generations')return respond({jobs:job?[job]:[]});
  if(url.pathname.endsWith('/accept')){accepts++;job.state='accepted';return respond({job,wallet});}return respond({});});
  await page.goto('/');await page.getByRole('button',{name:'내 광고 만들기',exact:true}).click();const wizard=page.locator('.create-page');await wizard.getByLabel('산업 선택').selectOption('boxes');
  await wizard.getByLabel('참조사진 추가').setInputFiles(photos);await expect(wizard.getByRole('alert')).toContainText('최대 10장');
