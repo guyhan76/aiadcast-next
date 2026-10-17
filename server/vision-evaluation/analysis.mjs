@@ -5,9 +5,8 @@ import { HOLD_MICROS, TARGETS } from './ledger.mjs';
 export const MODEL = 'gpt-5.4-mini-2026-03-17';
 export const ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 export const OUTPUT_TOKENS = 1500;
-// Do not populate from caller filenames. Bind to bytes only after authorized
-// Library materialization and visual inspection. Until then live calls fail closed.
-export const APPROVED_HASHES = Object.freeze({ '22932.jpg': null, '22935.jpg': null });
+import {APPROVED_HASHES} from './references.mjs';
+export {APPROVED_HASHES};
 const point = { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2 };
 const box = { type: 'array', items: { type: 'number' }, minItems: 4, maxItems: 4 };
 const edge = { type: 'array', items: point, minItems: 2, maxItems: 2 };
@@ -68,7 +67,7 @@ export async function runAnalysis({ bytes, target, ledger, apiKey, fetchImpl, ap
   if (!TARGETS.includes(target) || approvedHashes?.[target] !== sourceHash(bytes)) throw Error('IMAGE_NOT_BOUND');
   const prepared = await prepareAnalysis(bytes);
   const id = await ledger.reserve(target, prepared.hash);
-  let settled = false;
+  let settled = false, uncertain = false;
   try {
     const response = await fetchImpl(ENDPOINT, {
       method: 'POST', redirect: 'error', signal: AbortSignal.timeout(45_000),
@@ -78,7 +77,7 @@ export async function runAnalysis({ bytes, target, ledger, apiKey, fetchImpl, ap
     const data = await limitedJson(response);
     const costMicros = usageCost(data.usage);
     const state = await ledger.settle(id, costMicros); settled = true;
-    if (state !== 'settled') throw Error('USAGE_RECONCILE_REQUIRED');
+    if (state !== 'settled') { uncertain = true; throw Error('USAGE_RECONCILE_REQUIRED'); }
     const choice = data.choices?.[0];
     if (choice?.finish_reason !== 'stop' || choice.message?.refusal || typeof choice.message?.content !== 'string') throw Error('NO_USABLE_PROPOSAL');
     const proposal = JSON.parse(choice.message.content);
@@ -86,7 +85,7 @@ export async function runAnalysis({ bytes, target, ledger, apiKey, fetchImpl, ap
   } catch {
     if (!settled) await ledger.settle(id, null);
     // Never leak provider payloads, authorization headers or network error text.
-    return { proposal: null, sourceHash: prepared.hash, callId: id, verified: false, reason: settled ? 'ANALYSIS_UNUSABLE' : 'ANALYSIS_UNCERTAIN' };
+    return { proposal: null, sourceHash: prepared.hash, callId: id, verified: false, reason: settled && !uncertain ? 'ANALYSIS_UNUSABLE' : 'ANALYSIS_UNCERTAIN' };
   }
 }
 export async function analyzeApprovedImage(options) {

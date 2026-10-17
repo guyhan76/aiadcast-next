@@ -239,3 +239,29 @@ test('cloud dimension analysis budget persists in the shared account schema and 
   const restored=await new CloudVisionLedger().initialize(db);assert.equal((await restored.rows()).length,10);await assert.rejects(restored.reserve('22932.jpg',hash),/APPROVAL_LIMIT/);
  }finally{await pool.end();}
 });
+
+test('reference evaluation GET is read-only; duplicate submissions and restarts recover one durable result',async()=>{
+ const {CloudVisionLedger,readCloudEvaluation}=await import('../server/vision-evaluation/cloud-ledger.mjs');
+ const {dimensionAnalysisService}=await import('../server/vision-evaluation/service.mjs');
+ const pool=await pgPool();try{
+  const db=await new PostgresDatabase(pool,'aiadcast_accounts').initialize();
+  const absent=await readCloudEvaluation(db,'admin-one');assert.equal(absent.ledgerExists,false);assert.equal(absent.usedCalls,null);
+  assert.equal((await db.prepare("SELECT to_regclass('aiadcast_accounts.dimension_analysis_calls') AS name").get()).name,null);
+  let calls=0,release,entered;const started=new Promise(r=>entered=r),wait=new Promise(r=>release=r);
+  const make=()=>dimensionAnalysisService({evaluationEnabled:true,apiKey:'local-mock-only',references:[{name:'22932.jpg',bytes:bytes.length}],approvedHashes:{'22932.jpg':hash},statusReader:(actor,id)=>readCloudEvaluation(db,actor,id),ledgerFactory:()=>new CloudVisionLedger().initialize(db),analyze:async({ledger,target})=>{
+   const id=await ledger.reserve(target,hash);calls++;entered();await wait;await ledger.settle(id,1000);return {proposal:{located:true,product:[.1,.2,.4,.35],axes:{width:[[.12,.5],[.36,.5]],depth:[[.36,.5],[.48,.4]],height:[[.48,.4],[.48,.22]]},protectedText:[],existingAnnotations:[],inset:[.65,.35,.3,.4]}};
+  }});
+  const a=make(),b=make(),admin={id:'admin-one',role:'admin'},request={requestId:'request_reference_0001',source};
+  await assert.rejects(a.status({role:'member'}),e=>e.code==='EVALUATION_ADMIN_ONLY');
+  assert.equal((await a.status(admin)).available,true);assert.equal(a.capability(admin).available,false);
+  const first=a.analyze(request,admin);await started;
+  const duplicate=await b.analyze(request,admin);assert.equal(duplicate.state,'pending');assert.equal(calls,1);
+  const pending=await b.status(admin,request.requestId);assert.equal(pending.available,false);assert.equal(pending.budget.usedCalls,1);assert.equal(pending.budget.allowanceUsedMicros,30000);assert.equal(pending.budget.unresolvedCalls,1);
+  assert.equal((await b.status({id:'admin-two',role:'admin'},request.requestId)).budget.request,null);
+  release();const result=await first;assert.equal(result.state,'ready');
+  const restarted=make();assert.deepEqual(await restarted.analyze(request,admin),result);assert.equal(calls,1);
+  const status=await restarted.status(admin,request.requestId);assert.deepEqual(status.budget.request,result);assert.equal(status.budget.knownCostMicros,1000);assert.equal(status.budget.unresolvedCalls,0);assert.equal(status.budget.usedCalls,1);
+  const ledger=await new CloudVisionLedger().initialize(db),id=await ledger.reserve('22935.jpg',hash,{id:'uncertain_request_0002',actor:admin.id});await ledger.settle(id,null);await ledger.finish(admin.id,'uncertain_request_0002',{state:'failed'});
+  assert.equal((await restarted.status(admin)).available,false);await assert.rejects(ledger.reserve('22932.jpg',hash),/RECONCILE_REQUIRED/);
+ }finally{await pool.end();}
+});

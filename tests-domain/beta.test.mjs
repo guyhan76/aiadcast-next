@@ -28,6 +28,9 @@ test('managed budget increase preserves previously spent usage on service restar
 test('dimension analysis HTTP route requires authentication and defaults disabled for signed-in users',async t=>{
  const {store,call}=await httpSetup(t);const a=provision(store);const session=(await call('/api/auth/login',{body:{invite:a.invite}})).data;
  assert.equal((await call('/api/dimension-analysis')).status,401);
+ assert.equal((await call('/api/admin/dimension-evaluation')).status,401);
+ assert.equal((await call('/api/admin/dimension-evaluation',{token:session.token})).status,403);
+ assert.equal((await call('/api/admin/dimension-evaluation',{token:session.token,body:{role:'admin'}})).status,403);
  const capability=await call('/api/dimension-analysis',{token:session.token});assert.equal(capability.status,200);assert.equal(capability.data.available,false);
  assert.equal((await call('/api/dimension-analysis',{token:session.token,body:{role:'admin'}})).status,403);
 });

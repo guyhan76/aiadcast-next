@@ -91,7 +91,7 @@ test('missing usage, oversized response and truncated JSON retain the reservatio
   for (const body of [JSON.stringify(envelope(proposal(), null)), JSON.stringify(envelope(proposal(), { prompt_tokens: 0, completion_tokens: 0 })), 'x'.repeat(100001), '{']) {
     const l = new VisionLedger(':memory:');
     const result = await run(l, async () => new Response(body));
-    assert.equal(result.proposal, null); assert.equal(l.rows()[0].state, 'uncertain'); l.close();
+    assert.equal(result.proposal, null); assert.equal(result.reason, 'ANALYSIS_UNCERTAIN'); assert.equal(l.rows()[0].state, 'uncertain'); l.close();
   }
 });
 test('bad geometry does not erase an actual paid usage settlement', async () => {
