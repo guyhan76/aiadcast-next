@@ -154,3 +154,51 @@ test('server-confirmed administrator at zero credits can review and save without
  await expect(page.getByRole('button',{name:'다른 시안 생성 · 관리자 테스트',exact:true})).toBeEnabled();
  await expect(page.locator('.admin-test-mode')).toContainText('실제 API 사용 비용과 서버 예산 한도는 적용됩니다.');
 });
+
+test('result guidance stays readable before and after acceptance without altering the generation brief',async({page},info)=>{
+ const state=await mocks(page),form=await details(page,false);
+ await form.getByLabel('상품명',{exact:true}).fill('튼튼한 이사용 골판지박스');
+ await form.getByLabel('참조사진 추가',{exact:true}).setInputFiles({name:'box.png',mimeType:'image/png',buffer:first});
+ await form.getByRole('button',{name:'규격 넣기',exact:true}).click();await form.getByLabel('규격 단위').selectOption('mm');
+ for(const [axis,value] of [['가로','450'],['세로','350'],['높이','400']])await form.getByLabel(axis+' mm',{exact:true}).fill(value);
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();
+ const summary=page.locator('.marketing-summary'),evidence=summary.locator('details');
+ await expect(summary).toBeVisible();
+ const originalPlan=structuredClone(state.body.request.marketingPlan);
+ expect(originalPlan.geometryVerified).toBe(false);
+ expect(state.body.request.specifications.map((s:any)=>s.value)).toEqual(['450','350','400']);
+ expect(originalPlan.target.label).toContain('450 mm');
+ for(const stage of ['review','accepted']){
+  if(stage==='accepted'){
+   await page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
+   await page.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+   await expect(page.locator('.accepted-ad .marketing-summary')).toBeVisible();
+  }
+  await expect(evidence).not.toHaveAttribute('open','');
+  await expect(summary.locator('.marketing-intent')).not.toContainText('450');
+  await expect(summary.locator('.marketing-audience')).not.toContainText('450');
+  expect((await summary.locator('.marketing-intent').innerText()).length).toBeLessThan(100);
+  await expect(summary.locator('.marketing-keywords li')).toHaveText(originalPlan.keywords);
+  await expect(summary.locator('.marketing-channels li')).toHaveCount(originalPlan.channels.length);
+  for(const width of [320,360,390,412,1440]){
+   await page.setViewportSize({width,height:900});
+   const layout=await summary.evaluate(el=>{
+    const rect=(node:Element)=>{const r=node.getBoundingClientRect();return {x:r.x,right:r.right,top:r.top,bottom:r.bottom};};
+    return {width:document.documentElement.scrollWidth,box:rect(el),paragraphs:[...el.querySelectorAll(':scope > p,.marketing-section p')].map(p=>getComputedStyle(p).textAlign),title:rect(el.querySelector('h3')!),meta:rect(el.querySelector('small')!),channels:[...el.querySelectorAll('.marketing-channels li')].map(rect),keywords:[...el.querySelectorAll('.marketing-keywords li')].map(rect)};
+   });
+   expect(layout.width).toBeLessThanOrEqual(width);expect(layout.paragraphs.every(v=>v==='left')).toBe(true);
+   expect(layout.meta.top).toBeGreaterThanOrEqual(layout.title.bottom);
+   for(const row of [...layout.channels,...layout.keywords]){expect(row.x).toBeGreaterThanOrEqual(layout.box.x);expect(row.right).toBeLessThanOrEqual(layout.box.right);}
+   if(width<600)for(let i=1;i<layout.channels.length;i++){expect(layout.channels[i].x).toBe(layout.channels[0].x);expect(layout.channels[i].top).toBeGreaterThanOrEqual(layout.channels[i-1].bottom);}
+   expect(layout.keywords[0].top).toBe(layout.keywords[1].top);
+  }
+  await evidence.locator('summary').click();await expect(evidence).toContainText(originalPlan.intent);await expect(evidence).toContainText(originalPlan.target.reason);await evidence.locator('summary').click();
+ }
+ await page.setViewportSize({width:360,height:900});await summary.screenshot({path:info.outputPath('result-guidance-360.png')});
+ await page.getByLabel('앱 언어',{exact:true}).selectOption('en');await expect(summary.getByRole('heading',{name:'Suggested channels',exact:true})).toBeVisible();
+ await expect(summary.locator('.marketing-keywords li')).toHaveText(originalPlan.keywords);
+ expect(state.body.request.marketingPlan).toEqual(originalPlan);expect(state.posts).toBe(1);expect(state.accepts).toBe(1);
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'Save image',exact:true}).click();
+ expect(await sharp((await(await download).path())!).metadata()).toMatchObject({width:1080,height:1920});
+ expect(state.posts).toBe(1);expect(state.accepts).toBe(1);
+});
