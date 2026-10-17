@@ -41,6 +41,32 @@ test('hidden dimensions remain geometry input but never appear as displayed labe
  assert.equal(request.copy.company,'');assert.equal(r.marketingPlan.input.brand,'');
  assert.match(prompt,/Do NOT add numeric dimensions/);
 });
+test('actual photo identities and named physical ratios reach finished-ad generation even with dimension labels hidden',()=>{
+ const p=fixture();p.dimensions={...p.dimensions,width:'400',depth:'300',height:'350',visible:false};
+ const style={...p.product,name:'style.png',sha256:'c'.repeat(64)},side={...p.product,name:'side.png',sha256:'d'.repeat(64)};
+ p.references=[style,side];p.referenceRoles={[style.sha256]:'style',[side.sha256]:'subject'};
+ const r=normalizeGenerationRequest(buildGenerationRequest(p)),geometry=r.creativeDirection.referenceGeometry;
+ assert.deepEqual(geometry.subjectReferenceHashes,[p.product.sha256,side.sha256]);
+ assert.deepEqual(geometry.dimensions,[{axis:'width',value:400,unit:'mm'},{axis:'depth',value:300,unit:'mm'},{axis:'height',value:350,unit:'mm'}]);
+ assert.deepEqual(geometry.normalizedRatios,[{axis:'width',ratio:1},{axis:'depth',ratio:.75},{axis:'height',ratio:.875}]);
+ assert.equal(geometry.dimensionLabelsVisible,false);assert.equal(geometry.canvasRatioIndependent,true);assert.equal(geometry.geometryVerified,false);
+ assert.equal(r.source.purpose,'subject');assert.deepEqual(r.references.map(a=>a.purpose),['style','subject']);assert.deepEqual(displayedSpecifications(r),[]);
+ const prompt=promptFor(r);assert.ok(prompt.includes(JSON.stringify(geometry)));assert.match(prompt,/named physical dimensions together/);
+ p.dimensions.height='200';p.format='1:1';const changed=normalizeGenerationRequest(buildGenerationRequest(p));
+ assert.equal(changed.creativeDirection.referenceGeometry.normalizedRatios[2].ratio,.5);
+ p.format='9:16';assert.deepEqual(normalizeGenerationRequest(buildGenerationRequest(p)).creativeDirection.referenceGeometry,changed.creativeDirection.referenceGeometry);
+});
+test('dimension guidance respects cylinder axes, actual photos, original mode and dimensionless services',()=>{
+ const p=fixture();p.productProfile.specType='cylindrical';p.dimensions.width='100';p.dimensions.height='250';
+ p.references=[{...p.product,name:'actual.png',sha256:'d'.repeat(64)}];p.referenceRoles={[p.product.sha256]:'style'};
+ const geometry=normalizeGenerationRequest(buildGenerationRequest(p)).creativeDirection.referenceGeometry;
+ assert.deepEqual(geometry.subjectReferenceHashes,[p.references[0].sha256]);
+ assert.deepEqual(geometry.normalizedRatios,[{axis:'diameter',ratio:1},{axis:'height',ratio:2.5}]);
+ p.referenceRoles={};p.generation.mode='original';assert.equal(normalizeGenerationRequest(buildGenerationRequest(p)).creativeDirection.referenceGeometry,null);
+ p.generation.mode='creative';p.productProfile.specType='none';assert.equal(normalizeGenerationRequest(buildGenerationRequest(p)).creativeDirection.referenceGeometry,null);
+ const service=withCategory(p,'lease');service.product=null;service.references=[];
+ assert.equal(normalizeGenerationRequest(buildGenerationRequest(service)).creativeDirection.referenceGeometry,null);
+});
 test('display units are derived from canonical values; caller-supplied dimension text cannot override them',()=>{
  const p=fixture();p.dimensions.displayUnit='cm';const r=normalizeGenerationRequest(buildGenerationRequest(p));
  r.copy.dimensionText='999 × 999 × 999 mm';

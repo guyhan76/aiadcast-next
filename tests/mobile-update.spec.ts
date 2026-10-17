@@ -25,9 +25,9 @@ test('a single multi-file selection keeps every view and exposes dimensions besi
  for(const width of [320,390,768]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
  await page.setViewportSize({width:390,height:844});await status.screenshot({path:'/tmp/aiadcast-019-dimensions.png'});
 });
-test('a bad file in a new batch leaves the previously attached photos intact',async({page})=>{
+test('a bad file in a new batch keeps both existing and valid new photos',async({page})=>{
  await page.goto('/#create');const wizard=page.locator('.create-page');await wizard.getByLabel('참조사진 추가').setInputFiles(photos.slice(0,2));await expect(wizard.locator('.reference-photos img')).toHaveCount(2);
- await wizard.getByLabel('참조사진 추가').setInputFiles([photos[2],{name:'bad.png',mimeType:'image/png',buffer:Buffer.from('not an image')}]);await expect(wizard.locator('.reference-photos [role=alert]')).toBeVisible();await expect(wizard.locator('.reference-photos img')).toHaveCount(2);
+ await wizard.getByLabel('참조사진 추가').setInputFiles([photos[2],{name:'bad.png',mimeType:'image/png',buffer:Buffer.from('not an image')}]);await expect(wizard.locator('.reference-photos [role=alert]')).toBeVisible();await expect(wizard.locator('.reference-photos img')).toHaveCount(3);
 });
 test('test server readiness requires valid responses and delegates preview configuration without secrets',async({page})=>{
  await page.addInitScript(()=>{(window as any).__AIADCAST_TEST_CONNECTION__=true;(window as any).nativeRequests=[];(window as any).AiadcastNative={postMessage:(value:string)=>{(window as any).nativeRequests.push(JSON.parse(value));window.dispatchEvent(new CustomEvent('aiadcast-test-connection',{detail:{status:'error'}}));}};});

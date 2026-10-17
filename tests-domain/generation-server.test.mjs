@@ -23,6 +23,28 @@ function setup(t, overrides={}) {
   t.after(()=>service.close());
   return {service,calls};
 }
+
+test('administrator mode creates and accepts more than 30 images at zero credits, keeping exact usage costs and review requirements',async t=>{
+ let calls=0;const {service}=setup(t,{testCredits:0,adapter:{generate:async options=>{calls++;return {...result(options.request.mode),cost:{microUsd:1}};}}});
+ service.adminTestUnlimited=true;assert.equal(service.status().generation.enabled,true);assert.equal(service.wallet().unlimited,true);
+ for(let i=0;i<35;i++){
+  const created=await service.create(body());await service.waitForIdle();const ready=service.job(created.job.id);
+  assert.equal(ready.state,'ready');assert.equal(ready.creditCost,0);assert.equal(ready.creditPolicy,'admin-unlimited');
+  service.accept(ready.id,ready.artifactId);assert.equal(service.wallet().available,0);assert.equal(service.wallet().reserved,0);
+ }
+ assert.equal(calls,35);assert.equal(service.status().budget.spentMicros,35);
+ assert.equal(service.db.prepare('SELECT COUNT(*) n FROM purchases').get().n,0);
+ service.adminTestUnlimited=false;assert.equal(service.status().generation.reason,'NO_TEST_CREDITS');await assert.rejects(service.create(body()),/NO_TEST_CREDITS/);
+});
+test('administrator mode preserves budget and provider blockers, rejection costs and server-owned policy',async t=>{
+ const {service}=setup(t,{testCredits:0});const forged=body();forged.adminTestUnlimited=true;forged.request.creditExempt=true;forged.request.role='admin';
+ await assert.rejects(service.create(forged),/NO_TEST_CREDITS/);assert.equal(service.wallet().unlimited,undefined);
+ service.adminTestUnlimited=true;service.providerConfigured=false;assert.equal(service.status().generation.reason,'PROVIDER_NOT_CONFIGURED');
+ service.providerConfigured=true;service.budgetMicros=0;assert.equal(service.status().generation.reason,'BUDGET_NOT_AVAILABLE');
+ service.budgetMicros=2_000_000;
+ for(let i=0;i<3;i++){const created=await service.create(body());await service.waitForIdle();service.reject(created.job.id);}
+ assert.equal(service.wallet().available,0);assert.equal(service.wallet().reserved,0);assert.ok(service.status().budget.spentMicros>0);
+});
 async function httpSetup(t, overrides={}) {
   const state=setup(t,overrides);
   const http=createGenerationHttpServer({service:state.service,nodeEnvironment:'test'});

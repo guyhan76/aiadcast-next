@@ -59,6 +59,7 @@ test('photo purpose survives draft reload and travels with the correct uploaded 
  await expect(form.getByLabel('1 사진 용도',{exact:true})).toHaveValue('subject');
  await form.locator('[data-order="3"]').scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('photo-options.png')});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+ await warning.screenshot({path:test.info().outputPath('photo-size-warning.png')});
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();
  expect(state.body.request.source.purpose).toBe('subject');expect(state.body.request.references[0].purpose).toBe('style');
  expect(state.body.source.sha256).toBe(createHash('sha256').update(first).digest('hex'));
@@ -78,4 +79,28 @@ test('original photo choice reaches review acceptance and download without openi
  const save=result.getByRole('button',{name:'이미지 저장',exact:true});await expect(save).toBeEnabled();
  const download=page.waitForEvent('download');await save.click();expect((await download).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.posts).toBe(1);
  await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('button',{name:'실사 그대로 사용',exact:true})).toHaveAttribute('aria-pressed','true');await expect(form.getByLabel('광고 설명',{exact:true})).toHaveValue('');
+});
+
+test('photo size overflow shows a prominent red notice, retains valid previews and sends the attached original bytes',async({page})=>{
+ const state=await mocks(page),form=await details(page,false);
+ const front=Buffer.concat([first,Buffer.alloc(6*1024*1024-first.length)]),side=Buffer.concat([second,Buffer.alloc(6*1024*1024-second.length)]);
+ await form.getByLabel('참조사진 추가').setInputFiles([{name:'front-6MB.png',mimeType:'image/png',buffer:front},{name:'side-6MB.png',mimeType:'image/png',buffer:side}]);
+ const warning=form.locator('.reference-import-error'),title=warning.locator('.reference-error-title');
+ await expect(warning).toBeVisible();await expect(title).toContainText('참조사진 전체 용량이 10MB를 초과했습니다.');
+ await expect(title).toHaveCSS('color','rgb(185, 28, 28)');await expect(title.locator('strong')).toHaveCSS('font-weight','800');
+ expect(await title.evaluate(e=>parseFloat(getComputedStyle(e).fontSize))).toBeGreaterThanOrEqual(20);
+ await expect(warning).toContainText('side-6MB.png');await expect(form.locator('.reference-item')).toHaveCount(1);await expect(form.locator('.reference-heading')).toContainText('1 / 10');
+ await expect(form.locator('.reference-file-info')).toContainText('6.0 / 10MB');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();
+ expect(state.posts).toBe(1);expect(state.body.source.sha256).toBe(createHash('sha256').update(front).digest('hex'));expect(state.body.references).toHaveLength(0);
+ expect(Buffer.from(state.body.source.data.split(',')[1],'base64').equals(front)).toBe(true);
+});
+test('when no photo fits, submitting repeats the red size reason and returns focus to attachments',async({page})=>{
+ const state=await mocks(page),form=await details(page,false);
+ await form.getByLabel('참조사진 추가').setInputFiles({name:'too-large.png',mimeType:'image/png',buffer:Buffer.alloc(10*1024*1024+1)});
+ await expect(form.locator('.reference-import-error')).toContainText('10MB를 초과');await expect(form.locator('.reference-item')).toHaveCount(0);
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();
+ await expect(form.locator('.photo-upload-error')).toContainText('10MB를 초과');await expect(form.locator('.photo-upload-error')).toHaveCSS('color','rgb(185, 28, 28)');
+ await expect(form.locator('[data-order="3"]')).toBeFocused();expect(state.posts).toBe(0);
 });

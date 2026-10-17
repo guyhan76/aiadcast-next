@@ -19,6 +19,7 @@ import {hasUsableCreative,parseGenerated} from './generated.ts';
 import type {GeneratedAsset} from './generated.ts';
 import {boxProjectionError,parseBoxProjection} from './box-projection.ts';
 import type {BoxProjection} from './box-projection.ts';
+import {maximumReferenceBytes,maximumReferencePhotos,referenceBytes} from './reference-limits.ts';
 export type Locale = 'ko' | 'en';
 export type Axis = 'width' | 'depth' | 'height';
 export type Point = {x:number;y:number};
@@ -41,7 +42,7 @@ export const labels={ko:{width:'가로',depth:'세로',height:'높이',spec:'상
 export const axes:Axis[]=['width','depth','height'];
 export async function imageFile(file:File):Promise<Asset> {
  if(!['image/png','image/jpeg','image/webp'].includes(file.type))throw new Error('PNG, JPG, WebP 사진을 선택해주세요.');
- if(file.size>10*1024*1024)throw new Error('사진은 10 MB 이하로 추가해주세요.');
+ if(file.size>maximumReferenceBytes)throw new Error('사진은 10 MB 이하로 추가해주세요.');
  const bytes=await file.arrayBuffer();
  const sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(b=>b.toString(16).padStart(2,'0')).join('');
  const data=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(new Error('파일을 읽지 못했습니다.'));reader.readAsDataURL(file);});
@@ -84,9 +85,9 @@ export async function importProject(raw:unknown):Promise<Project> {
 export const referenceAssets=(p:Project):Asset[]=>[...(p.product?[p.product]:[]),...(p.references??[])];
 export function validateReferences(p:Project){
  const assets=referenceAssets(p);
- if(assets.length>10||(!p.product&&assets.length))throw Error('참조사진은 대표 사진을 포함해 최대 10장입니다.');
+ if(assets.length>maximumReferencePhotos||(!p.product&&assets.length))throw Error('참조사진은 대표 사진을 포함해 최대 10장입니다.');
  if(new Set(assets.map(a=>a.sha256)).size!==assets.length)throw Error('같은 사진이 중복되어 있습니다.');
- if(assets.reduce((n,a)=>n+Math.floor((a.data.length-a.data.indexOf(',')-1)*3/4),0)>10*1024*1024)throw Error('참조사진 전체 용량은 10 MB 이하로 선택해주세요.');
+ if(referenceBytes(assets)>maximumReferenceBytes)throw Error('참조사진 전체 용량은 10 MB 이하로 선택해주세요.');
 }
 export function withReferences(p:Project,assets:Asset[]):Project{
  const next={...p,product:assets[0]??null,references:assets.slice(1),...(p.proportionViews?{proportionViews:{confirmed:p.proportionViews.confirmed,views:Object.fromEntries(Object.entries(p.proportionViews.views).filter(([hash])=>assets.some(a=>a.sha256===hash)))}}:{})};validateReferences(next);

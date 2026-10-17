@@ -28,6 +28,11 @@ CREATE TABLE IF NOT EXISTS credit_events (
   kind TEXT NOT NULL,
   credits INTEGER NOT NULL CHECK (credits > 0)
 );
+-- Keep the quoted credit quantity and old metered jobs intact. Only trusted
+-- server admission can mark a new administrator test as credit-exempt.
+CREATE TABLE IF NOT EXISTS admin_test_jobs (
+  job_id TEXT PRIMARY KEY REFERENCES jobs(id)
+);
 CREATE TABLE IF NOT EXISTS budgets (
   period TEXT PRIMARY KEY,
   limit_micros INTEGER NOT NULL CHECK (limit_micros > 0),
@@ -44,3 +49,4 @@ CREATE TABLE IF NOT EXISTS attempts (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_open_attempt ON attempts(job_id)
 WHERE status IN ('pending','uncertain');
+

@@ -41,7 +41,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, now =
     } if (++requests > 600 || (isLogin && ++logins > 20))
         throw new ApiFailure('RATE_LIMITED', 429); };
     const service = async (user) => { if (!services.has(user.id))
-        services.set(user.id, Promise.resolve().then(() => serviceFactory(user))); return await services.get(user.id); };
+        services.set(user.id, Promise.resolve().then(() => serviceFactory(user))); const instance = await services.get(user.id); instance.adminTestUnlimited = user.role === 'admin'; return instance; };
     const email = await new EmailAuth().initialize(store, { sendMail: accounts.sendMail, publicOrigin: origin, now });
     const password = await new PasswordAuth().initialize(store, accounts.password, now);
     await password.bootstrapOwner();

@@ -41,7 +41,7 @@ export class BillingLedger {
   job(id) {
     const row = this.db.prepare('SELECT * FROM jobs WHERE id=?').get(id);
     if (!row) throw Error('Job not found');
-    return { ...row };
+    return { ...row, creditExempt: Boolean(this.db.prepare('SELECT job_id FROM admin_test_jobs WHERE job_id=?').get(id)) };
   }
   wallet(userId) {
     const row = this.db.prepare('SELECT available,reserved FROM wallets WHERE user_id=?').get(userId);
@@ -67,20 +67,25 @@ export class BillingLedger {
     });
   }
   // credits, modelRevision and expiresAt must come from a server-signed quote.
-  reserve({ jobId, userId, credits, requestHash, modelRevision, kind = 'image', expiresAt }) {
+  reserve({ jobId, userId, credits, requestHash, modelRevision, kind = 'image', expiresAt, creditExempt = false }) {
     [jobId, userId, requestHash, modelRevision].forEach(identifier); integer(credits);
-    if (!['image','video'].includes(kind) || !Number.isSafeInteger(expiresAt)) throw Error('Invalid job');
+    if (!['image','video'].includes(kind) || !Number.isSafeInteger(expiresAt) || typeof creditExempt !== 'boolean') throw Error('Invalid job');
     return this.transaction(() => {
       const old = this.db.prepare('SELECT * FROM jobs WHERE id=?').get(jobId);
       if (old) {
-        if (old.user_id !== userId || old.credits !== credits || old.request_hash !== requestHash || old.model_revision !== modelRevision || old.kind !== kind || old.expires_at !== expiresAt) throw Error('Job replay mismatch');
+        if (old.user_id !== userId || old.credits !== credits || old.request_hash !== requestHash || old.model_revision !== modelRevision || old.kind !== kind || old.expires_at !== expiresAt || this.job(jobId).creditExempt !== creditExempt) throw Error('Job replay mismatch');
         return this.job(jobId);
       }
       if (expiresAt <= this.now()) throw Error('Quote expired');
-      const moved = this.db.prepare('UPDATE wallets SET available=available-?, reserved=reserved+? WHERE user_id=? AND available>=?').run(credits, credits, userId, credits);
-      if (moved.changes !== 1) throw Error('Insufficient credits');
+      if (creditExempt) {
+        this.db.prepare('INSERT INTO wallets(user_id) VALUES (?) ON CONFLICT DO NOTHING').run(userId);
+      } else {
+        const moved = this.db.prepare('UPDATE wallets SET available=available-?, reserved=reserved+? WHERE user_id=? AND available>=?').run(credits, credits, userId, credits);
+        if (moved.changes !== 1) throw Error('Insufficient credits');
+      }
       this.db.prepare('INSERT INTO jobs(id,user_id,credits,request_hash,model_revision,kind,status,expires_at) VALUES (?,?,?,?,?,?,?,?)').run(jobId, userId, credits, requestHash, modelRevision, kind, 'reserved', expiresAt);
-      this.event(`reserve:${jobId}`, userId, jobId, 'reserve', credits);
+      if (creditExempt) this.db.prepare('INSERT INTO admin_test_jobs(job_id) VALUES (?)').run(jobId);
+      this.event(`reserve:${jobId}`, userId, jobId, creditExempt ? 'admin-test-reserve' : 'reserve', credits);
       return this.job(jobId);
     });
   }
@@ -109,18 +114,18 @@ export class BillingLedger {
       if (job.status === 'accepted') return job;
       if (job.status !== 'ready') throw Error('Result is not ready for acceptance');
       if (job.expires_at <= this.now()) return this.releaseInside(job, 'preview_expired');
-      this.db.prepare('UPDATE wallets SET reserved=reserved-? WHERE user_id=?').run(job.credits, userId);
+      if (!job.creditExempt) this.db.prepare('UPDATE wallets SET reserved=reserved-? WHERE user_id=?').run(job.credits, userId);
       this.db.prepare("UPDATE jobs SET status='accepted' WHERE id=?").run(jobId);
-      this.event(`capture:${jobId}`, userId, jobId, 'capture', job.credits);
+      this.event(`capture:${jobId}`, userId, jobId, job.creditExempt ? 'admin-test-accept' : 'capture', job.credits);
       return this.job(jobId);
     });
   }
   releaseInside(job, reason) {
     if (job.status === 'released' || job.status === 'refunded') return job;
     if (job.status === 'accepted') throw Error('Accepted jobs require a confirmed-defect refund');
-    this.db.prepare('UPDATE wallets SET available=available+?, reserved=reserved-? WHERE user_id=?').run(job.credits, job.credits, job.user_id);
+    if (!job.creditExempt) this.db.prepare('UPDATE wallets SET available=available+?, reserved=reserved-? WHERE user_id=?').run(job.credits, job.credits, job.user_id);
     this.db.prepare("UPDATE jobs SET status='released',reason=? WHERE id=?").run(reason, job.id);
-    this.event(`release:${job.id}`, job.user_id, job.id, 'release', job.credits);
+    this.event(`release:${job.id}`, job.user_id, job.id, job.creditExempt ? 'admin-test-release' : 'release', job.credits);
     return this.job(job.id);
   }
   release(jobId, userId, reason) {
@@ -138,16 +143,16 @@ export class BillingLedger {
       const job = this.job(jobId);
       if (job.status === 'refunded') return job;
       if (job.status !== 'accepted') throw Error('Only captured credits can be refunded');
-      this.db.prepare('UPDATE wallets SET available=available+? WHERE user_id=?').run(job.credits, job.user_id);
+      if (!job.creditExempt) this.db.prepare('UPDATE wallets SET available=available+? WHERE user_id=?').run(job.credits, job.user_id);
       this.db.prepare("UPDATE jobs SET status='refunded',reason=? WHERE id=?").run(incidentId, jobId);
-      this.event(`refund:${jobId}`, job.user_id, jobId, 'refund', job.credits);
+      this.event(`refund:${jobId}`, job.user_id, jobId, job.creditExempt ? 'admin-test-refund' : 'refund', job.credits);
       return this.job(jobId);
     });
   }
   expire() {
     return this.transaction(() => {
       const jobs = this.db.prepare("SELECT * FROM jobs WHERE expires_at<=? AND status IN ('reserved','running','uncertain','ready')").all(this.now());
-      return jobs.map(job => this.releaseInside(job, 'preview_expired'));
+      return jobs.map(job => this.releaseInside(this.job(job.id), 'preview_expired'));
     });
   }
   // USD micro-units (1 USD = 1,000,000); these are NEVER customer credits.
@@ -201,3 +206,4 @@ export class BillingLedger {
     return row ? { ...row } : null;
   }
 }
+

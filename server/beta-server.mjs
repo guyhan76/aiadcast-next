@@ -21,7 +21,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
  // Bounded in-memory limiter: all traffic shares a global ceiling, including behind a proxy.
  let windowStart=now(),requests=0,logins=0,bodies=0;
  const limit=isLogin=>{if(now()-windowStart>=60_000){windowStart=now();requests=0;logins=0;}if(++requests>600||(isLogin&&++logins>20))throw new ApiFailure('RATE_LIMITED',429);};
- const service=user=>{if(!services.has(user.id))services.set(user.id,serviceFactory(user));return services.get(user.id);};
+ const service=user=>{if(!services.has(user.id))services.set(user.id,serviceFactory(user));const instance=services.get(user.id);instance.adminTestUnlimited=user.role==='admin';return instance;};
  const email=new EmailAuth(store,{sendMail:accounts.sendMail,publicOrigin:origin,now});
  const password=new PasswordAuth(store,accounts.password,now);password.bootstrapOwner();
  const checkout=new TestCheckout(store,{...accounts,publicOrigin:origin,now,creditPurchase:async(id,purchase)=>{const user=store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id);if(!user)throw new ApiFailure('AUTH_REQUIRED',401);return service(user).recordTestPurchase(purchase);}});

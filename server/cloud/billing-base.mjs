@@ -14,7 +14,7 @@ export class BillingLedger {
         const row = await this.db.prepare('SELECT * FROM jobs WHERE id=?').get(id);
         if (!row)
             throw Error('Job not found');
-        return { ...row };
+        return { ...row, creditExempt: Boolean(await this.db.prepare('SELECT job_id FROM admin_test_jobs WHERE job_id=?').get(id)) };
     }
     async wallet(userId) {
         const row = await this.db.prepare('SELECT available,reserved FROM wallets WHERE user_id=?').get(userId);
@@ -43,25 +43,32 @@ export class BillingLedger {
         });
     }
     // credits, modelRevision and expiresAt must come from a server-signed quote.
-    async reserve({ jobId, userId, credits, requestHash, modelRevision, kind = 'image', expiresAt }) {
+    async reserve({ jobId, userId, credits, requestHash, modelRevision, kind = 'image', expiresAt, creditExempt = false }) {
         [jobId, userId, requestHash, modelRevision].forEach(identifier);
         integer(credits);
-        if (!['image', 'video'].includes(kind) || !Number.isSafeInteger(expiresAt))
+        if (!['image', 'video'].includes(kind) || !Number.isSafeInteger(expiresAt) || typeof creditExempt !== 'boolean')
             throw Error('Invalid job');
         return await this.transaction(async () => {
             const old = await this.db.prepare('SELECT * FROM jobs WHERE id=?').get(jobId);
             if (old) {
-                if (old.user_id !== userId || old.credits !== credits || old.request_hash !== requestHash || old.model_revision !== modelRevision || old.kind !== kind || old.expires_at !== expiresAt)
+                if (old.user_id !== userId || old.credits !== credits || old.request_hash !== requestHash || old.model_revision !== modelRevision || old.kind !== kind || old.expires_at !== expiresAt || (await this.job(jobId)).creditExempt !== creditExempt)
                     throw Error('Job replay mismatch');
                 return await this.job(jobId);
             }
             if (expiresAt <= this.now())
                 throw Error('Quote expired');
-            const moved = await this.db.prepare('UPDATE wallets SET available=available-?, reserved=reserved+? WHERE user_id=? AND available>=?').run(credits, credits, userId, credits);
-            if (moved.changes !== 1)
-                throw Error('Insufficient credits');
+            if (creditExempt) {
+                await this.db.prepare('INSERT INTO wallets(user_id) VALUES (?) ON CONFLICT DO NOTHING').run(userId);
+            }
+            else {
+                const moved = await this.db.prepare('UPDATE wallets SET available=available-?, reserved=reserved+? WHERE user_id=? AND available>=?').run(credits, credits, userId, credits);
+                if (moved.changes !== 1)
+                    throw Error('Insufficient credits');
+            }
             await this.db.prepare('INSERT INTO jobs(id,user_id,credits,request_hash,model_revision,kind,status,expires_at) VALUES (?,?,?,?,?,?,?,?)').run(jobId, userId, credits, requestHash, modelRevision, kind, 'reserved', expiresAt);
-            await this.event(`reserve:${jobId}`, userId, jobId, 'reserve', credits);
+            if (creditExempt)
+                await this.db.prepare('INSERT INTO admin_test_jobs(job_id) VALUES (?)').run(jobId);
+            await this.event(`reserve:${jobId}`, userId, jobId, creditExempt ? 'admin-test-reserve' : 'reserve', credits);
             return await this.job(jobId);
         });
     }
@@ -100,9 +107,10 @@ export class BillingLedger {
                 throw Error('Result is not ready for acceptance');
             if (job.expires_at <= this.now())
                 return await this.releaseInside(job, 'preview_expired');
-            await this.db.prepare('UPDATE wallets SET reserved=reserved-? WHERE user_id=?').run(job.credits, userId);
+            if (!job.creditExempt)
+                await this.db.prepare('UPDATE wallets SET reserved=reserved-? WHERE user_id=?').run(job.credits, userId);
             await this.db.prepare("UPDATE jobs SET status='accepted' WHERE id=?").run(jobId);
-            await this.event(`capture:${jobId}`, userId, jobId, 'capture', job.credits);
+            await this.event(`capture:${jobId}`, userId, jobId, job.creditExempt ? 'admin-test-accept' : 'capture', job.credits);
             return await this.job(jobId);
         });
     }
@@ -111,9 +119,10 @@ export class BillingLedger {
             return job;
         if (job.status === 'accepted')
             throw Error('Accepted jobs require a confirmed-defect refund');
-        await this.db.prepare('UPDATE wallets SET available=available+?, reserved=reserved-? WHERE user_id=?').run(job.credits, job.credits, job.user_id);
+        if (!job.creditExempt)
+            await this.db.prepare('UPDATE wallets SET available=available+?, reserved=reserved-? WHERE user_id=?').run(job.credits, job.credits, job.user_id);
         await this.db.prepare("UPDATE jobs SET status='released',reason=? WHERE id=?").run(reason, job.id);
-        await this.event(`release:${job.id}`, job.user_id, job.id, 'release', job.credits);
+        await this.event(`release:${job.id}`, job.user_id, job.id, job.creditExempt ? 'admin-test-release' : 'release', job.credits);
         return await this.job(job.id);
     }
     async release(jobId, userId, reason) {
@@ -135,16 +144,17 @@ export class BillingLedger {
                 return job;
             if (job.status !== 'accepted')
                 throw Error('Only captured credits can be refunded');
-            await this.db.prepare('UPDATE wallets SET available=available+? WHERE user_id=?').run(job.credits, job.user_id);
+            if (!job.creditExempt)
+                await this.db.prepare('UPDATE wallets SET available=available+? WHERE user_id=?').run(job.credits, job.user_id);
             await this.db.prepare("UPDATE jobs SET status='refunded',reason=? WHERE id=?").run(incidentId, jobId);
-            await this.event(`refund:${jobId}`, job.user_id, jobId, 'refund', job.credits);
+            await this.event(`refund:${jobId}`, job.user_id, jobId, job.creditExempt ? 'admin-test-refund' : 'refund', job.credits);
             return await this.job(jobId);
         });
     }
     async expire() {
         return await this.transaction(async () => {
             const jobs = await this.db.prepare("SELECT * FROM jobs WHERE expires_at<=? AND status IN ('reserved','running','uncertain','ready')").all(this.now());
-            return await Promise.all(jobs.map(async (job) => await this.releaseInside(job, 'preview_expired')));
+            return await Promise.all(jobs.map(async (job) => await this.releaseInside(await this.job(job.id), 'preview_expired')));
         });
     }
     // USD micro-units (1 USD = 1,000,000); these are NEVER customer credits.

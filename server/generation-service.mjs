@@ -85,6 +85,9 @@ export class GenerationService {
     catch (error) { this.unlock(); throw error; }
     if (databasePath !== ':memory:') chmodSync(databasePath, 0o600);
     this.db = this.ledger.db; this.now = now; this.adapter = adapter; this.enabled = enabled; this.assistantAdapter = assistantAdapter; this.assistantEnabled = assistantEnabled; this.budgetMicros = budgetMicros; this.providerConfigured = providerConfigured; this.tasks = new Set();
+    // The authenticated HTTP service sets this from the server-owned account
+    // role. Request JSON, login form fields and client session labels cannot.
+    this.adminTestUnlimited = false;
     if (managedBudgetIncrease) {
       const highest=this.db.prepare('SELECT COALESCE(MAX(limit_micros),0) value FROM budgets').get().value;
       if(highest>budgetMicros){this.ledger.close();this.unlock();throw Error('BUDGET_DECREASE_REQUIRES_REVIEW');}
@@ -125,12 +128,12 @@ export class GenerationService {
     this.budgetMicros=micros;
   }
   recordTestPurchase({purchaseId,credits}) { this.ledger.recordVerifiedPurchase({purchaseId,userId:LOCAL_USER,credits});return this.wallet(); }
-  wallet() { return { ...this.ledger.wallet(LOCAL_USER), kind: 'test-credits' }; }
+  wallet() { return { ...this.ledger.wallet(LOCAL_USER), kind: this.adminTestUnlimited ? 'admin-test-unlimited' : 'test-credits', ...(this.adminTestUnlimited ? {unlimited:true} : {}) }; }
   status() {
     this.ledger.expire();
     const budget = this.ledger.budget(this.period());
     const available = this.budgetMicros - (budget?.spent_micros ?? 0) - (budget?.held_micros ?? 0);
-    const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : this.budgetMicros < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : this.wallet().available < 1 ? 'NO_TEST_CREDITS' : null;
+    const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : this.budgetMicros < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : !this.adminTestUnlimited && this.wallet().available < 1 ? 'NO_TEST_CREDITS' : null;
     const assistantReason = !this.assistantEnabled ? 'ASSISTANT_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : available < TEXT_MAX_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : null;
     return { mode: 'local-development', commercialReady: false, generation: { enabled: reason === null, photoPurposes: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet: this.wallet(), budget: { currency: 'USD', period: this.period(), limitMicros: this.budgetMicros, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
   }
@@ -152,7 +155,7 @@ export class GenerationService {
     const request = JSON.parse(row.request_json);
     const requestIds = this.db.prepare('SELECT request_id FROM generation_keys WHERE job_id=? ORDER BY rowid DESC').all(id).map(key => key.request_id);
     const state = row.error_code === 'PROVIDER_UNCERTAIN' ? 'uncertain' : row.error_code ? 'failed' : billing.status === 'released' ? (billing.reason === 'customer_rejected' ? 'rejected' : 'expired') : billing.status === 'refunded' ? 'refunded' : billing.status === 'reserved' ? 'running' : billing.status;
-    return { id, requestId: requestIds[0] ?? null, requestIds, projectId: row.project_id, state, mode: request.mode, sourceHash: row.source_hash, createdAt: new Date(row.created_at).toISOString(), model: metadata?.model??IMAGE_MODEL, quality: 'high', outputFormat: request.output.format, ...(metadata?.composition?{composition:metadata.composition,...(metadata.composition==='complete-ad'?{compositionKey:request.output.compositionKey}:{})}:{}), artifact: ['ready','accepted'].includes(state) && includeArtifact && row.artifact_hash ? { ...this.asset(row.artifact_hash), role: row.artifact_role } : null, artifactId: row.artifact_hash, errorCode: row.error_code, usage: metadata?.usage ?? null, cost: metadata?.cost ?? null, providerRequestId: metadata?.providerRequestId ?? null, marketingPlan: request.marketingPlan ?? null, review: 'human-review-required', billingStatus: billing.status, expiresAt: billing.expires_at };
+    return { id, ...(billing.creditExempt ? {creditPolicy:'admin-unlimited',creditCost:0} : {}), requestId: requestIds[0] ?? null, requestIds, projectId: row.project_id, state, mode: request.mode, sourceHash: row.source_hash, createdAt: new Date(row.created_at).toISOString(), model: metadata?.model??IMAGE_MODEL, quality: 'high', outputFormat: request.output.format, ...(metadata?.composition?{composition:metadata.composition,...(metadata.composition==='complete-ad'?{compositionKey:request.output.compositionKey}:{})}:{}), artifact: ['ready','accepted'].includes(state) && includeArtifact && row.artifact_hash ? { ...this.asset(row.artifact_hash), role: row.artifact_role } : null, artifactId: row.artifact_hash, errorCode: row.error_code, usage: metadata?.usage ?? null, cost: metadata?.cost ?? null, providerRequestId: metadata?.providerRequestId ?? null, marketingPlan: request.marketingPlan ?? null, review: 'human-review-required', billingStatus: billing.status, expiresAt: billing.expires_at };
   }
   history(projectId) {
     if (projectId !== undefined && !identifier(projectId)) fail('INVALID_PROJECT_ID');
@@ -185,7 +188,7 @@ export class GenerationService {
       return { job: this.job(matching.id), wallet: this.wallet(), reused: true };
     }
     const rejected = this.db.prepare("SELECT count(*) n FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND j.reason='customer_rejected'").get(fingerprint).n;
-    if (rejected >= 2) fail('REVIEW_REQUIRED_AFTER_REJECTIONS', 409);
+    if (rejected >= 2 && !this.adminTestUnlimited) fail('REVIEW_REQUIRED_AFTER_REJECTIONS', 409);
     const status = this.status();
     if (!status.generation.enabled) fail(status.generation.reason, 503);
     // Serial dispatch avoids a queue whose provider budget could change before execution.
@@ -197,7 +200,7 @@ export class GenerationService {
     // Reserve credits and persist the request in one transaction, including the existing ledger methods.
     try {
       this.ledger.transaction(() => {
-        this.ledger.reserve({ jobId: id, userId: LOCAL_USER, credits: 1, requestHash: fingerprint, modelRevision: IMAGE_REVISION, expiresAt: createdAt + 24 * 60 * 60 * 1000 });
+        this.ledger.reserve({ jobId: id, userId: LOCAL_USER, credits: 1, creditExempt: this.adminTestUnlimited, requestHash: fingerprint, modelRevision: IMAGE_REVISION, expiresAt: createdAt + 24 * 60 * 60 * 1000 });
         this.db.prepare('INSERT INTO generation_records(id,project_id,fingerprint,request_json,source_hash,created_at) VALUES (?,?,?,?,?,?)').run(id, body.projectId, fingerprint, JSON.stringify(request), source?.sha256 ?? null, createdAt);
         this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(body.requestId, fingerprint, id);
       });

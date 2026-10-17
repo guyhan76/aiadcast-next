@@ -3,6 +3,7 @@ import {defaultCampaign} from './campaign.ts';
 import {industryDirections,industryGroupFor,industryLabel} from './industry.ts';
 import {artDirectionFor,requestedCallToAction} from './art-direction.ts';
 import {compactAdDescription} from './ad-copy.ts';
+import {referenceDimensionGuidance} from './specification.ts';
 
 export const creativeLooks=[
  {id:'editorial',label:'에디토리얼',description:'넓은 여백과 선명한 타이포',color:'#f8f7f4',ink:'dark',accent:'#a27853'},
@@ -45,7 +46,7 @@ export function creativeContract(p:Project){
  const settings=creativeSettings(p),category=p.productProfile.category,group=industryGroupFor(category),direction=industryDirections(category).find(d=>d.id===settings.directionId)!;
  const requested=requestedCallToAction(settings.note);
  return {version:1,copyMode:settings.copyMode??'manual',industry:{id:category,label:industryLabel(category),groupId:group.id,groupLabel:group.label},direction:{id:direction.id,label:direction.label,description:direction.description,callToAction:requested==='requested'?direction.cta:requested},artDirection:artDirectionFor(category,p.format,settings.note),ctaPolicy:requested?'customer-requested':'omit',visual:{id:'auto',label:'상품에 맞춘 AI 연출',approvedSceneOverridesStyle:true,backgroundColor:p.background.color,ink:p.ink,composition:'Produce a finished one-page campaign including a prominent reference-based hero, readable marketing copy, supplied benefits and offer, optional dimension labels and visible contacts. Choose useful detail views only when supported by facts and references. Preserve exact material and product construction. No giant empty copy area or saved mood preset. Generated typography is part of the finished bitmap and must be reviewed.'},additionalInstructions:settings.note,
-  factPolicy:'Use only supplied or confirmed business facts. Do not invent prices, performance, returns, medical outcomes, certifications, testimonials or eligibility. Ask for missing facts when needed.',
+  referenceGeometry:referenceDimensionGuidance(p),factPolicy:'Use only supplied or confirmed business facts. Do not invent prices, performance, returns, medical outcomes, certifications, testimonials or eligibility. Ask for missing facts when needed.',
   status:'direction-prepared',providerStatus:'not-connected'};
 }
 

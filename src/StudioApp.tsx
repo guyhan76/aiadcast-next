@@ -1,3 +1,4 @@
+import {creativeCampaignDraft} from './consumer-campaign';
 import {DemoNotice,OfflineDemoControls} from './OfflineDemoControls';
 import {AppFooter} from './AppFooter';
 import {AdminPage} from './AdminPage';
@@ -83,6 +84,11 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  }
  async function ready(p:Project){await saveProject(p);if(!await open(p,true))throw Error(text('현재 작업 저장 실패'));setGenerationIntent(crypto.randomUUID());}
  function editDetails(){setWizardSeed({project:current,step:0});setWizard({project:current,step:0});setWizardKey(k=>k+1);setGenerationIntent(undefined);go('create');}
+ async function createCreativeDraft(){
+  const next=creativeCampaignDraft(current);
+  await saveProject({...current,updatedAt:new Date().toISOString()});
+  setWizardSeed({project:next,step:0});setWizard({project:next,step:0});setWizardKey(k=>k+1);setGenerationIntent(undefined);go('create');
+ }
  const simpleStudio=page==='studio'&&current.presentation==='campaign';
  const libraryItems=JSON.stringify(current)!==JSON.stringify(seed)?[current,...items.filter(p=>p.id!==current.id)]:items;
 
@@ -100,7 +106,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
    {(page==='signup'||page==='login')&&<div className="app-page"><EmailAccountPage key={page} mode={page} preserve={preserve} returnPage={returnPage}/></div>}
    {page==='admin'&&<div className="app-page"><AdminPage/></div>}
    {page==='checkout'&&<div className="app-page"><CheckoutPage preserve={preserve} returnPage={returnPage}/></div>}
-   {simpleStudio?<div className="app-page"><SimpleAdResult project={current} change={fn=>setCurrent(p=>fn(p))} onEdit={editDetails} autoRequest={generationIntent} onAutoHandled={()=>setGenerationIntent(undefined)}/></div>:(page==='studio'||page==='editor')&&<div className="editor-container"><Editor key={editorKey} initialProject={seed} onProjectChange={setCurrent}/></div>}
+   {simpleStudio?<div className="app-page"><SimpleAdResult project={current} change={fn=>setCurrent(p=>fn(p))} onEdit={editDetails} onCreativeDraft={createCreativeDraft} autoRequest={generationIntent} onAutoHandled={()=>setGenerationIntent(undefined)}/></div>:(page==='studio'||page==='editor')&&<div className="editor-container"><Editor key={editorKey} initialProject={seed} onProjectChange={setCurrent}/></div>}
    {(page!=='studio'||simpleStudio)&&page!=='editor'&&<AppFooter/>}
   </div>
   <nav className="mobile-app-nav" aria-label={text("모바일 메뉴")}>{navigation.map(([id,label,Icon])=><a key={id} href={'#'+id} aria-current={page===id?'page':undefined}><Icon size={20}/><span>{text(label)}</span></a>)}</nav>

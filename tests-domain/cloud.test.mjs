@@ -29,7 +29,10 @@ async function pgPool(folder){
   if(closed)throw Error('POOL_CLOSED');let unlock;const previous=tail;tail=new Promise(r=>unlock=r);await previous;
   let released=false;return {on(){},async query(sql,args=[]){
    const r=(!args.length&&sql.trim().split(';').filter(s=>s.trim()).length>1)?(await engine.exec(sql)).at(-1):await engine.query(sql,args);
-   return {...r,rowCount:r.command==='SELECT'?r.rows.length:r.affectedRows};
+   // Match the production pg integer parsers for BIGINT/NUMERIC. PGlite
+   // otherwise leaves SUM(bigint) as strings and concatenates allocations.
+   const rows=r.rows.map(row=>Object.fromEntries(Object.entries(row).map(([name,value])=>{const field=r.fields.find(f=>f.name===name);return [name,value!==null&&[20,1700].includes(field?.dataTypeID)?pg.types.getTypeParser(field.dataTypeID)(String(value)):value];})));
+   return {...r,rows,rowCount:r.command==='SELECT'?rows.length:r.affectedRows};
   },release(){if(!released){released=true;unlock();}}};
  },async end(){await tail;closed=true;await engine.close();}};
 }
@@ -92,6 +95,25 @@ test('cloud test password accounts and owner login survive restart without invit
  for(let i=0;i<5;i++)assert.equal((await s.call('/api/auth/test/login',{body:{email:'member@example.com',password:'Wrong-fixture-password'}})).status,401);
  assert.equal((await s.call('/api/auth/test/login',{body:{email:'member@example.com',password:memberPassword}})).status,429);
  assert.equal(s.calls(),0);
+});
+
+test('cloud administrator tests need zero credits, persist through restart and reject member-supplied exemption flags',async t=>{
+ const tiny={generate:async()=>({bytes,mime:'image/png',width:8,height:8,sha256:hash,role:'background',usage:{},cost:{microUsd:1},model:IMAGE_MODEL,revision:IMAGE_REVISION})};
+ const s=await setup(t,{adapter:tiny});
+ const admin=await s.member('Admin',500000,0);await s.app.store.setRole(admin.user.id,'admin');const token=(await s.call('/api/auth/login',{body:{invite:(await s.app.store.issueInvite(admin.user.id)).invite}})).data.token;
+ const member=await s.member('Member',500000,0);
+ const forged=generation();forged.adminTestUnlimited=true;forged.request.creditExempt=true;forged.request.role='admin';
+ const denied=await s.call('/api/generations',{token:member.token,body:forged});assert.equal(denied.data.error.code,'NO_TEST_CREDITS');
+ const before=await s.call('/api/status',{token});assert.equal(before.data.wallet.unlimited,true);assert.equal(before.data.generation.enabled,true);
+ const input=generation(),created=await s.call('/api/generations',{token,body:input});assert.equal(created.status,202,JSON.stringify(created.data));
+ let job;for(let i=0;i<100;i++){job=(await s.call('/api/generations/'+created.data.job.id,{token})).data.job;if(job.state!=='running')break;await new Promise(r=>setTimeout(r,5));}
+ assert.equal(job.state,'ready');assert.equal(job.creditCost,0);assert.equal(job.creditPolicy,'admin-unlimited');
+ await s.restart();const recovered=(await s.call('/api/generations/'+job.id,{token})).data.job;assert.equal(recovered.creditCost,0);assert.equal(recovered.state,'ready');
+ const accepted=await s.call('/api/generations/'+job.id+'/accept',{token,body:{artifactId:job.artifactId}});assert.equal(accepted.status,200,JSON.stringify(accepted.data));
+ assert.equal(accepted.data.wallet.available,0);assert.equal(accepted.data.wallet.reserved,0);assert.equal(accepted.data.wallet.unlimited,true);
+ assert.equal((await s.call('/api/status',{token})).data.budget.spentMicros,1);
+ await s.app.store.setRole(admin.user.id,'member');const demoted=(await s.call('/api/auth/login',{body:{invite:(await s.app.store.issueInvite(admin.user.id)).invite}})).data;
+ assert.equal((await s.call('/api/status',{token:demoted.token})).data.wallet.unlimited,undefined);
 });
 test('cloud database configuration requires the project session pooler with strict TLS',()=>{
  const uri=`postgresql://postgres.${ref}:fixture%21password@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres`;

@@ -1,6 +1,6 @@
 import type {Project} from './model.ts';
 import {photoRole} from './photo-roles.ts';
-import {dimensionAxes} from './product.ts';
+import {dimensionAxes,isServiceCategory} from './product.ts';
 import {boxProjectionActive} from './box-projection.ts';
 export type ReferenceCheck={view:'perspective'|'front';confirmedSourceHash:string|null};
 export const defaultReferenceCheck=():ReferenceCheck=>({view:'perspective',confirmedSourceHash:null});
@@ -29,5 +29,15 @@ export function specificationContract(p:Project){
  if(values.some(s=>!Number.isFinite(s.value)||s.value<=0||s.value>100000))throw Error('생성 요청의 규격을 확인해주세요.');
  const basis=values[0]?.value;
  return {values,normalizedRatios:values.map(s=>({axis:s.axis,ratio:s.value/basis!})),sourceHash:p.product?.sha256??null,referenceAssessment:assessReference(p),preservation:boxProjectionActive(p)?'source-face-projection':p.generation.mode==='original'?'protected-source-layer':'creative-reference',geometryVerified:false};
+}
+
+// Keep this within creativeDirection: existing servers forward that context to
+// the image provider, whereas the local specification assessment is not forwarded.
+export function referenceDimensionGuidance(p:Project){
+ if(p.generation.mode!=='creative'||isServiceCategory(p.productProfile.category)||!dimensionAxes(p.productProfile).length)return null;
+ const {values,normalizedRatios}=specificationContract(p);
+ const subjectReferenceHashes=[...new Set([p.product,...p.references??[]].flatMap(asset=>asset&&photoRole(p,asset.sha256)==='subject'?[asset.sha256]:[]))];
+ return {subjectReferenceHashes,dimensions:values,normalizedRatios,dimensionLabelsVisible:p.dimensions.visible,canvasRatioIndependent:true,geometryVerified:false,
+  instruction:'Use the actual subject photographs and these named physical dimensions together to guide the product body proportions, even when dimension labels are hidden. Preserve the photographed product construction, material and identity. Apply width, depth, height or diameter to the corresponding physical body axes, not to the photo rectangle, open flaps, handles or shadows. A perspective view projects these ratios; do not force pixel edge lengths to equal unprojected physical ratios and never stretch the photograph to fit the canvas. Use design references for layout and styling only, never as evidence of product geometry or business facts. Review generated shape against the actual photographs and dimensions; supplied guidance is not verified 3D reconstruction.'};
 }
 
