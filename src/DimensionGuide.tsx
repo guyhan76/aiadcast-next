@@ -3,7 +3,7 @@ import type {GeneratedAsset} from './generated';
 import {dimensionGuide,type DimensionGuide as Guide} from './dimension-guide';
 import {useUiLanguage} from './ui-language';
 export async function guidePng(guide:Guide){
- await document.fonts.load('40px "Noto Sans KR Variable"');await document.fonts.ready;
+ await document.fonts.load('40px "Noto Sans KR Variable"',guide.primitives.filter(p=>p.kind==='text').map(p=>p.kind==='text'?p.text:'').join(' '));await document.fonts.ready;
  const canvas=document.createElement('canvas');canvas.width=guide.width*2;canvas.height=guide.height*2;const ctx=canvas.getContext('2d')!;ctx.scale(2,2);ctx.fillStyle='white';ctx.fillRect(0,0,guide.width,guide.height);ctx.lineWidth=3;ctx.lineJoin='round';
  for(const p of guide.primitives){ctx.strokeStyle='#303030';if(p.kind==='text'){ctx.font=`${p.size}px "Noto Sans KR Variable", sans-serif`;ctx.fillStyle=p.color;ctx.fillText(p.text,p.x,p.y);continue;}ctx.beginPath();if(p.kind==='ellipse'){ctx.ellipse(p.x,p.y,p.rx,p.ry,0,0,Math.PI*2);ctx.fillStyle=p.fill;ctx.fill();}else {p.points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));if(p.kind==='polygon'){ctx.closePath();ctx.fillStyle=p.fill;ctx.fill();}else ctx.strokeStyle=p.color;}ctx.stroke();}
  return new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(Error('PNG_FAILED')),'image/png'));
