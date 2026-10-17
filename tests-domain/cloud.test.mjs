@@ -226,3 +226,16 @@ test('cloud planar generation keeps raw and corrected private artifacts and meas
  assert.equal(job.state,'ready');assert.equal(job.planarReport.state,'adjusted');assert.equal(job.planarOriginal.sha256,hashBytes(raw));assert.equal(job.dimensionPlan.variantLabel,'A');assert.notEqual(job.artifactId,job.planarOriginal.sha256);
  assert.equal((await s.call('/api/generations/'+job.id+'/accept',{token:member.token,body:{artifactId:job.artifactId}})).status,200);await s.restart();const restored=(await s.call('/api/generations/'+job.id,{token:member.token})).data.job;assert.equal(restored.state,'accepted');assert.deepEqual(restored.planarOriginal,job.planarOriginal);assert.deepEqual(restored.dimensionPlan,job.dimensionPlan);assert.deepEqual(restored.artifact,job.artifact);assert.equal(calls,1);
 });
+
+test('cloud dimension analysis budget persists in the shared account schema and serializes competing reservations',async()=>{
+ const {CloudVisionLedger}=await import('../server/vision-evaluation/cloud-ledger.mjs');
+ const pool=await pgPool();try{
+  const db=await new PostgresDatabase(pool,'aiadcast_accounts').initialize();
+  const first=await new CloudVisionLedger().initialize(db),second=await new CloudVisionLedger().initialize(db);
+  const attempts=await Promise.allSettled([first.reserve('22932.jpg',hash),second.reserve('22935.jpg',hash)]);
+  assert.equal(attempts.filter(r=>r.status==='fulfilled').length,1);assert.equal(attempts.filter(r=>r.status==='rejected').length,1);
+  const id=attempts.find(r=>r.status==='fulfilled').value;await first.settle(id,1000);
+  for(let i=1;i<10;i++){const restarted=await new CloudVisionLedger().initialize(db);await restarted.settle(await restarted.reserve(i%2?'22935.jpg':'22932.jpg',hash),1000);}
+  const restored=await new CloudVisionLedger().initialize(db);assert.equal((await restored.rows()).length,10);await assert.rejects(restored.reserve('22932.jpg',hash),/APPROVAL_LIMIT/);
+ }finally{await pool.end();}
+});

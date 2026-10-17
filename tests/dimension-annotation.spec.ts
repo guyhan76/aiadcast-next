@@ -1,0 +1,48 @@
+import {test,expect,type Page} from '@playwright/test';
+import sharp from 'sharp';
+import {readFile,writeFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {reloadDraft} from './helpers/workspace';
+const bytes=await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000"><rect width="800" height="1000" fill="#f4f0e8"/><text x="80" y="85" font-size="26">MOCK AD - NO AI ANALYSIS</text><path d="M96 300 L288 300 L384 220 L192 220Z" fill="#cca878"/><path d="M96 300 L288 300 L288 500 L96 500Z" fill="#b69163"/><path d="M288 300 L384 220 L384 400 L288 500Z" fill="#967346"/><text x="80" y="870" font-size="25">Price 19,800 KRW</text></svg>')).png().toBuffer(),hash=createHash('sha256').update(bytes).digest('hex');
+const proposal=()=>({located:true,product:[.1,.2,.4,.35],axes:{width:[[.12,.5],[.36,.5]],depth:[[.36,.5],[.48,.4]],height:[[.48,.4],[.48,.22]]},protectedText:[[.1,.04,.8,.08],[.1,.82,.8,.08]],existingAnnotations:[],inset:[.65,.35,.3,.4]});
+async function setup(page:Page,{available=true,fail=false,delay=false}={}){
+ let generations=0,analyses=0,job:any,release:(()=>void)|undefined;
+ await page.route('**/api/**',async route=>{
+  const r=route.request(),path=new URL(r.url()).pathname,wallet={available:5,reserved:0,kind:'test'};let data:any={};
+  if(path==='/api/status')data={generation:{enabled:true,photoPurposes:true},wallet,budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}};
+  else if(path==='/api/dimension-analysis'){
+   if(r.method()==='GET')data={available,scope:'approved-reference-evaluation',reason:available?null:'REFERENCES_NOT_VERIFIED'};
+   else{analyses++;expect(r.postDataJSON().source.sha256).toBe(hash);if(delay)await new Promise<void>(resolve=>release=resolve);if(fail)return route.fulfill({status:409,json:{error:{code:'DIMENSION_LOCATION_UNCERTAIN'}}});data={sourceHash:hash,proposal:proposal(),verified:false};}
+  }else if(path==='/api/generations'&&r.method()==='POST'){
+   generations++;const body=r.postDataJSON();job={id:'annotation-fixture',projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:'creative',sourceHash:body.source.sha256,createdAt:'2026-10-17T00:00:00.000Z',model:'fixture',artifactId:hash,composition:'complete-ad',compositionKey:body.request.output.compositionKey,artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+bytes.toString('base64'),width:800,height:1000,role:'creative'},marketingPlan:body.request.marketingPlan};data={job,wallet};
+  }else if(path.endsWith('/accept')){job.state='accepted';data={job,wallet};}
+  else if(path.startsWith('/api/generations/'))data={job,wallet};else if(path==='/api/generations')data={jobs:job?[job]:[]};else if(path==='/api/account/capabilities')data={email:{enabled:false},checkout:{enabled:false}};
+  await route.fulfill({json:data});
+ });
+ await page.goto('/#create');const form=page.locator('.consumer-create');await form.getByLabel('산업 선택').selectOption('boxes');await form.getByLabel('상품명',{exact:true}).fill('박스 규격');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('10개 19,800원');await form.getByLabel('참조사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:bytes});await form.getByRole('button',{name:'규격 넣기',exact:true}).click();await form.getByLabel('규격 단위').selectOption('mm');for(const [axis,value] of [['가로','300'],['세로','200'],['높이','100']])await form.getByLabel(axis+' mm',{exact:true}).fill(value);
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();await page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await page.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();await expect(page.locator('.accepted-ad')).toBeVisible();
+ return {counts:()=>({generations,analyses}),release:()=>release?.()};
+}
+async function png(page:Page){const event=page.waitForEvent('download');await page.getByRole('button',{name:'이미지 저장',exact:true}).click();const file=await event;return readFile((await file.path())!);}
+test('automatic-first selection, optional point adjustment, draft restore and both PNG modes need one analysis',async({page},info)=>{
+ const state=await setup(page),panel=page.getByRole('region',{name:'광고 안 규격 표시'}),original=await png(page);
+ await panel.getByRole('radio',{name:'본제품에 직접 표시',exact:true}).check();await expect(panel.getByRole('button',{name:'위치 수정',exact:true})).toBeVisible();
+ const main=await png(page);expect(main.equals(original)).toBe(false);expect(state.counts()).toEqual({generations:1,analyses:1});
+ await panel.getByRole('button',{name:'위치 수정',exact:true}).click();const point=panel.getByRole('button',{name:'가로 시작점',exact:true});await point.focus();await point.press('ArrowRight');await panel.getByRole('button',{name:'위치 적용',exact:true}).click();const adjusted=await png(page);expect(adjusted.equals(main)).toBe(false);
+ await reloadDraft(page);await expect(panel.getByRole('radio',{name:'본제품에 직접 표시',exact:true})).toBeChecked();expect((await png(page)).equals(adjusted)).toBe(true);
+ await panel.getByRole('radio',{name:'같은 제품 작은 사진에 표시',exact:true}).check();const inset=await png(page);expect(inset.equals(adjusted)).toBe(false);expect(state.counts()).toEqual({generations:1,analyses:1});
+ await writeFile(info.outputPath('annotation-main-mock.png'),main);await writeFile(info.outputPath('annotation-inset-mock.png'),inset);await page.setViewportSize({width:360,height:900});await panel.screenshot({path:info.outputPath('annotation-controls-360.png')});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+ await panel.getByRole('radio',{name:'표시 없음',exact:true}).check();expect((await png(page)).equals(original)).toBe(true);expect(state.counts().analyses).toBe(1);
+});
+test('default deployment explains unavailable paid analysis and still downloads the untouched ad',async({page})=>{
+ const state=await setup(page,{available:false}),panel=page.getByRole('region',{name:'광고 안 규격 표시'});
+ await expect(panel).toContainText('일반 광고의 유료 분석은 켜져 있지 않습니다');await expect(panel.getByRole('radio',{name:'본제품에 직접 표시',exact:true})).toBeDisabled();await png(page);expect(state.counts().analyses).toBe(0);
+});
+test('failed automatic location keeps original and does not silently retry or switch to manual-first',async({page})=>{
+ const state=await setup(page,{fail:true}),panel=page.getByRole('region',{name:'광고 안 규격 표시'}),original=await png(page);
+ await panel.getByRole('radio',{name:'본제품에 직접 표시',exact:true}).check();await expect(panel).toContainText('원본 광고는 유지됩니다');await expect(panel.getByRole('button',{name:'위치 수정',exact:true})).toHaveCount(0);expect((await png(page)).equals(original)).toBe(true);expect(state.counts().analyses).toBe(1);
+});
+test('stopping a pending analysis prevents a late response from changing the ad',async({page})=>{
+ const state=await setup(page,{delay:true}),panel=page.getByRole('region',{name:'광고 안 규격 표시'}),original=await png(page);
+ await panel.getByRole('radio',{name:'본제품에 직접 표시',exact:true}).check();await expect(panel.getByRole('button',{name:'요청 중단',exact:true})).toBeVisible();await panel.getByRole('button',{name:'요청 중단',exact:true}).click();state.release();await expect(panel.getByRole('radio',{name:'표시 없음',exact:true})).toBeChecked();expect((await png(page)).equals(original)).toBe(true);expect(state.counts().analyses).toBe(1);
+});

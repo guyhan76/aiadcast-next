@@ -1,3 +1,4 @@
+import {paintAnnotation} from './annotation-render';
 import {dimensionLabel} from './dimension-units';
 import {dimensionAxes,specSummary} from './product.ts';
 import {labels, loadImage,footerVisible} from './model';
@@ -16,6 +17,12 @@ export {geometry} from './layout.ts';
 export const font='"Noto Sans KR Variable", sans-serif';
 const editorialFont='"Noto Serif KR Variable", serif';
 export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axis):Promise<string[]> {
+ if(p.dimensionAnnotation?.mode&&p.dimensionAnnotation.mode!=='none'&&p.dimensionAnnotation.proposal){
+  const errors=await render(canvas,{...p,dimensionAnnotation:undefined},editingAxis);
+  if(errors.length)return errors;
+  try{await paintAnnotation(canvas,p);}catch{return ['규격 표시를 안전하게 배치하지 못했습니다. 위치를 수정하거나 표시 없음을 선택해주세요.'];}
+  return [];
+ }
  if(hasCompleteAd(p)){
   const frame=completeAdPlacement(p),image=await loadImage(p.generated!.asset.data);
   canvas.width=frame.width;canvas.height=frame.height;const ctx=canvas.getContext('2d')!;

@@ -1,3 +1,5 @@
+import {dimensionAnalysisService} from '../vision-evaluation/service.mjs';
+import {CloudVisionLedger} from '../vision-evaluation/cloud-ledger.mjs';
 import {randomUUID} from 'node:crypto';
 import {BetaStore} from './beta-store-base.mjs';
 import {GenerationService} from './generation-base.mjs';
@@ -85,7 +87,7 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
   const supabaseMail=env.AIADCAST_EMAIL_ENABLED==='true'&&env.AIADCAST_EMAIL_PROVIDER==='supabase';
   const accounts=injectedAccounts??accountConfiguration(env);
   if(!injectedAccounts&&supabaseMail)accounts.sendMail=options=>storage.sendAuthEmail(options);
-  app=await createBetaServer({store,publicUrl:config.publicUrl,extraOrigins,staticDirectory,accounts,serviceFactory:async user=>{
+  app=await createBetaServer({store,publicUrl:config.publicUrl,dimensionAnalysis:dimensionAnalysisService({apiKey:config.key,ledgerFactory:()=>new CloudVisionLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),extraOrigins,staticDirectory,accounts,serviceFactory:async user=>{
    instance?.assert();const db=await new PostgresDatabase(pool,cloudSchema(user.id),{guard}).initialize();
    const s=new CloudGenerationService();s.storage=storage;s.cloudUser=user.id;
    await s.initialize({db,managedBudgetIncrease:true,enabled:config.enabled,assistantEnabled:config.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter),adapter:{generate:options=>{instance?.assert();return gate(()=>adapter.generate(options));}},assistantAdapter:options=>{instance?.assert();return gate(()=>assistCopy({...options,apiKey:config.key}));}});
