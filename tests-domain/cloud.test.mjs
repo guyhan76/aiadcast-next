@@ -215,3 +215,14 @@ test('a lost ownership lock blocks subsequent database writes',async t=>{
  let healthy=true;const db=await new PostgresDatabase(pool,'aiadcast_accounts',{guard:()=>{if(!healthy)throw Error('LOCK_LOST');}}).initialize();await db.exec('CREATE TABLE protected(n INTEGER);');healthy=false;
  await assert.rejects(db.prepare('INSERT INTO protected VALUES(?)').run(1),/LOCK_LOST/);
 });
+test('cloud planar generation keeps raw and corrected private artifacts and measured variant through restart',async t=>{
+ const {OpenAIImageAdapter}=await import('../server/openai-image-adapter.mjs');const {newProject}=await import('../src/model.ts');const {buildGenerationRequest}=await import('../src/generation.ts');let calls=0;
+ const raw=await sharp(Buffer.from('<svg width="1024" height="1024"><rect width="1024" height="1024" fill="white"/><rect x="200" y="260" width="600" height="340" fill="#305060"/></svg>')).png().toBuffer();
+ const adapter=new OpenAIImageAdapter({apiKey:'local-fixture-only',fetchImpl:async()=>{calls++;return Response.json({data:[{b64_json:raw.toString('base64')}],usage});}});
+ const s=await setup(t,{adapter}),member=await s.member('Variant tester',1000000,1),p=newProject();const photo=await sharp(Buffer.from('<svg width="300" height="300"><rect width="300" height="300" fill="white"/><rect x="50" y="60" width="180" height="120" fill="#305060"/></svg>')).png().toBuffer();
+ p.product={name:'flat.png',data:'data:image/png;base64,'+photo.toString('base64'),sha256:hashBytes(photo),width:300,height:300};p.productProfile.specType='flat';p.dimensions.width='180';p.dimensions.depth='120';p.generation={mode:'creative',brief:'Flat product',dimensionBased:true,dimensionVariant:'A',planarSourceHash:p.product.sha256};
+ const body={requestId:randomUUID(),projectId:p.id,request:buildGenerationRequest(p),source:p.product};const created=await s.call('/api/generations',{token:member.token,body});assert.equal(created.status,202,JSON.stringify(created.data));
+ let job;for(let i=0;i<100;i++){job=(await s.call('/api/generations/'+created.data.job.id,{token:member.token})).data.job;if(job.state!=='running')break;await new Promise(r=>setTimeout(r,10));}
+ assert.equal(job.state,'ready');assert.equal(job.planarReport.state,'adjusted');assert.equal(job.planarOriginal.sha256,hashBytes(raw));assert.equal(job.dimensionPlan.variantLabel,'A');assert.notEqual(job.artifactId,job.planarOriginal.sha256);
+ assert.equal((await s.call('/api/generations/'+job.id+'/accept',{token:member.token,body:{artifactId:job.artifactId}})).status,200);await s.restart();const restored=(await s.call('/api/generations/'+job.id,{token:member.token})).data.job;assert.equal(restored.state,'accepted');assert.deepEqual(restored.planarOriginal,job.planarOriginal);assert.deepEqual(restored.dimensionPlan,job.dimensionPlan);assert.deepEqual(restored.artifact,job.artifact);assert.equal(calls,1);
+});

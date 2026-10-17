@@ -1,3 +1,4 @@
+import {makeDimensionPlan} from './dimension-generation.ts';
 import {validMillimeters} from './dimension-units.ts';
 import {photoRole} from './photo-roles.ts';
 import {dimensionAxes,isServiceCategory} from './product.ts';
@@ -11,18 +12,23 @@ import {creativeContract} from './creative.ts';
 import {boxProjectionActive,boxProjectionError} from './box-projection.ts';
 import {publicAdCopy,completeAdKey} from './complete-ad.ts';
 export type GenerationMode = 'original' | 'creative';
-export type GenerationSettings = {mode:GenerationMode;brief:string};
+export type GenerationSettings = {mode:GenerationMode;brief:string;planarSourceHash?:string;dimensionVariant?:string;dimensionBased?:boolean;dimensionBasis?:'outer-body'|'garment-flat'};
 export const defaultGeneration = ():GenerationSettings => ({mode:'original',brief:''});
 export function parseGeneration(value:unknown):GenerationSettings {
   if(value===undefined)return defaultGeneration();
   if(!value||typeof value!=='object')throw Error('이미지 제작 방식이 올바르지 않습니다.');
   const settings=value as GenerationSettings;
   if(!['original','creative'].includes(settings.mode)||typeof settings.brief!=='string'||settings.brief.length>600)throw Error('이미지 제작 방식과 요청 내용을 확인해주세요.');
-  return {mode:settings.mode,brief:settings.brief};
+  if(settings.dimensionVariant!==undefined&&(typeof settings.dimensionVariant!=='string'||settings.dimensionVariant.length>80))throw Error('규격 이름을 확인해주세요.');
+  if(settings.dimensionBased!==undefined&&typeof settings.dimensionBased!=='boolean'||settings.dimensionBasis!==undefined&&!['outer-body','garment-flat'].includes(settings.dimensionBasis))throw Error('규격 기반 생성 옵션을 확인해주세요.');
+  if(settings.planarSourceHash!==undefined&&!/^[a-f0-9]{64}$/.test(settings.planarSourceHash))throw Error('평면 비례 적용 사진을 확인해주세요.');
+  return {mode:settings.mode,brief:settings.brief,...(settings.dimensionBased?{dimensionBased:true,dimensionVariant:settings.dimensionVariant??'',dimensionBasis:settings.dimensionBasis??'outer-body',...(settings.planarSourceHash?{planarSourceHash:settings.planarSourceHash}:{})}:{})};
 }
 export function generationIssues(p:Project):string[] {
   const creative=(p.generation??defaultGeneration()).mode==='creative';
   const axes=dimensionAxes(p.productProfile);const errors:string[]=[];
+  if(p.generation.dimensionBased&&(p.generation.mode!=='creative'||!axes.length||!p.product||photoRole(p,p.product.sha256)!=='subject'||p.generation.dimensionBasis==='garment-flat'&&p.productProfile.specType!=='flat'))errors.push('규격 기반 생성은 실제 상품 사진과 치수 기준에 맞는 숫자 규격이 필요합니다.');
+  if(p.generation.planarSourceHash&&(!p.generation.dimensionBased||p.generation.dimensionBasis==='garment-flat'||p.generation.mode!=='creative'||p.productProfile.specType!=='flat'||p.generation.planarSourceHash!==p.product?.sha256||photoRole(p,p.generation.planarSourceHash)!=='subject'))errors.push('평면 비례 자동 적용은 현재 실제 상품의 정면 사진과 가로·세로 규격을 확인한 경우에만 사용합니다.');
   const projectionError=boxProjectionError(p);if(projectionError)errors.push(projectionError);
   const service=isServiceCategory(p.productProfile.category);
   if(!p.product&&!service)errors.push(creative?'참고할 상품 사진을 추가해주세요.':'원본 상품 사진을 추가해주세요.');
@@ -45,7 +51,10 @@ export function buildGenerationRequest(p:Project) {
   const direction=conversationContract(p),appearanceEdit=direction.productPolicy.maskRequired;
   if(direction.pendingQuickEditIds.length)throw Error('대화의 빠른 편집 변경안을 적용하거나 제외한 뒤 생성 요청을 준비해주세요.');
   if(appearanceEdit&&!p.product)throw Error('상품 인쇄·색상을 수정하려면 실제 상품 사진을 추가해주세요.');
+  const specifications=dimensionAxes(p.productProfile).map(axis=>({axis:axis==='width'&&p.productProfile.specType==='cylindrical'?'diameter':axis,value:p.dimensions[axis],unit:'mm'}));
   return {
+    ...(generation.dimensionBased?{dimensionPlan:makeDimensionPlan({sourceHash:p.product!.sha256,variantLabel:generation.dimensionVariant,basis:generation.dimensionBasis,specType:p.productProfile.specType,specifications})}:{}),
+    ...(generation.planarSourceHash?{proportionControl:{kind:'flat-front-v1',confirmedSourceHash:generation.planarSourceHash,variantLabel:generation.dimensionVariant??''}}:{}),
     version:1,mode:generation.mode,operation:appearanceEdit?'image-region':creative?(service?'image-ad-creative':'image-product-concept'):(service?'compose-ad':'compose-original'),
     source:p.product?{sha256:p.product.sha256,role:appearanceEdit?'appearance-edit-reference':creative?'visual-reference':service?'protected-visual':'protected-product',purpose:photoRole(p,p.product.sha256)}:null,
     references:(p.references??[]).map(a=>({sha256:a.sha256,role:'additional-product-reference',purpose:photoRole(p,a.sha256)})),

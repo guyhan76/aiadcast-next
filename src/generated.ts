@@ -1,3 +1,5 @@
+import {parseDimensionPlan,type DimensionPlan} from './dimension-generation.ts';
+import {parsePlanarReport,type PlanarReport} from './planar-proportion.ts';
 import {parseMarketingPlan} from './marketing-plan.ts';
 import type {MarketingPlan} from './marketing-plan.ts';
 import {validMillimeters} from './dimension-units.ts';
@@ -11,7 +13,7 @@ import {completeAdKey} from './complete-ad.ts';
 export type GeneratedAsset = {
  jobId:string;mode:'original'|'creative';sourceHash:string|null;asset:Asset;
  role:'background'|'creative';model:string;createdAt:string;specificationKey:string;marketingPlan?:MarketingPlan;
- composition?:'complete-ad'|'photo-plate';compositionKey?:string;
+ composition?:'complete-ad'|'photo-plate';compositionKey?:string;dimensionPlan?:DimensionPlan;planarReport?:PlanarReport;planarOriginal?:Asset;
 };
 
 // This is a local reuse key, not proof of provider origin or payment acceptance.
@@ -19,6 +21,8 @@ export type GeneratedAsset = {
 export function generatedCompatibilityKey(p:Project):string {
  return JSON.stringify({
   sourceHash:p.product?.sha256??null,
+  ...(p.generation.dimensionBased?{dimensionBased:true,dimensionVariant:p.generation.dimensionVariant??'',dimensionBasis:p.generation.dimensionBasis??'outer-body'}:{}),
+  ...(p.generation.planarSourceHash?{planarSourceHash:p.generation.planarSourceHash,dimensionVariant:p.generation.dimensionVariant??''}:{}),
   ...(p.references?.length?{referenceHashes:p.references.map(a=>a.sha256)}:{}),
   ...(stylePhotoHashes(p).length?{stylePhotoHashes:stylePhotoHashes(p)}:{}),
   mode:p.generation.mode,
@@ -85,15 +89,23 @@ export async function parseGenerated(value:unknown,readAsset:(value:unknown)=>Pr
  }
  let key:unknown;try{key=JSON.parse(specificationKey);}catch{throw Error('생성 결과의 규격 정보를 확인해주세요.');}
  if(!key||typeof key!=='object'||Array.isArray(key))throw Error('생성 결과의 규격 정보를 확인해주세요.');
- const details=key as {sourceHash:unknown;mode:unknown;productProfile:unknown;specifications:unknown};
+ const details=key as {sourceHash:unknown;mode:unknown;productProfile:unknown;specifications:unknown;planarSourceHash?:unknown;dimensionVariant?:unknown;dimensionBased?:unknown;dimensionBasis?:unknown};
  if(details.sourceHash!==r.sourceHash||details.mode!==r.mode||!Array.isArray(details.specifications))throw Error('생성 결과의 원본·규격 정보가 일치하지 않습니다.');
  if(!details.productProfile||typeof details.productProfile!=='object'||Array.isArray(details.productProfile))throw Error('생성 결과의 상품 정보를 확인해주세요.');
  const profile=parseProfile(details.productProfile),axes=dimensionAxes(profile);
  if(details.specifications.length!==axes.length||details.specifications.some((entry,index)=>!entry||typeof entry!=='object'||entry.axis!==axes[index]||entry.unit!=='mm'||typeof entry.value!=='string'||!validMillimeters(entry.value)))throw Error('생성 결과의 규격 정보를 확인해주세요.');
  const marketingPlan=parseMarketingPlan(r.marketingPlan);
  if(marketingPlan&&(marketingPlan.input.sourceHash!==r.sourceHash||marketingPlan.input.mode!==r.mode))throw Error('생성 결과의 광고 기획과 원본 정보가 일치하지 않습니다.');
+ const dimensionPlan=parseDimensionPlan(r.dimensionPlan);
+ if(details.dimensionBased===true&&!dimensionPlan)throw Error('INVALID_DIMENSION_PLAN');
+ if(dimensionPlan&&(dimensionPlan.sourceHash!==r.sourceHash||details.dimensionBased!==true||dimensionPlan.variantLabel!==details.dimensionVariant||dimensionPlan.basis!==details.dimensionBasis||dimensionPlan.specType!==(details.productProfile as {specType:string}).specType||dimensionPlan.measurements.length!==(details.specifications as unknown[]).length||dimensionPlan.measurements.some((m,i)=>{const spec=(details.specifications as {axis:string;value:string;unit:string}[])[i];return m.value!==spec?.value||m.axis!==(profile.specType==='cylindrical'&&spec?.axis==='width'?'diameter':spec?.axis)||m.unit!==spec?.unit;})))throw Error('INVALID_DIMENSION_PLAN');
+ const planarReport=parsePlanarReport(r.planarReport),planarOriginal=r.planarOriginal?await readAsset(r.planarOriginal):undefined;
+ if(details.planarSourceHash&&!planarReport||planarOriginal&&!planarReport)throw Error('INVALID_PLANAR_REPORT');
+ if(planarReport&&(details.planarSourceHash!==r.sourceHash||details.dimensionVariant!==(planarReport.variantLabel??'')))throw Error('INVALID_PLANAR_REPORT');
+ if(planarReport&&(!planarOriginal||planarOriginal.sha256!==planarReport.originalHash))throw Error('INVALID_PLANAR_REPORT');
  const asset=await readAsset(r.asset);
  if(!asset)throw Error('생성 결과 이미지가 누락되었습니다.');
- return {jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey,...(marketingPlan?{marketingPlan}:{}),...(r.composition?{composition:r.composition}:{}),...(compositionKey?{compositionKey}:{})};
+ if(planarReport?.outputRatio&&Math.abs(asset.width/asset.height-planarReport.outputRatio)>1e-9)throw Error('INVALID_PLANAR_REPORT');
+ return {...(dimensionPlan?{dimensionPlan}:{}),...(planarReport?{planarReport,planarOriginal:planarOriginal!}:{}),jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey,...(marketingPlan?{marketingPlan}:{}),...(r.composition?{composition:r.composition}:{}),...(compositionKey?{compositionKey}:{})};
 }
 

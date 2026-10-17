@@ -2,7 +2,13 @@
 
 2026-10-11 UTC. Render Free에서 웹 앱·Node·sharp·OpenAI 호출을 실행하고, Supabase Free에 회원·세션·프로젝트·사용량·원본/생성 이미지를 보관한다. 실제 원격 배포와 OpenAI 호출은 아직 확인하지 않았다. OpenAI 사용료는 호스팅 무료 요금과 별도다.
 
-## 2026-10-17 배포 대상 정정 — 아직 배포하지 않음
+## 최신 추가 후보 — 선택적 규격 기반 생성
+
+`feat/dimension-variants-planar-control-20261017`은 PR #8의 `e9eb57ee89fbad5427ccce8a454f4cad92a2ebe6` 위에 쌓인 후속 수정이다. 이번 draft PR의 최종 head와 해당 원격 CI 통과를 확인해 정확한 SHA를 고정한다. 기능 범위·제한·데이터·검증은 [규격 기반 생성 기록](dimension-variants-20261017.md)을 따른다. 프런트와 API를 함께 배포해야 한다.
+
+사용자 보고로 `0836e087ecdc60a3417a9aa5bc679148057c4af9` 수동 배포 및 실제 광고 생성 성공을 확인했다. 아래 `aa9c8d2`/PR #5 연결 상태는 **당시 기록**이며 현재 Live 상태가 아니다. PR #8과 이번 후보가 운영에 반영됐다고 확인하지 않았다. 이번 환경에는 인증된 Render 실행 경로가 없고 공개 health 읽기도 프록시 403으로 막혀, 현재 서비스·브랜치·환경·SHA 확인과 배포를 실행하지 못했다. 기존 환경값을 유지하고 인증된 운영 화면에서 상태부터 재확인해야 한다.
+
+## 이전 CI 수정 당시 기록 — 아래 운영 상태는 최신 상태가 아님
 
 - 최신 기능 기준은 draft PR #6의 `feat/image-skills-patent-results-20261015`, 커밋 `2151eb992d32dfb2e180c6310506acb682147be4`다. PR #6은 PR #5 (`feat/patent-product-generation-20261011`) 위에 쌓여 있다. 당시 `main`보다 81커밋 앞서므로 `main` 또는 PR #5만 배포하면 최신 사진·규격·관리자 기능을 포함하지 못한다.
 - 이번 CI/복구 수정 후보는 `fix/browser-draft-recovery-20261017`이다. 위 PR #6 head를 그대로 조상으로 유지한다. **이 수정 브랜치의 최종 커밋과 해당 원격 CI 통과 여부를 확인한 뒤** 배포할 정확한 SHA를 고정한다. draft PR은 배포 승인을 뜻하지 않는다. 강제 push나 기존 PR 병합은 필요하지 않다.
@@ -42,7 +48,7 @@ postgresql://postgres.PROJECT_REF:URL_ENCODED_DATABASE_PASSWORD@EXACT_POOLER_HOS
 | 항목 | 설정 |
 |---|---|
 | GitHub 저장소 | `guyhan76/aiadcast-next` |
-| Branch | `fix/browser-draft-recovery-20261017` — 최종 SHA·CI·서비스 연결 확인 후 배포 후보 |
+| Branch | `feat/dimension-variants-planar-control-20261017` — 최종 head SHA·CI·서비스 연결을 확인한 후속 후보 |
 | Runtime | Docker |
 | Dockerfile Path | `./Dockerfile.beta` |
 | Root Directory / Docker Command | 비워둠 |
