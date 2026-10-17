@@ -36,12 +36,14 @@ test('production analysis defaults closed even with an existing server key; it n
 test('server approval rejects new ads and forged admin fields before paid analysis; existing key stays inside server adapter',async()=>{
  const bytes=await sharp({create:{width:8,height:8,channels:3,background:'white'}}).png().toBuffer();
  const source={data:`data:image/png;base64,${bytes.toString('base64')}`,sha256:sourceHash(bytes),width:8,height:8};
- let calls=0,opened=0;const ledger={close(){}};
- const service=dimensionAnalysisService({apiKey:'existing-mock-key',approvedHashes:{'22932.jpg':source.sha256},ledgerFactory:()=>{opened++;return ledger;},analyze:async options=>{calls++;assert.equal(options.apiKey,'existing-mock-key');assert.equal(options.ledger,ledger);return {proposal:proposal()};}});
- await assert.rejects(service.analyze({source,role:'admin'}, {role:'member'}),e=>e.code==='EVALUATION_ADMIN_ONLY');
- await assert.rejects(service.analyze({source:{...source,sha256:'a'.repeat(64)}}, {role:'admin'}),e=>e.code==='INVALID_SOURCE');
+ let calls=0,opened=0;let cached=null;const ledger={async request(){return cached;},async finish(actor,id,result){cached={hash:source.sha256,result_json:JSON.stringify(result)};},close(){}};
+ const service=dimensionAnalysisService({evaluationEnabled:true,apiKey:'existing-mock-key',references:[{name:'22932.jpg',bytes:bytes.length}],approvedHashes:{'22932.jpg':source.sha256},ledgerFactory:()=>{opened++;return ledger;},analyze:async options=>{calls++;assert.equal(options.apiKey,'existing-mock-key');assert.equal(typeof options.ledger.reserve,'function');return {proposal:proposal()};}});
+ const requestId='reference_request_0001',admin={id:'admin-test',role:'admin'};
+ await assert.rejects(service.analyze({requestId,source,role:'admin'}, {role:'member'}),e=>e.code==='EVALUATION_ADMIN_ONLY');
+ await assert.rejects(service.analyze({requestId,source:{...source,sha256:'a'.repeat(64)}},admin),e=>e.code==='INVALID_SOURCE');
  const other=await sharp({create:{width:8,height:8,channels:3,background:'black'}}).png().toBuffer();
- await assert.rejects(service.analyze({source:{...source,data:`data:image/png;base64,${other.toString('base64')}`,sha256:sourceHash(other)}},{role:'admin'}),e=>e.code==='IMAGE_OUTSIDE_ANALYSIS_APPROVAL');
+ await assert.rejects(service.analyze({requestId,source:{...source,data:`data:image/png;base64,${other.toString('base64')}`,sha256:sourceHash(other)}},admin),e=>e.code==='IMAGE_OUTSIDE_ANALYSIS_APPROVAL');
  assert.equal(opened,0);assert.equal(calls,0);
- const result=await service.analyze({source},{role:'admin'});assert.equal(calls,1);assert.equal(result.verified,false);assert.equal(result.sourceHash,source.sha256);assert.equal(JSON.stringify(result).includes('existing-mock-key'),false);await service.close();
+ const result=await service.analyze({requestId,source},admin);assert.equal(calls,1);assert.equal(result.verified,false);assert.equal(result.sourceHash,source.sha256);assert.equal(JSON.stringify(result).includes('existing-mock-key'),false);
+ assert.deepEqual(await service.analyze({requestId,source},admin),result);assert.equal(calls,1);await service.close();
 });

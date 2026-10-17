@@ -5,9 +5,8 @@ import { HOLD_MICROS, TARGETS } from './ledger.mjs';
 export const MODEL = 'gpt-5.4-mini-2026-03-17';
 export const ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 export const OUTPUT_TOKENS = 1500;
-// Do not populate from caller filenames. Bind to bytes only after authorized
-// Library materialization and visual inspection. Until then live calls fail closed.
-export const APPROVED_HASHES = Object.freeze({ '22932.jpg': null, '22935.jpg': null });
+import {APPROVED_HASHES} from './references.mjs';
+export {APPROVED_HASHES};
 const point = { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2 };
 const box = { type: 'array', items: { type: 'number' }, minItems: 4, maxItems: 4 };
 const edge = { type: 'array', items: point, minItems: 2, maxItems: 2 };

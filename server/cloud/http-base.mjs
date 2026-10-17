@@ -143,11 +143,20 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, now =
                 return;
             }
             if (req.method === 'POST' && url.pathname === '/api/dimension-analysis') {
-                send(res, 200, await dimensionAnalysis.analyze(await read(req, 14100000), user), cors);
-                return;
+                throw new ApiFailure('REFERENCE_EVALUATION_ONLY', 403);
             }
             if (url.pathname.startsWith('/api/admin/')) {
                 admin.require(user);
+                if (url.pathname === '/api/admin/dimension-evaluation') {
+                    if (req.method === 'GET') {
+                        send(res, 200, await dimensionAnalysis.status(user, url.searchParams.get('requestId') ?? undefined), cors);
+                        return;
+                    }
+                    if (req.method === 'POST') {
+                        send(res, 200, await dimensionAnalysis.analyze(await read(req, 14100000), user), cors);
+                        return;
+                    }
+                }
                 if (req.method === 'GET' && url.pathname === '/api/admin/overview') {
                     send(res, 200, await admin.overview(user), cors);
                     return;
