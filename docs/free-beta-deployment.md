@@ -1,5 +1,11 @@
 # aiadcast 무료 베타 서버 연결
 
+## 현재 운영 기준과 자동 규격 평가 분리 — 2026-10-17
+
+최신 사용자 보고 운영 SHA는 `d6032b3efa9aff1b3f9440e7d5572474a2c89d0a` (`feat/dimension-guide-image-20261017`, draft PR #10)이다. 아래 PR #5·#7·#9의 Live 표기는 당시 기록이다. 이 환경에서 Render 현재 상태를 독립 조회한 것은 아니다.
+
+`feat/automatic-dimension-evaluation-20261017`은 위 SHA 위에 쌓은 **실험용 분석/합성 평가 경로**다. 실제 분석 미실시, 운영 UI 미연결 상태이며 배포 대상으로 삼지 않는다. [범위·비용 한도·차단 조건](automatic-dimension-evaluation-20261017.md)을 따른다. 사용자가 승인한 것은 첨부 박스·쇼핑백 분석 총 10회/US$0.30이며 이미지 생성이나 운영 배포 승인이 아니다. 현재 키 연결과 이미지 파일 확보가 막혀 실제 호출 0회다.
+
 2026-10-11 UTC. Render Free에서 웹 앱·Node·sharp·OpenAI 호출을 실행하고, Supabase Free에 회원·세션·프로젝트·사용량·원본/생성 이미지를 보관한다. 실제 원격 배포와 OpenAI 호출은 아직 확인하지 않았다. OpenAI 사용료는 호스팅 무료 요금과 별도다.
 
 ## 최신 후속 후보 — 별도 규격 안내 이미지
