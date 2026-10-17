@@ -13,7 +13,7 @@ import {HomeShowcase} from './HomeShowcase';
 import {BetaAccount} from './BetaAccount';
 import {TestConnection} from './TestConnection';
 import {useUiLanguage,LanguageSwitcher} from './ui-language';
-import {useEffect,useState} from 'react';
+import {useEffect,useLayoutEffect,useState} from 'react';
 import {ArrowUpRight,BookOpen,FolderOpen,Home,Plus,ShieldCheck} from 'lucide-react';
 import Editor from './App';
 import {SimpleAdResult} from './SimpleAdResult';
@@ -44,13 +44,15 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  const {language,text}=useUiLanguage();
  const [page,setPage]=useState<Page>(currentPage),[seed,setSeed]=useState<Project>(()=>restored?.editor??({...newProject(),locale:language})),[current,setCurrent]=useState<Project>(seed),[editorKey,setEditorKey]=useState(0);
  const [wizardKey,setWizardKey]=useState(0),[items,setItems]=useState<Project[]>([]),[libraryError,setLibraryError]=useState('');
+ const [draftSaving,setDraftSaving]=useState(false),[draftError,setDraftError]=useState(false);
  const [switchError,setSwitchError]=useState('');const [generationIntent,setGenerationIntent]=useState<string|undefined>();
  const [wizard,setWizard]=useState<WizardDraft|undefined>(restored?.wizard),[wizardSeed,setWizardSeed]=useState(restored?.wizard);
  const [returnPage,setReturnPage]=useState<WorkspaceDraft['returnPage']>(restored?.returnPage??'home');
  useEffect(()=>{if(page==='create'||page==='studio')setReturnPage(page);},[page]);
  const snapshot:WorkspaceDraft={wizard,editor:current,returnPage};
  async function preserve(){await saveWorkspace(snapshot);}
- useEffect(()=>{const timer=setTimeout(()=>{void saveWorkspace({wizard,editor:current,returnPage}).catch(()=>setSwitchError(text('입력 내용을 기기에 보관하지 못했습니다. 저장 공간을 확인해주세요.')));},250);return()=>clearTimeout(timer);},[wizard,current,returnPage]);
+ // Persist every committed edit immediately: a debounce discarded photos on quick reloads.
+ useLayoutEffect(()=>{let active=true;setDraftSaving(true);void saveWorkspace({wizard,editor:current,returnPage}).then(()=>{if(active){setDraftSaving(false);setDraftError(false);}}).catch(()=>{if(active){setDraftSaving(false);setDraftError(true);}});return()=>{active=false;};},[wizard,current,returnPage]);
  useEffect(()=>{const onHash=()=>{setPage(currentPage());window.scrollTo(0,0);};window.addEventListener('hashchange',onHash);return()=>window.removeEventListener('hashchange',onHash);},[]);
  useEffect(()=>{if(page!=='projects')return;let alive=true;projects().then(p=>{if(alive){setItems(p);setLibraryError('');}}).catch(()=>{if(alive)setLibraryError(text('이 기기의 저장된 작업을 읽지 못했습니다.'));});return()=>{alive=false};},[page]);
  function go(next:Page){location.hash=next;setPage(next);window.scrollTo(0,0);}
@@ -95,6 +97,8 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  return <div className={`studio-shell ${(page==='editor'||page==='studio'&&!simpleStudio)?'editor-route':''}`}>
   <aside className="app-sidebar"><a href="#home" className="app-brand" aria-label={text("aiadcast 홈")}><Brand/><small>{language==='ko'?'내 브랜드의 광고 제작 파트너':'YOUR CREATIVE PARTNER'}</small></a><nav aria-label={text("주 메뉴")}>{navigation.map(([id,label,Icon])=><a href={'#'+id} key={id} aria-current={page===id?'page':undefined}><Icon size={19}/><span>{text(label)}</span>{id==='create'&&<span className="nav-plus">+</span>}</a>)}</nav><div className="sidebar-bottom"><div className="studio-mark"><ShieldCheck size={20}/><span>{text("당신의 상품.")}<br/><strong>{text("당신의 브랜드.")}</strong></span></div><span>aiadcast Studio<br/>by selluplabs</span></div></aside>
   <div className="app-content"><DemoNotice/>{page==='guide'&&<details className="account-drawer"><summary>{language==='ko'?'테스트 계정 · 서버 연결':'Test account & connection'}</summary><OfflineDemoControls preserve={preserve} beforeChange={async()=>{await preserve();await saveWorkspace(snapshot,'guest');}}/>{!offlineDemo()&&<TestConnection preserve={preserve} beforeChange={async()=>{await preserve();await saveWorkspace(snapshot,'guest');}}/>}{!offlineDemo()&&<BetaAccount current={current} onOpen={p=>open(p,true)}/>}</details>}
+   {page==='create'&&<p className="workspace-save-state" aria-live="polite">{draftSaving?(language==='ko'?'입력 내용 저장 중…':'Saving your draft…'):draftError?(language==='ko'?'입력 내용 저장 실패':'Draft could not be saved'):(language==='ko'?'입력 내용이 기기에 저장되었습니다.':'Draft saved on this device.')}</p>}
+   {draftError&&<p className="wizard-error" role="alert">{text('입력 내용을 기기에 보관하지 못했습니다. 저장 공간을 확인해주세요.')}</p>}
    {switchError&&<p className="wizard-error" role="alert">{switchError}</p>}
    {(page!=='studio'||simpleStudio)&&page!=='editor'&&<header className="app-header"><a href="#home" className="mobile-brand" aria-label={text("aiadcast 홈")}><Brand/></a><span className="workspace-label">{language==='ko'?'내 상품과 서비스를 위한 광고 작업실':'SELLUPLABS / CREATIVE WORKSPACE'}</span><div className="app-header-actions"><LanguageSwitcher/><PricingDialog/>{betaSession()?.user.role==='admin'&&<a className="account-link" href="#admin">{language==='ko'?'관리자':'Admin'}</a>}<a className="account-link" href={betaSession()?"#checkout":"#login"}>{text(betaSession()?"내 이용권":"로그인")}</a></div></header>}
    <div hidden={page!=='home'} className="home-page app-page">
@@ -106,7 +110,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
    {(page==='signup'||page==='login')&&<div className="app-page"><EmailAccountPage key={page} mode={page} preserve={preserve} returnPage={returnPage}/></div>}
    {page==='admin'&&<div className="app-page"><AdminPage/></div>}
    {page==='checkout'&&<div className="app-page"><CheckoutPage preserve={preserve} returnPage={returnPage}/></div>}
-   {simpleStudio?<div className="app-page"><SimpleAdResult project={current} change={fn=>setCurrent(p=>fn(p))} onEdit={editDetails} onCreativeDraft={createCreativeDraft} autoRequest={generationIntent} onAutoHandled={()=>setGenerationIntent(undefined)}/></div>:(page==='studio'||page==='editor')&&<div className="editor-container"><Editor key={editorKey} initialProject={seed} onProjectChange={setCurrent}/></div>}
+   {simpleStudio?<div className="app-page"><SimpleAdResult project={current} change={fn=>setCurrent(p=>fn(p))} onEdit={editDetails} onCreativeDraft={createCreativeDraft} autoRequest={generationIntent} onAutoHandled={()=>setGenerationIntent(undefined)}/></div>:(page==='studio'||page==='editor')&&<div className="editor-container"><Editor key={editorKey} initialProject={current} onProjectChange={setCurrent}/></div>}
    {(page!=='studio'||simpleStudio)&&page!=='editor'&&<AppFooter/>}
   </div>
   <nav className="mobile-app-nav" aria-label={text("모바일 메뉴")}>{navigation.map(([id,label,Icon])=><a key={id} href={'#'+id} aria-current={page===id?'page':undefined}><Icon size={20}/><span>{text(label)}</span></a>)}</nav>

@@ -32,7 +32,7 @@ async function recoveryApi(page:Page,scenario:'invalid-first'|'lose-second'){
   }
   return json({error:{code:'UNEXPECTED_TEST_ENDPOINT'}},404);
  });
- await page.goto('/#studio');await page.locator('.editor-details > summary').click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:png});
+ await page.goto('/#editor');await page.locator('.editor-details > summary').click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:png});
  const panel=page.getByRole('region',{name:'AI 광고 제작',exact:true});await expect(panel).toHaveCount(1);
  await expect(panel.getByText('생성 테스트 연결됨',{exact:true})).toBeVisible();
  return {panel,state};
@@ -52,7 +52,7 @@ test('a definite validation rejection clears pending state so a corrected reques
 test('a lost second response hides the old accepted job and recovers only the matching request',async({page})=>{
  const {panel,state}=await recoveryApi(page,'lose-second');
  const create=panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true});
- await create.click();await panel.getByRole('checkbox',{name:'상품·배경·형태를 확인했습니다.',exact:true}).check();
+ await create.click();await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
  await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  await expect(panel.getByText('사용 확정한 시안',{exact:true})).toBeVisible();expect(state.acceptedIds).toEqual(['recovery_job_1']);
  await create.click();await expect(panel.getByRole('alert')).toContainText('자동으로 다시 생성하지 않습니다');
@@ -63,7 +63,7 @@ test('a lost second response hides the old accepted job and recovers only the ma
  await panel.getByRole('button',{name:'연결 상태 확인',exact:true}).click();
  await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();expect(state.historyReads).toBe(1);
  expect(state.readIds).toEqual(['recovery_job_2']);expect(state.posts).toBe(2);
- await panel.getByRole('checkbox',{name:'상품·배경·형태를 확인했습니다.',exact:true}).check();
+ await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
  await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  await expect(panel.getByText('사용 확정한 시안',{exact:true})).toBeVisible();expect(state.acceptedIds).toEqual(['recovery_job_1','recovery_job_2']);
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'프로젝트 백업',exact:true}).click();

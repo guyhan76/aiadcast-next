@@ -3,11 +3,11 @@ import {readFile} from 'node:fs/promises';
 import sharp from 'sharp';
 const photo=await sharp({create:{width:400,height:300,channels:4,background:'#dddddd'}}).png().toBuffer();
 test('unit conversion preserves canonical size, selected unit and display option through a saved project',async({page})=>{
- await page.goto('/#create');const wizard=page.locator('.create-page');
+ await page.goto('/#create');const wizard=page.locator('.create-page');await wizard.getByLabel('산업 선택').selectOption('boxes');await wizard.getByRole('textbox',{name:'상세설명',exact:true}).fill('원본 사진과 입력 규격을 유지하는 시험 상품');
  await wizard.getByLabel('상품명',{exact:true}).fill('단위 검증 상품');
  await wizard.getByLabel('참조사진 추가').setInputFiles({name:'photo.png',mimeType:'image/png',buffer:photo});
- await wizard.locator('.create-industry-settings>summary').click();await wizard.getByLabel('규격 형식').selectOption('rectangular');
- await expect(wizard.getByLabel('규격 단위')).toHaveValue('cm');await expect(wizard.getByLabel('광고에 규격 표시')).not.toBeChecked();
+ await wizard.getByRole('button',{name:'규격 넣기',exact:true}).click();await wizard.getByLabel('규격 형식').selectOption('rectangular');
+ await expect(wizard.getByLabel('규격 단위')).toHaveValue('cm');await expect(wizard.getByLabel('광고에 규격 표시')).toBeChecked();await wizard.getByLabel('광고에 규격 표시').uncheck();
  for(const [label,value] of [['가로 cm','25.4'],['세로 cm','12.7'],['높이 cm','2.54']])await wizard.getByLabel(label,{exact:true}).fill(value);
  for(let i=0;i<3;i++){
   await wizard.getByLabel('규격 단위').selectOption('inch');await expect(wizard.getByLabel('가로 inch')).toHaveValue('10');await expect(wizard.getByLabel('높이 inch')).toHaveValue('1');
@@ -15,15 +15,15 @@ test('unit conversion preserves canonical size, selected unit and display option
   await wizard.getByLabel('규격 단위').selectOption('cm');await expect(wizard.getByLabel('가로 cm')).toHaveValue('25.4');
  }
  await wizard.getByLabel('가로 cm').fill('30');await wizard.getByLabel('규격 단위').selectOption('inch');await expect(wizard.getByLabel('가로 inch')).toHaveValue('11.811023622');await wizard.getByLabel('가로 inch').fill('12.811023622');await wizard.getByLabel('규격 단위').selectOption('mm');await expect(wizard.getByLabel('가로 mm')).toHaveValue('325.4');await wizard.getByLabel('가로 mm').fill('254');
- await wizard.getByLabel('규격 단위').selectOption('inch');await wizard.getByLabel('높이 inch').fill('-1');await wizard.getByRole('button',{name:'다음',exact:true}).click();await expect(wizard.getByRole('alert')).toContainText('규격');
+ await wizard.getByLabel('규격 단위').selectOption('inch');await wizard.getByLabel('높이 inch').fill('-1');await wizard.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(wizard.getByRole('alert')).toContainText('규격');
  await wizard.getByLabel('높이 inch').fill('0.125');await wizard.getByLabel('광고에 규격 표시').check();
- await wizard.getByRole('button',{name:'다음',exact:true}).click();await wizard.getByRole('button',{name:'광고 만들기',exact:true}).click();
+ await wizard.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page).toHaveURL(/#studio$/);await page.goto('/#editor');
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'프로젝트 백업',exact:true}).click();
  const saved=JSON.parse(await readFile((await(await download).path())!,'utf8'));expect(saved.dimensions).toMatchObject({width:'254',depth:'127',height:'3.175',displayUnit:'inch',visible:true});
- await page.goto('/#projects');await page.locator('.project-tile').filter({hasText:'단위 검증 상품'}).click();await page.locator('.editor-details>summary').click();await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();
- await expect(page.getByLabel('규격 단위')).toHaveValue('inch');await expect(page.getByLabel('높이 inch')).toHaveValue('0.125');
- await page.getByLabel('규격 단위').selectOption('cm');await expect(page.getByLabel('높이 cm')).toHaveValue('0.3175');
- await page.getByRole('button',{name:'되돌리기',exact:true}).click();await expect(page.getByLabel('규격 단위')).toHaveValue('inch');
+ await page.goto('/#projects');await page.locator('.project-tile').filter({hasText:'단위 검증 상품'}).click();await page.goto('/#editor');await page.locator('.editor-details>summary').click();await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();
+ await expect(page.locator('.editor-container').getByLabel('규격 단위')).toHaveValue('inch');await expect(page.locator('.editor-container').getByLabel('높이 inch')).toHaveValue('0.125');
+ await page.locator('.editor-container').getByLabel('규격 단위').selectOption('cm');await expect(page.locator('.editor-container').getByLabel('높이 cm')).toHaveValue('0.3175');
+ await page.getByRole('button',{name:'되돌리기',exact:true}).click();await expect(page.locator('.editor-container').getByLabel('규격 단위')).toHaveValue('inch');
 });
 test('library and guide show brief essentials while backup and details stay available',async({page})=>{
  await page.goto('/#projects');const library=page.locator('.projects-page');

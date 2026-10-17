@@ -31,7 +31,7 @@ async function mockApi(page:Page,{dropResponse=false,corruptArtifact=false}={}){
   if(url.pathname.endsWith('/reject')){state.rejectPosts++;state.job!.state='rejected';state.job!.artifact=null;state.wallet={available:10,reserved:0,kind:'test'};return respond({job:state.job,wallet:state.wallet});}
   return respond({error:{code:'TEST_ENDPOINT_NOT_CONFIGURED'}},404);
  });
- await page.goto('/#studio');await page.locator('.editor-details > summary').click();
+ await page.goto('/#editor');await page.locator('.editor-details > summary').click();
  await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles(originalPhoto);
  const panel=page.getByRole('region',{name:'AI 광고 제작',exact:true});
  await expect(panel).toHaveCount(1);
@@ -45,7 +45,7 @@ test('original background review preserves source bytes and accepted reapply doe
  await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();
  await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();
  const accept=panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true});await expect(accept).toBeDisabled();
- await panel.getByRole('checkbox',{name:'상품·배경·형태를 확인했습니다.',exact:true}).check();await accept.click();
+ await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await accept.click();
  await expect(panel.getByText('사용 확정한 시안',{exact:true})).toBeVisible();
  const saved=await backup(page);
  expect(Buffer.from(saved.product.data.split(',')[1],'base64')).toEqual(originalBytes);expect(saved.product.sha256).toBe(hash(originalBytes));
@@ -61,21 +61,21 @@ test('accepted creative enables PNG with generated pixels while preserving the o
  await page.getByRole('radio',{name:'새로운 광고 이미지 만들기',exact:true}).check();
  await expect(page.getByRole('button',{name:'AI 시안 확인 후 저장',exact:true})).toBeDisabled();
  await panel.getByRole('button',{name:'AI 새 시안 요청 · 1개',exact:true}).click();
- await panel.getByRole('checkbox',{name:'상품·배경·형태를 확인했습니다.',exact:true}).check();
+ await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
  await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  const exportButton=page.getByRole('button',{name:'PNG 내보내기',exact:true});await expect(exportButton).toBeEnabled();
  const event=page.waitForEvent('download');await exportButton.click();const bytes=await readFile((await (await event).path())!);
  const pixel=await sharp(bytes).extract({left:540,top:1010,width:1,height:1}).removeAlpha().raw().toBuffer();expect([...pixel]).toEqual([25,91,200]);
  const saved=await backup(page);expect(saved.generated.role).toBe('creative');expect(saved.generated.asset.sha256).toBe(expectedArtifactHash);expect(Buffer.from(saved.product.data.split(',')[1],'base64')).toEqual(originalBytes);
- await page.getByLabel('출력 비율').selectOption('4:5');await expect(exportButton).toBeEnabled();expect(state.acceptPosts).toBe(1);
+ await page.getByRole('combobox',{name:'출력 비율',exact:true}).selectOption('4:5');await expect(exportButton).toBeEnabled();expect(state.acceptPosts).toBe(1);
 });
 
 test('changing the source while reviewing makes the old visual inapplicable',async({page})=>{
  const {state,panel}=await mockApi(page);
  await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();
- await panel.getByRole('checkbox',{name:'상품·배경·형태를 확인했습니다.',exact:true}).check();
+ await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
  await page.getByRole('button',{name:'1 사진 삭제',exact:true}).click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'different.png',mimeType:'image/png',buffer:replacementBytes});
- await expect(panel.getByRole('alert')).toContainText('적용할 수 없습니다');
+ await expect(panel.getByRole('alert')).toContainText('원래 정보를 복원하거나 시안을 반려');
  await expect(panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true})).toBeDisabled();
  const saved=await backup(page);expect(saved.product.sha256).toBe(hash(replacementBytes));expect(saved.generated).toBeUndefined();expect(state.acceptPosts).toBe(0);
 });
@@ -88,7 +88,7 @@ test('a lost POST response is recovered through requestIds without another gener
  await panel.getByRole('button',{name:'연결 상태 확인',exact:true}).click();
  await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();
  expect(state.historyReads).toBe(1);expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(0);
- await panel.getByRole('checkbox',{name:'상품·배경·형태를 확인했습니다.',exact:true}).check();await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+ await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  await expect(panel.getByText('사용 확정한 시안',{exact:true})).toBeVisible();expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(1);
 });
 
@@ -105,7 +105,7 @@ test('artifact hash mismatch is detected before accepting a charge',async({page}
  const {state,panel}=await mockApi(page,{corruptArtifact:true});
  await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();
  await expect(panel.getByRole('alert')).toContainText('파일 검증에 실패');
- await expect(panel.getByRole('checkbox',{name:'상품·배경·형태를 확인했습니다.',exact:true})).toBeDisabled();
+ await expect(panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true})).toBeDisabled();
  await expect(panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true})).toBeDisabled();
  expect(state.acceptPosts).toBe(0);expect(state.generationPosts).toBe(1);expect((await backup(page)).generated).toBeUndefined();
 });
@@ -123,7 +123,7 @@ test('complete ad preview is composed before charging and matches PNG after loca
  expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(0);
  const spec=panel.getByRole('checkbox',{name:'광고에 규격 표시',exact:false});await spec.uncheck();await expect(preview).not.toHaveAttribute('src',first!);
  await spec.check();await expect(preview).toHaveAttribute('src',first!);expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(0);
- await panel.getByRole('checkbox',{name:'상품·배경·형태를 확인했습니다.',exact:true}).check();await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+ await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  const saved=await backup(page);expect(saved.copy.ko.description).toContain('10개 19,800원');expect(saved.copy.ko.contact).toBe('010-5635-6211');
  const event=page.waitForEvent('download');await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();const bytes=await readFile((await(await event).path())!);
  expect(bytes).toEqual(Buffer.from(first!.split(',')[1],'base64'));expect(state.acceptPosts).toBe(1);expect(state.generationPosts).toBe(1);
@@ -135,10 +135,11 @@ test('result shows and exports the generation plan, retaining it after product n
  const {state,panel}=await mockApi(page);
  await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();
  const summary=panel.getByRole('region',{name:'광고 제작 의도와 활용 정보'});
- await expect(summary).toBeVisible();await expect(summary).toContainText('생성 당시 기획');
- await expect(summary.locator('.marketing-keywords li')).toHaveCount(6);
- await expect(summary.locator('.marketing-channels li')).toHaveCount(2);
- await panel.getByRole('checkbox',{name:'상품·배경·형태를 확인했습니다.',exact:true}).check();
+ await expect(summary).toBeVisible();await expect(summary).toContainText('저장된 광고 정보 기준');
+ await expect(summary.locator('.marketing-keywords li')).toHaveText(state.lastBody!.request.marketingPlan.keywords);
+ await expect(summary.locator('.marketing-channels li')).toHaveCount(state.lastBody!.request.marketingPlan.channels.length);
+ expect(state.lastBody!.request.marketingPlan.channels).toContain('youtube');
+ await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
  await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  const saved=await backup(page);expect(saved.generated.marketingPlan).toEqual(state.lastBody!.request.marketingPlan);
  const originalName=saved.generated.marketingPlan.input.name;saved.productName='변경 후 상품명';

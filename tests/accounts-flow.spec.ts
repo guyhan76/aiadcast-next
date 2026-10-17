@@ -17,14 +17,14 @@ async function setup(page:Page){const state={approved:false,requests:[] as strin
  });return state;}
 test('email login keeps photos, wizard step and checkout selection across reload and account remount',async({page})=>{
  const state=await setup(page);await page.goto('/#create');const wizard=page.locator('.create-page');
- await wizard.getByLabel('상품명',{exact:true}).fill('이어 만드는 광고');await wizard.getByLabel('참조사진 추가').setInputFiles({name:'product.png',mimeType:'image/png',buffer:photo});
- await wizard.getByRole('button',{name:'다음',exact:true}).click();await wizard.locator('.brand-footer-settings>summary').click();await wizard.getByRole('textbox',{name:'회사명',exact:true}).fill('selluplabs');
+ await wizard.getByLabel('산업 선택').selectOption('boxes');await wizard.getByLabel('상품명',{exact:true}).fill('이어 만드는 광고');await wizard.getByLabel('참조사진 추가').setInputFiles({name:'product.png',mimeType:'image/png',buffer:photo});
+ await wizard.locator('[data-order="2"] summary').click();await wizard.getByRole('textbox',{name:'회사명',exact:true}).fill('selluplabs');
  await page.locator('.app-header').getByRole('button',{name:'이용 요금',exact:true}).click();await page.getByRole('link',{name:'이용권 선택',exact:true}).click();await page.getByRole('radio',{name:/묶음형/}).check();
  await page.getByRole('button',{name:'이메일로 로그인하고 계속'}).click();await page.locator('.account-page').getByLabel('이메일',{exact:true}).fill('test@example.com');await page.getByRole('button',{name:'인증메일 받기'}).click();await expect(page.getByRole('heading',{name:'메일함을 확인해주세요'})).toBeVisible();
  await page.reload();await expect(page.getByRole('heading',{name:'메일함을 확인해주세요'})).toBeVisible();state.approved=true;await page.getByRole('button',{name:'인증 상태 확인'}).click();await expect(page).toHaveURL(/#checkout$/);
  await expect(page.getByRole('radio',{name:/묶음형/})).toBeChecked();await expect(page.getByRole('button',{name:'테스트 결제 준비'})).toBeDisabled();await page.getByRole('checkbox',{name:/이용권 수량/}).check();await page.getByRole('button',{name:'테스트 결제 준비'}).click();await expect(page.getByRole('link',{name:'테스트 결제창 열기'})).toBeVisible();
  await page.reload();await expect(page.getByRole('link',{name:'테스트 결제창 열기'})).toBeVisible();state.paid=true;await page.getByRole('button',{name:'결제 상태 확인'}).click();await expect(page.getByRole('heading',{name:'테스트 이용권이 추가되었습니다'})).toBeVisible();await page.locator('.account-page').getByRole('link',{name:'광고 만들기',exact:true}).click();
- await expect(wizard.getByRole('button',{name:'광고 만들기',exact:true})).toBeVisible();await wizard.locator('.brand-footer-settings>summary').click();await expect(wizard.getByRole('textbox',{name:'회사명',exact:true})).toHaveValue('selluplabs');await wizard.getByRole('button',{name:'이전',exact:true}).click();await expect(wizard.getByLabel('상품명',{exact:true})).toHaveValue('이어 만드는 광고');await expect(wizard.locator('.reference-photos img')).toHaveCount(1);
+ await expect(wizard.getByRole('button',{name:'광고 생성',exact:true})).toBeVisible();await wizard.locator('[data-order="2"] summary').click();await expect(wizard.getByRole('textbox',{name:'회사명',exact:true})).toHaveValue('selluplabs');await expect(wizard.getByLabel('상품명',{exact:true})).toHaveValue('이어 만드는 광고');await expect(wizard.locator('.reference-photos img')).toHaveCount(1);
  expect(state.requests.filter(p=>p==='/api/checkout/orders')).toHaveLength(1);
 });
 test('email proof requires a deliberate confirmation; it never authenticates the mail browser',async({page})=>{

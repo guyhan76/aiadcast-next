@@ -1,34 +1,36 @@
 import {test,expect,type Page} from '@playwright/test';
 import sharp from 'sharp';
 import {createHash} from 'node:crypto';
+import {reloadDraft} from './helpers/workspace';
 const first=await sharp({create:{width:340,height:250,channels:4,background:'#bc8552'}}).png().toBuffer();
 const second=await sharp({create:{width:250,height:210,channels:4,background:'#bd8653'}}).png().toBuffer();
 const ad=await sharp({create:{width:864,height:1536,channels:4,background:'#f2e6db'}}).png().toBuffer();
 const hash=createHash('sha256').update(ad).digest('hex');
-async function mocks(page:Page,{auth=false,enabled=true}: {auth?:boolean;enabled?:boolean}={}){
+async function mocks(page:Page,{auth=false,enabled=true,admin=false}: {auth?:boolean;enabled?:boolean;admin?:boolean}={}){
+ const adminWallet={available:0,reserved:0,kind:'test',unlimited:true};
  const state={posts:0,accepts:0,body:null as any,job:null as any};
  await page.route('**/api/**',async route=>{const request=route.request(),path=new URL(request.url()).pathname;
  const send=(body:any,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
  if(path==='/api/account/capabilities')return send({email:{enabled:false},checkout:{enabled:false,test:true,currency:'KRW'}});
- if(path==='/api/status')return auth?send({error:{code:'AUTH_REQUIRED'}},401):send({mode:'local-development',commercialReady:false,generation:{enabled,photoPurposes:true,model:'gpt-image-2.5-sunburst',reason:enabled?null:'BUDGET_NOT_AVAILABLE'},wallet:{available:3,reserved:0,kind:'test'},budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}});
+ if(path==='/api/status')return auth?send({error:{code:'AUTH_REQUIRED'}},401):send({mode:'local-development',commercialReady:false,generation:{enabled,photoPurposes:true,model:'gpt-image-2.5-sunburst',reason:enabled?null:'BUDGET_NOT_AVAILABLE'},wallet:admin?adminWallet:{available:3,reserved:0,kind:'test'},budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}});
  if(path==='/api/generations'&&request.method()==='POST'){state.posts++;state.body=request.postDataJSON();const body=state.body;
- state.job={id:'consumer_fixture_1',projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:body.request.mode,sourceHash:body.source?.sha256??null,createdAt:'2026-10-13T00:00:00.000Z',model:'verification.fixture',artifactId:hash,...(body.request.mode==='creative'?{composition:'complete-ad',compositionKey:body.request.output.compositionKey}:{}),artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+ad.toString('base64'),width:864,height:1536,role:body.request.mode==='original'?'background':'creative'},marketingPlan:body.request.marketingPlan,errorCode:null};return send({job:state.job,wallet:{available:2,reserved:1,kind:'test'}});}
- if(path.endsWith('/accept')){state.accepts++;state.job.state='accepted';return send({job:state.job,wallet:{available:2,reserved:0,kind:'test'}});}
- if(path==='/api/generations/consumer_fixture_1')return send({job:state.job,wallet:{available:2,reserved:1,kind:'test'}});
+ state.job={...(admin?{creditPolicy:'admin-unlimited',creditCost:0}:{}),id:'consumer_fixture_1',projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:body.request.mode,sourceHash:body.source?.sha256??null,createdAt:'2026-10-13T00:00:00.000Z',model:'verification.fixture',artifactId:hash,...(body.request.mode==='creative'?{composition:'complete-ad',compositionKey:body.request.output.compositionKey}:{}),artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+ad.toString('base64'),width:864,height:1536,role:body.request.mode==='original'?'background':'creative'},marketingPlan:body.request.marketingPlan,errorCode:null};return send({job:state.job,wallet:admin?adminWallet:{available:2,reserved:1,kind:'test'}});}
+ if(path.endsWith('/accept')){state.accepts++;state.job.state='accepted';return send({job:state.job,wallet:admin?adminWallet:{available:2,reserved:0,kind:'test'}});}
+ if(path==='/api/generations/consumer_fixture_1')return send({job:state.job,wallet:admin?adminWallet:{available:2,reserved:1,kind:'test'}});
  if(path==='/api/generations')return send({jobs:state.job?[state.job]:[]});
  return send({error:{code:'TEST_ROUTE_UNAVAILABLE'}},404);
  });return state;
 }
-async function details(page:Page,service=true){await page.goto('/#create');const form=page.locator('.consumer-create');await form.getByLabel('산업 선택').selectOption(service?'lodging':'boxes');await form.getByLabel(service?'서비스명':'상품명',{exact:true}).fill(service?'숲속 숙소':'우체국3호박스');await form.getByLabel('상세설명',{exact:true}).fill(service?'숲 전망의 객실, 1박 120,000원':'B골, 크라프트재질, 튼튼하고 습기에 강하다. 빠른배송. 10개 19,800원');return form;}
+async function details(page:Page,service=true){await page.goto('/#create');const form=page.locator('.consumer-create');await form.getByLabel('산업 선택').selectOption(service?'lodging':'boxes');await form.getByLabel(service?'서비스명':'상품명',{exact:true}).fill(service?'숲속 숙소':'우체국3호박스');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill(service?'숲 전망의 객실, 1박 120,000원':'B골, 크라프트재질, 튼튼하고 습기에 강하다. 빠른배송. 10개 19,800원');return form;}
 
 test('eight inputs submit actual generation request once and a complete accepted PNG can be saved',async({page})=>{
  const state=await mocks(page),form=await details(page,false);
- await form.locator('[data-order="2"] summary').click();await form.getByLabel('회사명',{exact:true}).fill('테스트 업체');await form.getByLabel('연락처',{exact:true}).fill('010-0000-0000');await form.getByLabel('이메일 주소').fill('example@example.com');
+ await form.locator('[data-order="2"] summary').click();await form.getByLabel('회사명',{exact:true}).fill('테스트 업체');await form.getByLabel('연락처',{exact:true}).fill('010-0000-0000');await form.getByRole('textbox',{name:'이메일 주소',exact:true}).fill('example@example.com');
  await form.getByLabel('참조사진 추가').setInputFiles([{name:'front.png',mimeType:'image/png',buffer:first},{name:'side.png',mimeType:'image/png',buffer:second}]);
  await expect(form.locator('.reference-item')).toHaveCount(2);
  await form.getByRole('button',{name:'규격 넣기',exact:true}).click();await form.getByLabel('규격 단위').selectOption('mm');
  for(const [axis,value] of [['가로','340'],['세로','250'],['높이','210']])await form.getByLabel(axis+' mm',{exact:true}).fill(value);
- await form.getByRole('button',{name:'직접 입력',exact:true}).click();await form.getByLabel('광고 제목',{exact:true}).fill('보내는 마음까지, 든든하게.');await form.getByLabel('광고 설명',{exact:true}).fill('10개 19,800원 · 빠른배송');
+ await form.getByRole('button',{name:'직접 입력',exact:true}).click();await form.getByRole('textbox',{name:'광고 제목',exact:true}).fill('보내는 마음까지, 든든하게.');await form.getByRole('textbox',{name:'광고 설명',exact:true}).fill('10개 19,800원 · 빠른배송');
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();
  const result=page.locator('.simple-ad-result');await expect(result.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();await expect(result.locator('.generation-ad-preview')).toBeVisible();
  await expect(result.getByRole('heading',{name:'이 광고의 제작 의도',exact:true})).toBeVisible();await expect(result.getByRole('heading',{name:'추천 채널',exact:true})).toBeVisible();await expect(result.locator('.marketing-keywords li')).toHaveCount(state.body.request.marketingPlan.keywordCount);
@@ -37,7 +39,7 @@ test('eight inputs submit actual generation request once and a complete accepted
  await result.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await result.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  await expect(result.locator('.marketing-summary')).toHaveCount(1);await expect(result.locator('.accepted-ad .marketing-summary')).toBeVisible();
  const save=result.getByRole('button',{name:'이미지 저장',exact:true});await expect(save).toBeEnabled();const pending=page.waitForEvent('download');await save.click();expect((await pending).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
- await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByLabel('광고 제목',{exact:true})).toHaveValue('보내는 마음까지, 든든하게.');
+ await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('textbox',{name:'광고 제목',exact:true})).toHaveValue('보내는 마음까지, 든든하게.');
 });
 test('photo-free service AI copy requests no dimensions and generates automatically after submit',async({page})=>{
  const state=await mocks(page),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(state.posts).toBe(1);expect(state.body.source).toBeNull();expect(state.body.request.specifications).toEqual([]);expect(state.body.request.output.showDimensions).toBe(false);expect(state.body.request.creativeDirection.copyMode).toBe('ai');
@@ -55,11 +57,10 @@ test('photo purpose survives draft reload and travels with the correct uploaded 
  await form.getByLabel('참조사진 추가').setInputFiles([{name:'actual.png',mimeType:'image/png',buffer:first},{name:'design.png',mimeType:'image/png',buffer:second}]);
  await expect(form.locator('.reference-item')).toHaveCount(2);
  await form.getByLabel('2 사진 용도',{exact:true}).selectOption('style');
- await page.reload();await expect(form.getByLabel('2 사진 용도',{exact:true})).toHaveValue('style');
+ await reloadDraft(page);await expect(form.getByLabel('2 사진 용도',{exact:true})).toHaveValue('style');
  await expect(form.getByLabel('1 사진 용도',{exact:true})).toHaveValue('subject');
  await form.locator('[data-order="3"]').scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('photo-options.png')});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
- await warning.screenshot({path:test.info().outputPath('photo-size-warning.png')});
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();
  expect(state.body.request.source.purpose).toBe('subject');expect(state.body.request.references[0].purpose).toBe('style');
  expect(state.body.source.sha256).toBe(createHash('sha256').update(first).digest('hex'));
@@ -71,14 +72,14 @@ test('original photo choice reaches review acceptance and download without openi
  await form.getByLabel('참조사진 추가').setInputFiles({name:'actual.png',mimeType:'image/png',buffer:first});
  await expect(form.locator('.reference-item')).toHaveCount(1);
  await form.getByRole('button',{name:'실사 그대로 사용',exact:true}).click();
- await form.getByRole('button',{name:'직접 입력',exact:true}).click();await form.getByLabel('광고 제목',{exact:true}).fill('확정 문구');
+ await form.getByRole('button',{name:'직접 입력',exact:true}).click();await form.getByRole('textbox',{name:'광고 제목',exact:true}).fill('확정 문구');
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();const result=page.locator('.simple-ad-result');
  await expect(result.locator('.generation-ad-preview')).toBeVisible();expect(state.body.request.mode).toBe('original');
  await expect(page.locator('.editor-container')).toHaveCount(0);
  await result.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await result.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  const save=result.getByRole('button',{name:'이미지 저장',exact:true});await expect(save).toBeEnabled();
  const download=page.waitForEvent('download');await save.click();expect((await download).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.posts).toBe(1);
- await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('button',{name:'실사 그대로 사용',exact:true})).toHaveAttribute('aria-pressed','true');await expect(form.getByLabel('광고 설명',{exact:true})).toHaveValue('');
+ await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('button',{name:'실사 그대로 사용',exact:true})).toHaveAttribute('aria-pressed','true');await expect(form.getByRole('textbox',{name:'광고 설명',exact:true})).toHaveValue('');
 });
 
 test('photo size overflow shows a prominent red notice, retains valid previews and sends the attached original bytes',async({page})=>{
@@ -89,6 +90,7 @@ test('photo size overflow shows a prominent red notice, retains valid previews a
  await expect(warning).toBeVisible();await expect(title).toContainText('참조사진 전체 용량이 10MB를 초과했습니다.');
  await expect(title).toHaveCSS('color','rgb(185, 28, 28)');await expect(title.locator('strong')).toHaveCSS('font-weight','800');
  expect(await title.evaluate(e=>parseFloat(getComputedStyle(e).fontSize))).toBeGreaterThanOrEqual(20);
+ await warning.screenshot({path:test.info().outputPath('photo-size-warning.png')});
  await expect(warning).toContainText('side-6MB.png');await expect(form.locator('.reference-item')).toHaveCount(1);await expect(form.locator('.reference-heading')).toContainText('1 / 10');
  await expect(form.locator('.reference-file-info')).toContainText('6.0 / 10MB');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
@@ -103,4 +105,52 @@ test('when no photo fits, submitting repeats the red size reason and returns foc
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();
  await expect(form.locator('.photo-upload-error')).toContainText('10MB를 초과');await expect(form.locator('.photo-upload-error')).toHaveCSS('color','rgb(185, 28, 28)');
  await expect(form.locator('[data-order="3"]')).toBeFocused();expect(state.posts).toBe(0);
+});
+
+// Reload without a timer or storage polling: the last visible photo edit must survive.
+test('large photo drafts retain original bytes through immediate role changes and reloads',async({page})=>{
+ const state=await mocks(page),form=await details(page,false);
+ const large=Buffer.concat([first,Buffer.alloc(4*1024*1024-first.length)]);
+ await form.getByLabel('참조사진 추가').setInputFiles([{name:'large.png',mimeType:'image/png',buffer:large},{name:'design.png',mimeType:'image/png',buffer:second}]);
+ await expect(form.locator('.reference-item')).toHaveCount(2);
+ for(const purpose of ['style','subject','style']){
+  await form.getByLabel('2 사진 용도',{exact:true}).selectOption(purpose);
+  await reloadDraft(page);await expect(form.getByLabel('2 사진 용도',{exact:true})).toHaveValue(purpose);
+  await expect(form.locator('.reference-item img')).toHaveCount(2);
+ }
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();
+ expect(state.posts).toBe(1);expect(Buffer.from(state.body.source.data.split(',')[1],'base64')).toEqual(large);
+ expect(state.body.request.references[0].purpose).toBe('style');expect(state.body.references[0].sha256).toBe(createHash('sha256').update(second).digest('hex'));
+});
+
+test('draft storage failure stays visible and protects unsaved input until a successful retry',async({page})=>{
+ await mocks(page);const form=await details(page);
+ await expect(page.locator('.workspace-save-state')).toHaveText('입력 내용이 기기에 저장되었습니다.');
+ await page.evaluate(()=>{
+  const put=IDBObjectStore.prototype.put;
+  (window as any).failDraft=true;
+  IDBObjectStore.prototype.put=function(...args:Parameters<IDBObjectStore['put']>){if(this.name==='drafts'&&(window as any).failDraft)throw new DOMException('Full','QuotaExceededError');return put.apply(this,args);};
+ });
+ await form.getByLabel('서비스명',{exact:true}).fill('저장 실패 시 지킬 이름');
+ await expect(page.getByRole('alert')).toContainText('기기에 보관하지 못했습니다');
+ expect(await page.evaluate(()=>{const event=new Event('beforeunload',{cancelable:true});window.dispatchEvent(event);return event.defaultPrevented;})).toBe(true);
+ await page.evaluate(()=>{(window as any).failDraft=false;});
+ await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('저장 공간 복구 후 다시 저장');
+ await expect(page.locator('.workspace-save-state')).toHaveText('입력 내용이 기기에 저장되었습니다.');
+ await expect(page.getByRole('alert')).toHaveCount(0);
+ await reloadDraft(page);await expect(form.getByLabel('서비스명',{exact:true})).toHaveValue('저장 실패 시 지킬 이름');
+ await expect(form.getByRole('textbox',{name:'상세설명',exact:true})).toHaveValue('저장 공간 복구 후 다시 저장');
+});
+
+test('server-confirmed administrator at zero credits can review and save without a credit charge',async({page})=>{
+ const state=await mocks(page,{admin:true}),form=await details(page);
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();
+ await expect(page.getByText('관리자 테스트 · 이용권 차감 없음',{exact:true})).toBeVisible();
+ await expect(page.locator('.generation-ad-preview')).toBeVisible();
+ await page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
+ await page.getByRole('button',{name:'사용 확정 · 이용권 차감 없음',exact:true}).click();
+ await expect(page.getByRole('button',{name:'이미지 저장',exact:true})).toBeEnabled();
+ expect(state.posts).toBe(1);expect(state.accepts).toBe(1);expect(state.job.creditCost).toBe(0);
+ await expect(page.getByRole('button',{name:'다른 시안 생성 · 관리자 테스트',exact:true})).toBeEnabled();
+ await expect(page.locator('.admin-test-mode')).toContainText('실제 API 사용 비용과 서버 예산 한도는 적용됩니다.');
 });

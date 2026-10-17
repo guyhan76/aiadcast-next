@@ -12,14 +12,15 @@ import './compare-review.css';
 type Snapshot={project:Project;result:string;resultAsset:Asset;createdAt:string;details:string;method:string};
 export function CompareReview({project,disabled,onDownload}:{project:Project;disabled:boolean;onDownload:(blob:Blob,name:string)=>void}){
  const {t,language}=useUiLanguage();
- const dialog=useRef<HTMLDialogElement>(null);
+ const dialog=useRef<HTMLDialogElement>(null),openButton=useRef<HTMLButtonElement>(null);
  const [snapshot,setSnapshot]=useState<Snapshot|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [isOpen,setIsOpen]=useState(false),[exportPending,setExportPending]=useState(false),[exportStatus,setExportStatus]=useState('');
  const renderVersion=useRef(0),awaitingExport=useRef(false);
  function close(){renderVersion.current++;setBusy(false);setIsOpen(false);}
  useEffect(()=>{
   if(!isOpen)return;
-  const element=dialog.current!,opener=document.activeElement as HTMLElement|null,overflow=document.body.style.overflow;
+  // Rendering disables the opener and may blur it before this effect runs.
+  const element=dialog.current!,opener=openButton.current,overflow=document.body.style.overflow;
   element.showModal();document.body.style.overflow='hidden';
   const back=(event:Event)=>{if(!element.open)return;event.preventDefault();event.stopImmediatePropagation();close();};
   window.addEventListener('aiadcast-native-back',back,true);
@@ -67,7 +68,7 @@ export function CompareReview({project,disabled,onDownload}:{project:Project;dis
  }
  async function download(){
   if(!snapshot?.project.product)return;
-  setBusy(true);setError('');
+  setBusy(true);setError('');setExportStatus(t('파일 저장을 준비하고 있습니다.','Preparing file export.'));
   try{
    const [source,result]=await Promise.all([loadImage(snapshot.project.product.data),loadImage(snapshot.result)]);
    const canvas=document.createElement('canvas');canvas.width=1800;canvas.height=1600;
@@ -91,7 +92,7 @@ export function CompareReview({project,disabled,onDownload}:{project:Project;dis
   }catch(e){setError(e instanceof Error?e.message:t('파일을 저장하지 못했습니다.','Could not save the file.'));}finally{setBusy(false);}
  }
  return <div className="comparison-entry">
-  <button type="button" disabled={disabled||!project.product||busy} onClick={()=>void open()}>{t('원본과 결과 비교','Compare source and result')}</button>
+  <button ref={openButton} type="button" disabled={disabled||!project.product||busy} onClick={()=>void open()}>{t('원본과 결과 비교','Compare source and result')}</button>
   <dialog ref={dialog} className="comparison-dialog" aria-label={t('원본과 결과 비교','Compare source and result')} onCancel={e=>{e.preventDefault();close();}}>
    <div className="comparison-heading"><h2>{t('원본과 결과 비교','Compare source and result')}</h2><button type="button" onClick={close}>{t('닫기','Close')}</button></div>
    {busy&&<p role="status">{t('비교 자료 준비 중…','Preparing comparison…')}</p>}

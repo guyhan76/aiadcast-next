@@ -21,3 +21,4 @@ secrets/
 .gradle/
 local.properties
 .DS_Store
+artifacts/showcase/
