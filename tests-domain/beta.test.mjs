@@ -24,3 +24,10 @@ test('global provider gate bounds concurrent calls and releases slots after fail
 });
 test('explicit budget increases preserve existing allocations and cannot silently lower or oversubscribe them',t=>{const {store}=setup(t);const a=provision(store);store.setBudget(2_000_000);store.setAllocation(a.userId,1_500_000);assert.throws(()=>store.setBudget(0),/INCREASE_ONLY/);assert.throws(()=>store.setAllocation(a.userId,1),/INCREASE_ONLY/);assert.throws(()=>provision(store,'B',500001),/ALLOCATION/);provision(store,'B',500000);});
 test('managed budget increase preserves previously spent usage on service restart',async t=>{const {dir}=setup(t);const path=join(dir,'managed.sqlite');let service=new GenerationService({databasePath:path,budgetMicros:500000,managedBudgetIncrease:true,assistantEnabled:true,providerConfigured:true,assistantAdapter:async()=>({cost:{microUsd:1000},proposal:{title:'Test',description:''}})});await service.assist({requestId:'budget-test-copy',kind:'suggest',sourceLocale:'ko',targetLocale:'ko',productName:'Test',copy:{title:'Test',description:''}});await service.close();service=new GenerationService({databasePath:path,budgetMicros:1000000,managedBudgetIncrease:true});assert.equal(service.status().budget.spentMicros,1000);assert.equal(service.status().budget.limitMicros,1000000);await service.close();assert.throws(()=>new GenerationService({databasePath:path,budgetMicros:500000,managedBudgetIncrease:true}),/DECREASE/);});
+
+test('dimension analysis HTTP route requires authentication and defaults disabled for signed-in users',async t=>{
+ const {store,call}=await httpSetup(t);const a=provision(store);const session=(await call('/api/auth/login',{body:{invite:a.invite}})).data;
+ assert.equal((await call('/api/dimension-analysis')).status,401);
+ const capability=await call('/api/dimension-analysis',{token:session.token});assert.equal(capability.status,200);assert.equal(capability.data.available,false);
+ assert.equal((await call('/api/dimension-analysis',{token:session.token,body:{role:'admin'}})).status,403);
+});
