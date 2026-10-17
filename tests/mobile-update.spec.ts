@@ -20,7 +20,12 @@ test('a single multi-file selection keeps every view and exposes dimensions besi
  await expect(status).toContainText('가로 340 mm × 세로 250 mm × 높이 210 mm');
  await expect(status).toContainText('원본 사진 형상 유지');await expect(status).toContainText('실물 비례: 검증 전');
  await status.getByRole('button',{name:'규격 수정',exact:true}).click();await page.locator('.editor-container').getByLabel('높이 mm',{exact:true}).fill('100');await expect(status).toContainText('높이 100 mm');
- await page.getByRole('button',{name:'원본과 결과 비교',exact:true}).click();await expect(page.getByRole('dialog',{name:'원본과 결과 비교'})).toContainText('100 mm');
+ await page.getByRole('button',{name:'원본과 결과 비교',exact:true}).click();
+ // CI snapshot rendering can exceed the default 5s. Wait for the rendered
+ // snapshot, then check its dimensions; do not mistake a loading dialog for a result.
+ const comparison=page.getByRole('dialog',{name:'원본과 결과 비교'});
+ await expect(comparison.getByRole('img',{name:'비교할 광고 결과',exact:true})).toBeVisible({timeout:15000});
+ await expect(comparison.locator('.comparison-details')).toHaveText('가로 340 mm · 세로 250 mm · 높이 100 mm');
  await page.getByRole('dialog').getByRole('button',{name:'닫기',exact:true}).click();
  for(const width of [320,390,768]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
  await page.setViewportSize({width:390,height:844});await status.screenshot({path:'/tmp/aiadcast-019-dimensions.png'});
