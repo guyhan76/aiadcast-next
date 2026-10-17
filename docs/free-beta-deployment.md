@@ -2,6 +2,10 @@
 
 2026-10-11 UTC. Render Free에서 웹 앱·Node·sharp·OpenAI 호출을 실행하고, Supabase Free에 회원·세션·프로젝트·사용량·원본/생성 이미지를 보관한다. 실제 원격 배포와 OpenAI 호출은 아직 확인하지 않았다. OpenAI 사용료는 호스팅 무료 요금과 별도다.
 
+## 최신 후속 후보 — 별도 규격 안내 이미지
+
+`feat/dimension-guide-image-20261017`은 PR #9의 `2444e5c9cda4425c9e84423aa22c3746e1eab00c`에서 이어간다. 사용자는 이 기준 커밋이 현재 Live임을 확인했다. 이번 기능의 지원 범위·저장 스냅샷·별도 PNG와 배포 주의점은 [규격 안내 이미지](dimension-guide-image-20261017.md)를 따른다. 후속 draft PR에 기록된 **최종 head SHA와 해당 CI 성공**을 고정해 수동 배포하며, 아래 이전 후보들의 배포 기록과 혼동하지 않는다. 이 환경에서는 Render 인증 경로 부재로 배포하지 않았다.
+
 ## 최신 추가 후보 — 선택적 규격 기반 생성
 
 `feat/dimension-variants-planar-control-20261017`은 PR #8의 `e9eb57ee89fbad5427ccce8a454f4cad92a2ebe6` 위에 쌓인 후속 수정이다. 이번 draft PR의 최종 head와 해당 원격 CI 통과를 확인해 정확한 SHA를 고정한다. 기능 범위·제한·데이터·검증은 [규격 기반 생성 기록](dimension-variants-20261017.md)을 따른다. 프런트와 API를 함께 배포해야 한다.
@@ -48,7 +52,7 @@ postgresql://postgres.PROJECT_REF:URL_ENCODED_DATABASE_PASSWORD@EXACT_POOLER_HOS
 | 항목 | 설정 |
 |---|---|
 | GitHub 저장소 | `guyhan76/aiadcast-next` |
-| Branch | `feat/dimension-variants-planar-control-20261017` — 최종 head SHA·CI·서비스 연결을 확인한 후속 후보 |
+| Branch | `feat/dimension-guide-image-20261017` — 후속 draft PR의 최종 head SHA·CI·서비스 연결 확인 후 후보 |
 | Runtime | Docker |
 | Dockerfile Path | `./Dockerfile.beta` |
 | Root Directory / Docker Command | 비워둠 |
