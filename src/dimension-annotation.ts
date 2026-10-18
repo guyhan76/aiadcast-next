@@ -3,7 +3,7 @@ export type AnnotationPoint=[number,number];
 export type AnnotationBox=[number,number,number,number];
 export type AnnotationAxis='width'|'depth'|'height';
 export type AnnotationProposal={located:boolean;product:AnnotationBox;axes:Record<AnnotationAxis,[AnnotationPoint,AnnotationPoint]>;protectedText:AnnotationBox[];existingAnnotations:AnnotationBox[];inset:AnnotationBox};
-export type DimensionAnnotation={mode:'none'|'main'|'inset';snapshot:string;proposal?:AnnotationProposal;adjusted?:boolean;analysisAttempted?:boolean};
+export type DimensionAnnotation={mode:'none'|'main'|'inset';snapshot:string;proposal?:AnnotationProposal;adjusted?:boolean;analysisAttempted?:boolean;requestId?:string;analysisState?:'ready'|'failed'|'uncertain'};
 export function annotationIncomplete(p:Project):string|null{
  const a=p.dimensionAnnotation;if(!a||a.mode==='none')return null;
  if(!p.generated||a.snapshot!==annotationSnapshot(p)||!a.proposal)return p.locale==='ko'?'규격 사진·치수선 배치가 미완료입니다. 자동 배치를 완료한 뒤 저장해주세요. 원본 광고는 별도로 보존됩니다.':'Photo dimension placement is incomplete. Complete automatic placement before exporting. The original ad is preserved separately.';
@@ -16,8 +16,9 @@ export function parseAnnotation(raw:unknown):DimensionAnnotation|undefined{
  const r=raw as DimensionAnnotation;
  if(!r||!['none','main','inset'].includes(r.mode)||typeof r.snapshot!=='string'||r.snapshot.length>500||r.adjusted!==undefined&&typeof r.adjusted!=='boolean')throw Error('규격 표시 정보를 확인해주세요.');
  if(r.analysisAttempted!==undefined&&typeof r.analysisAttempted!=='boolean')throw Error('INVALID_ANALYSIS_ATTEMPT');
+ if(r.requestId!==undefined&&(typeof r.requestId!=='string'||! /^[a-zA-Z0-9_-]{8,100}$/.test(r.requestId))||r.analysisState!==undefined&&!['ready','failed','uncertain'].includes(r.analysisState))throw Error('INVALID_ANALYSIS_STATE');
  if(r.proposal)validateAnnotationProposal(r.proposal);
- return {mode:r.mode,snapshot:r.snapshot,...(r.proposal?{proposal:structuredClone(r.proposal)}:{}),...(r.adjusted?{adjusted:true}:{}),...(r.analysisAttempted?{analysisAttempted:true}:{})};
+ return {mode:r.mode,snapshot:r.snapshot,...(r.proposal?{proposal:structuredClone(r.proposal)}:{}),...(r.adjusted?{adjusted:true}:{}),...(r.analysisAttempted?{analysisAttempted:true}:{}),...(r.requestId?{requestId:r.requestId}:{}),...(r.analysisState?{analysisState:r.analysisState}:{})};
 }
 const point=(p:unknown):p is AnnotationPoint=>Array.isArray(p)&&p.length===2&&p.every(n=>Number.isFinite(n)&&n>=0&&n<=1);
 const box=(b:unknown):b is AnnotationBox=>Array.isArray(b)&&b.length===4&&b.every(Number.isFinite)&&b[0]>=0&&b[1]>=0&&b[2]>0&&b[3]>0&&b[0]+b[2]<=1&&b[1]+b[3]<=1;

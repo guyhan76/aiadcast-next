@@ -10,6 +10,7 @@ import {OpenAIImageAdapter,ProviderFailure} from './openai-image-adapter.mjs';
 import {assistCopy} from './text-assistant.mjs';
 import {EmailAuth} from './email-auth.mjs';
 import {PasswordAuth} from './password-auth.mjs';
+import {boxDimensions} from './box-dimensions.mjs';
 import {TestCheckout} from './test-checkout.mjs';
 import {accountConfiguration} from './account-providers.mjs';
 import {demoSupport} from './demo-support.mjs';
@@ -17,7 +18,7 @@ import {AdminApi} from './admin-api.mjs';
 export const ANDROID_ORIGIN='https://appassets.androidplatform.net';
 export function providerGate(max=2){let active=0;return async task=>{if(active>=max)throw new ProviderFailure('PROVIDER_BUSY',{uncertain:false});active++;try{return await task();}finally{active--;}};}
 export function publicOrigin(value){const u=new URL(value);if(u.protocol!=='https:'||!u.hostname||u.username||u.password||u.search||u.hash||u.pathname!=='/')throw Error('HTTPS_ORIGIN_REQUIRED');return u.origin;}
-export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.now(),extraOrigins=[],staticDirectory,accounts={},dimensionAnalysis=dimensionAnalysisService(),singleBox=singleBoxService()}) {
+export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.now(),extraOrigins=[],staticDirectory,accounts={},boxAnalysisOptions={},dimensionAnalysis=dimensionAnalysisService(),singleBox=singleBoxService()}) {
  const assets=new Map();
  if(staticDirectory){const scan=(folder,prefix='')=>{for(const item of readdirSync(folder,{withFileTypes:true})){const name=prefix+item.name;if(item.isDirectory())scan(join(folder,item.name),name+'/');else assets.set('/'+name,readFileSync(join(folder,item.name)));}};scan(staticDirectory);}
  const origin=publicOrigin(publicUrl),allowed=new Set([origin,ANDROID_ORIGIN,...extraOrigins.map(publicOrigin)]),services=new Map();
@@ -25,6 +26,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
  let windowStart=now(),requests=0,logins=0,bodies=0;
  const limit=isLogin=>{if(now()-windowStart>=60_000){windowStart=now();requests=0;logins=0;}if(++requests>600||(isLogin&&++logins>20))throw new ApiFailure('RATE_LIMITED',429);};
  const service=user=>{if(!services.has(user.id))services.set(user.id,serviceFactory(user));const instance=services.get(user.id);instance.adminTestUnlimited=user.role==='admin';return instance;};
+ const boxAnalysis=boxDimensions({...boxAnalysisOptions,db:store.db,service,now});
  const email=new EmailAuth(store,{sendMail:accounts.sendMail,publicOrigin:origin,now});
  const password=new PasswordAuth(store,accounts.password,now);password.bootstrapOwner();
  const checkout=new TestCheckout(store,{...accounts,publicOrigin:origin,now,creditPurchase:async(id,purchase)=>{const user=store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id);if(!user)throw new ApiFailure('AUTH_REQUIRED',401);return service(user).recordTestPurchase(purchase);}});
@@ -55,7 +57,8 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
     send(res,200,result,cors);return;}
    if(req.method==='POST'&&['/api/checkout/launch','/api/checkout/confirm'].includes(url.pathname)){const b=await read(req,2048);send(res,200,await (url.pathname.endsWith('/launch')?checkout.launch(b):checkout.confirm(b)),cors);return;}
    const user=store.authenticate(req.headers.authorization);
-   if(req.method==='GET'&&url.pathname==='/api/dimension-analysis'){send(res,200,dimensionAnalysis.capability(user),cors);return;}
+   if(req.method==='POST'&&url.pathname==='/api/box-dimensions'){send(res,200,await boxAnalysis.request(user,await read(req,2048)),cors);return;}
+   if(req.method==='GET'&&url.pathname==='/api/dimension-analysis'){send(res,200,boxAnalysis.capability(user),cors);return;}
    if(req.method==='POST'&&url.pathname==='/api/dimension-analysis'){throw new ApiFailure('REFERENCE_EVALUATION_ONLY',403);}
    if(url.pathname.startsWith('/api/admin/')){
     admin.require(user);
