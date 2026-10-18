@@ -17,6 +17,7 @@ function useCapabilities(){
   let active=true;const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),10000);
   apiRequest<Capabilities>('/api/account/capabilities',undefined,controller.signal).then(v=>{
    if(typeof v?.email?.enabled!=='boolean'||typeof v?.checkout?.enabled!=='boolean'||v.checkout.test!==true||v.checkout.currency!=='KRW')throw Error('INVALID_CAPABILITIES');
+   if(v.password!==undefined&&(typeof v.password?.enabled!=='boolean'||(v.password.enabled&&(v.password.test!==true||typeof v.password.adminReady!=='boolean'||typeof v.password.adminEmail!=='string'))))throw Error('INVALID_CAPABILITIES');
    if(active)setValue(v);
   }).catch(()=>{if(active)setFailed(true);}).finally(()=>clearTimeout(timer));
   return()=>{active=false;clearTimeout(timer);controller.abort();};
@@ -62,7 +63,7 @@ function InviteAccountPage({preserve,returnPage}:Context){
  return <section className="account-page"><a className="page-back" href={'#'+returnPage}><ArrowLeft size={18}/>{t('돌아가기','Back')}</a><h1>{t('테스트 로그인','Test sign-in')}</h1><p className="page-intro">{t('받으신 초대코드로 로그인하면 입력한 광고를 이어서 생성할 수 있습니다.','Sign in with your invitation code to continue generating your ad.')}</p><form onSubmit={e=>{e.preventDefault();void login();}}><label className="field">{t('초대코드','Invitation code')}<input type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={43} value={invite} onChange={e=>setInvite(e.target.value)}/></label><button className="primary-action" disabled={busy||invite.trim().length!==43}>{busy?t('로그인 중…','Signing in…'):t('로그인하고 계속','Sign in and continue')}</button></form><p className="account-help">{t('현재 비공개 베타입니다. 이메일 회원가입은 아직 연결되지 않았습니다. 초대코드는 관리자에게 받으세요.','This is a private beta. Email signup is not connected yet. Ask the administrator for an invitation.')}</p>{message&&<p role="alert">{message}</p>}</section>;
 }
 export function EmailAccountPage({mode,preserve,returnPage}:Context&{mode:'signup'|'login'}){
- const {t,language}=useUiLanguage(),ko=language==='ko',cap=useCapabilities().value,key='aiadcast.email-request:'+storageNamespace();
+ const {t,language}=useUiLanguage(),ko=language==='ko',capability=useCapabilities(),cap=capability.value,key='aiadcast.email-request:'+storageNamespace();
  const [email,setEmail]=useState(''),[request,setRequest]=useState<EmailRequest|undefined>(()=>readSession(key));
  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[expired,setExpired]=useState(false),locked=useRef(false);
  const latest=useRef({preserve,returnPage});latest.current={preserve,returnPage};
@@ -72,8 +73,11 @@ export function EmailAccountPage({mode,preserve,returnPage}:Context&{mode:'signu
   if(Date.now()>=request.expires){setExpired(true);return;}
   const result=await exchangeEmail(request);if(result.session){await latest.current.preserve();await carryGuestWorkspace(accountNamespace(result.session.user.id));sessionStorage.removeItem(key);const target=sessionStorage.getItem('aiadcast.auth-return')==='checkout'?'checkout':latest.current.returnPage;sessionStorage.removeItem('aiadcast.auth-return');const paymentReturn=sessionStorage.getItem('aiadcast.checkout-login-return')==='1';sessionStorage.removeItem('aiadcast.checkout-login-return');setBetaSession(result.session,paymentReturn?'checkout-return':target);}
  }catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;}}
- useEffect(()=>{if(!request||expired)return;const timer=setInterval(()=>{if(document.visibilityState==='visible')void check();},3000);return()=>clearInterval(timer);},[request,expired,ko]);
+ useEffect(()=>{if(!cap?.email.enabled||cap.password?.enabled&&!demo||!request||expired)return;const timer=setInterval(()=>{if(document.visibilityState==='visible')void check();},3000);return()=>clearInterval(timer);},[request,expired,ko,cap,demo]);
  async function submit(){if(locked.current)return;locked.current=true;setBusy(true);setMessage('');try{await preserve();const result=await apiRequest<EmailRequest>('/api/auth/email/request',{email});sessionStorage.setItem(key,JSON.stringify(result));setRequest(result);setExpired(false);}catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;setBusy(false);}}
+ if(!betaSession()&&!cap)return <section className="account-page"><a className="page-back" href={'#'+returnPage}><ArrowLeft size={18}/>{t('돌아가기','Back')}</a><h1>{signup?t('회원가입','Sign up'):t('로그인','Sign in')}</h1>
+  {capability.failed?<><p role="alert">{t('로그인 방식을 확인하지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해주세요. 계속되면 관리자에게 문의해주세요.','Could not check the sign-in method. Check your connection and retry. If this continues, contact your administrator.')}</p><button className="primary-action" onClick={capability.retry}>{t('로그인 방식 다시 확인','Retry sign-in setup')}</button></>:<p role="status" aria-live="polite">{t('로그인 방식을 확인하고 있습니다…','Checking how to sign in…')}</p>}
+  <a className="guest-link" href="#create">{t('광고 편집 계속하기','Continue editing your ad')}</a></section>;
  if(!betaSession()&&cap?.password?.enabled&&!demo)return <PasswordAccountPage mode={mode} preserve={preserve} returnPage={returnPage} cap={cap.password}/>;
  if(!betaSession()&&cap&&!cap.email.enabled&&!demo)return <InviteAccountPage preserve={preserve} returnPage={returnPage}/>;
  if(betaSession())return <section className="account-page"><h1>{t('로그인되었습니다','You are signed in')}</h1><a className="primary-action" href={'#'+returnPage}>{t('광고 이어 만들기','Continue your ad')}</a><a href="#credits">{t('내 이용권','My credits')}</a></section>;
