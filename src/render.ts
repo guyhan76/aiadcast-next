@@ -1,3 +1,4 @@
+import {renderControlledProduct} from './controlled-product-render';
 import {annotationIncomplete} from './dimension-annotation';
 import {paintAnnotation} from './annotation-render';
 import {dimensionLabel} from './dimension-units';
@@ -18,6 +19,7 @@ export {geometry} from './layout.ts';
 export const font='"Noto Sans KR Variable", sans-serif';
 const editorialFont='"Noto Serif KR Variable", serif';
 export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axis):Promise<string[]> {
+ if(p.dimensionControl)return renderControlledProduct(canvas,p);
  const incomplete=annotationIncomplete(p);if(incomplete){await render(canvas,{...p,dimensionAnnotation:undefined},editingAxis);return [incomplete];}
  if(p.dimensionAnnotation?.mode&&p.dimensionAnnotation.mode!=='none'&&p.dimensionAnnotation.proposal){
   const errors=await render(canvas,{...p,dimensionAnnotation:undefined},editingAxis);

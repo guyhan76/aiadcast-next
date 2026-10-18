@@ -11,7 +11,7 @@ export function openBoxGeometry(size:BoxSize,options={flapAngleDegrees:35,flapFr
  const faces:OpenBoxFace[]=[face('bottom',[0,1,3,2],'interior'),face('back',[0,1,5,4],'interior'),face('left',[0,2,6,4],'interior'),face('front',[2,3,7,6],'exterior'),face('right',[1,3,7,5],'exterior')];
  const angle=options.flapAngleDegrees*Math.PI/180,c=Math.cos(angle),s=Math.sin(angle),dw=d*options.flapFraction,ww=w*options.flapFraction;
  faces.push({id:'back-flap',surface:'flap',points:[vertices[4],vertices[5],[w,-dw*c,h+dw*s],[0,-dw*c,h+dw*s]]},{id:'front-flap',surface:'flap',points:[vertices[6],vertices[7],[w,d+dw*c,h+dw*s],[0,d+dw*c,h+dw*s]]},{id:'left-flap',surface:'flap',points:[vertices[4],vertices[6],[-ww*c,d,h+ww*s],[-ww*c,0,h+ww*s]]},{id:'right-flap',surface:'flap',points:[vertices[5],vertices[7],[w+ww*c,d,h+ww*s],[w+ww*c,0,h+ww*s]]});
- const axes=([{axis:'width',indices:[2,3]},{axis:'depth',indices:[1,3]},{axis:'height',indices:[3,7]}] as const).map(a=>({axis:a.axis,start:vertices[a.indices[0]],end:vertices[a.indices[1]],value:size[a.axis],unit:'mm' as const}));
+ const axes=([{axis:'width',indices:[2,3]},{axis:'depth',indices:[1,3]},{axis:'height',indices:[1,5]}] as const).map(a=>({axis:a.axis,start:vertices[a.indices[0]],end:vertices[a.indices[1]],value:size[a.axis],unit:'mm' as const}));
  return {body:{...size},vertices,faces,axes,flaps:{...options,measured:false as const},referenceGeometryVerified:false as const};
 }
 export function projectOpenBox(model:ReturnType<typeof openBoxGeometry>,viewport={width:900,height:760,padding:100}){

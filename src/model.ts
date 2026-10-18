@@ -1,3 +1,4 @@
+import {parseDimensionControl,dimensionControlErrors,dimensionControlKey,type DimensionControl} from './dimension-control.ts';
 import {annotationIncomplete,parseAnnotation,type DimensionAnnotation} from './dimension-annotation.ts';
 import type {PhotoView} from './automatic-proportion.ts';
 import {parsePhotoRoles,photoRole,type PhotoRole} from './photo-roles.ts';
@@ -31,7 +32,7 @@ export type Project = {
  version:1;id:string;name:string;updatedAt:string;locale:Locale;format:ImageFormat;
  product:Asset|null;references?:Asset[];referenceRoles?:Record<string,PhotoRole>;footer?:Record<FooterField,boolean>;presentation?:'campaign';productName:string;productProfile:ProductProfile;generation:GenerationSettings;scale:number;
  background:{color:string;image:Asset|null};ink:'dark'|'light';
- dimensionAnnotation?:DimensionAnnotation;publishing?:Publishing;campaign?:Campaign;referenceCheck?:ReferenceCheck;conversation?:Conversation;generated?:GeneratedAsset;boxProjection?:BoxProjection;
+ dimensionControl?:DimensionControl;dimensionAnnotation?:DimensionAnnotation;publishing?:Publishing;campaign?:Campaign;referenceCheck?:ReferenceCheck;conversation?:Conversation;generated?:GeneratedAsset;boxProjection?:BoxProjection;
  dimensions:{displayUnit?:DimensionUnit;width:string;depth:string;height:string;visible:boolean;lines:boolean;anchors:Record<Axis,[Point,Point]>};
  proportionViews?:{confirmed:boolean;views:Record<string,PhotoView>;resultView?:PhotoView};
  copy:Record<Locale,Copy>;
@@ -54,6 +55,7 @@ export async function imageFile(file:File):Promise<Asset> {
 export async function loadImage(data:string):Promise<HTMLImageElement> {const img=new Image();img.src=data;await img.decode();return img;}
 export function exportErrors(p:Project) {
  const errors:string[]=[];
+ if(p.dimensionControl){errors.push(...dimensionControlErrors(p));if(p.dimensionControl.acceptedKey!==dimensionControlKey(p))errors.push('규격 제품의 현재 형상과 문구를 검수한 뒤 확정해주세요.');return errors;}
  const annotationError=annotationIncomplete(p);if(annotationError)errors.push(annotationError);
  const projectionError=boxProjectionError(p);if(projectionError)errors.push(projectionError);
  if(p.generation?.mode==='creative'&&!hasUsableCreative(p))errors.push('새 광고 결과가 아직 준비되지 않았거나 원본·규격·문구·연락처가 변경되었습니다. AI 연결 후 현재 조건으로 생성하고 결과를 승인해주세요.');
@@ -81,7 +83,7 @@ export async function importProject(raw:unknown):Promise<Project> {
  if(r.presentation==='campaign')p.presentation='campaign';
  for(const lang of ['ko','en'] as const)if(r.copy[lang].email!==undefined)p.copy[lang].email=string(r.copy[lang].email,100);
  if(r.dimensions.displayUnit!==undefined){if(!['cm','mm','inch'].includes(r.dimensions.displayUnit))throw Error('규격 단위를 확인해주세요.');p.dimensions.displayUnit=r.dimensions.displayUnit;}
- p.dimensions.visible=r.dimensions.visible;p.dimensions.lines=r.dimensions.lines;p.conversation=parseConversation(r.conversation);p.generated=await parseGenerated(r.generated,asset);p.boxProjection=parseBoxProjection(r.boxProjection);p.publishing=parsePublishing(r.publishing);p.dimensionAnnotation=parseAnnotation(r.dimensionAnnotation);return p;
+ p.dimensions.visible=r.dimensions.visible;p.dimensions.lines=r.dimensions.lines;p.conversation=parseConversation(r.conversation);p.generated=await parseGenerated(r.generated,asset);p.boxProjection=parseBoxProjection(r.boxProjection);p.publishing=parsePublishing(r.publishing);p.dimensionAnnotation=parseAnnotation(r.dimensionAnnotation);p.dimensionControl=parseDimensionControl(r.dimensionControl);return p;
 }
 
 export const referenceAssets=(p:Project):Asset[]=>[...(p.product?[p.product]:[]),...(p.references??[])];

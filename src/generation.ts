@@ -1,3 +1,4 @@
+import {dimensionControlErrors} from './dimension-control.ts';
 import {makeDimensionPlan} from './dimension-generation.ts';
 import {validMillimeters} from './dimension-units.ts';
 import {photoRole} from './photo-roles.ts';
@@ -25,6 +26,7 @@ export function parseGeneration(value:unknown):GenerationSettings {
   return {mode:settings.mode,brief:settings.brief,...(settings.dimensionBased?{dimensionBased:true,dimensionVariant:settings.dimensionVariant??'',dimensionBasis:settings.dimensionBasis??'outer-body',...(settings.planarSourceHash?{planarSourceHash:settings.planarSourceHash}:{})}:{})};
 }
 export function generationIssues(p:Project):string[] {
+  if(p.dimensionControl)return dimensionControlErrors(p);
   const creative=(p.generation??defaultGeneration()).mode==='creative';
   const axes=dimensionAxes(p.productProfile);const errors:string[]=[];
   if(p.generation.dimensionBased&&(p.generation.mode!=='creative'||!axes.length||!p.product||photoRole(p,p.product.sha256)!=='subject'||p.generation.dimensionBasis==='garment-flat'&&p.productProfile.specType!=='flat'))errors.push('규격 기반 생성은 실제 상품 사진과 치수 기준에 맞는 숫자 규격이 필요합니다.');
@@ -42,6 +44,7 @@ export function generationIssues(p:Project):string[] {
 // Describes intent only. No network call, provider charge or generation occurs here.
 // Future server adapters must resolve/verify uploaded assets and sign the price quote.
 export function buildGenerationRequest(p:Project) {
+  if(p.dimensionControl)throw Error('LOCAL_DIMENSION_CONTROL_ONLY');
   const generation=parseGeneration(p.generation);const issues=generationIssues(p);
   if(issues.length)throw Error(issues.join(' '));
   const creative=generation.mode==='creative';
