@@ -31,7 +31,12 @@ test('server signup, operator allocation, generation review and PNG export work 
   await shop.goto('/#signup');await shop.locator('.account-page').getByLabel('이메일',{exact:true}).fill('member@example.com');await shop.getByRole('button',{name:'인증메일 받기',exact:true}).click();await expect(shop.getByRole('heading',{name:'메일함을 확인해주세요'})).toBeVisible();
   await expect.poll(()=>mail.length).toBe(1);const token=new URLSearchParams(new URL(mail[0].url).hash.split('?')[1]).get('token');
   await proof.goto('/#verify?token='+token);await proof.getByRole('button',{name:'이메일 인증하기',exact:true}).click();await expect(proof.getByRole('heading',{name:'인증 완료'})).toBeVisible();expect(await proof.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();
-  await shop.getByRole('button',{name:'인증 상태 확인',exact:true}).click();await expect(shop).toHaveURL(/#home$/);
+  // The visible signup tab polls every three seconds and can already be home.
+  // Assert the documented automatic return instead of clicking a button that
+  // disappears when that successful exchange wins the race. Manual checking
+  // remains covered by accounts-flow.spec.ts.
+  await shop.bringToFront();await expect(shop).toHaveURL(/#home$/,{timeout:10000});
+  expect(await shop.evaluate(()=>JSON.parse(sessionStorage.getItem('aiadcast.beta-session')??'null')?.user.label)).toBe('member@example.com');
   await page.locator('.admin-page').getByRole('button',{name:'새로고침',exact:true}).click();await page.getByLabel('대상 회원',{exact:true}).selectOption({label:'member@example.com'});await page.getByRole('button',{name:'테스트 이용권 지급',exact:true}).click();await expect(page.locator('.admin-notice')).toContainText('지급했습니다');
   await page.getByLabel('월 공급사 배정액 USD',{exact:true}).fill('0.5');await page.getByRole('button',{name:'배정액 적용',exact:true}).click();await expect(page.locator('.admin-notice')).toContainText('배정을 적용했습니다');
   for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}await page.setViewportSize({width:390,height:844});
