@@ -49,3 +49,15 @@ test('successful substitute sandbox receipt grants credits once but does not aut
  assert.equal(store.db.prepare('SELECT budget FROM users WHERE id=?').get(session.user.id).budget,0);
  assert.deepEqual(calls(),{confirmCalls:1,imageCalls:0});
 });
+
+test('October owner allocation consumes the entire five-dollar cap and rejects an additional member dollar',t=>{
+ const directory=mkdtempSync(join(tmpdir(),'member-october-'));
+ const store=new BetaStore(directory,{monthlyBudgetMicros:5000000,now:()=>Date.UTC(2026,9,18)});
+ t.after(()=>{store.close();rmSync(directory,{recursive:true,force:true});});
+ const owner=store.provision({label:'Owner',budgetMicros:500000,credits:0}).userId;store.setRole(owner,'admin');
+ const member=store.provision({label:'Member',budgetMicros:0,credits:0}).userId;
+ store.activateOctoberBudget(owner);
+ assert.equal(store.effectiveCap(),5000000);assert.equal(store.effectiveBudget(owner,'2026-10'),5000000);
+ assert.throws(()=>store.setAllocation(member,1000000),/BETA_ALLOCATION_EXCEEDED/);
+ assert.equal(store.effectiveBudget(member,'2026-10'),0);assert.equal(store.effectiveCap(),5000000);
+});
