@@ -179,7 +179,7 @@ test('result guidance stays readable before and after acceptance without alterin
   await expect(summary.locator('.marketing-audience')).not.toContainText('450');
   expect((await summary.locator('.marketing-intent').innerText()).length).toBeLessThan(100);
   await expect(summary.locator('.marketing-keywords li')).toHaveText(originalPlan.keywords);
-  await expect(summary.locator('.marketing-channels li')).toHaveCount(originalPlan.channels.length);
+  await expect(summary.locator('.marketing-channels li')).toHaveText(['인스타그램','유튜브','홈페이지','블로그','포스터','광고브로셔']);
   for(const width of [320,360,390,412,1440]){
    await page.setViewportSize({width,height:900});
    const layout=await summary.evaluate(el=>{

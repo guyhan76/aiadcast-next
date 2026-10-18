@@ -137,7 +137,7 @@ test('result shows and exports the generation plan, retaining it after product n
  const summary=panel.getByRole('region',{name:'광고 제작 의도와 활용 정보'});
  await expect(summary).toBeVisible();await expect(summary).toContainText('저장된 광고 정보 기준');
  await expect(summary.locator('.marketing-keywords li')).toHaveText(state.lastBody!.request.marketingPlan.keywords);
- await expect(summary.locator('.marketing-channels li')).toHaveCount(state.lastBody!.request.marketingPlan.channels.length);
+ await expect(summary.locator('.marketing-channels li')).toHaveText(['인스타그램','유튜브','홈페이지','블로그','포스터','광고브로셔']);
  expect(state.lastBody!.request.marketingPlan.channels).toContain('youtube');
  await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
  await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
