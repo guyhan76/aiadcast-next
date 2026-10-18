@@ -3,10 +3,10 @@ import sharp from 'sharp';import {createHash} from 'node:crypto';import {readFil
 import {reloadDraft} from './helpers/workspace';
 const image=await sharp({create:{width:864,height:1536,channels:4,background:'#6485a6'}}).png().toBuffer(),hash=createHash('sha256').update(image).digest('hex');
 const second=await sharp({create:{width:20,height:20,channels:4,background:'#a26688'}}).png().toBuffer();
-async function api(page:Page,{supported=true,lost=false}={}){
+async function api(page:Page,{supported=true,lost=false,statusGate=Promise.resolve()}={}){
  const state={posts:0,accepts:0,body:null as any,job:null as any,history:0};const wallet={available:3,reserved:0,kind:'test'};
- await page.route('**/api/**',r=>{const path=new URL(r.request().url()).pathname,send=(json:unknown)=>r.fulfill({json});
-  if(path==='/api/status')return send({mode:'local-development',commercialReady:false,generation:{enabled:true,model:'fixture',reason:null,textExamples:supported,photoPurposes:true},wallet,budget:{limitMicros:2000000,spentMicros:0,heldMicros:0}});
+ await page.route('**/api/**',async r=>{const path=new URL(r.request().url()).pathname,send=(json:unknown)=>r.fulfill({json});
+  if(path==='/api/status'){await statusGate;return send({mode:'local-development',commercialReady:false,generation:{enabled:true,model:'fixture',reason:null,textExamples:supported,photoPurposes:true},wallet,budget:{limitMicros:2000000,spentMicros:0,heldMicros:0}});}
   if(path==='/api/generations'&&r.request().method()==='POST'){state.posts++;const b=state.body=r.request().postDataJSON();state.job={id:'text_example_job',projectId:b.projectId,requestId:b.requestId,inputMode:b.request.inputMode,state:'ready',mode:'creative',sourceHash:null,createdAt:'2026-10-18T00:00:00.000Z',model:'fixture',artifactId:hash,composition:'complete-ad',compositionKey:b.request.output.compositionKey,artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+image.toString('base64'),width:864,height:1536,role:'creative'},marketingPlan:b.request.marketingPlan,errorCode:null};return lost?r.abort('failed'):send({job:state.job,wallet});}
   if(path==='/api/generations'){state.history++;return send({jobs:state.job?[state.job]:[]});}
   if(path.endsWith('/accept')){state.accepts++;state.job.state='accepted';return send({job:state.job,wallet});}
@@ -37,4 +37,11 @@ test('lost text example response restores the existing job without an extra gene
 test('switching to text examples keeps dimensions but blocks existing photo annotations until explicitly disabled',async({page})=>{
  const state=await api(page),f=await form(page);await f.getByLabel('참조사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:image});await f.getByRole('button',{name:'규격 넣기',exact:true}).click();await f.getByLabel('규격 단위').selectOption('mm');for(const[a,v]of[['가로','80'],['세로','80'],['높이','180']])await f.getByLabel(a+' mm',{exact:true}).fill(v);await f.getByLabel('본제품에 직접 표시',{exact:true}).check();await f.getByRole('button',{name:'설명으로 예시 만들기',exact:true}).click();await expect(f.getByRole('alert')).toContainText('사진 기반 형상 제어');await f.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page).toHaveURL(/#create$/);expect(state.posts).toBe(0);
  await f.getByRole('button',{name:'사진 기반 규격 제어 끄기',exact:true}).click();await expect(f.getByLabel('사진 치수선 없음',{exact:true})).toBeChecked();await expect(f.getByLabel('가로 mm',{exact:true})).toHaveValue('80');await expect(f.getByLabel('광고에 규격 표시',{exact:true})).toBeChecked();await f.getByRole('button',{name:'내 상품 사진으로 만들기',exact:true}).click();await expect(f.locator('.reference-item')).toHaveCount(1);expect(state.posts).toBe(0);
+});
+
+test('same-tick create clicks enter the saved result once before capability loading completes',async({page})=>{
+ let release!:()=>void;const statusGate=new Promise<void>(r=>release=r),state=await api(page,{statusGate}),f=await form(page);await f.getByRole('button',{name:'설명으로 예시 만들기',exact:true}).click();
+ await page.evaluate(()=>{(window as any).creationSaves=0;const put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(value:any,key?:IDBValidKey){if(this.name==='projects'&&value.productName==='나의 텀블러')(window as any).creationSaves++;return key===undefined?put.call(this,value):put.call(this,value,key);};});
+ const create=f.getByRole('button',{name:'광고 생성',exact:true,includeHidden:true});await create.evaluate((b:HTMLButtonElement)=>{b.click();b.click();});await expect(page.getByRole('heading',{name:'내 광고',exact:true})).toBeVisible();await expect(create).toBeEnabled();
+ expect(await page.evaluate(()=>(window as any).creationSaves)).toBe(1);expect(state.posts).toBe(0);release();await expect(page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true})).toBeEnabled();expect(state.posts).toBe(1);
 });
