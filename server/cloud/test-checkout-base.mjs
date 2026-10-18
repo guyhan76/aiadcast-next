@@ -6,8 +6,8 @@ const packs = { trial: { credits: 3, amount: 6900 }, basic: { credits: 10, amoun
 const digest = s => createHash('sha256').update(s).digest('hex');
 const fail = (code, status = 400) => { throw new ApiFailure(code, status); };
 export class TestCheckout {
-    async initialize(store, { provider, clientKey, publicOrigin, creditPurchase, now = () => Date.now() } = {}) {
-        Object.assign(this, { store, db: store.db, provider, clientKey, origin: publicOrigin, creditPurchase, now });
+    async initialize(store, { provider, clientKey, publicOrigin, creditPurchase, readPurchase, now = () => Date.now() } = {}) {
+        Object.assign(this, { store, db: store.db, provider, clientKey, origin: publicOrigin, creditPurchase, readPurchase, now });
         this.pending = new Map();
         await this.db.exec(`CREATE TABLE IF NOT EXISTS test_orders(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),request_id TEXT NOT NULL,pack TEXT NOT NULL,credits INTEGER NOT NULL,amount INTEGER NOT NULL,created INTEGER NOT NULL,ticket_hash TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending',payment_key TEXT UNIQUE,UNIQUE(user_id,request_id));`);
         return this;
@@ -57,6 +57,22 @@ export class TestCheckout {
             fail('ORDER_EXPIRED', 409);
         return { ...this.view(row), clientKey: this.clientKey, customerKey: row.user_id, orderName: `aiadcast ${row.credits}개 광고 테스트 이용권`, successUrl: this.origin + '/?checkout=return', failUrl: this.origin + '/?checkout=return' };
     }
+    async paidView(row) {
+        if (row.state !== 'paid' || !this.readPurchase)
+            return this.view(row);
+        const receipt = await this.readPurchase(row.user_id, { purchaseId: 'toss-test:' + row.id, credits: row.credits });
+        if (receipt.grantedCredits !== row.credits || !Number.isSafeInteger(receipt.balance) || receipt.balance < 0)
+            fail('PURCHASE_NOT_VERIFIED', 409);
+        return { ...this.view(row), receipt: { ...receipt, verified: true } };
+    }
+    async receipt({ orderId, ticket } = {}) {
+        const row = await this.byTicket(orderId, ticket);
+        if (this.now() - row.created > 86400000)
+            fail('ORDER_EXPIRED', 409);
+        if (row.state !== 'paid' || !this.readPurchase)
+            fail('PURCHASE_NOT_VERIFIED', 409);
+        return this.paidView(row);
+    }
     async serialize(id, fn) { const previous = this.pending.get(id) ?? Promise.resolve(); const p = previous.catch(() => { }).then(fn); this.pending.set(id, p); try {
         return await p;
     }
@@ -73,12 +89,14 @@ export class TestCheckout {
         // The ledger is in another SQLite file. Its purchase ID makes replay after a crash safe.
         await this.creditPurchase(row.user_id, { purchaseId: 'toss-test:' + row.id, credits: row.credits });
         await this.db.prepare("UPDATE test_orders SET state='paid' WHERE id=?").run(row.id);
-        return this.view({ ...row, state: 'paid' });
+        return this.paidView({ ...row, state: 'paid' });
     }
     async confirm({ orderId, ticket, paymentKey, amount } = {}) {
         if (!this.available())
             fail('CHECKOUT_UNAVAILABLE', 503);
         const row = await this.byTicket(orderId, ticket);
+        if (this.now() - row.created > 86400000)
+            fail('ORDER_EXPIRED', 409);
         if (!Number.isSafeInteger(amount) || amount !== row.amount || typeof paymentKey !== 'string' || !paymentKey || paymentKey.length > 240)
             fail('INVALID_CONFIRMATION');
         return await this.serialize(orderId, async () => {
@@ -86,7 +104,7 @@ export class TestCheckout {
             if (current.state === 'paid') {
                 if (current.payment_key !== paymentKey)
                     fail('PAYMENT_MISMATCH', 409);
-                return this.view(current);
+                return this.paidView(current);
             }
             // Reconcile an earlier confirmation before retrying the same idempotent POST.
             let payment;
@@ -97,6 +115,8 @@ export class TestCheckout {
                 if (e.code !== 'PAYMENT_NOT_FOUND')
                     throw e;
             }
+            if (payment?.status !== 'DONE' && (current.state === 'canceled' || this.now() - current.created > 30 * 60000))
+                fail('ORDER_EXPIRED', 409);
             if (payment?.status !== 'DONE')
                 payment = await this.provider.confirm({ orderId, paymentKey, amount: row.amount });
             if (payment.paymentKey !== paymentKey)
@@ -108,12 +128,14 @@ export class TestCheckout {
         const row = await this.db.prepare('SELECT * FROM test_orders WHERE id=? AND user_id=?').get(id, user.id);
         if (!row)
             fail('ORDER_NOT_FOUND', 404);
-        if (row.state === 'paid' || !this.available())
+        if (row.state === 'paid')
+            return this.paidView(row);
+        if (!this.available())
             return this.view(row);
         return await this.serialize(id, async () => {
             const fresh = await this.db.prepare('SELECT * FROM test_orders WHERE id=?').get(id);
             if (fresh.state === 'paid')
-                return this.view(fresh);
+                return this.paidView(fresh);
             let payment;
             try {
                 payment = await this.provider.lookup(id);

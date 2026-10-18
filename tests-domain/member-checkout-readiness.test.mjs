@@ -43,7 +43,7 @@ test('successful substitute sandbox receipt grants credits once but does not aut
  const order=(await call('/api/checkout/orders',{pack:'trial',requestId:'member-checkout-2',agreed:true},session.token)).data;
  const q=new URLSearchParams(new URL(order.checkoutUrl).hash.split('?')[1]);
  const input={orderId:order.id,ticket:q.get('ticket'),amount:order.amount,paymentKey:'fixture-approved-payment'};
- for(let i=0;i<2;i++){const paid=await call('/api/checkout/confirm',input);assert.equal(paid.status,200);assert.equal(paid.data.state,'paid');}
+ for(let i=0;i<2;i++){const paid=await call('/api/checkout/confirm',input);assert.equal(paid.status,200);assert.equal(paid.data.state,'paid');assert.deepEqual(paid.data.receipt,{verified:true,grantedCredits:3,balance:3});}
  const status=(await call('/api/status',undefined,session.token)).data;
  assert.equal(status.wallet.available,3);assert.equal(status.budget.limitMicros,0);assert.equal(status.generation.enabled,false);assert.equal(status.generation.reason,'BUDGET_NOT_AVAILABLE');
  assert.equal(store.db.prepare('SELECT budget FROM users WHERE id=?').get(session.user.id).budget,0);

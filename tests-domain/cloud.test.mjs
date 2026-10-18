@@ -198,6 +198,7 @@ test('cloud test checkout confirms only once and preserves credits and orders af
  const order=await s.call('/api/checkout/orders',{token:a.token,body:{pack:'basic',requestId:'checkout-fixture',agreed:true}});assert.equal(order.status,201,JSON.stringify(order.data));
  const q=new URLSearchParams(new URL(order.data.checkoutUrl).hash.split('?')[1]),body={orderId:q.get('orderId'),ticket:q.get('ticket'),paymentKey:'test-payment-fixture',amount:order.data.amount};
  const responses=await Promise.all([s.call('/api/checkout/confirm',{body}),s.call('/api/checkout/confirm',{body})]);for(const r of responses)assert.equal(r.status,200,JSON.stringify(r.data));assert.equal(calls,1);
+ const verified=await s.call('/api/checkout/receipt',{body:{orderId:body.orderId,ticket:body.ticket}});assert.equal(verified.status,200,JSON.stringify(verified.data));assert.deepEqual(verified.data.receipt,{grantedCredits:10,balance:10,verified:true});
  await s.restart();assert.equal((await s.call('/api/status',{token:a.token})).data.wallet.available,10);assert.equal((await s.call('/api/checkout/confirm',{body})).data.state,'paid');assert.equal(calls,1);
 });
 test('private storage reserves quota before upload and rejects corrupted bytes',async t=>{

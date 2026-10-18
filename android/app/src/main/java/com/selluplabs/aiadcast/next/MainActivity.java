@@ -213,7 +213,21 @@ public final class MainActivity extends ComponentActivity {
             @Override public void handleOnBackPressed() { handleBack(); }
         });
         cleanOldExports();
-        webView.loadUrl(APP_ORIGIN + "/index.html");
+        webView.loadUrl(APP_ORIGIN + "/index.html" + (checkoutReturn(getIntent()) ? "#checkout-return" : ""));
+    }
+
+    private boolean checkoutReturn(Intent intent) {
+        return BuildConfig.APPLICATION_ID.equals("com.selluplabs.aiadcast.next.demo")
+            && intent != null && Intent.ACTION_VIEW.equals(intent.getAction())
+            && CheckoutReturnPolicy.valid(intent.getDataString());
+    }
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (checkoutReturn(intent)) {
+            setIntent(intent);
+            // A fixed wake-up signal only. No URLs, order identifiers or credentials enter JS.
+            webView.evaluateJavascript("window.dispatchEvent(new Event('aiadcast-checkout-return'));", null);
+        }
     }
 
     private static boolean sameOrigin(Uri uri, String allowed) {

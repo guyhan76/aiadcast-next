@@ -144,6 +144,11 @@ export class GenerationService {
     if(!this.budgetForPeriod)this.ledger.transaction(()=>this.db.prepare('UPDATE budgets SET limit_micros=?').run(micros));
     this.budgetMicros=micros;
   }
+  testPurchaseReceipt({purchaseId,credits}) {
+    const row=this.db.prepare('SELECT * FROM purchases WHERE purchase_id=?').get(purchaseId);
+    if(!row||row.user_id!==LOCAL_USER||row.credits!==credits)throw new ApiFailure('PURCHASE_NOT_VERIFIED',409);
+    return {grantedCredits:row.credits,balance:this.wallet().available};
+  }
   recordTestPurchase({purchaseId,credits}) { this.ledger.recordVerifiedPurchase({purchaseId,userId:LOCAL_USER,credits});return this.wallet(); }
   wallet() { return { ...this.ledger.wallet(LOCAL_USER), kind: this.adminTestUnlimited ? 'admin-test-unlimited' : 'test-credits', ...(this.adminTestUnlimited ? {unlimited:true} : {}) }; }
   budgetLimit(period){

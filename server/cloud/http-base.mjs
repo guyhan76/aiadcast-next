@@ -48,7 +48,8 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, now =
     const email = await new EmailAuth().initialize(store, { sendMail: accounts.sendMail, publicOrigin: origin, now });
     const password = await new PasswordAuth().initialize(store, accounts.password, now);
     await password.bootstrapOwner();
-    const checkout = await new TestCheckout().initialize(store, { ...accounts, publicOrigin: origin, now, creditPurchase: async (id, purchase) => { const user = await store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id); if (!user)
+    const checkout = await new TestCheckout().initialize(store, { ...accounts, publicOrigin: origin, now, readPurchase: async (id, purchase) => { const user = await store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id); if (!user)
+            throw new ApiFailure('AUTH_REQUIRED', 401); return (await service(user)).testPurchaseReceipt(purchase); }, creditPurchase: async (id, purchase) => { const user = await store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id); if (!user)
             throw new ApiFailure('AUTH_REQUIRED', 401); return await (await service(user)).recordTestPurchase(purchase); } });
     const admin = await new AdminApi().initialize(store, { service, accounts, checkout, ownerEmail: password.adminEmail, now });
     const send = (res, status, value, cors) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', ...(cors ? { 'Access-Control-Allow-Origin': cors, 'Vary': 'Origin' } : {}) }); res.end(JSON.stringify(value)); };
@@ -132,6 +133,10 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, now =
                 else
                     throw new ApiFailure('NOT_FOUND', 404);
                 send(res, 200, result, cors);
+                return;
+            }
+            if (req.method === 'POST' && url.pathname === '/api/checkout/receipt') {
+                send(res, 200, await checkout.receipt(await read(req, 2048)), cors);
                 return;
             }
             if (req.method === 'POST' && ['/api/checkout/launch', '/api/checkout/confirm'].includes(url.pathname)) {

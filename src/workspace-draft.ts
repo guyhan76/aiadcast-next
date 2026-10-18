@@ -2,7 +2,7 @@ import {saveProject} from './storage';
 import {storageNamespace} from './beta-session';
 import type {Project} from './model';
 export type WizardDraft={project:Project;step:number};
-export type WorkspaceDraft={wizard?:WizardDraft;editor:Project;returnPage:'create'|'studio'|'home'};
+export type WorkspaceDraft={wizard?:WizardDraft;editor:Project;returnPage:'create'|'studio'|'editor'|'home'};
 let connection:Promise<IDBDatabase>|undefined;
 function database(){
  if(!connection)connection=new Promise<IDBDatabase>((resolve,reject)=>{
@@ -39,5 +39,5 @@ export async function loadWorkspace(scope=storageNamespace()):Promise<WorkspaceD
 export async function carryGuestWorkspace(userId:string){if(storageNamespace()!=='guest')return;const draft=await loadWorkspace('guest');
  if(!draft||draft.returnPage==='home')return;
  const previous=await loadWorkspace(userId);
- if(previous){const project=previous.returnPage==='create'?previous.wizard?.project:previous.returnPage==='studio'?previous.editor:undefined;if(project)await saveProject({...project,id:crypto.randomUUID(),name:project.name||project.productName||'이전 작업'},userId);}
+ if(previous){const project=previous.returnPage==='create'?previous.wizard?.project:(previous.returnPage==='studio'||previous.returnPage==='editor')?previous.editor:undefined;if(project)await saveProject({...project,id:crypto.randomUUID(),name:project.name||project.productName||'이전 작업'},userId);}
  await saveWorkspace(draft,userId);}

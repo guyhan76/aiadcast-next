@@ -27,7 +27,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
  const service=user=>{if(!services.has(user.id))services.set(user.id,serviceFactory(user));const instance=services.get(user.id);instance.adminTestUnlimited=user.role==='admin';return instance;};
  const email=new EmailAuth(store,{sendMail:accounts.sendMail,publicOrigin:origin,now});
  const password=new PasswordAuth(store,accounts.password,now);password.bootstrapOwner();
- const checkout=new TestCheckout(store,{...accounts,publicOrigin:origin,now,creditPurchase:async(id,purchase)=>{const user=store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id);if(!user)throw new ApiFailure('AUTH_REQUIRED',401);return service(user).recordTestPurchase(purchase);}});
+ const checkout=new TestCheckout(store,{...accounts,publicOrigin:origin,now,readPurchase:async(id,purchase)=>{const user=store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id);if(!user)throw new ApiFailure('AUTH_REQUIRED',401);return service(user).testPurchaseReceipt(purchase);},creditPurchase:async(id,purchase)=>{const user=store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id);if(!user)throw new ApiFailure('AUTH_REQUIRED',401);return service(user).recordTestPurchase(purchase);}});
  const admin=new AdminApi(store,{service,accounts,checkout,ownerEmail:password.adminEmail,now});
  const send=(res,status,value,cors)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer',...(cors?{'Access-Control-Allow-Origin':cors,'Vary':'Origin'}:{})});res.end(JSON.stringify(value));};
  const read=async(req,max)=>{if(!/^application\/json(?:;.*)?$/i.test(req.headers['content-type']??''))throw new ApiFailure('JSON_REQUIRED',415);if(Number(req.headers['content-length']??0)>max)throw new ApiFailure('REQUEST_TOO_LARGE',413);if(bodies>=2)throw new ApiFailure('SERVER_BUSY',429);bodies++;try{let size=0;const parts=[];for await(const part of req){size+=part.length;if(size>max)throw new ApiFailure('REQUEST_TOO_LARGE',413);parts.push(part);}try{return JSON.parse(Buffer.concat(parts).toString('utf8'));}catch{throw new ApiFailure('INVALID_JSON',400);}}finally{bodies--;}};
@@ -53,6 +53,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
     else if(url.pathname==='/api/auth/email/exchange')result=email.exchange(b?.requestId,b?.pollToken);
     else throw new ApiFailure('NOT_FOUND',404);
     send(res,200,result,cors);return;}
+   if(req.method==='POST'&&url.pathname==='/api/checkout/receipt'){send(res,200,await checkout.receipt(await read(req,2048)),cors);return;}
    if(req.method==='POST'&&['/api/checkout/launch','/api/checkout/confirm'].includes(url.pathname)){const b=await read(req,2048);send(res,200,await (url.pathname.endsWith('/launch')?checkout.launch(b):checkout.confirm(b)),cors);return;}
    const user=store.authenticate(req.headers.authorization);
    if(req.method==='GET'&&url.pathname==='/api/dimension-analysis'){send(res,200,dimensionAnalysis.capability(user),cors);return;}
