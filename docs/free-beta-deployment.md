@@ -1,5 +1,7 @@
 # aiadcast 무료 베타 서버 연결
 
+별도 설치 APK 후보는 `feat/android-demo-apk-20261018`이다. [시연판 식별자·서명 보관·서버 호환 한계](android-demo-20261018.md)를 따른다. APK 제작으로 운영 서버가 갱신되지는 않는다.
+
 최신 후속 후보 `feat/optional-text-product-examples-20261018`은 예시 가이드 PR #22 위에 사진 없는 상품 AI 예시 선택을 추가한다. [요청·표시·검증 범위](text-product-examples-20261018.md)와 [신규 앱 별도 등록 준비](new-app-release-readiness-20261018.md)를 확인한다. 운영 3cc9318과 다르며 이 문서 갱신은 배포 승인이 아니다.
 
 방문 시연의 실제 준비 범위와 남은 인증·렌더·APK 조건은 [2026-10-18 준비 점검](demo-readiness-20261018.md)을 따른다. 완료 결과 브라우저 보관은 운영 작업 저장소를 대신하지 않는다.
