@@ -78,6 +78,12 @@ export class GenerationService {
             await this.ledger.transaction(async () => await this.db.prepare('UPDATE budgets SET limit_micros=?').run(micros));
         this.budgetMicros = micros;
     }
+    async testPurchaseReceipt({ purchaseId, credits }) {
+        const row = await this.db.prepare('SELECT * FROM purchases WHERE purchase_id=?').get(purchaseId);
+        if (!row || row.user_id !== LOCAL_USER || row.credits !== credits)
+            throw new ApiFailure('PURCHASE_NOT_VERIFIED', 409);
+        return { grantedCredits: row.credits, balance: (await this.wallet()).available };
+    }
     async recordTestPurchase({ purchaseId, credits }) { await this.ledger.recordVerifiedPurchase({ purchaseId, userId: LOCAL_USER, credits }); return await this.wallet(); }
     async wallet() { return { ...await this.ledger.wallet(LOCAL_USER), kind: this.adminTestUnlimited ? 'admin-test-unlimited' : 'test-credits', ...(this.adminTestUnlimited ? { unlimited: true } : {}) }; }
     async budgetLimit(period) {

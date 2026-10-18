@@ -1,3 +1,4 @@
+import {rememberCheckout} from './checkout-return';
 import {offlineDemo} from './demo-mode';
 import {useEffect,useRef,useState} from 'react';
 import {ArrowLeft,Check,Mail} from 'lucide-react';
@@ -9,7 +10,7 @@ import {carryGuestWorkspace} from './workspace-draft';
 import {accountError,exchangeEmail,readSession,type Capabilities,type EmailRequest,type TestOrder} from './account-client';
 import './account-pages.css';
 export {PaymentBrowserPage} from './PaymentBrowserPage';
-type Context={preserve:()=>Promise<void>;returnPage:'create'|'studio'|'home'};
+type Context={preserve:()=>Promise<void>;returnPage:'create'|'studio'|'editor'|'home'};
 function useCapabilities(){
  const [value,setValue]=useState<Capabilities|null>(null),[failed,setFailed]=useState(false),[attempt,setAttempt]=useState(0);
  useEffect(()=>{
@@ -34,7 +35,7 @@ function PasswordAccountPage({mode,preserve,returnPage,cap}:Context&{mode:'signu
    await preserve();
    const session=await apiRequest<BetaSession>(signup?'/api/auth/test/signup':'/api/auth/test/login',{email,password,...(signup?{name}:{})});
    await carryGuestWorkspace(accountNamespace(session.user.id));setPassword('');setConfirm('');
-   setBetaSession(session,admin&&returnPage==='home'?'admin':returnPage);
+   const paymentReturn=sessionStorage.getItem('aiadcast.checkout-login-return')==='1';sessionStorage.removeItem('aiadcast.checkout-login-return');setBetaSession(session,paymentReturn?'checkout-return':admin&&returnPage==='home'?'admin':returnPage);
   }catch(e){setMessage(accountError(e,language==='ko'));}finally{locked.current=false;setBusy(false);}
  }
  function selectAdmin(value:boolean){setAdmin(value);setEmail(value?cap.adminEmail:'');setPassword('');setConfirm('');setMessage('');}
@@ -69,7 +70,7 @@ export function EmailAccountPage({mode,preserve,returnPage}:Context&{mode:'signu
  async function demoVerify(){if(!request)return;setBusy(true);try{await apiRequest('/api/demo/auth/verify',request);await check();}catch(e){setMessage(accountError(e,ko));}finally{setBusy(false);}}
  async function check(){if(!request||locked.current)return;locked.current=true;try{
   if(Date.now()>=request.expires){setExpired(true);return;}
-  const result=await exchangeEmail(request);if(result.session){await latest.current.preserve();await carryGuestWorkspace(accountNamespace(result.session.user.id));sessionStorage.removeItem(key);const target=sessionStorage.getItem('aiadcast.auth-return')==='checkout'?'checkout':latest.current.returnPage;sessionStorage.removeItem('aiadcast.auth-return');setBetaSession(result.session,target);}
+  const result=await exchangeEmail(request);if(result.session){await latest.current.preserve();await carryGuestWorkspace(accountNamespace(result.session.user.id));sessionStorage.removeItem(key);const target=sessionStorage.getItem('aiadcast.auth-return')==='checkout'?'checkout':latest.current.returnPage;sessionStorage.removeItem('aiadcast.auth-return');const paymentReturn=sessionStorage.getItem('aiadcast.checkout-login-return')==='1';sessionStorage.removeItem('aiadcast.checkout-login-return');setBetaSession(result.session,paymentReturn?'checkout-return':target);}
  }catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;}}
  useEffect(()=>{if(!request||expired)return;const timer=setInterval(()=>{if(document.visibilityState==='visible')void check();},3000);return()=>clearInterval(timer);},[request,expired,ko]);
  async function submit(){if(locked.current)return;locked.current=true;setBusy(true);setMessage('');try{await preserve();const result=await apiRequest<EmailRequest>('/api/auth/email/request',{email});sessionStorage.setItem(key,JSON.stringify(result));setRequest(result);setExpired(false);}catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;setBusy(false);}}
@@ -108,11 +109,11 @@ export function CheckoutPage({preserve,returnPage}:Context){
   await preserve();if(!session){sessionStorage.setItem('aiadcast.auth-return','checkout');location.hash='login';return;}
   const key='aiadcast.checkout-request:'+session.user.id+':'+selected;
   let requestId=sessionStorage.getItem(key);if(!requestId){requestId=crypto.randomUUID();sessionStorage.setItem(key,requestId);}
-  const result=await apiRequest<TestOrder>('/api/checkout/orders',{pack:selected,requestId,agreed});keepOrder(result);
+  const result=await apiRequest<TestOrder>('/api/checkout/orders',{pack:selected,requestId,agreed});keepOrder(result);rememberCheckout(result,returnPage);
  }catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;setBusy(false);}}
  function clearOrder(){if(order)sessionStorage.removeItem('aiadcast.checkout-request:'+session?.user.id+':'+order.pack);sessionStorage.removeItem(orderKey);setOrder(undefined);setAgreed(false);setMessage('');}
  if(order?.state==='paid')return <section className="account-page"><Check size={40}/><h1>{demo?t('체험 이용권이 추가되었습니다','Demo credits added'):t('테스트 이용권이 추가되었습니다','Test credits added')}</h1><p>{order.credits}{t('개 추가',' credits added')}{balance!==null&&<> · {t('보유','Balance')} {balance}{t('개','')}</>}</p><p className="account-help">{demo?t('기기 내 모의 결제입니다. 실제 결제사 승인·청구는 없습니다.','Local simulated checkout. No payment-provider approval or charge.'):t('테스트 결제이며 실제 청구되지 않습니다.','This was a test payment. No real charge was made.')}</p><a className="primary-action" href={'#'+(returnPage==='home'?'create':returnPage)}>{t('광고 만들기','Create an ad')}</a><button className="guest-link" onClick={clearOrder}>{t('이용권 목록','Credit packs')}</button></section>;
- return <section className="account-page checkout-page"><a href={'#'+returnPage} className="page-back"><ArrowLeft size={18}/>{t('돌아가기','Back')}</a><h1>{t('이용권 선택','Choose credits')}</h1><p className="page-intro">{t('자동 구독 없이, 필요한 만큼.','Buy what you need. No subscription.')}</p>
+ return <section className="account-page checkout-page"><a href={'#'+returnPage} className="page-back"><ArrowLeft size={18}/>{t('돌아가기','Back')}</a><h1>{t('이용권 선택','Choose credits')}</h1>{session&&<a className="primary-action" href="#checkout-return">{t('결제 후 작업 이어가기','Resume after checkout')}</a>}<p className="page-intro">{t('자동 구독 없이, 필요한 만큼.','Buy what you need. No subscription.')}</p>
  <div className="connection-notice" id="checkout-availability">{!cap?(capability.failed?t('결제 연결 상태를 확인하지 못했습니다. 다시 확인해주세요.','Could not check checkout availability. Please retry.'):t('결제 연결 상태를 확인하고 있습니다…','Checking checkout availability…')):demo?t('기기 내 모의 결제 · 카드정보 입력과 실제 청구 없음','Local simulated checkout · No card details or charge'):cap.checkout.enabled?t('Toss 테스트 결제 · 실제 청구되지 않습니다.','Toss test checkout · No real charge.'):t('서버에 테스트 결제가 연결되어 있지 않습니다. 기다려도 결제가 시작되지 않습니다. 관리자에게 테스트 이용권과 생성 예산 준비를 요청해주세요.','Test checkout is not connected on the server. Waiting will not start a payment. Ask your administrator to arrange test credits and a generation budget.')}</div>
  {capability.failed&&<button className="guest-link" onClick={capability.retry}>{t('결제 연결 다시 확인','Retry checkout connection')}</button>}
  {balance!==null&&<p className="credit-balance">{t('보유 이용권','Your credits')} <strong>{balance}{t('개','')}</strong></p>}
