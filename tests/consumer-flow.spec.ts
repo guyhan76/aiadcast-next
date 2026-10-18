@@ -246,3 +246,7 @@ test('starting a fresh draft preserves a lost prior request for recovery without
  expect(await page.evaluate(()=>Object.fromEntries(Object.entries(localStorage).filter(([k])=>k.includes('pending-generation.'))))).toEqual(pending);expect(attempts).toBe(1);expect(state.accepts).toBe(0);
  await page.locator('a[href="#projects"]:visible').first().click();await page.locator('.project-tile').first().click();await expect(page.getByText(/중복 생성을 막기 위해 새 요청을 보류/)).toBeVisible();expect(attempts).toBe(1);
 });
+
+test('starting the first campaign from home does not create an empty library project',async({page})=>{
+ await mocks(page);await page.goto('/');await page.getByRole('button',{name:'내 광고 만들기',exact:true}).click();await expect(page.locator('.consumer-create')).toBeVisible();await page.locator('a[href="#projects"]:visible').first().click();await expect(page.getByRole('heading',{name:'첫 광고를 만들어보세요.',exact:true})).toBeVisible();await expect(page.locator('.project-tile')).toHaveCount(0);
+});
