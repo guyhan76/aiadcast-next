@@ -45,7 +45,7 @@ export async function renderControlledProduct(canvas:HTMLCanvasElement,p:Project
  const area:Rect=wide?{x:w*.43,y:h*.08,w:w*.54,h:h*.74}:{x:w*.04,y:h*.34,w:w*.92,h:h*.44};
  product(ctx,p,area,color,p.dimensionControl!.annotation==='direct');
  if(p.dimensionControl!.annotation==='inset'){const r={x:w*.58,y:h*.69,w:w*.36,h:h*.2};ctx.fillStyle='#fffaf0e8';ctx.fillRect(r.x,r.y,r.w,r.h);product(ctx,p,r,color,true);}
- const measures=semanticMeasurements(p).map(m=>dimensionLabel(m.valueMm,p.dimensions.displayUnit)).join(' × ');if(p.dimensionControl!.annotation!=='none')text(measures,w*.08,h*.84,w*.84,unit*.029,1);text(ko?'입력 규격으로 구성한 제품 본체':'Product body built from entered dimensions',w*.08,h*.89,w*.84,unit*.017,1);
+ const measures=semanticMeasurements(p).map(m=>dimensionLabel(m.valueMm,p.dimensions.displayUnit)).join(' × ');if(p.dimensionControl!.annotation!=='none')text(measures,w*.08,h*.84,w*.84,unit*.029,1);text(ko?'기하 검증용 · 광고 완성본 아님':'GEOMETRY PROOF · NOT A FINISHED AD',w*.08,h*.89,w*.84,unit*.017,1);
  const footer=['company','contact','email','website'].filter(k=>footerVisible(p,k as any)).map(k=>copy[k as keyof typeof copy]).filter(Boolean).join(' · ');text(footer,w*.08,h*.945,w*.84,unit*.017,1);
  return errors;
 }
