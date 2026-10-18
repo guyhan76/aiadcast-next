@@ -1,5 +1,10 @@
 # aiadcast 무료 베타 서버 연결
 
+## 별도 후속 후보 — 버전 표시
+
+`feat/visible-version-info-20261018`은 PR32 `db15d693130a4d3cb94b51ab7eb0a170614cd24d` 기반의 별도 후보이며, 진행 중인 PR32 운영 배포를 변경하지 않는다. [버전 표시 동작과 호환성](version-info-20261018.md)을 따른다. 0.2.34-demo/code36의 상단 내 계정에서 설치 앱과 서버 버전을 구분한다. 새 앱만 설치해도 네이티브 버전은 확인할 수 있고, 서버 버전은 읽기 전용 `/api/version` 배포 전까지 확인 불가다. 최종 draft PR SHA와 CI 성공을 고정한 뒤 운영자가 서비스·브랜치·환경을 확인해야 하며 이번 작업에서 배포하지 않는다.
+
+
 ## 최신 미배포 후보 — AI 자동 규격 표시
 
 `feat/ai-dimension-display-20261018`은 PR31 `feat/account-credits-readiness-20261018`의 `1f2ddeb0e127e93c210d216c798201b3ab9f1219` 위에 쌓인 후보다. main 또는 오래된 PR5 브랜치로 덮어쓰지 않는다. PR29 별도 수동 복구 브랜치는 포함하지 않는다. 최종 draft PR head와 해당 CI 성공을 확인해 정확한 SHA를 배포 대상으로 고정한다. [동작과 한계](ai-dimension-display-20261018.md)를 따른다.

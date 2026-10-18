@@ -1,3 +1,4 @@
+import {serverBuild} from './build-info.mjs';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
@@ -55,6 +56,7 @@ export function createGenerationHttpServer({ service, allowedOrigins = DEFAULT_O
         res.writeHead(204, { 'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'GET,POST,OPTIONS','Access-Control-Allow-Headers':'Content-Type,X-Aiadcast-Client','Access-Control-Max-Age':'600','Vary':'Origin' }); res.end(); return;
       }
       const url = new URL(req.url, ownOrigin);
+      if(req.method==='GET'&&url.pathname==='/api/version'){sendJson(res,200,serverBuild,origin);return;}
       if (req.method === 'GET' && url.pathname === '/api/status') { sendJson(res, 200, service.status(), origin); return; }
       if (req.method === 'GET' && url.pathname === '/api/generations') { sendJson(res, 200, service.history(url.searchParams.has('projectId') ? url.searchParams.get('projectId') : undefined), origin); return; }
       const route = /^\/api\/generations\/([A-Za-z0-9_-]{8,100})(?:\/(accept|reject))?$/.exec(url.pathname);

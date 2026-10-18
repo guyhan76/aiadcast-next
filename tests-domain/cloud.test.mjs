@@ -319,3 +319,5 @@ test('cloud AI dimension review is owner-only, atomic, durable and never repeats
  for(let i=0;i<2;i++)assert.equal((await s.call('/api/generations/'+id+'/accept',{token,body:{artifactId:hash,dimensionReview}})).status,200);
  await s.restart();assert.deepEqual((await s.call('/api/generations/'+id,{token})).data.job.dimensionReview,dimensionReview);assert.equal((await s.call('/api/generations',{token,body})).data.job.id,id);const status=(await s.call('/api/status',{token})).data;assert.equal(status.wallet.available,2);assert.equal(status.wallet.reserved,0);assert.equal(status.budget.spentMicros,1);assert.equal(calls,1);
 });
+
+test('cloud public version read returns build identity without provider or account operations',async t=>{const s=await setup(t);const r=await s.call('/api/version');assert.equal(r.status,200);assert.deepEqual(Object.keys(r.data).sort(),['commit','schemaVersion','service','version']);assert.equal(r.data.schemaVersion,1);assert.equal(r.data.service,'aiadcast-next');assert.equal(r.data.version,'0.1.0');});

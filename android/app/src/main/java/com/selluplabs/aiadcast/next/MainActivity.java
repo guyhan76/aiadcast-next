@@ -238,7 +238,10 @@ public final class MainActivity extends ComponentActivity {
 
     private void updateBridgeScript() {
         bridgeScript = "window.__AIADCAST_API_ORIGIN__=" + JSONObject.quote(apiOrigin)
-            + ";window.__AIADCAST_TEST_CONNECTION__=" + BuildConfig.ALLOW_TEST_CONFIG + ";" + bridgeSource;
+            + ";window.__AIADCAST_NATIVE_VERSION__={versionName:" + JSONObject.quote(BuildConfig.VERSION_NAME)
+            + ",versionCode:" + BuildConfig.VERSION_CODE + ",packageName:" + JSONObject.quote(BuildConfig.APPLICATION_ID) + "};"
+            + "window.dispatchEvent(new Event('aiadcast-native-version'));"
+            + "window.__AIADCAST_TEST_CONNECTION__=" + BuildConfig.ALLOW_TEST_CONFIG + ";" + bridgeSource;
     }
 
     private void configureTestServer(String value) {

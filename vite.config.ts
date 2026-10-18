@@ -1,3 +1,4 @@
+import {buildInfo} from './server/build-info.mjs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 const apiProxy={target:'http://127.0.0.1:8787',changeOrigin:true,configure(proxy:any){
@@ -8,4 +9,4 @@ const apiProxy={target:'http://127.0.0.1:8787',changeOrigin:true,configure(proxy
  });
 }};
 const proxies={'/api/material-render':{...apiProxy,target:'http://127.0.0.1:8792'},'/api':apiProxy};
-export default defineConfig({plugins:[react()],base:'./',build:{assetsInlineLimit:0},server:{host:'127.0.0.1',port:5180,strictPort:true,proxy:proxies},preview:{host:'127.0.0.1',port:4180,strictPort:true,proxy:proxies}});
+export default defineConfig({define:{__AIADCAST_WEB_BUILD__:JSON.stringify(buildInfo({env:{}}))},plugins:[react()],base:'./',build:{assetsInlineLimit:0},server:{host:'127.0.0.1',port:5180,strictPort:true,proxy:proxies},preview:{host:'127.0.0.1',port:4180,strictPort:true,proxy:proxies}});
