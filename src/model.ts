@@ -1,3 +1,4 @@
+import {isTextExample,textExampleGeometryError} from './generation-input.ts';
 import {parseDimensionControl,dimensionControlErrors,dimensionControlKey,type DimensionControl} from './dimension-control.ts';
 import {annotationIncomplete,parseAnnotation,type DimensionAnnotation} from './dimension-annotation.ts';
 import type {PhotoView} from './automatic-proportion.ts';
@@ -54,12 +55,12 @@ export async function imageFile(file:File):Promise<Asset> {
 }
 export async function loadImage(data:string):Promise<HTMLImageElement> {const img=new Image();img.src=data;await img.decode();return img;}
 export function exportErrors(p:Project) {
- const errors:string[]=[];
+ const errors:string[]=[];const exampleError=textExampleGeometryError(p);if(exampleError)return [exampleError];
  if(p.dimensionControl){errors.push(...dimensionControlErrors(p));if(p.dimensionControl.acceptedKey!==dimensionControlKey(p))errors.push('규격 제품의 현재 형상과 문구를 검수한 뒤 확정해주세요.');return errors;}
  const annotationError=annotationIncomplete(p);if(annotationError)errors.push(annotationError);
  const projectionError=boxProjectionError(p);if(projectionError)errors.push(projectionError);
- if(p.generation?.mode==='creative'&&!hasUsableCreative(p))errors.push('새 광고 결과가 아직 준비되지 않았거나 원본·규격·문구·연락처가 변경되었습니다. AI 연결 후 현재 조건으로 생성하고 결과를 승인해주세요.');
- if(!p.product&&!isServiceCategory(p.productProfile.category))errors.push('원본 상품 사진을 먼저 추가해주세요.');
+ if((p.generation?.mode==='creative'||isTextExample(p))&&!hasUsableCreative(p))errors.push('새 광고 결과가 아직 준비되지 않았거나 원본·규격·문구·연락처가 변경되었습니다. AI 연결 후 현재 조건으로 생성하고 결과를 승인해주세요.');
+ if(!p.product&&!isServiceCategory(p.productProfile.category)&&!isTextExample(p))errors.push('원본 상품 사진을 먼저 추가해주세요.');
  if(p.generation.mode==='original'&&p.product&&photoRole(p,p.product.sha256)==='style')errors.push('실사 그대로 사용하려면 실제 상품·공간 사진을 대표로 지정해주세요.');
  if(!p.copy[p.locale].title.trim())errors.push('제목을 입력해주세요.');
  if(p.dimensions.visible && dimensionAxes(p.productProfile).some(a=>!validMillimeters(p.dimensions[a])))errors.push('규격은 0보다 크고 100,000 mm 이하인 숫자로 입력해주세요.');

@@ -1,3 +1,4 @@
+import {isTextExample} from './generation-input.ts';
 import type {Asset,Project} from './model.ts';
 
 export type PhotoRole='subject'|'style';
@@ -16,4 +17,4 @@ export function withPhotoRole(p:Project,hash:string,role:PhotoRole):Project{
 export function stylePhotoHashes(p:Project):string[]{
  return [p.product,...p.references??[]].filter((a):a is Asset=>!!a&&photoRole(p,a.sha256)==='style').map(a=>a.sha256);
 }
-export const needsPhotoPurposeServer=(p:Project,supported?:boolean)=>p.generation.mode==='creative'&&stylePhotoHashes(p).length>0&&supported!==true;
+export const needsPhotoPurposeServer=(p:Project,supported?:boolean)=>!isTextExample(p)&&p.generation.mode==='creative'&&stylePhotoHashes(p).length>0&&supported!==true;

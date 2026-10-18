@@ -1,3 +1,4 @@
+import {isTextExample,generationContext,textExampleGeometryError} from './generation-input.ts';
 import {dimensionControlErrors} from './dimension-control.ts';
 import {makeDimensionPlan} from './dimension-generation.ts';
 import {validMillimeters} from './dimension-units.ts';
@@ -13,19 +14,22 @@ import {creativeContract} from './creative.ts';
 import {boxProjectionActive,boxProjectionError} from './box-projection.ts';
 import {publicAdCopy,completeAdKey} from './complete-ad.ts';
 export type GenerationMode = 'original' | 'creative';
-export type GenerationSettings = {mode:GenerationMode;brief:string;planarSourceHash?:string;dimensionVariant?:string;dimensionBased?:boolean;dimensionBasis?:'outer-body'|'inner-body'|'body'|'garment-flat'};
+export type GenerationSettings = {mode:GenerationMode;brief:string;inputMode?:'photo'|'text-example';photoMode?:GenerationMode;planarSourceHash?:string;dimensionVariant?:string;dimensionBased?:boolean;dimensionBasis?:'outer-body'|'inner-body'|'body'|'garment-flat'};
 export const defaultGeneration = ():GenerationSettings => ({mode:'original',brief:''});
 export function parseGeneration(value:unknown):GenerationSettings {
   if(value===undefined)return defaultGeneration();
   if(!value||typeof value!=='object')throw Error('이미지 제작 방식이 올바르지 않습니다.');
   const settings=value as GenerationSettings;
   if(!['original','creative'].includes(settings.mode)||typeof settings.brief!=='string'||settings.brief.length>600)throw Error('이미지 제작 방식과 요청 내용을 확인해주세요.');
+  if(settings.inputMode==='text-example'&&settings.mode!=='creative'||settings.inputMode!==undefined&&!['photo','text-example'].includes(settings.inputMode)||settings.photoMode!==undefined&&!['original','creative'].includes(settings.photoMode))throw Error('상품 이미지 만들기 방식을 확인해주세요.');
   if(settings.dimensionVariant!==undefined&&(typeof settings.dimensionVariant!=='string'||settings.dimensionVariant.length>80))throw Error('규격 이름을 확인해주세요.');
   if(settings.dimensionBased!==undefined&&typeof settings.dimensionBased!=='boolean'||settings.dimensionBasis!==undefined&&!['outer-body','inner-body','body','garment-flat'].includes(settings.dimensionBasis))throw Error('규격 기반 생성 옵션을 확인해주세요.');
   if(settings.planarSourceHash!==undefined&&!/^[a-f0-9]{64}$/.test(settings.planarSourceHash))throw Error('평면 비례 적용 사진을 확인해주세요.');
-  return {mode:settings.mode,brief:settings.brief,...(settings.dimensionBased?{dimensionBased:true,dimensionVariant:settings.dimensionVariant??'',dimensionBasis:settings.dimensionBasis??'outer-body',...(settings.planarSourceHash?{planarSourceHash:settings.planarSourceHash}:{})}:{})};
+  return {mode:settings.mode,brief:settings.brief,...(settings.inputMode?{inputMode:settings.inputMode}:{}),...(settings.photoMode?{photoMode:settings.photoMode}:{}),...(settings.dimensionBased?{dimensionBased:true,dimensionVariant:settings.dimensionVariant??'',dimensionBasis:settings.dimensionBasis??'outer-body',...(settings.planarSourceHash?{planarSourceHash:settings.planarSourceHash}:{})}:{})};
 }
 export function generationIssues(p:Project):string[] {
+  const textError=textExampleGeometryError(p);if(textError)return [textError];
+  if(isTextExample(p)&&(p.generation.mode!=='creative'||!p.productName.trim()||!p.productProfile.material.trim()))return ['설명 예시는 AI 새 광고 모드에서 상품명과 상세설명이 필요합니다.'];
   if(p.dimensionControl)return dimensionControlErrors(p);
   const creative=(p.generation??defaultGeneration()).mode==='creative';
   const axes=dimensionAxes(p.productProfile);const errors:string[]=[];
@@ -33,12 +37,12 @@ export function generationIssues(p:Project):string[] {
   if(p.generation.planarSourceHash&&(!p.generation.dimensionBased||p.generation.dimensionBasis&&p.generation.dimensionBasis!=='outer-body'||p.generation.mode!=='creative'||p.productProfile.specType!=='flat'||p.generation.planarSourceHash!==p.product?.sha256||photoRole(p,p.generation.planarSourceHash)!=='subject'))errors.push('평면 비례 자동 적용은 현재 실제 상품의 정면 사진과 가로·세로 규격을 확인한 경우에만 사용합니다.');
   const projectionError=boxProjectionError(p);if(projectionError)errors.push(projectionError);
   const service=isServiceCategory(p.productProfile.category);
-  if(!p.product&&!service)errors.push(creative?'참고할 상품 사진을 추가해주세요.':'원본 상품 사진을 추가해주세요.');
+  if(!p.product&&!service&&!isTextExample(p))errors.push(creative?'참고할 상품 사진을 추가해주세요.':'원본 상품 사진을 추가해주세요.');
   if(!creative&&p.product&&photoRole(p,p.product.sha256)==='style')errors.push('실사 그대로 사용하려면 실제 상품·공간 사진을 대표로 지정해주세요.');
-  if(creative&&!service&&p.product&&[p.product,...p.references??[]].every(a=>photoRole(p,a.sha256)==='style'))errors.push('디자인 참고 외에 실제 상품 사진을 한 장 이상 추가해주세요.');
+  if(creative&&!service&&!isTextExample(p)&&p.product&&[p.product,...p.references??[]].every(a=>photoRole(p,a.sha256)==='style'))errors.push('디자인 참고 외에 실제 상품 사진을 한 장 이상 추가해주세요.');
   if(creative&&service&&!p.product&&!p.generation.brief.trim()&&!p.campaign?.creative&&!p.conversation?.turns.some(t=>t.state==='recorded'))errors.push('사진 없이 만들 광고의 내용과 요청사항을 입력해주세요.');
   if(axes.some(axis=>!validMillimeters(p.dimensions[axis])))errors.push('생성에 참고할 규격은 0보다 크고 100,000 mm 이하로 입력해주세요.');
-  const assessment=assessReference(p);if(['mismatch','invalid'].includes(assessment.status))errors.push(assessment.message);
+  const assessment=assessReference(generationContext(p));if(['mismatch','invalid'].includes(assessment.status))errors.push(assessment.message);
   return errors;
 }
 // Describes intent only. No network call, provider charge or generation occurs here.
@@ -47,6 +51,7 @@ export function buildGenerationRequest(p:Project) {
   if(p.dimensionControl)throw Error('LOCAL_DIMENSION_CONTROL_ONLY');
   const generation=parseGeneration(p.generation);const issues=generationIssues(p);
   if(issues.length)throw Error(issues.join(' '));
+  p=generationContext(p);
   const creative=generation.mode==='creative';
   const service=isServiceCategory(p.productProfile.category);
   const format=getImageFormat(p.format);
@@ -58,6 +63,7 @@ export function buildGenerationRequest(p:Project) {
   return {
     ...(generation.dimensionBased?{dimensionPlan:makeDimensionPlan({sourceHash:p.product!.sha256,variantLabel:generation.dimensionVariant,basis:generation.dimensionBasis,specType:p.productProfile.specType,specifications})}:{}),
     ...(generation.planarSourceHash?{proportionControl:{kind:'flat-front-v1',confirmedSourceHash:generation.planarSourceHash,variantLabel:generation.dimensionVariant??''}}:{}),
+    ...(isTextExample(p)?{inputMode:'text-example' as const}:{}),
     version:1,mode:generation.mode,operation:appearanceEdit?'image-region':creative?(service?'image-ad-creative':'image-product-concept'):(service?'compose-ad':'compose-original'),
     source:p.product?{sha256:p.product.sha256,role:appearanceEdit?'appearance-edit-reference':creative?'visual-reference':service?'protected-visual':'protected-product',purpose:photoRole(p,p.product.sha256)}:null,
     references:(p.references??[]).map(a=>({sha256:a.sha256,role:'additional-product-reference',purpose:photoRole(p,a.sha256)})),
