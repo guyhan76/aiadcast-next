@@ -102,7 +102,7 @@ for(const mode of ['main','inset'] as const)test(`owned box missing coordinates 
  await reloadDraft(page);expect(state.counts()).toEqual({generations:1,analyses:1});
  await panel.getByRole('button',{name:'박스 위치 직접 지정',exact:true}).click();
  const editor=page.locator('.manual-box-coordinates');
- const imageBox=await editor.getByRole('img').boundingBox(),overlayBox=await editor.locator('svg').boundingBox();
+ const imageBox=await editor.getByRole('img',{name:'위치를 지정할 원본 광고',exact:true}).boundingBox(),overlayBox=await editor.locator('svg').boundingBox();
  expect(imageBox!.width/imageBox!.height).toBeCloseTo(800/1000,2);expect(overlayBox!.x).toBeCloseTo(imageBox!.x,1);expect(overlayBox!.y).toBeCloseTo(imageBox!.y,1);expect(overlayBox!.width).toBeCloseTo(imageBox!.width,1);expect(overlayBox!.height).toBeCloseTo(imageBox!.height,1);
  const consent=editor.getByRole('checkbox');await consent.check();await editor.getByRole('button',{name:'수동 위치 적용',exact:true}).click();await expect(editor.getByRole('alert')).toBeVisible();
  const fill=async(label:string,values:number[],names=['왼쪽','위','너비','높이'])=>{for(let i=0;i<values.length;i++)await editor.getByLabel(label+' '+names[i]+' %',{exact:true}).fill(String(values[i]*100));};
