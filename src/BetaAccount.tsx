@@ -8,7 +8,7 @@ import './beta-account.css';
 import {signOut} from './sign-out';
 export function SessionBoundary({children}:{children:ReactNode}){
  const [scope,setScope]=useState(storageNamespace);
- useEffect(()=>{const update=(event:Event)=>{const route=(event as CustomEvent).detail?.returnPage;location.hash=['home','create','studio','editor','checkout','checkout-return','login','signup'].includes(route)?route:'home';setScope(storageNamespace());};window.addEventListener('aiadcast-session-change',update);return()=>window.removeEventListener('aiadcast-session-change',update);},[]);
+ useEffect(()=>{const update=(event:Event)=>{const route=(event as CustomEvent).detail?.returnPage;location.hash=['home','create','studio','editor','credits','checkout','checkout-return','login','signup'].includes(route)?route:'home';setScope(storageNamespace());};window.addEventListener('aiadcast-session-change',update);return()=>window.removeEventListener('aiadcast-session-change',update);},[]);
  return <div key={scope}>{children}</div>;
 }
 function revisionKey(id:string){return `aiadcast.cloud-revision:${storageNamespace()}:${id}`;}

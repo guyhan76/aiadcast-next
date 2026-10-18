@@ -23,7 +23,7 @@ async function fixture(t,withCheckout){
  const call=async(path,body,token)=>{const r=await fetch('http://127.0.0.1:'+app.server.address().port+path,{method:body?'POST':'GET',headers:{Origin:'https://beta.example.com','Content-Type':'application/json','X-Aiadcast-Client':'local-studio',...(token?{Authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:r.status,data:await r.json()};};
  const signup=await call('/api/auth/test/signup',{email:'member@example.com',password:'Fixture-member-password!',name:'Member'});
  assert.equal(signup.status,200);
- return {call,store,session:signup.data,calls:()=>({confirmCalls,imageCalls})};
+ return {call,store,app,session:signup.data,calls:()=>({confirmCalls,imageCalls})};
 }
 
 test('new server member has no credits or API allocation and unavailable checkout cannot create an order',async t=>{
@@ -60,4 +60,17 @@ test('October owner allocation consumes the entire five-dollar cap and rejects a
  assert.equal(store.effectiveCap(),5000000);assert.equal(store.effectiveBudget(owner,'2026-10'),5000000);
  assert.throws(()=>store.setAllocation(member,1000000),/BETA_ALLOCATION_EXCEEDED/);
  assert.equal(store.effectiveBudget(member,'2026-10'),0);assert.equal(store.effectiveCap(),5000000);
+});
+
+test('credit overview authenticates and isolates wallet, purchase and grant history without payment or image calls',async t=>{
+ const {call,store,session,calls}=await fixture(t,true);
+ assert.equal((await call('/api/account/credits')).status,401);
+ const other=(await call('/api/auth/test/signup',{email:'other@example.com',password:'Fixture-other-password!',name:'Other'})).data;
+ const ownOrder=(await call('/api/checkout/orders',{pack:'trial',requestId:'overview-own-order',agreed:true},session.token)).data;
+ await call('/api/checkout/orders',{pack:'basic',requestId:'overview-other-order',agreed:true},other.token);
+ const insert=store.db.prepare("INSERT INTO admin_grants(id,actor_id,request_id,user_id,credits,state,created) VALUES(?,?,?,?,?,'completed',?)");
+ insert.run('own-grant',session.user.id,'fixture-own-grant',session.user.id,30,Date.now());insert.run('other-grant',other.user.id,'fixture-other-grant',other.user.id,3,Date.now());
+ const before=store.db.prepare('SELECT COUNT(*) n FROM admin_grants').get().n;
+ for(let i=0;i<2;i++){const r=await call('/api/account/credits?userId='+other.user.id,undefined,session.token);assert.equal(r.status,200);assert.equal(r.data.wallet.available,0);assert.equal(r.data.wallet.reserved,0);assert.deepEqual(r.data.orders.map(o=>o.id),[ownOrder.id]);assert.deepEqual(r.data.grants.map(g=>g.id),['own-grant']);assert.equal(r.data.orders[0].state,'pending');}
+ assert.equal(store.db.prepare('SELECT COUNT(*) n FROM admin_grants').get().n,before);assert.equal(store.db.prepare('SELECT budget FROM users WHERE id=?').get(session.user.id).budget,0);assert.deepEqual(calls(),{confirmCalls:0,imageCalls:0});
 });

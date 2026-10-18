@@ -46,6 +46,7 @@ async function handle(path:string,body:any,session:ReturnType<typeof betaSession
  if(path==='/api/auth/logout')return {ok:true};
  if(path==='/api/status')return {mode:'offline-demo',commercialReady:false,generation:{enabled:!!account,model:'local-demo.composition',reason:account?null:'AUTH_REQUIRED'},wallet:account?wallet(account):{available:0,reserved:0,kind:'local-simulation'},budget:{limitMicros:0,spentMicros:0,heldMicros:0},assistant:{available:false}};
  if(!account)failure('AUTH_REQUIRED',401);
+ if(path==='/api/account/credits')return {wallet:wallet(account!),orders:Object.values(account!.orders).sort((a,b)=>b.created-a.created).slice(0,30),grants:[]};
  if(path==='/api/checkout/orders'){
   if(!body?.agreed)failure('CONSENT_REQUIRED');const pack=pricingCatalog.packs.find(p=>p.id===body?.pack);if(!pack||typeof body?.requestId!=='string')failure('INVALID_ORDER');
   const prior=account!.orderRequests[body.requestId];if(prior)return account!.orders[prior];

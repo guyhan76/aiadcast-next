@@ -71,6 +71,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
     throw new ApiFailure('NOT_FOUND',404);
    }
    if(url.pathname==='/api/checkout/orders'&&req.method==='POST'){send(res,201,checkout.create(user,await read(req,2048)),cors);return;}
+   if(url.pathname==='/api/account/credits'&&req.method==='GET'){const orders=checkout.history(user),grants=store.db.prepare('SELECT id,credits,state,created FROM admin_grants WHERE user_id=? ORDER BY created DESC LIMIT 30').all(user.id);send(res,200,{wallet:service(user).wallet(),orders,grants},cors);return;}
    if(url.pathname==='/api/checkout/orders'&&req.method==='GET'){send(res,200,{orders:checkout.history(user)},cors);return;}
    const order=/^\/api\/checkout\/orders\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
    if(order&&req.method==='GET'){send(res,200,await checkout.status(user,order[1]),cors);return;}
