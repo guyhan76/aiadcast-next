@@ -1,3 +1,4 @@
+import type {AnnotationProposal,AnnotationAxis} from './dimension-annotation';
 import type {Project} from './model';
 import {annotationPlan,annotationSnapshot} from './dimension-annotation';
 import {loadImage} from './model';
@@ -6,8 +7,10 @@ export async function paintAnnotation(canvas:HTMLCanvasElement,p:Project){
  const a=p.dimensionAnnotation;
  if(!a||a.mode==='none'||!a.proposal)return;
  if(!hasCompleteAd(p)||a.snapshot!==annotationSnapshot(p))throw Error('규격 표시의 원본 또는 치수가 바뀌었습니다. 자동 배치를 다시 요청하거나 표시 없음을 선택해주세요.');
- const frame=completeAdPlacement(p),plan=annotationPlan(a.proposal,p.dimensions,a.mode,frame.w,frame.h),ctx=canvas.getContext('2d')!;
- const image=await loadImage(p.generated!.asset.data);
+ const frame=completeAdPlacement(p);await paintLocatedAnnotation(canvas,p.generated!.asset.data,a.proposal,p.dimensions,a.mode,frame);
+}
+export async function paintLocatedAnnotation(canvas:HTMLCanvasElement,source:string,proposal:AnnotationProposal,dimensions:Record<AnnotationAxis,string>,mode:'main'|'inset',frame={x:0,y:0,w:canvas.width,h:canvas.height}){
+ const plan=annotationPlan(proposal,dimensions,mode,frame.w,frame.h),ctx=canvas.getContext('2d')!,image=await loadImage(source);
  ctx.save();ctx.translate(frame.x,frame.y);
  if(plan.inset){const [x,y,w,h]=plan.product,[ix,iy,iw,ih]=plan.inset;ctx.drawImage(image,x*image.naturalWidth,y*image.naturalHeight,w*image.naturalWidth,h*image.naturalHeight,ix*frame.w,iy*frame.h,iw*frame.w,ih*frame.h);}
  for(const edge of plan.planned){
