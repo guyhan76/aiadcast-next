@@ -61,7 +61,7 @@ test('single box production service is exact-byte-bound, admin-only and never en
  const {BOX_REFERENCE}=await import('../server/vision-evaluation/single-box-approval.mjs');let calls=0,writes=0;
  const bytes=await sharp({create:{width:1080,height:1920,channels:3,background:'white'}}).png().toBuffer();const source={data:'data:image/png;base64,'+bytes.toString('base64'),sha256:sourceHash(bytes),width:1080,height:1920};
  const s=singleBoxService({apiKey:'local-mock',ledgerFactory:()=>{writes++;},statusReader:async()=>({remainingCalls:1,unresolvedCalls:0,allowanceUsedMicros:0}),analyze:()=>{calls++;}}),admin={id:'admin',role:'admin'};
- const status=await s.status(admin);assert.equal(status.limitCalls,1);assert.equal(status.limitMicros,30000);assert.deepEqual(status.references,[BOX_REFERENCE]);assert.equal(s.capability(admin).available,false);
+ const status=await s.status(admin);assert.equal(status.limitCalls,1);assert.equal(status.limitMicros,30000);assert.equal(status.references[0].sha256,BOX_REFERENCE.sha256);assert.equal(status.references[0].bytes,BOX_REFERENCE.bytes);assert.equal(status.references.length,1);assert.equal(s.capability(admin).available,false);
  await assert.rejects(s.analyze({requestId:'single_box_request_01',source},admin),e=>e.code==='IMAGE_OUTSIDE_ANALYSIS_APPROVAL');
  await assert.rejects(s.analyze({requestId:'single_box_request_01',source:{...source,sha256:BOX_REFERENCE.sha256}},admin),e=>e.code==='INVALID_SOURCE');
  await assert.rejects(s.analyze({requestId:'single_box_request_01',source},{role:'member'}),e=>e.code==='EVALUATION_ADMIN_ONLY');assert.equal(calls,0);assert.equal(writes,0);

@@ -71,7 +71,7 @@ for(const [name,kind] of [['email-auth','EmailAuth'],['password-auth','PasswordA
  writeFileSync(new URL(name+'-base.mjs',out),transform(t));
 }
 s=read('beta-server');s=s.slice(0,s.indexOf('export function betaConfig'));
-s=s.replace("from './vision-evaluation/service.mjs'","from '../vision-evaluation/service.mjs'").replace("from './vision-evaluation/ledger.mjs'","from '../vision-evaluation/ledger.mjs'");
+s=s.replace("from './vision-evaluation/single-box-service.mjs'","from '../vision-evaluation/single-box-service.mjs'").replace("from './vision-evaluation/service.mjs'","from '../vision-evaluation/service.mjs'").replace("from './vision-evaluation/ledger.mjs'","from '../vision-evaluation/ledger.mjs'");
 s=s.replace("import {BetaStore} from './beta-store.mjs';",'').replace("import {GenerationService,ApiFailure} from './generation-service.mjs';","import {ApiFailure} from '../generation-service.mjs';");
 s=s.replace("import {OpenAIImageAdapter,ProviderFailure} from './openai-image-adapter.mjs';","import {ProviderFailure} from '../openai-image-adapter.mjs';");
 s=s.replace("import {assistCopy} from './text-assistant.mjs';",'').replace("import {accountConfiguration} from './account-providers.mjs';",'');

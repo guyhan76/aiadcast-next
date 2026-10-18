@@ -7,6 +7,8 @@ test('single-file preview embeds all ten campaign photos',async({page})=>{
  await page.route('**/standalone.html',route=>route.fulfill({contentType:'text/html',body:html}));
  await page.goto('/standalone.html');
  const gallery=page.locator('.home-showcase');await expect(gallery.getByRole('tab')).toHaveCount(10);
+ await expect(gallery.locator('.showcase-channels li')).toHaveText(['인스타그램','유튜브','홈페이지','상세페이지','블로그','포스터']);await expect(gallery.locator('.showcase-ratios li')).toHaveText(['1:1','4:5','3:4','9:16','2:3','16:9','1.91:1']);
+ if(page.viewportSize()!.width<600){const boxes=await gallery.locator('.showcase-channels li').evaluateAll(els=>els.map(e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right};}));for(let i=0;i<6;i+=2){expect(Math.abs(boxes[i].y-boxes[i+1].y)).toBeLessThan(2);expect(boxes[i+1].x).toBeGreaterThan(boxes[i].x);}expect(Math.max(...boxes.map(b=>b.right))).toBeLessThanOrEqual(page.viewportSize()!.width);}
  for(const campaign of campaigns){
   await gallery.getByRole('tab',{name:campaign.label[0],exact:true}).click();
   const photo=gallery.locator('figure img');await expect(photo).toHaveAttribute('src',/^data:image\/webp;base64,/);
