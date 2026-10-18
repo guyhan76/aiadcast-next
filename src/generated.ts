@@ -1,3 +1,4 @@
+import {isTextExample,generationSourceHash} from './generation-input.ts';
 import {parseDimensionPlan,type DimensionPlan} from './dimension-generation.ts';
 import {parsePlanarReport,type PlanarReport} from './planar-proportion.ts';
 import {parseMarketingPlan} from './marketing-plan.ts';
@@ -11,7 +12,7 @@ import {industryDirections} from './industry.ts';
 import {completeAdKey} from './complete-ad.ts';
 
 export type GeneratedAsset = {
- jobId:string;mode:'original'|'creative';sourceHash:string|null;asset:Asset;
+ inputMode?:'text-example';jobId:string;mode:'original'|'creative';sourceHash:string|null;asset:Asset;
  role:'background'|'creative';model:string;createdAt:string;specificationKey:string;marketingPlan?:MarketingPlan;
  composition?:'complete-ad'|'photo-plate';compositionKey?:string;dimensionPlan?:DimensionPlan;planarReport?:PlanarReport;planarOriginal?:Asset;
 };
@@ -20,11 +21,11 @@ export type GeneratedAsset = {
 // Keep editable copy, aspect ratio, label visibility, anchors and brief out of it.
 export function generatedCompatibilityKey(p:Project):string {
  return JSON.stringify({
-  sourceHash:p.product?.sha256??null,
+  sourceHash:generationSourceHash(p),...(isTextExample(p)?{inputMode:'text-example'}:{}),
   ...(p.generation.dimensionBased?{dimensionBased:true,dimensionVariant:p.generation.dimensionVariant??'',dimensionBasis:p.generation.dimensionBasis??'outer-body'}:{}),
   ...(p.generation.planarSourceHash?{planarSourceHash:p.generation.planarSourceHash,dimensionVariant:p.generation.dimensionVariant??''}:{}),
-  ...(p.references?.length?{referenceHashes:p.references.map(a=>a.sha256)}:{}),
-  ...(stylePhotoHashes(p).length?{stylePhotoHashes:stylePhotoHashes(p)}:{}),
+  ...(!isTextExample(p)&&p.references?.length?{referenceHashes:p.references.map(a=>a.sha256)}:{}),
+  ...(!isTextExample(p)&&stylePhotoHashes(p).length?{stylePhotoHashes:stylePhotoHashes(p)}:{}),
   mode:p.generation.mode,
   productProfile:{category:p.productProfile.category,specType:p.productProfile.specType,material:p.productProfile.material},
   specifications:dimensionAxes(p.productProfile).map(axis=>({axis,value:p.dimensions[axis],unit:'mm'})),
@@ -32,25 +33,26 @@ export function generatedCompatibilityKey(p:Project):string {
 }
 export function hasUsableCreative(p:Project):boolean {
  const result=p.generated;
- return !!result&&p.generation.mode==='creative'&&result.mode==='creative'&&result.role==='creative'
-  &&result.sourceHash===(p.product?.sha256??null)&&result.specificationKey===generatedCompatibilityKey(p)
+ return !!result&&result.inputMode===(isTextExample(p)?'text-example':undefined)&&p.generation.mode==='creative'&&result.mode==='creative'&&result.role==='creative'
+  &&result.sourceHash===generationSourceHash(p)&&result.specificationKey===generatedCompatibilityKey(p)
   &&!!result.asset&&(result.composition!=='complete-ad'||result.compositionKey===completeAdKey(p));
 }
 export function visualAsset(p:Project):Asset|null {
- return hasUsableCreative(p)?p.generated!.asset:p.product;
+ return hasUsableCreative(p)?p.generated!.asset:isTextExample(p)?null:p.product;
 }
 export function hasUsableOriginal(p:Project):boolean{
  const result=p.generated;
  return !!result&&p.generation.mode==='original'&&result.mode==='original'&&result.role==='background'
   &&(!p.product||photoRole(p,p.product.sha256)==='subject')
-  &&result.sourceHash===(p.product?.sha256??null)&&result.specificationKey===generatedCompatibilityKey(p)
+  &&result.sourceHash===generationSourceHash(p)&&result.specificationKey===generatedCompatibilityKey(p)
   &&p.background.image?.sha256===result.asset.sha256;
 }
 
 // A temporary complete ad for review and the accepted project use exactly the same composition.
 // This does not persist or charge a provider result, and never replaces source bytes.
 export function projectWithGenerated(p:Project,result:GeneratedAsset):Project {
- if(result.sourceHash!==(p.product?.sha256??null)||result.mode!==p.generation.mode
+ if(result.inputMode!==(isTextExample(p)?'text-example':undefined))throw Error('STALE_PROJECT');
+ if(result.sourceHash!==generationSourceHash(p)||result.mode!==p.generation.mode
   ||result.specificationKey!==generatedCompatibilityKey(p)||result.role!==(result.mode==='original'?'background':'creative'))throw Error('STALE_PROJECT');
  if(result.composition==='complete-ad'){
   if(result.compositionKey!==completeAdKey(p))throw Error('STALE_AD_COPY');
@@ -89,7 +91,8 @@ export async function parseGenerated(value:unknown,readAsset:(value:unknown)=>Pr
  }
  let key:unknown;try{key=JSON.parse(specificationKey);}catch{throw Error('생성 결과의 규격 정보를 확인해주세요.');}
  if(!key||typeof key!=='object'||Array.isArray(key))throw Error('생성 결과의 규격 정보를 확인해주세요.');
- const details=key as {sourceHash:unknown;mode:unknown;productProfile:unknown;specifications:unknown;planarSourceHash?:unknown;dimensionVariant?:unknown;dimensionBased?:unknown;dimensionBasis?:unknown};
+ const details=key as {sourceHash:unknown;mode:unknown;productProfile:unknown;specifications:unknown;planarSourceHash?:unknown;dimensionVariant?:unknown;dimensionBased?:unknown;dimensionBasis?:unknown;inputMode?:unknown};
+ if(r.inputMode!==undefined&&r.inputMode!=='text-example'||details.inputMode!==r.inputMode||r.inputMode==='text-example'&&(r.sourceHash!==null||r.mode!=='creative'||r.composition!=='complete-ad'))throw Error('생성 예시 정보를 확인해주세요.');
  if(details.sourceHash!==r.sourceHash||details.mode!==r.mode||!Array.isArray(details.specifications))throw Error('생성 결과의 원본·규격 정보가 일치하지 않습니다.');
  if(!details.productProfile||typeof details.productProfile!=='object'||Array.isArray(details.productProfile))throw Error('생성 결과의 상품 정보를 확인해주세요.');
  const profile=parseProfile(details.productProfile),axes=dimensionAxes(profile);
@@ -106,6 +109,6 @@ export async function parseGenerated(value:unknown,readAsset:(value:unknown)=>Pr
  const asset=await readAsset(r.asset);
  if(!asset)throw Error('생성 결과 이미지가 누락되었습니다.');
  if(planarReport?.outputRatio&&Math.abs(asset.width/asset.height-planarReport.outputRatio)>1e-9)throw Error('INVALID_PLANAR_REPORT');
- return {...(dimensionPlan?{dimensionPlan}:{}),...(planarReport?{planarReport,planarOriginal:planarOriginal!}:{}),jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey,...(marketingPlan?{marketingPlan}:{}),...(r.composition?{composition:r.composition}:{}),...(compositionKey?{compositionKey}:{})};
+ return {...(r.inputMode?{inputMode:r.inputMode}:{}),...(dimensionPlan?{dimensionPlan}:{}),...(planarReport?{planarReport,planarOriginal:planarOriginal!}:{}),jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey,...(marketingPlan?{marketingPlan}:{}),...(r.composition?{composition:r.composition}:{}),...(compositionKey?{compositionKey}:{})};
 }
 

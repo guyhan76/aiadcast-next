@@ -1,3 +1,4 @@
+import {isTextExample} from './generation-input.ts';
 import {newProject} from './model.ts';
 import type {Project} from './model.ts';
 import {withCategory} from './product.ts';
@@ -19,5 +20,5 @@ export function prepareCampaign(project:Project):Project{
 // charge. The old project/result and all source bytes stay intact.
 export function creativeCampaignDraft(project:Project):Project{
  const {generated:_generated,background,publishing:_publishing,...source}=project;
- return prepareCampaign({...source,id:crypto.randomUUID(),generation:{mode:'creative',brief:project.generation.brief},background:{...background,image:null}});
+ return prepareCampaign({...source,id:crypto.randomUUID(),generation:{mode:'creative',brief:project.generation.brief,...(isTextExample(project)?{inputMode:'text-example',photoMode:project.generation.photoMode}:{})},background:{...background,image:null}});
 }

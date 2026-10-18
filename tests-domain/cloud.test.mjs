@@ -292,3 +292,17 @@ test('settled single-box approval cannot spend its unused balance on a second an
  const restored=await new SingleBoxLedger().initialize(db);assert.equal((await readSingleBoxEvaluation(db,actor,id)).request.state,'ready');await assert.rejects(restored.reserve('22986.png',BOX_REFERENCE.sha256,{id:'single_known_request_0002',actor}),/APPROVAL_LIMIT/);assert.equal((await restored.rows()).length,1);
  }finally{await pool.end();}
 });
+
+test('cloud text-only product jobs omit photos, enforce ownership and keep a single charge after cold restart',async t=>{
+ const {starterProject,prepareCampaign}=await import('../src/consumer-campaign.ts');const {withGenerationInput}=await import('../src/generation-input.ts');const {buildGenerationRequest}=await import('../src/generation.ts');
+ let calls=0;const s=await setup(t,{adapter:{generate:async options=>{calls++;assert.equal(options.source,null);assert.deepEqual(options.references,[]);return {bytes,mime:'image/png',width:8,height:8,sha256:hash,role:'creative',composition:'complete-ad',usage:{},cost:{microUsd:1},model:'fixture'};}}});
+ const member=await s.member('Text examples',1000000,3),other=await s.member('Other',0,0),token=member.token;
+ let p=starterProject('other');p=prepareCampaign(withGenerationInput({...p,productName:'텀블러',productProfile:{...p.productProfile,material:'450mL 스테인리스'}},'text-example'));
+ const body={projectId:p.id,requestId:randomUUID(),request:buildGenerationRequest(p),source:null,references:[]};assert.equal((await s.call('/api/status',{token})).data.generation.textExamples,true);
+ const bad=await s.call('/api/generations',{token,body:{...body,source}});assert.equal(bad.data.error.code,'TEXT_EXAMPLE_PHOTOS_NOT_ALLOWED');assert.equal(calls,0);
+ const [a,b]=await Promise.all([s.call('/api/generations',{token,body}),s.call('/api/generations',{token,body})]);assert.equal(a.status,202,JSON.stringify(a.data));assert.equal(a.data.job.id,b.data.job.id);const id=a.data.job.id;let pending;for(let i=0;i<100;i++){pending=(await s.call('/api/generations/'+id,{token})).data.job;if(pending.state!=='running')break;await new Promise(r=>setTimeout(r,5));}assert.equal(pending.state,'ready');assert.equal(calls,1);
+ assert.equal((await s.call('/api/generations/'+id,{token:other.token})).status,404);
+ await s.restart();const ready=(await s.call('/api/generations/'+id,{token})).data.job;assert.equal(ready.inputMode,'text-example');assert.equal(ready.sourceHash,null);assert.equal(ready.state,'ready');
+ for(let i=0;i<2;i++)assert.equal((await s.call('/api/generations/'+id+'/accept',{token,body:{artifactId:ready.artifactId}})).status,200);
+ const status=(await s.call('/api/status',{token})).data;assert.equal(status.wallet.available,2);assert.equal(status.wallet.reserved,0);assert.equal(status.budget.spentMicros,1);assert.equal(calls,1);
+});

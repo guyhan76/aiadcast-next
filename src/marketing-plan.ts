@@ -1,3 +1,4 @@
+import {generationSourceHash} from './generation-input.ts';
 import {industryAudience,industryGroupFor,industryLabel,resolveIndustryCategory} from './industry.ts';
 import {dimensionAxes,isServiceCategory} from './product.ts';
 import type {Project} from './model.ts';
@@ -47,12 +48,12 @@ export function createMarketingPlan(raw:MarketingInput):MarketingPlan{
  const keywords=recommendSeoKeywords({name:input.name,category,locale:input.locale,attributes:input.attributes},SEARCH_PHRASE_COUNT);
  const goal=input.goal==='inquiry'?t('문의·상담에 필요한 정보','information for an inquiry'):input.goal==='launch'?t('새 상품·서비스의 소개','a new offer'):t('상품·브랜드의 특징','product and brand details');
  const intent=t(`${input.name||label}의 ${goal}를 ${target.label}에게 전하는 ${input.contentType==='card'?'카드형 광고 1장':'포스터'} 기획입니다.`, `A ${input.contentType==='card'?'single card ad':'poster'} for ${input.name||label}, presenting ${goal} to ${target.label}.`)+
-  (input.mode==='original'?t(' 원본 사진을 유지하고 배경을 생성합니다.',' The original photo is retained with a generated backdrop.'):t(' 사진과 입력 정보를 함께 참고해 장면·조명·소재 표현을 연출합니다.',' References and supplied details guide the scene, lighting and material treatment.'));
+  (input.mode==='original'?t(' 원본 사진을 유지하고 배경을 생성합니다.',' The original photo is retained with a generated backdrop.'):!input.sourceHash&&input.subjectType==='physical-product'?t(' 사진 없이 입력 설명으로 만든 AI 예시입니다. 실제 상품 재현이나 실측을 보장하지 않습니다.',' An AI example based on the description without photos; it does not verify actual product identity or measurements.'):t(' 사진과 입력 정보를 함께 참고해 장면·조명·소재 표현을 연출합니다.',' References and supplied details guide the scene, lighting and material treatment.'));
  const maximum=Math.max(0,...specs.map(s=>Number(s.value)));
  return {version:1,method:'category-spec-rules-v3',input,target,intent,channels,keywords,keywordCount:keywords.length,normalizedRatios:specs.map(s=>({axis:s.axis,ratio:Number(s.value)/maximum})),geometryVerified:false};
 }
 export function marketingPlanForProject(p:Project):MarketingPlan{
- return createMarketingPlan({name:p.productName,category:p.productProfile.category,subjectType:isServiceCategory(p.productProfile.category)?'service':'physical-product',locale:p.locale,mode:p.generation.mode,sourceHash:p.product?.sha256??null,brand:p.copy[p.locale].company,goal:p.campaign?.goal??'awareness',contentType:p.campaign?.contentType??'poster',
+ return createMarketingPlan({name:p.productName,category:p.productProfile.category,subjectType:isServiceCategory(p.productProfile.category)?'service':'physical-product',locale:p.locale,mode:p.generation.mode,sourceHash:generationSourceHash(p),brand:p.copy[p.locale].company,goal:p.campaign?.goal??'awareness',contentType:p.campaign?.contentType??'poster',
   attributes:[...(p.productProfile.material?[{name:'소재',value:p.productProfile.material}]:[]),...(p.campaign?.attributes??[])],
   specifications:dimensionAxes(p.productProfile).filter(a=>Number(p.dimensions[a])>0&&Number(p.dimensions[a])<=100000).map(a=>({axis:a==='width'&&p.productProfile.specType==='cylindrical'?'diameter':a,value:p.dimensions[a],unit:'mm'}))});
 }
