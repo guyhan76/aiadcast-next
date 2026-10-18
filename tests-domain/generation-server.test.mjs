@@ -106,12 +106,12 @@ test('original request protects source bytes; acceptance captures one test credi
  assert.equal(calls.length,1); assert.equal(calls[0].source,null);
  assert.equal(service.db.prepare('SELECT hex(bytes) data FROM generation_assets WHERE hash=?').get(source.sha256).data,bytes.toString('hex').toUpperCase());
  const preview=service.job(first.job.id); assert.equal(preview.state,'ready'); assert.equal(preview.artifact.role,'background');
- assert.deepEqual(service.wallet(),{available:2,reserved:1,kind:'test-credits'});
+ assert.deepEqual(service.wallet(),{available:2,reserved:1,kind:'test-credits',credits:{available:0,reserved:0}});
  const replay=await service.create(input); assert.equal(replay.job.id,first.job.id);
  const freshKey=await service.create({...input,requestId:randomUUID()}); assert.equal(freshKey.job.id,first.job.id); assert.equal(calls.length,1);
  assert.throws(()=>service.accept(preview.id,'wrong'),/ARTIFACT_MISMATCH/);
  service.accept(preview.id,preview.artifact.id); service.accept(preview.id,preview.artifact.id);
- assert.deepEqual(service.wallet(),{available:2,reserved:0,kind:'test-credits'});
+ assert.deepEqual(service.wallet(),{available:2,reserved:0,kind:'test-credits',credits:{available:0,reserved:0}});
  assert.equal(service.ledger.db.prepare("SELECT count(*) n FROM credit_events WHERE kind='capture'").get().n,1);
  const newVariant=await service.create({...input,requestId:randomUUID()}); await service.waitForIdle();
  assert.notEqual(newVariant.job.id,preview.id); assert.equal(calls.length,2);
@@ -124,7 +124,7 @@ test('reusing an id with changed request conflicts before making another paid re
 test('rejected previews restore credits while supplier cost stays, repeated rejections are bounded',async t=>{
  const {service,calls}=setup(t); const input=body();
  for(let i=0;i<2;i++){ const made=await service.create({...input,requestId:randomUUID()});await service.waitForIdle();service.reject(made.job.id);service.reject(made.job.id); }
- assert.deepEqual(service.wallet(),{available:3,reserved:0,kind:'test-credits'});
+ assert.deepEqual(service.wallet(),{available:3,reserved:0,kind:'test-credits',credits:{available:0,reserved:0}});
  assert.equal(service.ledger.budget(service.period()).spent_micros,imageUsageCost(usage).microUsd*2);
  await assert.rejects(service.create({...input,requestId:randomUUID()}),/REVIEW_REQUIRED/);assert.equal(calls.length,2);
 });
@@ -132,7 +132,7 @@ test('uncertain provider execution releases credits but keeps cost hold and bloc
  let calls=0;const {service}=setup(t,{adapter:{generate:async()=>{calls++;throw new ProviderFailure('secret-key-do-not-expose');}}});
  const input=body();const created=await service.create(input);await service.waitForIdle();
  assert.equal(service.job(created.job.id).state,'uncertain'); assert.equal(service.job(created.job.id).errorCode,'PROVIDER_UNCERTAIN');
- assert.deepEqual(service.wallet(),{available:3,reserved:0,kind:'test-credits'});
+ assert.deepEqual(service.wallet(),{available:3,reserved:0,kind:'test-credits',credits:{available:0,reserved:0}});
  assert.equal(service.ledger.budget(service.period()).held_micros,500000);
  const retried=await service.create({...input,requestId:randomUUID()}); assert.equal(retried.job.id,created.job.id);assert.equal(calls,1);
 });

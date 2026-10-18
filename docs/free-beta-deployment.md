@@ -1,5 +1,8 @@
 # aiadcast 무료 베타 서버 연결
 
+최신 미배포 테스트 크레딧 후보: `feat/versioned-test-credits-20261018` (PR34 `c4a324a9826e7d6d99c31da6f60fcb487c2b9728` 위). [정책·추가 테이블·구버전 롤백 제한](test-credit-policy-20261018.md)을 먼저 확인한다. 최종 SHA·CI는 해당 draft PR에서 대조한다. 운영 Render 서비스·실제 브랜치·환경 확인 없이 이 문서만으로 배포하지 않는다.
+
+
 ## 별도 후속 후보 — 생성 후 새 광고·규격 표시
 
 `feat/creation-flow-feedback-20261018`은 PR33 `669f96e41d1553f3a895bf5b6a1c8a79a14d548c` 위에 쌓인다. APK 0.2.35-demo/code37이며 공식 로고·버전 표시를 유지한다. [수정 내용·한계·배포 전 확인](creation-flow-feedback-20261018.md)을 따른다. 이 작업에서 배포하지 않는다. 최종 PR SHA와 CI를 고정하고 현재 운영 서비스·브랜치·환경을 다시 확인한 뒤 웹/API를 함께 갱신해야 한다. 아래 상태 표기는 당시 전달 기록이다.

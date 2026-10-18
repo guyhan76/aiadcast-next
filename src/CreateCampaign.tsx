@@ -1,3 +1,4 @@
+import {apiRequest,type ApiStatus} from './generation-client';
 import {DimensionDisplayChoice} from './DimensionDisplayChoice';
 import {ProductInputChoice} from './ProductInputChoice';
 import {isTextExample} from './generation-input';
@@ -7,7 +8,7 @@ import {PlanarControl} from './PlanarControl';
 import type {WizardDraft} from './workspace-draft';
 import {DimensionInputs} from './DimensionInputs';
 import {useUiLanguage} from './ui-language';
-import {useId,useState,useLayoutEffect,useRef} from 'react';
+import {useId,useState,useLayoutEffect,useRef,useEffect} from 'react';
 import {Sparkles} from 'lucide-react';
 import type {Project,FooterField} from './model';
 import {dimensionAxes,withCategory,isServiceCategory} from './product';
@@ -24,10 +25,12 @@ import './create-campaign.css';
 
 export {starterProject,prepareCampaign} from './consumer-campaign';
 import {starterProject,prepareCampaign,automaticDimensionDraft} from './consumer-campaign';
-export function CreateCampaign({initialKind,onReady,draft,onDraft}:{initialKind?:IndustryKind;onReady:(p:Project)=>Promise<void>;draft?:WizardDraft;onDraft?:(draft:WizardDraft)=>void}){
+export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{active?:boolean;initialKind?:IndustryKind;onReady:(p:Project)=>Promise<void>;draft?:WizardDraft;onDraft?:(draft:WizardDraft)=>void}){
  const {language,t,text}=useUiLanguage(),id=useId();
  const [project,setProject]=useState(()=>automaticDimensionDraft(draft?.project??({...starterProject(initialKind==='service'?'services':'other'),locale:language})));
  const submitting=useRef(false);
+ const [creditStatus,setCreditStatus]=useState<ApiStatus|null>(null),sessionToken=betaSession()?.token;
+ useEffect(()=>{if(!active){setCreditStatus(null);return;}let live=true;const controller=new AbortController();apiRequest<ApiStatus>('/api/status',undefined,controller.signal).then(s=>{if(live)setCreditStatus(s);}).catch(()=>{if(live)setCreditStatus(null);});return()=>{live=false;controller.abort();};},[sessionToken,active]);
  const [chosen,setChosen]=useState(!!draft),[error,setError]=useState(''),[busy,setBusy]=useState(false),[photoImportIssue,setPhotoImportIssue]=useState('');
  useLayoutEffect(()=>{onDraft?.({project,step:0});},[project,onDraft]);
  const example=isTextExample(project);
@@ -61,7 +64,8 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft}:{initialKind?
    <section className="creation-section" data-order="7"><h2><span>7</span>{t('광고 목적','Ad purpose')}<small>{t('선택','Optional')}</small></h2><label className="field">{t('목적 선택','Choose a purpose')}<select value={settings.directionId} onChange={e=>change(p=>withCreative(p,{directionId:e.target.value as 'brand'|'offer'|'trust'}))}><option value="brand">{t('AI가 정하기','Let AI decide')}</option><option value="offer">{t('상품·서비스 홍보','Promote the offer')}</option><option value="trust">{t('브랜드·신뢰 강조','Build brand trust')}</option></select></label><details className="optional-block additional-requests"><summary>{t('추가 요청','Additional requests')}<small>{t('선택','Optional')}</small></summary><label className="field">{t('요청사항','Your requests')}<textarea rows={2} maxLength={600} value={settings.note} placeholder={t('예: 밝은 배경, 가격을 크게 강조','Example: Bright setting, prominent price')} onChange={e=>change(p=>withCreative(p,{note:e.target.value}))}/></label></details></section>
    <section className="creation-section" data-order="8"><h2><span>8</span>{t('광고 이미지 비율','Image ratio')}<small>{t('선택','Optional')}</small></h2><div className="ratio-options">{(['9:16','4:5','1:1'] as const).map((ratio,i)=><button type="button" key={ratio} aria-pressed={project.format===ratio} onClick={()=>change(p=>({...p,format:ratio}))}><strong>{ratio}</strong><small>{[t('릴스·스토리','Reels · Stories'),t('SNS 피드','Social feed'),t('정사각형','Square')][i]}</small></button>)}</div><details className="optional-block additional-requests"><summary>{t('다른 비율·문구 언어','More ratios · Copy language')}</summary><label className="field">{t('출력 비율','Output ratio')}<select value={project.format} onChange={e=>change(p=>({...p,format:e.target.value as Project['format']}))}>{imageFormats.map(f=><option key={f.id} value={f.id}>{f.id} · {text(f.use)}</option>)}</select></label><label className="field">{t('광고 문구 언어','Ad copy language')}<select value={project.locale} onChange={e=>change(p=>({...p,locale:e.target.value as 'ko'|'en'}))}><option value="ko">한국어</option><option value="en">English</option></select></label></details></section>
    {error&&<p className={'wizard-error'+(photoImportIssue&&error===photoImportIssue?' photo-upload-error':'')} role="alert">{error}</p>}
-   <div className="wizard-actions"><button className="primary-action" type="submit" disabled={busy}><Sparkles size={18}/>{busy?t('준비 중…','Preparing…'):project.dimensionControl?t('기하 검증 이미지 만들기','Create geometry proof'):t('광고 생성','Generate ad')}</button></div><p className="help submit-help">{project.dimensionControl?t('기하 검증용 로컬 구성입니다. AI 호출과 이용권 차감이 없습니다.','Local geometry proof. No AI call or credit charge.'):betaSession()?.user.role==='admin'?t('관리자 테스트 권한과 생성 가능 여부를 서버에서 확인합니다.','The server verifies administrator test access and generation readiness.'):t('새 시안 1개에 테스트 이용권 1개. 로그인 후 생성할 수 있습니다.','One test credit per new visual. Sign in to generate.')}</p>
+   {!project.dimensionControl&&creditStatus?.generation.creditQuote&&<p className="help">{creditStatus.wallet.unlimited?t('관리자 테스트 · 차감 없음','Administrator test · no charge'):<>{t('기존 이용권','Legacy tickets')} {creditStatus.wallet.available} · {t('신규 크레딧','New credits')} {creditStatus.wallet.credits?.available??0}. {t('이번 생성','This generation')}: {creditStatus.generation.creditQuote.amount}{creditStatus.generation.creditQuote.unit==='credit-v2'?t('크레딧 · 다음 화면에서 차감을 확인합니다.',' credits · Confirm the charge on the next screen.'):t('개 기존 이용권 · 사용 확정 시 차감',' legacy ticket · charged on acceptance')}</>}</p>}
+   <div className="wizard-actions"><button className="primary-action" type="submit" disabled={busy}><Sparkles size={18}/>{busy?t('준비 중…','Preparing…'):project.dimensionControl?t('기하 검증 이미지 만들기','Create geometry proof'):t('광고 생성','Generate ad')}</button></div><p className="help submit-help">{project.dimensionControl?t('기하 검증용 로컬 구성입니다. AI 호출과 이용권 차감이 없습니다.','Local geometry proof. No AI call or credit charge.'):betaSession()?.user.role==='admin'?t('관리자 테스트 권한과 생성 가능 여부를 서버에서 확인합니다.','The server verifies administrator test access and generation readiness.'):t('기존 이용권 1개를 먼저 사용합니다. 신규 크레딧은 생성·재생성 1회 10개이며 실행 전에 잔액과 차감을 확인합니다.','One legacy ticket first, then 10 new credits per generation or regeneration. Review balance and charge before execution.')}</p>
   </form>
  </div>;
 }

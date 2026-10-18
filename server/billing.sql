@@ -50,3 +50,9 @@ CREATE TABLE IF NOT EXISTS attempts (
 CREATE UNIQUE INDEX IF NOT EXISTS one_open_attempt ON attempts(job_id)
 WHERE status IN ('pending','uncertain');
 
+
+-- Additive v2 migration: existing rows keep legacy ticket semantics.
+CREATE TABLE IF NOT EXISTS credit_wallets(user_id TEXT PRIMARY KEY, available INTEGER NOT NULL DEFAULT 0 CHECK(available>=0), reserved INTEGER NOT NULL DEFAULT 0 CHECK(reserved>=0));
+CREATE TABLE IF NOT EXISTS purchase_units(purchase_id TEXT PRIMARY KEY REFERENCES purchases(purchase_id), unit TEXT NOT NULL CHECK(unit='credit-v2'));
+CREATE TABLE IF NOT EXISTS job_policies(job_id TEXT PRIMARY KEY REFERENCES jobs(id), unit TEXT NOT NULL CHECK(unit='credit-v2'), policy TEXT NOT NULL, captured INTEGER NOT NULL DEFAULT 0 CHECK(captured IN (0,1)));
+CREATE TABLE IF NOT EXISTS defect_reports(id TEXT PRIMARY KEY, job_id TEXT NOT NULL UNIQUE REFERENCES jobs(id), description TEXT NOT NULL, created_at INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'pending', reviewer TEXT, resolution TEXT, reviewed_at INTEGER);

@@ -9,8 +9,8 @@ async function setup(page:Page){const state={approved:false,requests:[] as strin
  if(path==='/api/auth/email/request')return reply({requestId:'request-email-123',pollToken:'p'.repeat(43),expires:Date.now()+600000});
  if(path==='/api/auth/email/exchange')return reply(state.approved?{state:'verified',session}:{state:'pending'});
  if(path==='/api/auth/email/verify'){state.approved=true;return reply({verified:true});}
- if(path==='/api/status')return reply({mode:'invite-beta',commercialReady:false,generation:{enabled:false,reason:'GENERATION_DISABLED'},assistant:{available:false},wallet:{available:state.paid?30:0,reserved:0},budget:{limitMicros:0}});
- if(path==='/api/checkout/orders'&&req.method()==='POST'){const b=req.postDataJSON();expect(b.pack).toBe('bundle');expect(b.agreed).toBe(true);expect(b.amount).toBeUndefined();state.order={id:'order-test-123',credits:30,amount:49900,currency:'KRW',state:'pending',pack:'bundle',test:true,created:Date.now(),checkoutUrl:'https://beta.example.com/#pay?orderId=order-test-123&ticket='+('t'.repeat(43))};return reply(state.order);}
+ if(path==='/api/status')return reply({mode:'invite-beta',commercialReady:false,generation:{enabled:false,reason:'GENERATION_DISABLED'},assistant:{available:false},wallet:{available:0,reserved:0,credits:{available:state.paid?180:0,reserved:0}},budget:{limitMicros:0}});
+ if(path==='/api/checkout/orders'&&req.method()==='POST'){const b=req.postDataJSON();expect(b.pack).toBe('credits-v2-180');expect(b.agreed).toBe(true);expect(b.amount).toBeUndefined();state.order={id:'order-test-123',credits:180,amount:48900,unit:'credit-v2',currency:'KRW',state:'pending',pack:'credits-v2-180',test:true,created:Date.now(),checkoutUrl:'https://beta.example.com/#pay?orderId=order-test-123&ticket='+('t'.repeat(43))};return reply(state.order);}
  if(path==='/api/checkout/orders/order-test-123')return reply({...state.order,state:state.paid?'paid':'pending'});
  if(path==='/api/projects')return reply({projects:[]});
  return reply({error:{code:'NOT_FOUND'}},404);

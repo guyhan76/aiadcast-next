@@ -151,13 +151,47 @@ export class GenerationService {
     if(!this.budgetForPeriod)this.ledger.transaction(()=>this.db.prepare('UPDATE budgets SET limit_micros=?').run(micros));
     this.budgetMicros=micros;
   }
-  testPurchaseReceipt({purchaseId,credits}) {
+  testPurchaseReceipt({purchaseId,credits,unit='legacy-ticket'}) {
     const row=this.db.prepare('SELECT * FROM purchases WHERE purchase_id=?').get(purchaseId);
-    if(!row||row.user_id!==LOCAL_USER||row.credits!==credits)throw new ApiFailure('PURCHASE_NOT_VERIFIED',409);
-    return {grantedCredits:row.credits,balance:this.wallet().available};
+    if(!row||row.user_id!==LOCAL_USER||row.credits!==credits||(this.db.prepare('SELECT unit FROM purchase_units WHERE purchase_id=?').get(purchaseId)?.unit??'legacy-ticket')!==unit)throw new ApiFailure('PURCHASE_NOT_VERIFIED',409);
+    return {grantedCredits:row.credits,...(unit==='credit-v2'?{unit}:{}),balance:this.ledger.wallet(LOCAL_USER,unit).available};
   }
-  recordTestPurchase({purchaseId,credits}) { this.ledger.recordVerifiedPurchase({purchaseId,userId:LOCAL_USER,credits});return this.wallet(); }
-  wallet() { return { ...this.ledger.wallet(LOCAL_USER), kind: this.adminTestUnlimited ? 'admin-test-unlimited' : 'test-credits', ...(this.adminTestUnlimited ? {unlimited:true} : {}) }; }
+  recordTestPurchase({purchaseId,credits,unit='legacy-ticket'}) { this.ledger.recordVerifiedPurchase({purchaseId,userId:LOCAL_USER,credits,unit});return this.wallet(); }
+  wallet() { return { ...this.ledger.wallet(LOCAL_USER), credits:this.ledger.wallet(LOCAL_USER,'credit-v2'), kind: this.adminTestUnlimited ? 'admin-test-unlimited' : 'test-credits', ...(this.adminTestUnlimited ? {unlimited:true} : {}) }; }
+  creditQuote() {
+    const wallet=this.wallet();
+    const unit=this.adminTestUnlimited||wallet.available>0?'legacy-ticket':'credit-v2';
+    return {unit,amount:this.adminTestUnlimited?0:unit==='legacy-ticket'?1:10,policy:unit==='legacy-ticket'?'legacy-accept-v1':'delivered-2026-10-18'};
+  }
+  reportDefect(id,{description}={}) {
+    this.job(id);
+    if(typeof description!=='string'||description.trim().length<10||description.length>2000)fail('INVALID_DEFECT_REPORT');
+    const job=this.ledger.job(id);
+    if(!job.captured&&job.status!=='accepted')fail('RESULT_NOT_DELIVERED',409);
+    return this.ledger.transaction(()=>{
+      this.db.prepare('INSERT INTO defect_reports(id,job_id,description,created_at) VALUES (?,?,?,?) ON CONFLICT(job_id) DO NOTHING').run(randomUUID(),id,description.trim(),this.now());
+      return this.db.prepare('SELECT * FROM defect_reports WHERE job_id=?').get(id);
+    });
+  }
+  defectEvidence(id) {
+    if(!identifier(id)||!this.db.prepare('SELECT id FROM defect_reports WHERE job_id=?').get(id))fail('REPORT_NOT_FOUND',404);
+    const row=this.db.prepare('SELECT * FROM generation_records WHERE id=?').get(id);
+    return {input:JSON.parse(row.request_json),artifact:this.asset(row.artifact_hash),source:this.asset(row.source_hash)};
+  }
+  reviewDefect(id,{decision,resolution,reviewer}={}) {
+    if(!['confirmed','declined'].includes(decision)||typeof resolution!=='string'||resolution.trim().length<10||resolution.length>2000||!identifier(reviewer))fail('INVALID_DEFECT_REVIEW');
+    return this.ledger.transaction(()=>{
+      const report=this.db.prepare('SELECT * FROM defect_reports WHERE job_id=?').get(id);
+      if(!report)fail('REPORT_NOT_FOUND',404);
+      if(report.state!=='pending'){
+        if(report.state!==decision||report.resolution!==resolution.trim())fail('REVIEW_CONFLICT',409);
+        return report;
+      }
+      if(decision==='confirmed')this.ledger.refundConfirmedDefect(id,report.id);
+      this.db.prepare('UPDATE defect_reports SET state=?,resolution=?,reviewer=?,reviewed_at=? WHERE id=?').run(decision,resolution.trim(),reviewer,this.now(),report.id);
+      return this.db.prepare('SELECT * FROM defect_reports WHERE id=?').get(report.id);
+    });
+  }
   budgetLimit(period){
     if(period!==this.period())fail('BUDGET_PERIOD_CHANGED',409);
     const value=this.budgetForPeriod?this.budgetForPeriod(period):this.budgetMicros;
@@ -169,9 +203,9 @@ export class GenerationService {
     this.ledger.expire();
     const period=this.period(),limit=this.budgetLimit(period),budget = this.ledger.budget(period);
     const available = limit - (budget?.spent_micros ?? 0) - (budget?.held_micros ?? 0);
-    const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : limit < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : !this.adminTestUnlimited && this.wallet().available < 1 ? 'NO_TEST_CREDITS' : null;
+    const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : limit < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : !this.adminTestUnlimited && this.wallet().available < 1 && this.wallet().credits.available < 10 ? 'NO_TEST_CREDITS' : null;
     const assistantReason = !this.assistantEnabled ? 'ASSISTANT_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : this.budgetMicros-(budget?.spent_micros??0)-(budget?.held_micros??0) < TEXT_MAX_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : null;
-    return { mode: 'local-development', commercialReady: false, generation: { enabled: reason === null, aiDimensionDisplay: true, photoPurposes: true, textExamples: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet: this.wallet(), budget: { currency: 'USD', period, limitMicros: limit, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
+    return { mode: 'local-development', commercialReady: false, generation: { creditQuote:this.creditQuote(), enabled: reason === null, aiDimensionDisplay: true, photoPurposes: true, textExamples: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet: this.wallet(), budget: { currency: 'USD', period, limitMicros: limit, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
   }
   storeAsset(asset) {
     this.db.prepare('INSERT INTO generation_assets VALUES (?,?,?,?,?) ON CONFLICT(hash) DO NOTHING').run(asset.sha256, asset.mime, asset.width, asset.height, asset.bytes);
@@ -191,7 +225,7 @@ export class GenerationService {
     const request = JSON.parse(row.request_json);
     const requestIds = this.db.prepare('SELECT request_id FROM generation_keys WHERE job_id=? ORDER BY rowid DESC').all(id).map(key => key.request_id);
     const state = row.error_code === 'PROVIDER_UNCERTAIN' ? 'uncertain' : row.error_code ? 'failed' : billing.status === 'released' ? (billing.reason === 'customer_rejected' ? 'rejected' : 'expired') : billing.status === 'refunded' ? 'refunded' : billing.status === 'reserved' ? 'running' : billing.status;
-    return { id, ...(request.dimensionDisplay?{dimensionDisplay:request.dimensionDisplay,...(metadata?.dimensionReview?{dimensionReview:metadata.dimensionReview}:{})}:{}), ...(request.inputMode==='text-example'?{inputMode:'text-example'}:{}),...(request.dimensionPlan?{dimensionPlan:request.dimensionPlan}:{}), ...(metadata?.planarReport?{planarReport:metadata.planarReport,...(includeArtifact?{planarOriginal:this.asset(metadata.planarReport.originalHash)}:{})}:{}), ...(billing.creditExempt ? {creditPolicy:'admin-unlimited',creditCost:0} : {}), requestId: requestIds[0] ?? null, requestIds, projectId: row.project_id, state, mode: request.mode, sourceHash: row.source_hash, createdAt: new Date(row.created_at).toISOString(), model: metadata?.model??IMAGE_MODEL, quality: 'high', outputFormat: request.output.format, ...(metadata?.composition?{composition:metadata.composition,...(metadata.composition==='complete-ad'?{compositionKey:request.output.compositionKey}:{})}:{}), artifact: ['ready','accepted'].includes(state) && includeArtifact && row.artifact_hash ? { ...this.asset(row.artifact_hash), role: row.artifact_role } : null, artifactId: row.artifact_hash, errorCode: row.error_code, usage: metadata?.usage ?? null, cost: metadata?.cost ?? null, providerRequestId: metadata?.providerRequestId ?? null, marketingPlan: request.marketingPlan ?? null, review: 'human-review-required', billingStatus: billing.status, expiresAt: billing.expires_at };
+    return { id, ...(request.dimensionDisplay?{dimensionDisplay:request.dimensionDisplay,...(metadata?.dimensionReview?{dimensionReview:metadata.dimensionReview}:{})}:{}), ...(request.inputMode==='text-example'?{inputMode:'text-example'}:{}),...(request.dimensionPlan?{dimensionPlan:request.dimensionPlan}:{}), ...(metadata?.planarReport?{planarReport:metadata.planarReport,...(includeArtifact?{planarOriginal:this.asset(metadata.planarReport.originalHash)}:{})}:{}), creditUnit:billing.unit,creditPolicy:billing.creditExempt?'admin-unlimited':billing.policy,creditCost:billing.creditExempt?0:billing.credits,creditCaptured:billing.captured,...(this.db.prepare('SELECT state FROM defect_reports WHERE job_id=?').get(id)?{defectReport:this.db.prepare('SELECT state FROM defect_reports WHERE job_id=?').get(id)}:{}), requestId: requestIds[0] ?? null, requestIds, projectId: row.project_id, state, mode: request.mode, sourceHash: row.source_hash, createdAt: new Date(row.created_at).toISOString(), model: metadata?.model??IMAGE_MODEL, quality: 'high', outputFormat: request.output.format, ...(metadata?.composition?{composition:metadata.composition,...(metadata.composition==='complete-ad'?{compositionKey:request.output.compositionKey}:{})}:{}), artifact: ['ready','accepted'].includes(state) && includeArtifact && row.artifact_hash ? { ...this.asset(row.artifact_hash), role: row.artifact_role } : null, artifactId: row.artifact_hash, errorCode: row.error_code, usage: metadata?.usage ?? null, cost: metadata?.cost ?? null, providerRequestId: metadata?.providerRequestId ?? null, marketingPlan: request.marketingPlan ?? null, review: 'human-review-required', billingStatus: billing.status, expiresAt: billing.expires_at };
   }
   history(projectId) {
     if (projectId !== undefined && !identifier(projectId)) fail('INVALID_PROJECT_ID');
@@ -226,11 +260,13 @@ export class GenerationService {
       return { job: this.job(matching.id), wallet: this.wallet(), reused: true };
     }
     const rejected = this.db.prepare("SELECT count(*) n FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND j.reason='customer_rejected'").get(fingerprint).n;
-    if (rejected >= 2 && !this.adminTestUnlimited) fail('REVIEW_REQUIRED_AFTER_REJECTIONS', 409);
+    if (rejected >= 2 && !this.adminTestUnlimited && this.creditQuote().unit==='legacy-ticket') fail('REVIEW_REQUIRED_AFTER_REJECTIONS', 409);
     const status = this.status();
     if (!status.generation.enabled) fail(status.generation.reason, 503);
     // Serial dispatch avoids a queue whose provider budget could change before execution.
     if (this.tasks.size) fail('GENERATION_ALREADY_RUNNING', 409);
+    const quote=this.creditQuote();
+    if((quote.unit==='credit-v2'||body.creditQuote)&&(!body.creditQuote||body.creditQuote.unit!==quote.unit||body.creditQuote.amount!==quote.amount||body.creditQuote.policy!==quote.policy))fail('CREDIT_QUOTE_CHANGED',409);
     const id = randomUUID();
     const createdAt = this.now();
     if (source) this.storeAsset(source); // Content-addressed, immutable original bytes.
@@ -238,11 +274,12 @@ export class GenerationService {
     // Reserve credits and persist the request in one transaction, including the existing ledger methods.
     try {
       this.ledger.transaction(() => {
-        this.ledger.reserve({ jobId: id, userId: LOCAL_USER, credits: 1, creditExempt: this.adminTestUnlimited, requestHash: fingerprint, modelRevision: IMAGE_REVISION, expiresAt: createdAt + 24 * 60 * 60 * 1000 });
+        const currentQuote=this.creditQuote();if(currentQuote.unit!==quote.unit||currentQuote.amount!==quote.amount)fail('CREDIT_QUOTE_CHANGED',409);
+        this.ledger.reserve({ jobId: id, userId: LOCAL_USER, credits: quote.amount||1, unit:quote.unit, creditExempt: quote.amount===0, requestHash: fingerprint, modelRevision: IMAGE_REVISION, expiresAt: createdAt + 24 * 60 * 60 * 1000 });
         this.db.prepare('INSERT INTO generation_records(id,project_id,fingerprint,request_json,source_hash,created_at) VALUES (?,?,?,?,?,?)').run(id, body.projectId, fingerprint, JSON.stringify(request), source?.sha256 ?? null, createdAt);
         this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(body.requestId, fingerprint, id);
       });
-    } catch { fail('CREDIT_RESERVATION_FAILED', 409); }
+    } catch (error) { if(error instanceof ApiFailure)throw error;fail('CREDIT_RESERVATION_FAILED', 409); }
     const work = this.dispatch(id, request, source, references);
     this.tasks.add(work); work.finally(() => this.tasks.delete(work));
     return { job: this.job(id), wallet: this.wallet(), reused: false };
@@ -265,6 +302,9 @@ export class GenerationService {
       this.ledger.settleAttempt(attemptId, result.cost.microUsd, 'completed');
       this.ledger.markReady(id, result.sha256);
     } catch (error) {
+      // A delivery commit may succeed even when its response is lost. Preserve the
+      // durable delivered result and charge instead of relabeling it as a failed/refunded job.
+      try { const delivered=this.ledger.job(id);if(delivered.captured&&delivered.artifact_id)return; } catch { /* Reconciliation remains necessary if storage is unavailable. */ }
       // No automatic retries. Unknown execution/usage preserves the supplier-cost hold.
       const knownFailure = error instanceof ProviderFailure && !error.uncertain;
       let code = !began ? 'BUDGET_NOT_AVAILABLE' : knownFailure ? error.code : 'PROVIDER_UNCERTAIN';

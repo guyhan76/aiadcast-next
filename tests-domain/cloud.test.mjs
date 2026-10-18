@@ -195,11 +195,11 @@ test('private SQL bootstrap issues one-time owner invitations and cannot change 
 test('cloud test checkout confirms only once and preserves credits and orders after restart',async t=>{
  let receipt,calls=0;const provider={lookup:async()=>{if(!receipt){const e=Error('PAYMENT_NOT_FOUND');e.code='PAYMENT_NOT_FOUND';throw e;}return receipt;},confirm:async quote=>{calls++;receipt={...quote,currency:'KRW',totalAmount:quote.amount,status:'DONE'};return receipt;}};
  const s=await setup(t,{accounts:{provider,clientKey:'test_ck_fixture'}}),a=await s.member('Buyer');
- const order=await s.call('/api/checkout/orders',{token:a.token,body:{pack:'basic',requestId:'checkout-fixture',agreed:true}});assert.equal(order.status,201,JSON.stringify(order.data));
+ const order=await s.call('/api/checkout/orders',{token:a.token,body:{pack:'credits-v2-100',requestId:'checkout-fixture',agreed:true}});assert.equal(order.status,201,JSON.stringify(order.data));
  const q=new URLSearchParams(new URL(order.data.checkoutUrl).hash.split('?')[1]),body={orderId:q.get('orderId'),ticket:q.get('ticket'),paymentKey:'test-payment-fixture',amount:order.data.amount};
  const responses=await Promise.all([s.call('/api/checkout/confirm',{body}),s.call('/api/checkout/confirm',{body})]);for(const r of responses)assert.equal(r.status,200,JSON.stringify(r.data));assert.equal(calls,1);
- const verified=await s.call('/api/checkout/receipt',{body:{orderId:body.orderId,ticket:body.ticket}});assert.equal(verified.status,200,JSON.stringify(verified.data));assert.deepEqual(verified.data.receipt,{grantedCredits:10,balance:10,verified:true});
- await s.restart();assert.equal((await s.call('/api/status',{token:a.token})).data.wallet.available,10);assert.equal((await s.call('/api/checkout/confirm',{body})).data.state,'paid');assert.equal(calls,1);
+ const verified=await s.call('/api/checkout/receipt',{body:{orderId:body.orderId,ticket:body.ticket}});assert.equal(verified.status,200,JSON.stringify(verified.data));assert.deepEqual(verified.data.receipt,{grantedCredits:100,balance:100,verified:true,unit:'credit-v2'});
+ await s.restart();assert.equal((await s.call('/api/status',{token:a.token})).data.wallet.credits.available,100);assert.equal((await s.call('/api/checkout/confirm',{body})).data.state,'paid');assert.equal(calls,1);
 });
 test('private storage reserves quota before upload and rejects corrupted bytes',async t=>{
  const s=await setup(t),a=await s.member('Storage tester'),storage=s.app.storage;
@@ -321,3 +321,24 @@ test('cloud AI dimension review is owner-only, atomic, durable and never repeats
 });
 
 test('cloud public version read returns build identity without provider or account operations',async t=>{const s=await setup(t);const r=await s.call('/api/version');assert.equal(r.status,200);assert.deepEqual(Object.keys(r.data).sort(),['commit','schemaVersion','service','version']);assert.equal(r.data.schemaVersion,1);assert.equal(r.data.service,'aiadcast-next');assert.equal(r.data.version,'0.1.0');});
+
+test('v2 delivery, concurrent retries, restart, and human defect review preserve separate balances and authority',async t=>{
+ let payment;const provider={lookup:async()=>{if(!payment){const e=Error('PAYMENT_NOT_FOUND');e.code='PAYMENT_NOT_FOUND';throw e;}return payment;},confirm:async q=>payment={...q,currency:'KRW',totalAmount:q.amount,status:'DONE'}};
+ const s=await setup(t,{accounts:{provider,clientKey:'test_ck_fixture'}}),a=await s.member('Credits member',1000000,0),owner=await s.member('Review admin');await s.app.store.setRole(owner.user.id,'admin');const invitation=await s.app.store.issueInvite(owner.user.id);owner.token=(await s.call('/api/auth/login',{body:{invite:invitation.invite}})).data.token;
+ assert.equal((await s.call('/api/checkout/orders',{token:a.token,body:{pack:'basic',requestId:'retired-order',agreed:true}})).data.error.code,'SKU_RETIRED');
+ const order=(await s.call('/api/checkout/orders',{token:a.token,body:{pack:'credits-v2-30',requestId:'credits-v2-order',agreed:true}})).data;
+ assert.equal(order.amount,9900);assert.equal(order.credits,30);assert.equal(order.unit,'credit-v2');const params=new URLSearchParams(new URL(order.checkoutUrl).hash.split('?')[1]);
+ const confirmation={orderId:order.id,ticket:params.get('ticket'),paymentKey:'v2-payment',amount:9900};const paid=await Promise.all([s.call('/api/checkout/confirm',{body:confirmation}),s.call('/api/checkout/confirm',{body:confirmation})]);for(const r of paid)assert.equal(r.data.receipt.balance,30);
+ const status=(await s.call('/api/status',{token:a.token})).data,body={...generation(),creditQuote:status.generation.creditQuote};assert.equal(status.wallet.available,0);
+ const replies=await Promise.all([s.call('/api/generations',{token:a.token,body}),s.call('/api/generations',{token:a.token,body})]);for(const r of replies)assert.equal(r.status,202,JSON.stringify(r.data));const id=replies[0].data.job.id;assert.equal(replies[1].data.job.id,id);
+ let preview;for(let i=0;i<40;i++){preview=await s.call('/api/generations/'+id,{token:a.token});if(preview.data.job.state!=='running')break;await new Promise(r=>setTimeout(r,10));}
+ assert.equal(preview.data.job.state,'ready',JSON.stringify(preview.data));assert.equal(preview.data.job.creditCaptured,true);assert.equal(preview.data.wallet.credits.available,20);assert.equal(preview.data.wallet.credits.reserved,0);assert.equal(s.calls(),1);
+ await s.restart();assert.equal((await s.call('/api/generations',{token:a.token,body})).data.job.id,id);assert.equal(s.calls(),1);
+ const reportPath='/api/generations/'+id+'/report';assert.equal((await s.call(reportPath,{token:owner.token,body:{description:'Cannot report another customer result.'}})).status,404);
+ const report=await s.call(reportPath,{token:a.token,body:{description:'The requested headline is missing from the delivered image.'}});assert.equal(report.status,200,JSON.stringify(report.data));
+ const evidence=await s.call('/api/admin/defect-evidence?userId='+a.user.id+'&jobId='+id,{token:owner.token});assert.equal(evidence.status,200,JSON.stringify(evidence.data));assert.equal(evidence.data.artifact.sha256,hash);assert.equal(evidence.data.source.sha256,hash);assert.equal((await s.call('/api/admin/defect-evidence?userId='+a.user.id+'&jobId='+id,{token:a.token})).status,403);
+ const review={userId:a.user.id,jobId:id,decision:'confirmed',resolution:'Reviewer verified the supplied headline was omitted.'};assert.equal((await s.call('/api/admin/defect-review',{token:a.token,body:review})).status,403);
+ const queue=await s.call('/api/admin/defect-reports?userId='+a.user.id,{token:owner.token});assert.equal(queue.data.reports[0].id,report.data.id);
+ for(let i=0;i<2;i++){const r=await s.call('/api/admin/defect-review',{token:owner.token,body:review});assert.equal(r.status,200,JSON.stringify(r.data));}
+ const final=(await s.call('/api/status',{token:a.token})).data;assert.equal(final.wallet.available,0);assert.deepEqual(final.wallet.credits,{available:30,reserved:0});assert.equal(final.budget.spentMicros,imageUsageCost(usage).microUsd);await s.restart();assert.equal((await s.call('/api/status',{token:a.token})).data.wallet.credits.available,30);
+});

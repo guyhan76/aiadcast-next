@@ -62,6 +62,16 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
    if(req.method==='POST'&&url.pathname==='/api/dimension-analysis'){throw new ApiFailure('REFERENCE_EVALUATION_ONLY',403);}
    if(url.pathname.startsWith('/api/admin/')){
     admin.require(user);
+    if(url.pathname==='/api/admin/defect-review'&&req.method==='POST'){
+     const body=await read(req,8192),target=store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(body.userId);
+     if(!target)throw new ApiFailure('USER_NOT_FOUND',404);
+     send(res,200,service(target).reviewDefect(body.jobId,{decision:body.decision,resolution:body.resolution,reviewer:user.id}),cors);return;
+    }
+    if(['/api/admin/defect-reports','/api/admin/defect-evidence'].includes(url.pathname)&&req.method==='GET'){
+     const target=store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(url.searchParams.get('userId'));
+     if(!target)throw new ApiFailure('USER_NOT_FOUND',404);
+     send(res,200,url.pathname==='/api/admin/defect-evidence'?service(target).defectEvidence(url.searchParams.get('jobId')):{reports:service(target).db.prepare('SELECT * FROM defect_reports ORDER BY created_at DESC LIMIT 100').all()},cors);return;
+    }
     if(url.pathname==='/api/admin/single-box-evaluation'){if(req.method==='GET'){send(res,200,await singleBox.status(user,url.searchParams.get('requestId')??undefined),cors);return;}if(req.method==='POST'){send(res,200,await singleBox.analyze(await read(req,14100000),user),cors);return;}}
     if(url.pathname==='/api/admin/dimension-evaluation'){if(req.method==='GET'){send(res,200,await dimensionAnalysis.status(user,url.searchParams.get('requestId')??undefined),cors);return;}if(req.method==='POST'){send(res,200,await dimensionAnalysis.analyze(await read(req,14_100_000),user),cors);return;}}
     if(req.method==='POST'&&['/api/admin/demo-support-preview','/api/admin/demo-support'].includes(url.pathname)){send(res,200,await demoSupport(admin,user,await read(req,2048),url.pathname==='/api/admin/demo-support'),cors);return;}
@@ -85,10 +95,10 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
    if(project&&req.method==='POST'){send(res,200,store.save(user.id,project[1],await read(req,40_001_000)),cors);return;}
    if(req.method==='GET'&&url.pathname==='/api/status'){const s=service(user).status();send(res,200,{...s,mode:password.available()?'test-account-beta':'invite-beta',limitations:s.limitations.filter(x=>!['local-single-user','no-production-auth'].includes(x)).concat([password.available()?'test-email-unverified':'invite-only','single-instance-beta','no-live-payment']),user:{id:user.id,label:user.label}},cors);return;}
    if(req.method==='GET'&&url.pathname==='/api/generations'){send(res,200,service(user).history(url.searchParams.get('projectId')??undefined),cors);return;}
-   const job=/^\/api\/generations\/([A-Za-z0-9_-]{8,100})(?:\/(accept|reject))?$/.exec(url.pathname);
+   const job=/^\/api\/generations\/([A-Za-z0-9_-]{8,100})(?:\/(accept|reject|report))?$/.exec(url.pathname);
    if(req.method==='GET'&&job&&!job[2]){const s=service(user);send(res,200,{job:s.job(job[1]),wallet:s.wallet()},cors);return;}
    if(req.method==='POST'&&['/api/generations','/api/assistant'].includes(url.pathname)){const body=await read(req,14_100_000),s=service(user);send(res,url.pathname==='/api/generations'?202:200,await(url.pathname==='/api/generations'?s.create(body):s.assist(body)),cors);return;}
-   if(req.method==='POST'&&job?.[2]){const body=await read(req,2048),s=service(user);send(res,200,job[2]==='accept'?s.accept(job[1],body.artifactId,body.dimensionReview):s.reject(job[1]),cors);return;}
+   if(req.method==='POST'&&job?.[2]){const body=await read(req,8192),s=service(user);send(res,200,job[2]==='report'?s.reportDefect(job[1],body):job[2]==='accept'?s.accept(job[1],body.artifactId,body.dimensionReview):s.reject(job[1]),cors);return;}
    throw new ApiFailure('NOT_FOUND',404);
   }catch(e){send(res,e instanceof ApiFailure?e.status:500,{error:{code:e instanceof ApiFailure?e.code:'INTERNAL_ERROR'}},cors);}
  });

@@ -31,7 +31,7 @@ test('new server member has no credits or API allocation and unavailable checkou
  const cap=await call('/api/account/capabilities');assert.equal(cap.data.checkout.enabled,false);assert.equal(cap.data.checkout.test,true);
  const status=(await call('/api/status',undefined,session.token)).data;
  assert.equal(status.wallet.available,0);assert.equal(status.budget.limitMicros,0);assert.equal(status.generation.reason,'BUDGET_NOT_AVAILABLE');
- const order=await call('/api/checkout/orders',{pack:'trial',requestId:'member-checkout-1',agreed:true},session.token);
+ const order=await call('/api/checkout/orders',{pack:'credits-v2-30',requestId:'member-checkout-1',agreed:true},session.token);
  assert.equal(order.status,503);assert.equal(order.data.error.code,'CHECKOUT_UNAVAILABLE');
  assert.equal(store.db.prepare('SELECT COUNT(*) n FROM test_orders').get().n,0);
  assert.deepEqual(calls(),{confirmCalls:0,imageCalls:0});
@@ -40,12 +40,12 @@ test('new server member has no credits or API allocation and unavailable checkou
 test('successful substitute sandbox receipt grants credits once but does not authorize provider spending for a new member',async t=>{
  const {call,store,session,calls}=await fixture(t,true);
  assert.equal((await call('/api/account/capabilities')).data.checkout.enabled,true);
- const order=(await call('/api/checkout/orders',{pack:'trial',requestId:'member-checkout-2',agreed:true},session.token)).data;
+ const order=(await call('/api/checkout/orders',{pack:'credits-v2-30',requestId:'member-checkout-2',agreed:true},session.token)).data;
  const q=new URLSearchParams(new URL(order.checkoutUrl).hash.split('?')[1]);
  const input={orderId:order.id,ticket:q.get('ticket'),amount:order.amount,paymentKey:'fixture-approved-payment'};
- for(let i=0;i<2;i++){const paid=await call('/api/checkout/confirm',input);assert.equal(paid.status,200);assert.equal(paid.data.state,'paid');assert.deepEqual(paid.data.receipt,{verified:true,grantedCredits:3,balance:3});}
+ for(let i=0;i<2;i++){const paid=await call('/api/checkout/confirm',input);assert.equal(paid.status,200);assert.equal(paid.data.state,'paid');assert.deepEqual(paid.data.receipt,{verified:true,grantedCredits:30,balance:30,unit:'credit-v2'});}
  const status=(await call('/api/status',undefined,session.token)).data;
- assert.equal(status.wallet.available,3);assert.equal(status.budget.limitMicros,0);assert.equal(status.generation.enabled,false);assert.equal(status.generation.reason,'BUDGET_NOT_AVAILABLE');
+ assert.equal(status.wallet.credits.available,30);assert.equal(status.budget.limitMicros,0);assert.equal(status.generation.enabled,false);assert.equal(status.generation.reason,'BUDGET_NOT_AVAILABLE');
  assert.equal(store.db.prepare('SELECT budget FROM users WHERE id=?').get(session.user.id).budget,0);
  assert.deepEqual(calls(),{confirmCalls:1,imageCalls:0});
 });
@@ -66,8 +66,8 @@ test('credit overview authenticates and isolates wallet, purchase and grant hist
  const {call,store,session,calls}=await fixture(t,true);
  assert.equal((await call('/api/account/credits')).status,401);
  const other=(await call('/api/auth/test/signup',{email:'other@example.com',password:'Fixture-other-password!',name:'Other'})).data;
- const ownOrder=(await call('/api/checkout/orders',{pack:'trial',requestId:'overview-own-order',agreed:true},session.token)).data;
- await call('/api/checkout/orders',{pack:'basic',requestId:'overview-other-order',agreed:true},other.token);
+ const ownOrder=(await call('/api/checkout/orders',{pack:'credits-v2-30',requestId:'overview-own-order',agreed:true},session.token)).data;
+ await call('/api/checkout/orders',{pack:'credits-v2-100',requestId:'overview-other-order',agreed:true},other.token);
  const insert=store.db.prepare("INSERT INTO admin_grants(id,actor_id,request_id,user_id,credits,state,created) VALUES(?,?,?,?,?,'completed',?)");
  insert.run('own-grant',session.user.id,'fixture-own-grant',session.user.id,30,Date.now());insert.run('other-grant',other.user.id,'fixture-other-grant',other.user.id,3,Date.now());
  const before=store.db.prepare('SELECT COUNT(*) n FROM admin_grants').get().n;
