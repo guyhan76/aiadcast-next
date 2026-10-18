@@ -29,7 +29,7 @@ else:
 bpy.ops.mesh.primitive_plane_add(size=max(w,d,h)*200,location=(w/2,d/2,-th*.4));bpy.context.object.is_shadow_catcher=True
 focus=Vector((w/2,d/2,h*.65));radius=max(w,d,h)
 def light(name,loc,energy,size):
- data=bpy.data.lights.new(name,'AREA');data.energy=energy;data.shape='DISK';data.size=size;o=bpy.data.objects.new(name,data);scene.collection.objects.link(o);o.location=loc;o.rotation_euler=(focus-o.location).to_track_quat('-Z','Y').to_euler()
+ data=bpy.data.lights.new(name,'AREA');data.energy=energy*(radius/.5)**2;data.shape='DISK';data.size=size;o=bpy.data.objects.new(name,data);scene.collection.objects.link(o);o.location=loc;o.rotation_euler=(focus-o.location).to_track_quat('-Z','Y').to_euler()
 light('Large soft key',(w*.1,-d*2,h+radius*2),22,radius*2);light('Rim softbox',(w+radius,d+radius,h+radius*1.8),14,radius*1.5);light('Front fill',(-radius,d*.1,h+radius),5,radius*2)
 data=bpy.data.cameras.new('Fixed dimension camera');camera=bpy.data.objects.new('Fixed dimension camera',data);scene.collection.objects.link(camera);camera.location=focus+Vector((radius*2,-radius*2,radius*1.6));camera.rotation_euler=(focus-camera.location).to_track_quat('-Z','Y').to_euler();data.type='ORTHO';data.ortho_scale=radius*2.65;scene.camera=camera
 bpy.context.view_layer.update();projected={k:[[float(q.x),float(1-q.y)] for q in [world_to_camera_view(scene,camera,Vector(pt)) for pt in pts]] for k,pts in axes.items()}
