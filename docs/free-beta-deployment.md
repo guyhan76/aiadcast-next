@@ -1,5 +1,10 @@
 # aiadcast 무료 베타 서버 연결
 
+## 현재 기준과 후속 UI 후보 — 2026-10-18
+
+사용자가 확인한 현재 운영 커밋은 PR #13의 `81ccc452b02ce78c39ea8fd83aaef2697a1c69c6`이다. 후속 `fix/logo-admin-budget-guidance-20261018`은 이 커밋 위에 상단·하단 로고의 `ai` 주황색과 관리자 예산 부족 안내만 수정한다. [변경 범위와 진단 기록](logo-budget-guidance-20261018.md)을 따른다. 해당 draft PR의 최종 SHA·CI 성공을 확인해 배포한다. 이번 작업은 배포·예산/보류 변경·실제 유료 호출을 하지 않는다. 아래 10월 17일 Live 기록은 당시 기록이다.
+
+
 ## 최신 확인과 후속 후보 — 2026-10-17
 
 사용자 제공 Render 화면에서 서비스 `aiadcast-next`의 **Live SHA `dbc34f8b739ea23a0cf2b1a87adc8c091223cb82`** (2026-10-17 21:24:01 GMT+9, 52.8초)를 확인했다. 해당 코드는 `feat/dimension-annotation-app-20261017`, draft PR #12다. 이는 사용자 화면 근거이며 이 실행 환경에서 공개 health·인증 상태를 독립 검증한 결과는 아니다. 공개 URL 조회는 프록시 HTTPS tunnel 403으로 막혔으며 Render 자체 403으로 해석하지 않는다.

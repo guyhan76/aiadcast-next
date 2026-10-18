@@ -202,3 +202,18 @@ test('result guidance stays readable before and after acceptance without alterin
  expect(await sharp((await(await download).path())!).metadata()).toMatchObject({width:1080,height:1920});
  expect(state.posts).toBe(1);expect(state.accepts).toBe(1);
 });
+
+test('budget-blocked administrator sees own allocation and holds without generating or changing budget',async({page},info)=>{
+ const state=await mocks(page,{admin:true,enabled:false});let writes=0;
+ await page.addInitScript(()=>sessionStorage.setItem('aiadcast.beta-session',JSON.stringify({token:'a'.repeat(43),expires:Date.now()+3600000,user:{id:'admin-budget-test',label:'Operator',role:'admin'}})));
+ await page.route('**/api/status',route=>route.fulfill({json:{mode:'invite-beta',commercialReady:false,generation:{enabled:false,reason:'BUDGET_NOT_AVAILABLE',model:'fixture',perRequestReservationUsd:.5},wallet:{available:0,reserved:0,unlimited:true,kind:'admin-test-unlimited'},budget:{limitMicros:500000,spentMicros:50000,heldMicros:200000}}}));
+ page.on('request',r=>{if(r.method()==='POST'&&new URL(r.url()).pathname.startsWith('/api/'))writes++;});
+ const form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();
+ const panel=page.locator('.generation-panel');await expect(panel).toContainText('관리자 이용권은 차감되지 않지만 이미지 생성용 예산이 부족합니다.');
+ const budget=panel.getByRole('note',{name:'이 계정의 생성 예산'});await expect(budget).toContainText('월 배정 $0.5000 · 사용 $0.0500 · 보류 $0.2000 · 남은 예산 $0.2500');await expect(budget).toContainText('생성 전 예약금 $0.5000');await expect(budget).toContainText('실제 1회 요금과는 다릅니다.');
+ await expect(panel).not.toContainText('관리자에게 한도 확인을 요청해주세요.');await expect(panel.getByRole('link',{name:'관리자 설정 확인'})).toHaveAttribute('href','#admin');
+ await panel.getByRole('button',{name:'다시 확인',exact:true}).click();await expect(budget).toContainText('보류 $0.2000');expect(state.posts).toBe(0);expect(writes).toBe(0);
+ await page.setViewportSize({width:390,height:844});await panel.screenshot({path:info.outputPath('admin-budget-mobile-mock.png')});
+ await page.goto('/#guide');await page.evaluate(()=>document.fonts.ready);await page.locator('.app-footer').scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('orange-header-footer-mobile.png'),fullPage:true});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
