@@ -4,10 +4,11 @@ import sharp from 'sharp';
 import {artDirectionFor} from '../src/art-direction.ts';
 import {dimensionLabel,dimensionUnit} from '../src/dimension-units.ts';
 import {imageSkillBrief} from '../src/image-skills.ts';
+import {finishedAdQualityBrief} from './finished-ad-quality.mjs';
 
 // Pinned, opt-in development adapter. No model discovery or automatic upgrades.
 export const IMAGE_MODEL = 'gpt-image-2.5-sunburst';
-export const IMAGE_REVISION = 'gpt-image-2.5-sunburst/aiadcast-images-v15-service-reference/2026-10-15';
+export const IMAGE_REVISION = 'gpt-image-2.5-sunburst/aiadcast-images-v16-industry-quality/2026-10-18';
 export const PRICE_VERSION = 'openai-direct-images-2026-10-10';
 export const GENERATION_SIZES = Object.freeze({
   '1:1': '1024x1024', '4:5': '1024x1280', '3:4': '960x1280',
@@ -98,6 +99,7 @@ Art-direct a coherent one-page campaign with one dominant visual or typographic 
 DESIGN CHOICE: Choose one coherent concept suited to this specific subject and the customer's request, not a collage of all three concepts. The named industry is context; supplied facts and user instructions determine the actual subject. Use deliberate type scale and contrast readable on a phone. ${purposeBrief}
 COMPOSITION FAMILIES: Based on the requested purpose, copy length and available evidence, choose ONE primary structure: a restrained brand hero with intentional space; a supplied offer with one dominant amount and subordinate terms; a symbolic explanation of a service; a documented product/app demonstration; or a few readable process/feature groups. These are internal art-direction alternatives, not customer-required presets or permission to add facts. Premium quality does not require dark backgrounds, metallic letters, neon edges or high information density. With sparse approved copy, preserve the quiet layout instead of inventing captions. With dense approved copy, simplify the artwork and panel count before shrinking text; never omit supplied qualifications. Use at most a few meaningful supporting groups when the facts warrant them, and never turn a single-page request into a collage of all reference ads.
 DOCUMENTED FEATURES: For a course, app or digital service, supplied screenshots, artwork and deliverables can support a clear headline and a small number of actual stages or benefits. Do not recreate tiny unreadable dashboard details or populate interfaces with fictitious statistics. If no actual evidence is supplied, use clearly conceptual icons or illustrations grounded in the description; do not present them as real screenshots, testimonials or completed student work. A conceptual diagram must not imply integrations, automation or results absent from the customer's facts. In manual-copy mode, add no stage labels or captions beyond the supplied wording.
+${finishedAdQualityBrief(production,request.output?.format)}
 ${automotiveCampaignBrief(request)}
 ${serviceCampaignBrief(request)}
 FACT LOCK: Use only the supplied product name, description, material, attributes, quantities, prices and conditions. ${request.creativeDirection?.copyMode==='ai'?'AI COPY: Write a concise marketing headline and supporting copy from the supplied description and benefits. The supplied title/description are starting facts and drafting context, not a mandatory fixed headline. Keep the exact product/service name prominent. Do not add factual promises.':'MANUAL COPY: Typeset the supplied title and description verbatim. Do not rewrite, replace or supplement the customer\'s advertising copy.'} Preserve each number, currency, unit, name, phone, email and URL character. Do not invent or upgrade benefits, certifications, delivery terms, guaranteed outcomes, financial returns, discounts or testimonials. ${materialBrief} A self-check is not certification or an automatic fact-verification result.
