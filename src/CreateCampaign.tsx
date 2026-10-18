@@ -23,10 +23,10 @@ import {betaSession} from './beta-session';
 import './create-campaign.css';
 
 export {starterProject,prepareCampaign} from './consumer-campaign';
-import {starterProject,prepareCampaign} from './consumer-campaign';
+import {starterProject,prepareCampaign,automaticDimensionDraft} from './consumer-campaign';
 export function CreateCampaign({initialKind,onReady,draft,onDraft}:{initialKind?:IndustryKind;onReady:(p:Project)=>Promise<void>;draft?:WizardDraft;onDraft?:(draft:WizardDraft)=>void}){
  const {language,t,text}=useUiLanguage(),id=useId();
- const [project,setProject]=useState(()=>draft?.project??({...starterProject(initialKind==='service'?'services':'other'),locale:language}));
+ const [project,setProject]=useState(()=>automaticDimensionDraft(draft?.project??({...starterProject(initialKind==='service'?'services':'other'),locale:language})));
  const submitting=useRef(false);
  const [chosen,setChosen]=useState(!!draft),[error,setError]=useState(''),[busy,setBusy]=useState(false),[photoImportIssue,setPhotoImportIssue]=useState('');
  useLayoutEffect(()=>{onDraft?.({project,step:0});},[project,onDraft]);
