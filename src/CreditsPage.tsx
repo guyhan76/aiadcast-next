@@ -1,3 +1,4 @@
+import {AppVersionInfo} from './AppVersionInfo';
 import {useEffect,useRef,useState} from 'react';
 import {apiRequest,ApiRequestFailure,type ApiStatus} from './generation-client';
 import {betaSession,setBetaSession} from './beta-session';
@@ -17,7 +18,7 @@ export function CreditsPage({returnPage}:{returnPage:string}){
  }
  useEffect(()=>{void refresh();return()=>{request.current?.abort();request.current=null;};},[session?.token]);
  const state=(v:string)=>({paid:t('결제 완료','Paid'),pending:t('확인 중','Pending'),verified:t('지급 확인 중','Verifying grant'),canceled:t('취소','Canceled'),completed:t('지급 완료','Granted')}[v]??v);
- return <section className="account-page credits-page"><a href={'#'+returnPage}>{t('광고 작업으로 돌아가기','Back to your ad')}</a><h1>{t('내 이용권','My credits')}</h1>
+ return <><AppVersionInfo/><section className="account-page credits-page"><a href={'#'+returnPage}>{t('광고 작업으로 돌아가기','Back to your ad')}</a><h1>{t('내 이용권','My credits')}</h1>
  <p>{session?.user.label??t('로그인 후 내 이용권을 확인할 수 있습니다.','Sign in to view your credits.')}</p>
  <dl className="credit-summary"><div><dt>{t('사용 가능','Available')}</dt><dd>{data?(data.wallet.unlimited?t('관리자 테스트 · 차감 없음','Administrator tests · No charge'):data.wallet.available+t('개',' credits')):t('미조회','Not checked')}</dd></div><div><dt>{t('예약 중','Reserved')}</dt><dd>{data?data.wallet.reserved+t('개',' credits'):t('미조회','Not checked')}</dd></div></dl>
  <p role="status">{busy?t('서버에서 이용권을 조회 중입니다…','Checking credits with the server…'):checked?<>{t('조회 완료','Checked')} · <time dateTime={checked}>{new Date(checked).toLocaleTimeString()}</time></>:t('이용권 정보 미조회','Credits not checked')}</p>
@@ -27,5 +28,5 @@ export function CreditsPage({returnPage}:{returnPage:string}){
  <h2>{t('최근 관리자 지급 내역','Recent administrator grants')}</h2>{!data?<p>{t('지급 내역 미조회','Grants not checked')}</p>:!data.grants.length?<p>{t('조회된 관리자 지급 내역이 없습니다.','No administrator grants found.')}</p>:<ul className="credit-history">{data.grants.map(g=><li key={g.id}><strong>{g.credits}{t('개',' credits')} · {state(g.state)}</strong><span>{new Date(g.created).toLocaleString(language==='ko'?'ko-KR':'en-US')}</span></li>)}</ul>}
  <p className="account-help">{t('구매·관리자 지급 내역은 각각 최근 30건이며, 현재 잔액은 사용·예약·복원 결과를 포함합니다.','Up to 30 recent purchases and administrator grants are shown. The current balance also reflects use, reservations and restorations.')}</p>
  <a className="primary-action" href="#checkout">{t('이용권 구매하기','Buy credits')}</a>{session&&<a className="guest-link" href="#checkout-return">{t('결제 후 작업 이어가기','Resume after checkout')}</a>}
- </section>;
+ </section></>;
 }
