@@ -6,6 +6,12 @@ import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 
 const png=await sharp({create:{width:12,height:8,channels:4,background:{r:33,g:94,b:174,alpha:1}}}).png().toBuffer();
+
+async function reloadSavedEditor(page:Page,jobId?:string){
+ await expect.poll(()=>page.evaluate(async(jobId)=>new Promise<boolean>((resolve,reject)=>{const r=indexedDB.open('aiadcast-workspace-drafts',1);r.onsuccess=()=>{const q=r.result.transaction('drafts').objectStore('drafts').get('guest');q.onsuccess=()=>{resolve(jobId?q.result?.editor.generated?.jobId===jobId:!!q.result?.editor.product);r.result.close();};q.onerror=()=>reject(q.error);};}),jobId)).toBe(true);
+ page.once('dialog',d=>d.accept());await page.reload();
+}
+
 const artifactHash=createHash('sha256').update(png).digest('hex');
 async function recoveryApi(page:Page,scenario:'invalid-first'|'lose-second'){
  const state={posts:0,historyReads:0,readIds:[] as string[],acceptedIds:[] as string[],jobs:[] as GenerationJob[],wallet:{available:10,reserved:0,kind:'test'}};
@@ -69,4 +75,26 @@ test('a lost second response hides the old accepted job and recovers only the ma
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'프로젝트 백업',exact:true}).click();
  const saved=JSON.parse(await readFile((await (await download).path())!,'utf8'));expect(saved.generated.jobId).toBe('recovery_job_2');
  expect(state.posts).toBe(2);
+});
+
+test('a durably accepted result does not remain pending when its old status endpoint is unavailable after reload',async({page})=>{
+ const {panel,state}=await recoveryApi(page,'lose-second');
+ await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();
+ await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
+ const legacy=await page.evaluate(()=>Object.entries(localStorage).find(([k])=>k.includes('pending-generation.'))!);
+ await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+ await expect(panel.getByText('사용 확정한 시안',{exact:true})).toBeVisible();
+ expect(await page.evaluate(key=>localStorage.getItem(key),legacy[0])).toBeNull();
+ // A marker left by the previous app version must reconcile with its saved accepted result.
+ await page.evaluate(([key,value])=>localStorage.setItem(key,value),legacy);
+ await page.route('**/api/generations/recovery_job_1',r=>r.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}}));
+ await reloadSavedEditor(page,'recovery_job_1');
+ await expect(panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true})).toBeEnabled();
+ await expect(panel.getByText(/중복 생성을 막기 위해 새 요청을 보류/)).toHaveCount(0);
+ expect(state.posts).toBe(1);expect(state.acceptedIds).toEqual(['recovery_job_1']);
+});
+
+test('uncertain provider work keeps its reservation protected after reload and does not auto-dispatch',async({page})=>{
+ const {panel,state}=await recoveryApi(page,'lose-second');await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();
+ state.jobs[0].state='uncertain';await reloadSavedEditor(page);await expect(panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true})).toBeDisabled();await expect(panel).toContainText('AI 공급사의 사용량을 확인하기 전에는');expect(state.posts).toBe(1);expect(state.wallet.reserved).toBe(1);expect(state.acceptedIds).toEqual([]);
 });

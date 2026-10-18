@@ -52,6 +52,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  const {language,text}=useUiLanguage();
  const priorPage=useRef<Page>(currentPage()),adminBack=useRef('#home');
  const [page,setPage]=useState<Page>(currentPage),[seed,setSeed]=useState<Project>(()=>restored?.editor??({...newProject(),locale:language})),[current,setCurrent]=useState<Project>(seed),[editorKey,setEditorKey]=useState(0);
+ const submittedWizard=useRef<string|undefined>(restored?.returnPage==='studio'?restored?.wizard?.project.id:undefined);
  const [wizardKey,setWizardKey]=useState(0),[items,setItems]=useState<Project[]>([]),[libraryError,setLibraryError]=useState('');
  const [draftSaving,setDraftSaving]=useState(false),[draftError,setDraftError]=useState(false);
  const [paymentNotice,setPaymentNotice]=useState(()=>{const v=readSession<{userId:string;origin:string;credits:number;balance:number}>('aiadcast.checkout-confirmed');return v?.userId===betaSession()?.user.id&&v?.origin===apiIdentity()?v:undefined;});
@@ -89,15 +90,16 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
   window.addEventListener('aiadcast-native-back',back);
   return()=>window.removeEventListener('aiadcast-native-back',back);
  },[page,current,seed,language]);
- function begin(){setWizardSeed(undefined);setWizard(undefined);setWizardKey(k=>k+1);go('create');}
+ async function begin(){try{await saveProject({...current,updatedAt:new Date().toISOString()});setGenerationIntent(undefined);submittedWizard.current=undefined;setWizardSeed(undefined);setWizard(undefined);setWizardKey(k=>k+1);setSwitchError('');go('create');}catch{setSwitchError(text('현재 광고를 보관하지 못해 전환하지 않았습니다. 다시 시도해주세요.'));}}
+ function createNavigation(event:React.MouseEvent){if(page!=='create'&&(page==='studio'||page==='editor'||wizard?.project.id===current.id||!!wizard&&wizard.project.id===submittedWizard.current)){event.preventDefault();void begin();}}
  async function open(p:Project,preferIncoming=false){
   try{const changed=JSON.stringify(current)!==JSON.stringify(seed);const snapshot=changed?{...current,updatedAt:new Date().toISOString()}:current;if(changed)await saveProject(snapshot);if(preferIncoming&&p.id===current.id&&JSON.stringify(p)!==JSON.stringify(current))await saveProject({...snapshot,id:crypto.randomUUID(),name:(snapshot.name+' '+(language==='ko'?'기기 보관본':'local copy')).slice(0,80)});const next=changed&&p.id===current.id&&!preferIncoming?snapshot:p;setSeed(next);setCurrent(next);setEditorKey(k=>k+1);setSwitchError('');go('studio');return true;}
   catch{setSwitchError(text('현재 편집 내용을 저장하지 못해 작업 전환을 멈췄습니다. 편집기로 돌아가 프로젝트 파일을 백업해주세요.'));return false;}
  }
- async function ready(p:Project){await saveProject(p);if(!await open(p,true))throw Error(text('현재 작업 저장 실패'));setGenerationIntent(crypto.randomUUID());}
- function editDetails(){setWizardSeed({project:current,step:0});setWizard({project:current,step:0});setWizardKey(k=>k+1);setGenerationIntent(undefined);go('create');}
+ async function ready(p:Project){const submittedId=p.id;if(p.id===current.id&&current.generated)p=creativeCampaignDraft(p);await saveProject(p);if(!await open(p,true))throw Error(text('현재 작업 저장 실패'));submittedWizard.current=submittedId;setGenerationIntent(crypto.randomUUID());}
+ function editDetails(){submittedWizard.current=undefined;setWizardSeed({project:current,step:0});setWizard({project:current,step:0});setWizardKey(k=>k+1);setGenerationIntent(undefined);go('create');}
  async function createCreativeDraft(){
-  const next=creativeCampaignDraft(current);
+  const next=creativeCampaignDraft(current);submittedWizard.current=undefined;
   await saveProject({...current,updatedAt:new Date().toISOString()});
   setWizardSeed({project:next,step:0});setWizard({project:next,step:0});setWizardKey(k=>k+1);setGenerationIntent(undefined);go('create');
  }
@@ -105,7 +107,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  const libraryItems=JSON.stringify(current)!==JSON.stringify(seed)?[current,...items.filter(p=>p.id!==current.id)]:items;
 
  return <div className={`studio-shell ${(page==='editor'||page==='studio'&&!simpleStudio)?'editor-route':''}`}>
-  <aside className="app-sidebar"><a href="#home" className="app-brand" aria-label={text("aiadcast 홈")}><Brand/><small>{language==='ko'?'내 브랜드의 광고 제작 파트너':'YOUR CREATIVE PARTNER'}</small></a><nav aria-label={text("주 메뉴")}>{navigation.map(([id,label,Icon])=><a href={'#'+id} key={id} aria-current={page===id?'page':undefined}><Icon size={19}/><span>{text(label)}</span>{id==='create'&&<span className="nav-plus">+</span>}</a>)}</nav><div className="sidebar-bottom"><div className="studio-mark"><ShieldCheck size={20}/><span>{text("당신의 상품.")}<br/><strong>{text("당신의 브랜드.")}</strong></span></div><span>aiadcast Studio<br/>by selluplabs</span></div></aside>
+  <aside className="app-sidebar"><a href="#home" className="app-brand" aria-label={text("aiadcast 홈")}><Brand/><small>{language==='ko'?'내 브랜드의 광고 제작 파트너':'YOUR CREATIVE PARTNER'}</small></a><nav aria-label={text("주 메뉴")}>{navigation.map(([id,label,Icon])=><a href={'#'+id} onClick={id==='create'?createNavigation:undefined} key={id} aria-current={page===id?'page':undefined}><Icon size={19}/><span>{text(label)}</span>{id==='create'&&<span className="nav-plus">+</span>}</a>)}</nav><div className="sidebar-bottom"><div className="studio-mark"><ShieldCheck size={20}/><span>{text("당신의 상품.")}<br/><strong>{text("당신의 브랜드.")}</strong></span></div><span>aiadcast Studio<br/>by selluplabs</span></div></aside>
   <div className="app-content"><AccountBar preserve={async()=>{await preserve();await saveProject(current);}}/><DemoNotice/>{page==='guide'&&<details className="account-drawer"><summary>{language==='ko'?'테스트 계정 · 서버 연결':'Test account & connection'}</summary><OfflineDemoControls preserve={preserve} beforeChange={async()=>{await preserve();await saveWorkspace(snapshot,'guest');}}/>{!offlineDemo()&&<TestConnection preserve={preserve} beforeChange={async()=>{await preserve();await saveWorkspace(snapshot,'guest');}}/>}{!offlineDemo()&&<BetaAccount current={current} onOpen={p=>open(p,true)}/>}</details>}
    {page==='create'&&<p className="workspace-save-state" aria-live="polite">{draftSaving?(language==='ko'?'입력 내용 저장 중…':'Saving your draft…'):draftError?(language==='ko'?'입력 내용 저장 실패':'Draft could not be saved'):(language==='ko'?'입력 내용이 기기에 저장되었습니다.':'Draft saved on this device.')}</p>}
    {draftError&&<p className="wizard-error" role="alert">{text('입력 내용을 기기에 보관하지 못했습니다. 저장 공간을 확인해주세요.')}</p>}
@@ -126,7 +128,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
 
    {(page!=='studio'||simpleStudio)&&page!=='editor'&&<AppFooter/>}
   </div>
-  <nav className="mobile-app-nav" aria-label={text("모바일 메뉴")}>{navigation.map(([id,label,Icon])=><a key={id} href={'#'+id} aria-current={page===id?'page':undefined}><Icon size={20}/><span>{text(label)}</span></a>)}</nav>
+  <nav className="mobile-app-nav" aria-label={text("모바일 메뉴")}>{navigation.map(([id,label,Icon])=><a key={id} href={'#'+id} onClick={id==='create'?createNavigation:undefined} aria-current={page===id?'page':undefined}><Icon size={20}/><span>{text(label)}</span></a>)}</nav>
  </div>;
 }
 

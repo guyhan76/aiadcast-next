@@ -1,11 +1,10 @@
 import type {MarketingPlan} from './marketing-plan';
 import {parseMarketingPlan} from './marketing-plan';
-import {channelInfo} from './publishing';
 import {useUiLanguage} from './ui-language';
 import './marketing-summary.css';
 
 export function MarketingSummary({plan:storedPlan,saved=false}:{plan:MarketingPlan;saved?:boolean}){
- const {t,language}=useUiLanguage();
+ const {t}=useUiLanguage();
  // Refresh derived recommendations from the saved input; no image request or credit is needed.
  let plan:MarketingPlan|undefined;
  try{plan=parseMarketingPlan(storedPlan);}catch{return null;}
@@ -21,7 +20,7 @@ export function MarketingSummary({plan:storedPlan,saved=false}:{plan:MarketingPl
   <p className="marketing-intent">{intent}</p>
   <div className="marketing-section marketing-audience"><h4>{t('타깃 고객','Audience')}</h4><p>{audience}</p></div>
   <div className="marketing-section"><h4>{t('추천 채널','Suggested channels')}</h4>
-   <ul className="marketing-channels">{plan.channels.map(id=><li key={id}>{channelInfo(id,language).name}</li>)}</ul>
+   <ul className="marketing-channels">{[t('인스타그램','Instagram'),t('유튜브','YouTube'),t('홈페이지','Website'),t('블로그','Blog'),t('포스터','Poster'),t('광고브로셔','Advertising brochure')].map(name=><li key={name}>{name}</li>)}</ul>
    <p className="marketing-help">{t('릴스·쇼츠에 쓰려면 이미지를 영상으로 변환하세요.','Convert the image to video for Reels or Shorts.')}</p>
   </div>
   <div className="marketing-section"><h4>{t('추천 SEO 검색어','Recommended SEO keywords')}</h4>

@@ -33,12 +33,12 @@ test('eight inputs submit actual generation request once and a complete accepted
  await form.getByRole('button',{name:'직접 입력',exact:true}).click();await form.getByRole('textbox',{name:'광고 제목',exact:true}).fill('보내는 마음까지, 든든하게.');await form.getByRole('textbox',{name:'광고 설명',exact:true}).fill('10개 19,800원 · 빠른배송');
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();
  const result=page.locator('.simple-ad-result');await expect(result.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();await expect(result.locator('.generation-ad-preview')).toBeVisible();
- await expect(result.getByRole('heading',{name:'이 광고의 제작 의도',exact:true})).toBeVisible();await expect(result.getByRole('heading',{name:'추천 채널',exact:true})).toBeVisible();await expect(result.locator('.marketing-keywords li')).toHaveCount(state.body.request.marketingPlan.keywordCount);
+ await expect(result.getByRole('heading',{name:'이 광고의 제작 의도',exact:true})).toBeVisible();await expect(result.getByRole('heading',{name:'추천 채널',exact:true})).toBeVisible();await expect(result.locator('.marketing-channels li')).toHaveText(['인스타그램','유튜브','홈페이지','블로그','포스터','광고브로셔']);await expect(result.locator('.marketing-keywords li')).toHaveCount(state.body.request.marketingPlan.keywordCount);
  expect(state.posts).toBe(1);expect(state.body.references).toHaveLength(1);expect(state.body.request.copy.title).toBe('보내는 마음까지, 든든하게.');expect(state.body.request.creativeDirection.copyMode).toBe('manual');expect(state.body.request.output.format).toBe('9:16');expect(state.body.request.output.showDimensions).toBe(true);expect(state.body.request.specifications.map((s:any)=>s.value)).toEqual(['340','250','210']);
  await expect(result.locator('.automatic-proportion')).toHaveCount(0);await expect(result.locator('.editor-details')).toHaveCount(0);
  await result.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await result.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  await expect(result.locator('.marketing-summary')).toHaveCount(1);await expect(result.locator('.accepted-ad .marketing-summary')).toBeVisible();
- const save=result.getByRole('button',{name:'이미지 저장',exact:true});await expect(save).toBeEnabled();const pending=page.waitForEvent('download');await save.click();expect((await pending).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
+ const save=result.getByRole('button',{name:'이미지 저장 · 공유',exact:true});await expect(save).toBeEnabled();const pending=page.waitForEvent('download');await save.click();expect((await pending).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
  await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('textbox',{name:'광고 제목',exact:true})).toHaveValue('보내는 마음까지, 든든하게.');
 });
 test('photo-free service AI copy requests no dimensions and generates automatically after submit',async({page})=>{
@@ -77,7 +77,7 @@ test('original photo choice reaches review acceptance and download without openi
  await expect(result.locator('.generation-ad-preview')).toBeVisible();expect(state.body.request.mode).toBe('original');
  await expect(page.locator('.editor-container')).toHaveCount(0);
  await result.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await result.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
- const save=result.getByRole('button',{name:'이미지 저장',exact:true});await expect(save).toBeEnabled();
+ const save=result.getByRole('button',{name:'이미지 저장 · 공유',exact:true});await expect(save).toBeEnabled();
  const download=page.waitForEvent('download');await save.click();expect((await download).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.posts).toBe(1);
  await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('button',{name:'실사 그대로 사용',exact:true})).toHaveAttribute('aria-pressed','true');await expect(form.getByRole('textbox',{name:'광고 설명',exact:true})).toHaveValue('');
 });
@@ -149,7 +149,7 @@ test('server-confirmed administrator at zero credits can review and save without
  await expect(page.locator('.generation-ad-preview')).toBeVisible();
  await page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
  await page.getByRole('button',{name:'사용 확정 · 이용권 차감 없음',exact:true}).click();
- await expect(page.getByRole('button',{name:'이미지 저장',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'이미지 저장 · 공유',exact:true})).toBeEnabled();
  expect(state.posts).toBe(1);expect(state.accepts).toBe(1);expect(state.job.creditCost).toBe(0);
  await expect(page.getByRole('button',{name:'다른 시안 생성 · 관리자 테스트',exact:true})).toBeEnabled();
  await expect(page.locator('.admin-test-mode')).toContainText('실제 API 사용 비용과 서버 예산 한도는 적용됩니다.');
@@ -198,7 +198,7 @@ test('result guidance stays readable before and after acceptance without alterin
  await page.getByLabel('앱 언어',{exact:true}).selectOption('en');await expect(summary.getByRole('heading',{name:'Suggested channels',exact:true})).toBeVisible();
  await expect(summary.locator('.marketing-keywords li')).toHaveText(originalPlan.keywords);
  expect(state.body.request.marketingPlan).toEqual(originalPlan);expect(state.posts).toBe(1);expect(state.accepts).toBe(1);
- const download=page.waitForEvent('download');await page.getByRole('button',{name:'Save image',exact:true}).click();
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'Save / share image',exact:true}).click();
  expect(await sharp((await(await download).path())!).metadata()).toMatchObject({width:1080,height:1920});
  expect(state.posts).toBe(1);expect(state.accepts).toBe(1);
 });
@@ -216,4 +216,33 @@ test('budget-blocked administrator sees own allocation and holds without generat
  await page.setViewportSize({width:390,height:844});await panel.screenshot({path:info.outputPath('admin-budget-mobile-mock.png')});
  await page.goto('/#guide');await page.evaluate(()=>document.fonts.ready);await page.locator('.app-footer').scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('orange-header-footer-mobile.png'),fullPage:true});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
+test('navigation starts a separate new ad after acceptance and preserves the previous result',async({page})=>{
+ const state=await mocks(page),form=await details(page,true);await form.getByRole('button',{name:'광고 생성',exact:true}).click();
+ await page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await page.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();await expect(page.getByRole('button',{name:'이미지 저장 · 공유',exact:true})).toBeEnabled();
+ const oldId=state.body.projectId;
+ await page.locator('a[href="#create"]:visible').first().click();await expect(form.getByLabel('상품명',{exact:true})).toHaveValue('');expect(state.posts).toBe(1);
+ await form.getByLabel('산업 선택').selectOption('lodging');await form.getByLabel('서비스명',{exact:true}).fill('다음 서비스');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('두 번째 독립 광고');await form.getByRole('button',{name:'광고 생성',exact:true}).click();
+ await expect.poll(()=>state.posts).toBe(2);expect(state.body.projectId).not.toBe(oldId);expect(state.accepts).toBe(1);
+ await page.locator('a[href="#projects"]:visible').first().click();await expect(page.locator('.project-tile')).toHaveCount(2);
+});
+
+test('save-share opens the existing native export choice only after a user click and never claims delivery',async({page})=>{
+ const {readFile}=await import('node:fs/promises');const bridge=await readFile('native/android-download-bridge.js','utf8');
+ await page.addInitScript({content:'window.nativeMessages=[];window.AiadcastNative={postMessage(v){window.nativeMessages.push(JSON.parse(v));}};'+bridge});
+ const state=await mocks(page),form=await details(page,true);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await page.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();const save=page.getByRole('button',{name:'이미지 저장 · 공유',exact:true});await expect(save).toBeEnabled();
+ expect(await page.evaluate(()=>(window as any).nativeMessages)).toEqual([]);await save.click();await expect.poll(()=>page.evaluate(()=>(window as any).nativeMessages.length)).toBe(1);
+ const message=await page.evaluate(()=>(window as any).nativeMessages[0]);expect(message.type).toBe('export');expect(message.mime).toBe('image/png');expect((await sharp(Buffer.from(message.base64,'base64')).metadata()).width).toBe(1080);
+ for(const [status,text] of [['cancelled','저장을 취소했습니다.'],['saved','이미지를 저장했습니다.'],['share-opened','공유할 앱을 열었습니다.']]){await page.evaluate(status=>window.dispatchEvent(new CustomEvent('aiadcast-native-export',{detail:{status}})),status);await expect(page.locator('.simple-ad-result').getByRole('status').filter({hasText:text})).toBeVisible();}
+ expect(state.posts).toBe(1);expect(state.accepts).toBe(1);expect(await page.evaluate(()=>(window as any).nativeMessages.length)).toBe(1);
+});
+
+test('starting a fresh draft preserves a lost prior request for recovery without another POST or reservation change',async({page})=>{
+ const state=await mocks(page),form=await details(page,true);let attempts=0;await page.route('**/api/generations',r=>{if(r.request().method()==='POST'){attempts++;return r.abort('failed');}return r.fulfill({json:{jobs:[]}});});
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByText(/중복 생성을 막기 위해 새 요청을 보류/)).toBeVisible();
+ const pending=await page.evaluate(()=>Object.fromEntries(Object.entries(localStorage).filter(([k])=>k.includes('pending-generation.'))));expect(Object.keys(pending)).toHaveLength(1);
+ await page.locator('a[href="#create"]:visible').first().click();await expect(form.getByLabel('상품명',{exact:true})).toHaveValue('');
+ expect(await page.evaluate(()=>Object.fromEntries(Object.entries(localStorage).filter(([k])=>k.includes('pending-generation.'))))).toEqual(pending);expect(attempts).toBe(1);expect(state.accepts).toBe(0);
+ await page.locator('a[href="#projects"]:visible').first().click();await page.locator('.project-tile').first().click();await expect(page.getByText(/중복 생성을 막기 위해 새 요청을 보류/)).toBeVisible();expect(attempts).toBe(1);
 });
