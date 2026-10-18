@@ -49,7 +49,7 @@ test('unauthenticated creation keeps details and offers visible login rather tha
  await page.getByRole('link',{name:'로그인하고 생성하기',exact:true}).click();await expect(page.getByRole('heading',{name:'테스트 로그인',exact:true})).toBeVisible();await expect(page.getByLabel('초대코드')).toBeVisible();await page.getByRole('link',{name:'돌아가기',exact:true}).click();await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByLabel('서비스명',{exact:true})).toHaveValue('숲속 숙소');
 });
 test('budget blockage gives a clear reason and never dispatches a provider request',async({page})=>{
- const state=await mocks(page,{enabled:false}),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByText('테스트 생성 한도에 도달했습니다. 관리자에게 한도 확인을 요청해주세요.')).toBeVisible();expect(state.posts).toBe(0);
+ const state=await mocks(page,{enabled:false}),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByText('이용권과 별도로 이미지 생성용 예산의 사용·보류액 또는 생성 전 예약금 때문에 지금 생성할 수 없습니다. 관리자에게 남은 예산을 확인해주세요.')).toBeVisible();expect(state.posts).toBe(0);
 });
 
 test('photo purpose survives draft reload and travels with the correct uploaded image',async({page},info)=>{

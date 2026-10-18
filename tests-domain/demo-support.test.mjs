@@ -86,3 +86,11 @@ test('month rollover after credit write rolls the whole support operation back',
  const s=await setup(t),q=await s.quote(),audit=s.admin.audit.bind(s.admin);s.admin.audit=async(...args)=>{const result=await audit(...args);if(args[1]==='october-demo-support')s.advance('2026-11-01T00:00:00Z');return result;};
  await assert.rejects(s.apply(q),/MONTH_APPROVAL_EXPIRED/);assert.equal((await s.member.wallet()).available,1);assert.equal((await s.db.prepare('SELECT COUNT(*) n FROM monthly_demo_support').get()).n,0);assert.equal((await s.db.prepare('SELECT COUNT(*) n FROM admin_grants').get()).n,0);
 });
+
+test('existing 34 credits remain 34; support moves only the approved dollar and never grants again',async t=>{
+ const s=await setup(t);await s.member.recordTestPurchase({purchaseId:'fixture-existing-33',credits:33});
+ const q=await s.quote();assert.equal(q.addedCredits,0);assert.equal(q.totalMicros,5000000);assert.equal((await s.member.wallet()).available,34);
+ await s.apply(q);await s.apply(q);assert.equal((await s.member.wallet()).available,34);
+ assert.equal(await s.store.effectiveBudget(s.actor.id,'2026-10'),4000000);assert.equal(await s.store.effectiveBudget(s.body.userId,'2026-10'),1000000);
+ assert.equal(await s.store.effectiveCap(),5000000);assert.equal((await s.db.prepare('SELECT COUNT(*) n FROM admin_grants').get()).n,0);assert.equal(s.calls(),0);
+});

@@ -1,3 +1,4 @@
+import {CreditsPage} from './CreditsPage';
 import {apiIdentity} from './api-origin';
 import {readSession} from './account-client';
 import {CheckoutReturnPage} from './CheckoutReturnPage';
@@ -30,9 +31,9 @@ import {projects,saveProject} from './storage';
 import './studio.css';
 import './premium.css';
 import './campaign-cover.css';
-type Page='home'|'create'|'projects'|'guide'|'studio'|'signup'|'login'|'checkout'|'verify'|'pay'|'payment-return'|'checkout-return'|'admin'|'editor';
+type Page='home'|'create'|'projects'|'guide'|'studio'|'signup'|'login'|'credits'|'checkout'|'verify'|'pay'|'payment-return'|'checkout-return'|'admin'|'editor';
 const navigation=[['home','홈',Home],['create','광고 만들기',Plus],['projects','내 프로젝트',FolderOpen],['guide','사용 안내',BookOpen]] as const;
-function currentPage():Page {if(new URLSearchParams(location.search).get('checkout')==='return')return 'payment-return';const route=location.hash.slice(1).split('?')[0];return ['home','create','projects','guide','studio','signup','login','checkout','verify','pay','payment-return','checkout-return','admin','editor'].includes(route)?route as Page:'home';}
+function currentPage():Page {if(new URLSearchParams(location.search).get('checkout')==='return')return 'payment-return';const route=location.hash.slice(1).split('?')[0];return ['home','create','projects','guide','studio','signup','login','credits','checkout','verify','pay','payment-return','checkout-return','admin','editor'].includes(route)?route as Page:'home';}
 export default function StudioApp(){
  const [route,setRoute]=useState(currentPage);
  useEffect(()=>{const update=()=>setRoute(currentPage());window.addEventListener('hashchange',update);return()=>window.removeEventListener('hashchange',update);},[]);
@@ -109,8 +110,8 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
    {page==='create'&&<p className="workspace-save-state" aria-live="polite">{draftSaving?(language==='ko'?'입력 내용 저장 중…':'Saving your draft…'):draftError?(language==='ko'?'입력 내용 저장 실패':'Draft could not be saved'):(language==='ko'?'입력 내용이 기기에 저장되었습니다.':'Draft saved on this device.')}</p>}
    {draftError&&<p className="wizard-error" role="alert">{text('입력 내용을 기기에 보관하지 못했습니다. 저장 공간을 확인해주세요.')}</p>}
    {switchError&&<p className="wizard-error" role="alert">{switchError}</p>}
-   {paymentNotice&&<div className="connection-notice" role="status">{language==='ko'?`이용권 ${paymentNotice.credits}개 지급 확인 · 현재 잔액 ${paymentNotice.balance}개. 저장한 작업을 이어갑니다. 생성 예산과 규격 준비 상태는 별도입니다.`:`${paymentNotice.credits} credits confirmed · Balance ${paymentNotice.balance}. Continue your saved work. Generation budget and dimension readiness are separate.`}<button type="button" onClick={()=>{sessionStorage.removeItem('aiadcast.checkout-confirmed');setPaymentNotice(undefined);}}>{language==='ko'?'확인':'Dismiss'}</button></div>}
-   {(page!=='studio'||simpleStudio)&&page!=='editor'&&<header className="app-header"><a href="#home" className="mobile-brand" aria-label={text("aiadcast 홈")}><Brand/></a><span className="workspace-label">{language==='ko'?'내 상품과 서비스를 위한 광고 작업실':'SELLUPLABS / CREATIVE WORKSPACE'}</span><div className="app-header-actions"><LanguageSwitcher/><PricingDialog/>{betaSession()?.user.role==='admin'&&<a className="account-link" href="#admin">{language==='ko'?'관리자':'Admin'}</a>}<a className="account-link" href={betaSession()?"#checkout":"#login"}>{text(betaSession()?"내 이용권":"로그인")}</a></div></header>}
+   {paymentNotice&&page!=='credits'&&<div className="connection-notice" role="status">{language==='ko'?`이용권 ${paymentNotice.credits}개 지급 확인 · 현재 잔액 ${paymentNotice.balance}개. 저장한 작업을 이어갑니다. 생성 예산과 규격 준비 상태는 별도입니다.`:`${paymentNotice.credits} credits confirmed · Balance ${paymentNotice.balance}. Continue your saved work. Generation budget and dimension readiness are separate.`}<button type="button" onClick={()=>{sessionStorage.removeItem('aiadcast.checkout-confirmed');setPaymentNotice(undefined);}}>{language==='ko'?'확인':'Dismiss'}</button></div>}
+   {(page!=='studio'||simpleStudio)&&page!=='editor'&&<header className="app-header"><a href="#home" className="mobile-brand" aria-label={text("aiadcast 홈")}><Brand/></a><span className="workspace-label">{language==='ko'?'내 상품과 서비스를 위한 광고 작업실':'SELLUPLABS / CREATIVE WORKSPACE'}</span><div className="app-header-actions"><LanguageSwitcher/><PricingDialog/>{betaSession()?.user.role==='admin'&&<a className="account-link" href="#admin">{language==='ko'?'관리자':'Admin'}</a>}<a className="account-link" href={betaSession()?"#credits":"#login"}>{text(betaSession()?"내 이용권":"로그인")}</a></div></header>}
    <div hidden={page!=='home'} className="home-page app-page">
     <section className="premium-home"><h1>{language==='ko'?<><span>내 상품과 서비스를,</span><br/><em>프리미엄 광고로.</em></>:<>Your products and services.<br/><em>Premium ads.</em></>}</h1><p>{language==='ko'?<>사진과 설명을 넣으면,<br/>AI광고가 광고이미지와 문구를 만듭니다.</>:'Add photos and a description. AI creates your ad images and copy.'}</p><HomeShowcase enabled={page==='home'}/><button className="primary-action premium-start" onClick={()=>begin()}>{text('내 광고 만들기')}<ArrowUpRight size={21}/></button></section>
    </div>
@@ -119,6 +120,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
    <div hidden={page!=='guide'} className="app-page guide-page"><UsageGuide onNew={begin}/></div>
    {(page==='signup'||page==='login')&&<div className="app-page"><EmailAccountPage key={page} mode={page} preserve={preserve} returnPage={returnPage}/></div>}
    {page==='admin'&&<div className="app-page"><AdminPage backHref={adminBack.current}/></div>}
+   {page==='credits'&&<div className="app-page"><CreditsPage returnPage={returnPage}/></div>}
    {page==='checkout'&&<div className="app-page"><CheckoutPage preserve={preserve} returnPage={returnPage}/></div>}
    {simpleStudio?<div className="app-page"><SimpleAdResult project={current} change={fn=>setCurrent(p=>fn(p))} onEdit={editDetails} onCreativeDraft={createCreativeDraft} autoRequest={generationIntent} onAutoHandled={()=>setGenerationIntent(undefined)}/></div>:(page==='studio'||page==='editor')&&<div className="editor-container"><Editor key={editorKey} initialProject={current} onProjectChange={setCurrent}/></div>}
 

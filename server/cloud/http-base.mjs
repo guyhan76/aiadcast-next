@@ -197,6 +197,11 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, now =
                 send(res, 201, await checkout.create(user, await read(req, 2048)), cors);
                 return;
             }
+            if (url.pathname === '/api/account/credits' && req.method === 'GET') {
+                const orders = await checkout.history(user), grants = await store.db.prepare('SELECT id,credits,state,created FROM admin_grants WHERE user_id=? ORDER BY created DESC LIMIT 30').all(user.id);
+                send(res, 200, { wallet: await (await service(user)).wallet(), orders, grants }, cors);
+                return;
+            }
             if (url.pathname === '/api/checkout/orders' && req.method === 'GET') {
                 send(res, 200, { orders: await checkout.history(user) }, cors);
                 return;
