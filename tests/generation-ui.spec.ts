@@ -143,8 +143,17 @@ test('result shows and exports the generation plan, retaining it after product n
  await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  const saved=await backup(page);expect(saved.generated.marketingPlan).toEqual(state.lastBody!.request.marketingPlan);
  const originalName=saved.generated.marketingPlan.input.name;saved.productName='변경 후 상품명';
+ // Import validates image hashes asynchronously and then opens a confirmation dialog.
+ // Hold file reading to exercise a slow device without sleeps or larger timeouts.
+ await page.evaluate(()=>{const original=File.prototype.text;File.prototype.text=async function(){if(this.name==='changed.json')await new Promise<void>(resolve=>{(window as any).finishPlanImport=resolve;});return original.call(this);};});
  page.on('dialog',d=>d.accept());await page.getByLabel('프로젝트 파일 선택').setInputFiles({name:'changed.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(saved))});
- await page.locator('#publishing-tools > summary').click();
+ await expect.poll(()=>page.evaluate(()=>typeof(window as any).finishPlanImport)).toBe('function');
+ await expect(page.locator('#main > [role="status"]')).not.toHaveText('프로젝트를 열었습니다.');
+ await page.evaluate(()=>(window as any).finishPlanImport());
+ await expect(page.locator('#main > [role="status"]')).toHaveText('프로젝트를 열었습니다.');
+ await expect(page.getByRole('textbox',{name:'상품·서비스명',exact:true})).toHaveValue('변경 후 상품명');
+ await page.getByRole('button',{name:'게시글과 활용 방법 보기',exact:true}).click();
+ await expect(page.locator('#publishing-tools')).toHaveAttribute('open','');
  const publishing=page.getByRole('region',{name:'광고 활용 가이드',exact:true});
  await expect(publishing).toContainText('생성 당시 정보');
  await expect(publishing.locator('.marketing-summary')).not.toContainText('변경 후 상품명');

@@ -1,4 +1,5 @@
 import {creativeCampaignDraft} from './consumer-campaign';
+import {MaterialStudio} from './MaterialStudio';
 import {DemoNotice,OfflineDemoControls} from './OfflineDemoControls';
 import {AppFooter} from './AppFooter';
 import {AdminPage} from './AdminPage';
@@ -31,6 +32,7 @@ function currentPage():Page {if(new URLSearchParams(location.search).get('checko
 export default function StudioApp(){
  const [route,setRoute]=useState(currentPage);
  useEffect(()=>{const update=()=>setRoute(currentPage());window.addEventListener('hashchange',update);return()=>window.removeEventListener('hashchange',update);},[]);
+ if(['localhost','127.0.0.1'].includes(location.hostname)&&new URLSearchParams(location.search).get('materialStudio')==='1')return <MaterialStudio/>;
  if(route==='verify'||route==='pay'||route==='payment-return')return <div className="studio-shell account-standalone"><div className="app-page"><a className="account-brand" href="#home"><Brand/></a>{route==='verify'?<VerifyEmailPage/>:<PaymentBrowserPage returning={route==='payment-return'}/>}</div></div>;
  return <WorkspaceLoader/>;
 }

@@ -7,4 +7,5 @@ const apiProxy={target:'http://127.0.0.1:8787',changeOrigin:true,configure(proxy
   }
  });
 }};
-export default defineConfig({plugins:[react()],base:'./',build:{assetsInlineLimit:0},server:{host:'127.0.0.1',port:5180,strictPort:true,proxy:{'/api':apiProxy}},preview:{host:'127.0.0.1',port:4180,strictPort:true,proxy:{'/api':apiProxy}}});
+const proxies={'/api/material-render':{...apiProxy,target:'http://127.0.0.1:8792'},'/api':apiProxy};
+export default defineConfig({plugins:[react()],base:'./',build:{assetsInlineLimit:0},server:{host:'127.0.0.1',port:5180,strictPort:true,proxy:proxies},preview:{host:'127.0.0.1',port:4180,strictPort:true,proxy:proxies}});
