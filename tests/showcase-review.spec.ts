@@ -14,6 +14,7 @@ test('single-file preview embeds all ten campaign photos',async({page})=>{
   const photo=gallery.locator('figure img');await expect(photo).toHaveAttribute('src',/^data:image\/webp;base64,/);
   await expect.poll(()=>photo.evaluate((el:HTMLImageElement)=>el.naturalWidth)).toBeGreaterThan(1000);
  }
+ await gallery.getByRole('link',{name:'전체 포트폴리오 보기'}).click();await expect(page.locator('.portfolio-card')).toHaveCount(10);await expect(page.locator('.portfolio-card img').first()).toHaveAttribute('src',/^data:image\/webp;base64,/);
 });
 
 test('ten unbranded campaigns keep readable exact copy in both languages and export review previews',async({page},testInfo)=>{
