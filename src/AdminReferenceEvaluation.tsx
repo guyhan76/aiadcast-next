@@ -30,7 +30,7 @@ export function AdminReferenceEvaluation(){
   const r=await apiRequest<Result>('/api/admin/dimension-evaluation',{requestId:request.id,source:file},AbortSignal.timeout(55000));
   if(!active.current)return;setResult(r);await refresh(request);
  }catch{if(active.current)setError('처리 결과가 미확인입니다. 새 분석 대신 상태를 재확인해주세요.');}finally{locked.current=false;if(active.current)setBusy(false);}}
- async function check(){if(locked.current)return;await refresh();}
+ async function check(){if(locked.current)return;setError('');await refresh();}
  const matching=result?.sourceHash===file?.sha256&&reference;
  useEffect(()=>{let alive=true;setRendered(false);if(result?.state!=='ready'||!matching||!result.proposal||!file||!canvas.current)return;
   const p=result.proposal;void(async()=>{validateAnnotationProposal(p);const img=await loadImage(file.data),c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;const ctx=c.getContext('2d')!;ctx.drawImage(img,0,0);ctx.strokeStyle='#ff00b8';ctx.lineWidth=Math.max(3,c.width*.004);for(const axis of annotationAxes){const [a,b]=p.axes[axis];ctx.beginPath();ctx.moveTo(a[0]*c.width,a[1]*c.height);ctx.lineTo(b[0]*c.width,b[1]*c.height);ctx.stroke();for(const pt of [a,b]){ctx.beginPath();ctx.arc(pt[0]*c.width,pt[1]*c.height,6,0,Math.PI*2);ctx.stroke();}}
