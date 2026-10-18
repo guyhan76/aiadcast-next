@@ -4,9 +4,9 @@ body,.studio-shell,.app-content,.app-header,.app-footer{background:var(--brand-w
 .app-sidebar{background:var(--brand-white);color:var(--brand-black)}
 .account-drawer,.home-showcase,.project-reuse-note{background:var(--brand-light)}
 .create-card,.guide-page-grid article,.mobile-app-nav{background:var(--brand-white)}
-.brand-lockup b,.wordmark b,.premium-home h1 em{color:var(--brand-orange)}
-/* Header/footer wordmark only; shared CTA and warning palette stays unchanged. */
-.app-header .brand-lockup b,.app-footer .brand-lockup b{color:#ff8a00}
+.premium-home h1 em{color:var(--brand-orange)}
+/* Every app wordmark ai, including editor and standalone account pages. */
+.brand-lockup b,.wordmark b,.brand-footer .brand-lockup b{color:#ff8a00}
 .brand-lockup i,.wordmark i{border-left-color:var(--brand-orange)}
 .studio-mark,.studio-mark strong,.sidebar-bottom,.app-sidebar .sidebar-bottom{color:var(--brand-muted)}
 .primary-action{background:var(--brand-black)!important;color:var(--brand-white)!important}
