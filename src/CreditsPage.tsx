@@ -18,7 +18,7 @@ export function CreditsPage({returnPage}:{returnPage:string}){
  }
  useEffect(()=>{void refresh();return()=>{request.current?.abort();request.current=null;};},[session?.token]);
  const state=(v:string)=>({paid:t('결제 완료','Paid'),pending:t('확인 중','Pending'),verified:t('지급 확인 중','Verifying grant'),canceled:t('취소','Canceled'),completed:t('지급 완료','Granted')}[v]??v);
- return <><AppVersionInfo/><section className="account-page credits-page"><a href={'#'+returnPage}>{t('광고 작업으로 돌아가기','Back to your ad')}</a><h1>{t('내 이용권','My credits')}</h1>
+ return <><AppVersionInfo/><section className="account-page credits-page"><a href={'#'+returnPage}>{t('돌아가기','Back')}</a><h1>{t('내 이용권','My credits')}</h1>
  <p>{session?.user.label??t('로그인 후 내 이용권을 확인할 수 있습니다.','Sign in to view your credits.')}</p>
  <dl className="credit-summary"><div><dt>{t('사용 가능','Available')}</dt><dd>{data?(data.wallet.unlimited?t('관리자 테스트 · 차감 없음','Administrator tests · No charge'):data.wallet.available+t('개',' credits')):t('미조회','Not checked')}</dd></div><div><dt>{t('예약 중','Reserved')}</dt><dd>{data?data.wallet.reserved+t('개',' credits'):t('미조회','Not checked')}</dd></div></dl>
  {data?.wallet.credits&&<p>{t('기존 이용권 우선 사용 · 신규 크레딧','Legacy tickets first · New credits')}: {data.wallet.credits.available} · {t('예약 중','Reserved')}: {data.wallet.credits.reserved}</p>}
