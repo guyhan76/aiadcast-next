@@ -48,7 +48,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, now =
     await password.bootstrapOwner();
     const checkout = await new TestCheckout().initialize(store, { ...accounts, publicOrigin: origin, now, creditPurchase: async (id, purchase) => { const user = await store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id); if (!user)
             throw new ApiFailure('AUTH_REQUIRED', 401); return await (await service(user)).recordTestPurchase(purchase); } });
-    const admin = await new AdminApi().initialize(store, { service, accounts, checkout, now });
+    const admin = await new AdminApi().initialize(store, { service, accounts, checkout, ownerEmail: password.adminEmail, now });
     const send = (res, status, value, cors) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', ...(cors ? { 'Access-Control-Allow-Origin': cors, 'Vary': 'Origin' } : {}) }); res.end(JSON.stringify(value)); };
     const read = async (req, max) => { if (!/^application\/json(?:;.*)?$/i.test(req.headers['content-type'] ?? ''))
         throw new ApiFailure('JSON_REQUIRED', 415); if (Number(req.headers['content-length'] ?? 0) > max)
@@ -156,6 +156,10 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, now =
                         send(res, 200, await dimensionAnalysis.analyze(await read(req, 14100000), user), cors);
                         return;
                     }
+                }
+                if (req.method === 'POST' && url.pathname === '/api/admin/october-budget') {
+                    send(res, 200, await admin.activateOctoberBudget(user, await read(req, 1024)), cors);
+                    return;
                 }
                 if (req.method === 'GET' && url.pathname === '/api/admin/overview') {
                     send(res, 200, await admin.overview(user), cors);

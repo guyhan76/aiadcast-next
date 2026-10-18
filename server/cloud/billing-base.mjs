@@ -158,7 +158,7 @@ export class BillingLedger {
         });
     }
     // USD micro-units (1 USD = 1,000,000); these are NEVER customer credits.
-    async beginAttempt({ jobId, attemptId, period, maximumMicros, limitMicros }) {
+    async beginAttempt({ jobId, attemptId, period, maximumMicros, limitMicros, periodScoped = false }) {
         [attemptId, period].forEach(identifier);
         integer(maximumMicros);
         integer(limitMicros);
@@ -177,6 +177,11 @@ export class BillingLedger {
             if ((await this.db.prepare('SELECT count(*) n FROM attempts WHERE job_id=?').get(jobId)).n >= 2)
                 throw Error('Retry limit reached');
             await this.db.prepare('INSERT INTO budgets(period,limit_micros) VALUES (?,?) ON CONFLICT DO NOTHING').run(period, limitMicros);
+            if (periodScoped) {
+                if (period !== new Date(this.now()).toISOString().slice(0, 7))
+                    throw Error('BUDGET_PERIOD_CHANGED');
+                await this.db.prepare('UPDATE budgets SET limit_micros=? WHERE period=?').run(limitMicros, period);
+            }
             const held = await this.db.prepare('UPDATE budgets SET held_micros=held_micros+? WHERE period=? AND limit_micros=? AND spent_micros+held_micros+?<=limit_micros').run(maximumMicros, period, limitMicros, maximumMicros);
             if (held.changes !== 1)
                 throw Error('Provider budget unavailable');

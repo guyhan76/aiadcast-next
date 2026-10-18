@@ -3,8 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { ApiFailure } from '../generation-service.mjs';
 const fail = (code, status = 400) => { throw new ApiFailure(code, status); };
 export class AdminApi {
-    async initialize(store, { service, accounts, checkout, now = () => Date.now() }) {
-        Object.assign(this, { store, db: store.db, service, accounts, checkout, now });
+    async initialize(store, { service, accounts, checkout, ownerEmail, now = () => Date.now() }) {
+        Object.assign(this, { store, db: store.db, service, accounts, checkout, ownerEmail, now });
         await this.db.exec(`CREATE TABLE IF NOT EXISTS admin_grants(id TEXT PRIMARY KEY,actor_id TEXT NOT NULL REFERENCES users(id),request_id TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id),credits INTEGER NOT NULL,state TEXT NOT NULL DEFAULT 'pending',created INTEGER NOT NULL,UNIQUE(actor_id,request_id));
    CREATE TABLE IF NOT EXISTS admin_audit(id TEXT PRIMARY KEY,actor_id TEXT NOT NULL REFERENCES users(id),action TEXT NOT NULL,target_id TEXT,details TEXT NOT NULL,created INTEGER NOT NULL);`);
         return this;
@@ -15,6 +15,21 @@ export class AdminApi {
         fail('USER_NOT_FOUND', 404); const u = await this.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id); if (!u)
         fail('USER_NOT_FOUND', 404); return u; }
     async audit(actor, action, target, details, id = randomUUID()) { await this.db.prepare('INSERT INTO admin_audit VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING').run(id, actor.id, action, target, JSON.stringify(details), this.now()); }
+    async octoberApproval(actor) {
+        this.require(actor);
+        const owner = await this.db.prepare('SELECT user_id FROM email_identities WHERE email=?').get(this.ownerEmail ?? '');
+        const record = await this.store.monthApproval(), eligible = owner?.user_id === actor.id && this.store.budgetPeriod() === '2026-10';
+        return { period: '2026-10', expiresAt: '2026-11-01T00:00:00.000Z', totalMicros: 5000000, allocationMicros: 5000000, eligible, active: record?.user_id === actor.id, baselineTotalMicros: this.store.cap };
+    }
+    async activateOctoberBudget(actor, body) {
+        const approval = await this.octoberApproval(actor);
+        if (!approval.eligible)
+            fail('MONTH_APPROVAL_NOT_AUTHORIZED', 403);
+        if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length)
+            fail('INVALID_MONTH_APPROVAL');
+        await this.store.activateOctoberBudget(actor.id);
+        return await this.octoberApproval(actor);
+    }
     async overview(actor) {
         this.require(actor);
         const members = await this.db.prepare('SELECT u.*,e.email,(SELECT COUNT(*) FROM projects p WHERE p.user_id=u.id) projects FROM users u LEFT JOIN email_identities e ON e.user_id=u.id ORDER BY u.id').all();
@@ -27,7 +42,7 @@ export class AdminApi {
         }));
         const orders = (await this.db.prepare('SELECT id,user_id,credits,amount,state,created FROM test_orders ORDER BY created DESC LIMIT 50').all()).map(r => ({ id: r.id, userId: r.user_id, credits: r.credits, amount: r.amount, state: r.state, created: r.created, test: true }));
         const audit = (await this.db.prepare('SELECT id,actor_id,action,target_id,details,created FROM admin_audit ORDER BY created DESC,id DESC LIMIT 50').all()).map(r => ({ id: r.id, actorId: r.actor_id, action: r.action, targetId: r.target_id, details: JSON.parse(r.details), created: r.created }));
-        return { mode: 'invite-beta', commercialReady: false, readiness: { emailConfigured: Boolean(this.accounts.sendMail), checkoutConfigured: this.checkout.available(), imageProviderConfigured: instances.some(s => s.providerConfigured), generationSwitch: instances.some(s => s.enabled), verifiedLive: false }, budget: { limitMicros: this.store.cap, allocatedMicros: members.reduce((n, u) => n + u.budget, 0), spentMicros: users.reduce((n, u) => n + u.budget.spentMicros, 0), heldMicros: users.reduce((n, u) => n + u.budget.heldMicros, 0) }, users, jobs: jobs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 60), orders, audit };
+        return { mode: 'invite-beta', commercialReady: false, readiness: { emailConfigured: Boolean(this.accounts.sendMail), checkoutConfigured: this.checkout.available(), imageProviderConfigured: instances.some(s => s.providerConfigured), generationSwitch: instances.some(s => s.enabled), verifiedLive: false }, octoberApproval: await this.octoberApproval(actor), budget: { limitMicros: await this.store.effectiveCap(), allocatedMicros: users.reduce((n, u) => n + u.budget.limitMicros, 0), spentMicros: users.reduce((n, u) => n + u.budget.spentMicros, 0), heldMicros: users.reduce((n, u) => n + u.budget.heldMicros, 0) }, users, jobs: jobs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 60), orders, audit };
     }
     async grant(actor, body) {
         this.require(actor);
