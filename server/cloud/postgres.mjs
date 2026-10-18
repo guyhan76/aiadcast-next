@@ -24,7 +24,7 @@ function sqlDialect(text){
 }
 function parameters(text){let i=0;return text.replace(/\?/g,()=>'$'+(++i));}
 export class PostgresDatabase {
- constructor(pool,schema,{guard=()=>{}}={}){if(!/^aiadcast_(accounts|user_[a-f0-9]{32})$/.test(schema))throw Error('INVALID_DATABASE_SCHEMA');this.pool=pool;this.schema=schema;this.guard=guard;}
+ constructor(pool,schema,{guard=()=>{}}={}){if(!/^aiadcast_(accounts|user_[a-f0-9]{32})$/.test(schema))throw Error('INVALID_DATABASE_SCHEMA');this.pool=pool;this.schema=schema;this.guard=guard;this.atomicSchemas=true;}
  async initialize(){const c=await this.pool.connect();try{
   await c.query(`CREATE SCHEMA IF NOT EXISTS "${this.schema}"`);
   const {rows}=await c.query("SELECT rolname FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role')");
@@ -34,7 +34,16 @@ export class PostgresDatabase {
   await c.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA "${this.schema}" REVOKE ALL ON FUNCTIONS FROM ${roles}`);
   return this;
  }finally{c.release();}}
- async using(fn){this.guard();const current=context.getStore();if(current?.db===this)return fn(current.client);const c=await this.pool.connect();try{this.guard();await c.query(`SET search_path TO "${this.schema}", pg_catalog`);return await fn(c);}finally{c.release();}}
+ async using(fn){
+  this.guard();const current=context.getStore();
+  if(current?.pool===this.pool){
+   // One connection owns the whole transaction. Serialize search_path + query,
+   // including Promise.all reads, so schemas cannot bleed across callers.
+   const run=current.tail.then(async()=>{this.guard();await current.client.query(`SET LOCAL search_path TO "${this.schema}", pg_catalog`);return fn(current.client);});
+   current.tail=run.catch(error=>{current.failed??=error;});return run;
+  }
+  const c=await this.pool.connect();try{this.guard();await c.query(`SET search_path TO "${this.schema}", pg_catalog`);return await fn(c);}finally{c.release();}
+ }
  async query(text,values=[]){return this.using(async c=>{
   if(text.startsWith('PRAGMA table_info(')){const name=/PRAGMA table_info\((\w+)\)/.exec(text)?.[1];return c.query('SELECT column_name AS name FROM information_schema.columns WHERE table_schema=$1 AND table_name=$2',[this.schema,name]);}
   return c.query(sqlDialect(parameters(text)),values);
@@ -42,8 +51,15 @@ export class PostgresDatabase {
  prepare(text){return {get:async(...args)=>(await this.query(text,args)).rows[0],all:async(...args)=>(await this.query(text,args)).rows,run:async(...args)=>({changes:(await this.query(text,args)).rowCount})};}
  async exec(text){const sql=sqlDialect(text).trim();if(sql)await this.using(c=>c.query(sql));}
  async transaction(fn){
-  if(context.getStore()?.db===this)return fn();
-  return this.using(async client=>{await client.query('BEGIN');try{await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[this.schema]);const result=await context.run({db:this,client},fn);this.guard();await client.query('COMMIT');return result;}catch(error){await client.query('ROLLBACK');throw error;}});
+  if(context.getStore()?.pool===this.pool)return fn();
+  return this.using(async client=>{
+   await client.query('BEGIN');const scope={pool:this.pool,client,tail:Promise.resolve(),failed:null};
+   try{
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('aiadcast-next-budget-transactions-v1'))");
+    const result=await context.run(scope,fn);await scope.tail;if(scope.failed)throw scope.failed;
+    this.guard();await client.query('COMMIT');return result;
+   }catch(error){await scope.tail;await client.query('ROLLBACK');throw error;}
+  });
  }
  async protectTables(){await this.using(async c=>{
   const {rows}=await c.query('SELECT tablename FROM pg_tables WHERE schemaname=$1',[this.schema]);

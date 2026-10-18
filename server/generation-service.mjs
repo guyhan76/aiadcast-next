@@ -238,8 +238,10 @@ export class GenerationService {
   async dispatch(id, request, source, references = []) {
     const attemptId = randomUUID(); let began = false;
     try {
-      const period=this.period(),limit=this.budgetLimit(period);
-      const attempt = this.ledger.beginAttempt({ jobId: id, attemptId, period, maximumMicros: MODEL_COST_HOLD_MICROS, limitMicros: limit, periodScoped:Boolean(this.budgetForPeriod) });
+      const attempt = this.ledger.transaction(() => {
+        const period=this.period(),limit=this.budgetLimit(period);
+        return this.ledger.beginAttempt({ jobId: id, attemptId, period, maximumMicros: MODEL_COST_HOLD_MICROS, limitMicros: limit, periodScoped:Boolean(this.budgetForPeriod) });
+      });
       if (!attempt.shouldDispatch) return;
       began = true;
       const result = await this.adapter.generate({ request, source: request.mode === 'creative' ? source : null, references:request.mode==='creative'?references:[], attemptId });
@@ -289,13 +291,14 @@ export class GenerationService {
     }
     const status = this.status();
     if (!status.assistant.available) fail(status.assistant.reason, 503);
-    const period = this.period(),limit=this.budgetLimit(period);
+    const period = this.period();
     try {
       this.ledger.transaction(() => {
+        const limit=Math.min(this.budgetMicros,this.budgetLimit(period));
         this.db.prepare('INSERT INTO budgets(period,limit_micros) VALUES (?,?) ON CONFLICT DO NOTHING').run(period, this.budgetMicros);
         if(this.budgetForPeriod){if(period!==this.period())throw Error('BUDGET_PERIOD_CHANGED');this.db.prepare('UPDATE budgets SET limit_micros=? WHERE period=?').run(limit,period);}
         // October image approval never enlarges the text assistant allowance.
-        const held = this.db.prepare('UPDATE budgets SET held_micros=held_micros+? WHERE period=? AND limit_micros>=? AND spent_micros+held_micros+?<=?').run(TEXT_MAX_HOLD_MICROS, period, this.budgetMicros, TEXT_MAX_HOLD_MICROS, this.budgetMicros);
+        const held = this.db.prepare('UPDATE budgets SET held_micros=held_micros+? WHERE period=? AND limit_micros>=? AND spent_micros+held_micros+?<=?').run(TEXT_MAX_HOLD_MICROS, period, limit, TEXT_MAX_HOLD_MICROS, limit);
         if (held.changes !== 1) throw Error();
         this.db.prepare("INSERT INTO assistant_requests(request_id,fingerprint,period,held_micros,state,created_at) VALUES (?,?,?,?,'pending',?)").run(request.requestId, fingerprint, period, TEXT_MAX_HOLD_MICROS, this.now());
       });

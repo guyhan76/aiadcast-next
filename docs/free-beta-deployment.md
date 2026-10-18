@@ -1,5 +1,14 @@
 # aiadcast 무료 베타 서버 연결
 
+## 최신 운영 전달 상태와 미배포 후보 — 2026-10-18 후속
+
+운영자가 확인해 전달한 최신 Live SHA는 `ffb7b7aab761e0a298f8f918bd5e0d42fb1339d1`이다. 아래 `3cc9318` 운영 표시는 이전 기록이다. 이 작업 환경은 운영 배포하지 않았다.
+
+후속은 PR #25 `test/member-checkout-readiness-20261018`(결제 연결 상태), PR #26 `feat/visible-account-signout-20261018`(공통 계정·로그아웃), 그 위 `feat/atomic-demo-budget-20261018`(특정 회원 시연 지원 원자적 재배정) 순서다. main이나 이전 PR5 브랜치로 대체하지 않는다. 이 후보들은 운영 미배포이며 실제 회원 지원도 미적용이다. [시연 지원의 정확한 범위·검증·적용 후 롤백 제한](atomic-demo-support-20261018.md)을 먼저 읽는다. 관리자 이용권 무제한은 API 비용 무제한 승인이 아니다.
+
+배포 전 Render 서비스 `srv-db65sol9fdbs73eu33i0`, 연결 브랜치, 승인된 정확한 SHA, 자동 배포 OFF, 기존 환경과 저장소를 확인한다. 연결 브랜치가 오래된 `feat/patent-product-generation-20261011`일 수 있으므로 SHA를 지정하지 않는 배포 버튼으로 후보를 배포하지 않는다. `render.yaml`의 기본값으로 기존 운영 예산을 재설정하지 않는다. 인증·메일·Toss 연결은 기존 설정과 실제 검증을 별도로 확인하며 키 변경·유료 플랜 변경은 수행하지 않는다.
+
+
 별도 설치 APK 후보는 `feat/android-demo-apk-20261018`이다. [시연판 식별자·서명 보관·서버 호환 한계](android-demo-20261018.md)를 따른다. APK 제작으로 운영 서버가 갱신되지는 않는다.
 
 최신 후속 후보 `feat/optional-text-product-examples-20261018`은 예시 가이드 PR #22 위에 사진 없는 상품 AI 예시 선택을 추가한다. [요청·표시·검증 범위](text-product-examples-20261018.md)와 [신규 앱 별도 등록 준비](new-app-release-readiness-20261018.md)를 확인한다. 운영 3cc9318과 다르며 이 문서 갱신은 배포 승인이 아니다.

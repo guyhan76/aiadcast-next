@@ -16,6 +16,7 @@ export class BetaStore {
    CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,label TEXT NOT NULL,budget INTEGER NOT NULL,credits INTEGER NOT NULL,disabled INTEGER NOT NULL DEFAULT 0);
    CREATE TABLE IF NOT EXISTS monthly_budget_approvals(period TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),total_micros INTEGER NOT NULL,allocation_micros INTEGER NOT NULL,baseline_total INTEGER NOT NULL,baseline_allocation INTEGER NOT NULL,created INTEGER NOT NULL);
+   CREATE TABLE IF NOT EXISTS monthly_demo_support(period TEXT PRIMARY KEY REFERENCES monthly_budget_approvals(period),owner_id TEXT NOT NULL REFERENCES users(id),user_id TEXT NOT NULL REFERENCES users(id),email TEXT NOT NULL,micros INTEGER NOT NULL,credits INTEGER NOT NULL,request_id TEXT NOT NULL,created INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS invites(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS projects(user_id TEXT NOT NULL REFERENCES users(id),id TEXT NOT NULL,revision INTEGER NOT NULL,name TEXT NOT NULL,json TEXT NOT NULL,bytes INTEGER NOT NULL,updated TEXT NOT NULL,PRIMARY KEY(user_id,id));`);
@@ -42,7 +43,10 @@ export class BetaStore {
  effectiveBudget(id,period){
   if(period!==this.budgetPeriod())fail('BUDGET_PERIOD_CHANGED',409);
   const u=this.db.prepare('SELECT * FROM users WHERE id=?').get(id);if(!u)fail('USER_NOT_FOUND',404);
-  const a=this.monthApproval();return a?.user_id===id&&u.role==='admin'&&!u.disabled?a.allocation_micros:u.budget;
+  const a=this.monthApproval(),r=this.db.prepare('SELECT * FROM monthly_demo_support WHERE period=?').get(period);
+  const baseline=a?.user_id===id&&u.role==='admin'&&!u.disabled?a.allocation_micros:u.budget;
+  if(r?.owner_id===id)return Math.min(baseline,a.allocation_micros-r.micros);
+  return baseline+(r?.user_id===id?r.micros:0);
  }
  effectiveCap(){return this.monthApproval()?.total_micros??this.cap;}
  validateMonthAllocation(id,micros){
