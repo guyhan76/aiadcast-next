@@ -19,6 +19,33 @@ function fixture(category='boxes'){
  return p;
 }
 function generated(p){return {jobId:'complete_fixture',mode:'creative',role:'creative',model:'verification.fixture',sourceHash:p.product?.sha256??null,createdAt:'2026-10-13T00:00:00.000Z',specificationKey:generatedCompatibilityKey(p),composition:'complete-ad',compositionKey:completeAdKey(p),asset:{name:'ad.png',data:'data:image/png;base64,example',width:864,height:1536,sha256:'b'.repeat(64)}};}
+test('finished campaigns select industry-specific scenes while preserving supplied copy and CTA policy',()=>{
+ const expected={boxes:'actual carton',beauty:'actual cosmetic packaging',food:'food or produce',fashion:'fabric drape',jewelry:'actual setting, cut and metal',electronics:'appliance or device',travel:'destination or experience',lodging:'documented room',restaurant:'supplied menu item',hospital:'supplied consultation',insurance:'conceptual planning scene',lease:'actual vehicle',industrial:'actual component'};
+ const scenes=new Set();
+ for(const [category,subject] of Object.entries(expected)){
+  const p=fixture(category);p.campaign.creative.copyMode='manual';
+  const r=normalizeGenerationRequest(buildGenerationRequest(p)),prompt=promptFor(r);
+  const scene=prompt.split('INDUSTRY SCENE: ')[1]?.split('\n')[0];assert.ok(scene?.includes(subject),category);scenes.add(scene);
+  assert.match(prompt,/Korean syllable blocks intact/);assert.match(prompt,/never override source identity/);
+  assert.match(prompt,/MANUAL COPY: Typeset the supplied title and description verbatim/);
+  assert.match(prompt,/Do not add a CTA/);assert.ok(prompt.includes(p.copy.ko.title));
+ }
+ assert.equal(scenes.size,Object.keys(expected).length);
+});
+test('finished ad hierarchy follows each supported ratio without changing named geometry',()=>{
+ const p=fixture();
+ for(const [ratio,layout] of Object.entries({'1:1':'SQUARE:','4:5':'PORTRAIT:','3:4':'PORTRAIT:','2:3':'PORTRAIT:','9:16':'TALL PORTRAIT:','16:9':'LANDSCAPE:','1.91:1':'LANDSCAPE:'})){
+  p.format=ratio;const r=normalizeGenerationRequest(buildGenerationRequest(p));assert.ok(promptFor(r).includes(`RATIO AND LEGIBILITY: ${layout}`));
+  assert.deepEqual(displayedSpecifications(r).map(s=>s.value),['340 mm','250 mm','210 mm']);
+ }
+});
+test('complete-ad quality instructions never enter original, legacy photo or planar-control paths',()=>{
+ const r=normalizeGenerationRequest(buildGenerationRequest(fixture()));
+ for(const changed of [{...r,mode:'original'},{...r,output:{...r.output,compositionKey:undefined}},{...r,proportionControl:{kind:'planar'}}]){
+  const prompt=promptFor(changed);assert.doesNotMatch(prompt,/FINISHED-AD QUALITY|INDUSTRY SCENE/);
+ }
+ assert.match(promptFor({...r,mode:'original'}),/ONLY an empty/);
+});
 test('finished production brief carries exact product, offer, contacts and named measured axes',()=>{
  const p=fixture(),r=normalizeGenerationRequest(buildGenerationRequest(p)),prompt=promptFor(r);
  for(const fact of [p.productName,p.copy.ko.title,'B골','크라프트재질','10개 19,800원','셀업랩스','010-5635-6211','selluplabs@gmail.com',p.copy.ko.website])assert.ok(prompt.includes(fact),fact);
