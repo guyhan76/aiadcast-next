@@ -13,7 +13,7 @@ import {HomeShowcase} from './HomeShowcase';
 import {BetaAccount} from './BetaAccount';
 import {TestConnection} from './TestConnection';
 import {useUiLanguage,LanguageSwitcher} from './ui-language';
-import {useEffect,useLayoutEffect,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {ArrowUpRight,BookOpen,FolderOpen,Home,Plus,ShieldCheck} from 'lucide-react';
 import Editor from './App';
 import {SimpleAdResult} from './SimpleAdResult';
@@ -42,6 +42,7 @@ function WorkspaceLoader(){
 }
 function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  const {language,text}=useUiLanguage();
+ const priorPage=useRef<Page>(currentPage()),adminBack=useRef('#home');
  const [page,setPage]=useState<Page>(currentPage),[seed,setSeed]=useState<Project>(()=>restored?.editor??({...newProject(),locale:language})),[current,setCurrent]=useState<Project>(seed),[editorKey,setEditorKey]=useState(0);
  const [wizardKey,setWizardKey]=useState(0),[items,setItems]=useState<Project[]>([]),[libraryError,setLibraryError]=useState('');
  const [draftSaving,setDraftSaving]=useState(false),[draftError,setDraftError]=useState(false);
@@ -53,7 +54,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  async function preserve(){await saveWorkspace(snapshot);}
  // Persist every committed edit immediately: a debounce discarded photos on quick reloads.
  useLayoutEffect(()=>{let active=true;setDraftSaving(true);void saveWorkspace({wizard,editor:current,returnPage}).then(()=>{if(active){setDraftSaving(false);setDraftError(false);}}).catch(()=>{if(active){setDraftSaving(false);setDraftError(true);}});return()=>{active=false;};},[wizard,current,returnPage]);
- useEffect(()=>{const onHash=()=>{setPage(currentPage());window.scrollTo(0,0);};window.addEventListener('hashchange',onHash);return()=>window.removeEventListener('hashchange',onHash);},[]);
+ useEffect(()=>{const onHash=()=>{const next=currentPage();if(next==='admin'&&priorPage.current!=='admin')adminBack.current='#'+priorPage.current;priorPage.current=next;setPage(next);window.scrollTo(0,0);};window.addEventListener('hashchange',onHash);return()=>window.removeEventListener('hashchange',onHash);},[]);
  useEffect(()=>{if(page!=='projects')return;let alive=true;projects().then(p=>{if(alive){setItems(p);setLibraryError('');}}).catch(()=>{if(alive)setLibraryError(text('이 기기의 저장된 작업을 읽지 못했습니다.'));});return()=>{alive=false};},[page]);
  function go(next:Page){location.hash=next;setPage(next);window.scrollTo(0,0);}
  useEffect(()=>{
@@ -108,7 +109,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
    <div hidden={page!=='projects'} className="app-page projects-page"><ProjectLibrary items={libraryItems} error={libraryError} onNew={begin} onOpen={p=>void open(p)}/></div>
    <div hidden={page!=='guide'} className="app-page guide-page"><UsageGuide onNew={begin}/></div>
    {(page==='signup'||page==='login')&&<div className="app-page"><EmailAccountPage key={page} mode={page} preserve={preserve} returnPage={returnPage}/></div>}
-   {page==='admin'&&<div className="app-page"><AdminPage/></div>}
+   {page==='admin'&&<div className="app-page"><AdminPage backHref={adminBack.current}/></div>}
    {page==='checkout'&&<div className="app-page"><CheckoutPage preserve={preserve} returnPage={returnPage}/></div>}
    {simpleStudio?<div className="app-page"><SimpleAdResult project={current} change={fn=>setCurrent(p=>fn(p))} onEdit={editDetails} onCreativeDraft={createCreativeDraft} autoRequest={generationIntent} onAutoHandled={()=>setGenerationIntent(undefined)}/></div>:(page==='studio'||page==='editor')&&<div className="editor-container"><Editor key={editorKey} initialProject={current} onProjectChange={setCurrent}/></div>}
    {(page!=='studio'||simpleStudio)&&page!=='editor'&&<AppFooter/>}

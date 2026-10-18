@@ -31,7 +31,7 @@
 .studio-shell .checkout-summary .checkout-tax{font-size:14px;color:var(--brand-muted);justify-content:flex-end}
 .studio-shell .app-header .account-link{font-size:14px;white-space:nowrap;display:inline-flex;align-items:center;min-height:44px;color:var(--brand-black)}
 .pricing-checkout-link{display:flex;align-items:center;justify-content:center;min-height:48px;border-radius:10px;background:var(--brand-black);color:white;font-size:16px;margin:24px 0;text-decoration:none}
-@media(max-width:600px){.studio-shell .app-header{padding:12px 20px;flex-wrap:wrap;gap:8px}.studio-shell .app-header-actions{gap:12px}.studio-shell .app-header .brand-lockup{font-size:27px}.studio-shell .checkout-packs label{padding:14px 10px;gap:8px}.studio-shell .checkout-packs strong{font-size:16px}.studio-shell .checkout-packs b{font-size:17px}}
+@media(max-width:600px){.studio-shell .app-header{height:auto;min-height:67px;padding:12px 20px;flex-wrap:wrap;gap:8px}.studio-shell .app-header-actions{gap:12px}.studio-shell .app-header .brand-lockup{font-size:27px}.studio-shell .checkout-packs label{padding:14px 10px;gap:8px}.studio-shell .checkout-packs strong{font-size:16px}.studio-shell .checkout-packs b{font-size:17px}}
 .studio-shell .checkout-consent{display:flex;align-items:flex-start;gap:12px;margin-top:24px;font-size:16px;line-height:1.6;cursor:pointer}
 .studio-shell .checkout-consent input{width:22px;height:22px;min-height:22px;flex-shrink:0;accent-color:var(--brand-orange);margin-top:3px}
 .studio-shell .credit-balance{display:flex;justify-content:space-between;padding:18px 0;border-bottom:1px solid var(--brand-line);font-size:18px}

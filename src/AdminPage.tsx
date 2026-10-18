@@ -1,3 +1,4 @@
+import {useAdminRead} from './use-admin-read';
 import {AdminReferenceEvaluation} from './AdminReferenceEvaluation';
 import {useEffect,useRef,useState} from 'react';
 import {apiRequest,ApiRequestFailure} from './generation-client';
@@ -9,14 +10,17 @@ type Budget={limitMicros:number;spentMicros:number;heldMicros:number};
 type Member={id:string;label:string;email:string|null;role:'member'|'admin';disabled:boolean;projects:number;wallet:{available:number;reserved:number;unlimited?:boolean};budget:Budget;generation:{enabled:boolean;reason:string|null}};
 type Overview={octoberApproval?:{eligible:boolean;active:boolean;baselineTotalMicros:number};readiness:{emailConfigured:boolean;checkoutConfigured:boolean;imageProviderConfigured:boolean;generationSwitch:boolean};budget:Budget&{allocatedMicros:number};users:Member[];jobs:{id:string;userLabel:string;state:string;createdAt:string;model:string;outputFormat:string;errorCode:string|null;costMicros:number|null}[];orders:{id:string;userId:string;credits:number;amount:number;state:string;created:number;test:true}[];audit:{id:string;action:string;targetId:string;created:number}[]};
 const usd=(n:number)=>'$'+(n/1e6).toFixed(4);
-export function AdminPage(){
- const {t,language}=useUiLanguage(),[data,setData]=useState<Overview|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
+export function AdminPage({backHref='#home'}:{backHref?:string}){
+ const {t,language}=useUiLanguage(),[data,setData]=useState<Overview|null>(null),[mutating,setMutating]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const [selected,setSelected]=useState(''),[credits,setCredits]=useState('1'),[budget,setBudget]=useState(''),[revoke,setRevoke]=useState(false);
  const grantRequest=useRef<{key:string;id:string}|undefined>(undefined),testRequest=useRef<{userId:string;id:string}|undefined>(undefined),locked=useRef(false),active=useRef(true);
  function explain(e:unknown){const code=e instanceof ApiRequestFailure?e.code:'';return ({MONTH_APPROVAL_NOT_AUTHORIZED:t('10월 승인 적용 기간 또는 관리자 계정을 확인해주세요.','Check the October approval period and owner account.'),MONTH_APPROVAL_CONFLICT:t('기존 배정과 충돌합니다. 다른 회원의 배정과 기본 예산을 확인해주세요.','Existing allocations conflict. Check member allocations and the baseline budget.'),ADMIN_REQUIRED:t('이 계정에는 관리자 권한이 없습니다.','This account does not have administrator access.'),AUTH_REQUIRED:t('관리자 계정으로 로그인해주세요.','Sign in with an administrator account.'),BETA_ALLOCATION_EXCEEDED:t('서버의 승인된 총예산을 초과합니다.','This exceeds the approved server budget.'),TEST_GRANT_LIMIT:t('계정당 관리자가 지급할 수 있는 테스트 이용권은 총 30개입니다.','Administrator grants are limited to 30 test credits per account.'),GRANT_CONFLICT:t('이전 지급 요청과 값이 다릅니다. 화면을 새로 열어 확인해주세요.','This differs from the earlier grant. Reopen the page and check.')} as Record<string,string>)[code]??t('서버에서 처리 결과를 확인하지 못했습니다. 같은 요청으로 다시 확인하세요.','Could not confirm the server result. Retry the same request.');}
- async function load(){const value=await apiRequest<Overview>('/api/admin/overview');if(active.current){setData(value);setSelected(old=>value.users.some(u=>u.id===old&&!u.disabled)?old:value.users.find(u=>!u.disabled)?.id??'');}}
- async function run(task:()=>Promise<void>){if(locked.current)return;locked.current=true;setBusy(true);setError('');setNotice('');try{await task();}catch(e){if(active.current)setError(explain(e));}finally{locked.current=false;if(active.current)setBusy(false);}}
- useEffect(()=>{active.current=true;if(!offlineDemo())void run(load);return()=>{active.current=false};},[]);
+ const overview=useAdminRead<Overview>(value=>{setData(value);setSelected(old=>value.users.some(u=>u.id===old&&!u.disabled)?old:value.users.find(u=>!u.disabled)?.id??'');},v=>!!v&&Array.isArray(v.users)&&Array.isArray(v.jobs)&&Array.isArray(v.orders)&&Array.isArray(v.audit)&&!!v.readiness&&Number.isFinite(v.budget?.limitMicros));
+ const busy=mutating||overview.pending;
+ async function load(){if(!await overview.read('/api/admin/overview'))throw Error('ADMIN_REFRESH_FAILED');}
+ async function run(task:()=>Promise<void>){if(locked.current||overview.isPending())return;locked.current=true;setMutating(true);setError('');setNotice('');try{await task();}catch(e){if(active.current)setError(explain(e));}finally{locked.current=false;if(active.current)setMutating(false);}}
+ useEffect(()=>{active.current=true;if(!offlineDemo())void overview.read('/api/admin/overview');return()=>{active.current=false};},[]);
+ const navigation=<nav className="admin-navigation" aria-label={t('관리자 화면 이동','Administrator navigation')}><a href={backHref}>{t('← 뒤로가기','← Back')}</a><a href="#home">{t('홈으로','Home')}</a></nav>;
  const user=data?.users.find(u=>u.id===selected);
  const budgetNumber=/^\d+(?:\.\d{1,6})?$/.test(budget)?Number(budget):NaN,budgetMicros=Math.round(budgetNumber*1e6);
  const creditNumber=/^\d+$/.test(credits)?Number(credits):NaN;
@@ -26,11 +30,12 @@ export function AdminPage(){
  async function prepareTest(){if(!user)return;if(testRequest.current?.userId!==user.id)testRequest.current={userId:user.id,id:crypto.randomUUID()};await apiRequest('/api/admin/test-ready',{userId:user.id,requestId:testRequest.current.id});await load();testRequest.current=undefined;setNotice(t('광고 1개 테스트를 준비했습니다. 해당 회원으로 로그인해 광고를 생성하세요.','One ad test is prepared. Sign in as that member to generate the ad.'));}
  async function disable(){if(!user||!revoke)return;await apiRequest('/api/admin/revoke',{userId:user.id});setRevoke(false);await load();setNotice(t('회원 접근을 중지했습니다. 자료와 비용 기록은 보존됩니다.','Member access suspended. Data and cost records are retained.'));}
  useEffect(()=>{setRevoke(false);setBudget('');},[selected]);
- if(offlineDemo())return <section className="admin-page"><h1>{t('관리자','Administration')}</h1><p>{t('관리자 기능은 서버의 관리자 계정으로 이용합니다. 기기 내 체험 모드를 끄고 서버를 연결해주세요.','Administration requires a server administrator account. Turn off the local demo and connect your server.')}</p></section>;
+ if(offlineDemo())return <section className="admin-page">{navigation}<h1>{t('관리자','Administration')}</h1><p>{t('관리자 기능은 서버의 관리자 계정으로 이용합니다. 기기 내 체험 모드를 끄고 서버를 연결해주세요.','Administration requires a server administrator account. Turn off the local demo and connect your server.')}</p></section>;
  return <section className="admin-page" aria-label={t('관리자 페이지','Administration page')}>
-  <div className="admin-heading"><div><p className="admin-eyebrow">AIADCAST / OPERATIONS</p><h1>{t('관리자','Administration')}</h1><p>{t('회원과 생성 운영을 한 곳에서 확인합니다.','Manage members and generation in one place.')}</p></div><button disabled={busy} onClick={()=>void run(load)}>{t('새로고침','Refresh')}</button></div>
+  {navigation}
+  <div className="admin-heading"><div><p className="admin-eyebrow">AIADCAST / OPERATIONS</p><h1>{t('관리자','Administration')}</h1><p>{t('회원과 생성 운영을 한 곳에서 확인합니다.','Manage members and generation in one place.')}</p></div><button disabled={busy} onClick={()=>{setError('');void overview.read('/api/admin/overview');}}>{t('새로고침','Refresh')}</button></div>
   {!betaSession()&&<a className="primary-action" href="#login">{t('관리자 계정 로그인','Sign in as administrator')}</a>}
-  {busy&&<p role="status">{t('서버에서 확인 중…','Checking the server…')}</p>}{error&&<p role="alert">{error}</p>}{notice&&<p role="status" className="admin-notice">{notice}</p>}
+  {busy&&<p role="status">{overview.pending?t('운영 정보를 조회 중…','Loading operations…'):t('요청을 처리 중…','Processing request…')}</p>}{overview.confirmedAt&&!overview.pending&&<p role="status" aria-label={t('운영 정보 조회 결과','Operations refresh result')}>{overview.error?t('마지막 성공한 운영 정보 확인','Last successful operations check'):overview.unchanged?t('운영 정보 확인 완료 · 변경 없음','Operations checked · No changes'):t('운영 정보 확인 완료','Operations checked')} · <time dateTime={new Date(overview.confirmedAt).toISOString()}>{new Date(overview.confirmedAt).toLocaleTimeString(language==='ko'?'ko-KR':'en-US')}</time></p>}{(overview.error||error)&&<p role="alert">{overview.error||error}</p>}{notice&&<p role="status" className="admin-notice">{notice}</p>}
   {data&&<>
    <AdminReferenceEvaluation/>
    <div className="admin-stats"><article><span>{t('가입 회원','Members')}</span><strong>{data.users.length}</strong><small>{t('중지 계정 포함','Includes suspended accounts')}</small></article><article><span>{t('공급사 월예산','Monthly provider budget')}</span><strong>{usd(data.budget.limitMicros)}</strong><small>{t('배정','Allocated')} {usd(data.budget.allocatedMicros)}</small></article><article><span>{t('사용량 기준 비용','Usage-based estimated cost')}</span><strong>{usd(data.budget.spentMicros)}</strong><small>{t('보류','Held')} {usd(data.budget.heldMicros)}</small></article></div>

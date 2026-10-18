@@ -34,5 +34,5 @@ test('administrator reference analysis preserves original bytes, distinct overla
 });
 test('unknown response is recovered by GET only and mismatched source cannot be submitted',async({page})=>{
  const s=await setup(page,{lost:true});await page.getByLabel('승인 원본 JPG 선택').setInputFiles({name:'22932.jpg',mimeType:'image/jpeg',buffer:Buffer.from('different')});await expect(page.getByRole('alert')).toContainText('원본');expect(s.posts()).toBe(0);
- await s.select();await page.getByRole('button',{name:'분석 1회 요청 (최대 $0.03 예약)',exact:true}).click();await expect(page.getByText(/처리 결과가 미확인/)).toBeVisible();await page.reload();await expect(page.getByText(/결과를 복구했습니다/)).toBeVisible();expect(s.posts()).toBe(1);
+ await s.select();await page.getByRole('button',{name:'분석 1회 요청 (최대 $0.03 예약)',exact:true}).click();await expect(page.getByText(/처리 결과가 미확인/)).toBeVisible();await page.getByRole('button',{name:'상태를 재확인',exact:true}).click();await expect(page.getByText(/처리 결과가 미확인/)).toHaveCount(0);await expect(page.getByRole('button',{name:'진단 PNG 저장 (기존 표시 포함)'})).toBeEnabled();expect(s.posts()).toBe(1);await page.reload();await expect(page.getByText(/결과를 복구했습니다/)).toBeVisible();expect(s.posts()).toBe(1);
 });
