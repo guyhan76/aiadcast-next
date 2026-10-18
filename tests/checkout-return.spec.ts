@@ -10,6 +10,7 @@ test('native return verifies paid ledger, refreshes credits and resumes original
  const photo=await sharp({create:{width:200,height:300,channels:4,background:'#ddd'}}).png().toBuffer();await form.getByLabel('참조사진 추가').setInputFiles({name:'mock-box.png',mimeType:'image/png',buffer:photo});
  const textboxes=await form.locator('textarea').all();await textboxes[0].fill('사진과 설명을 유지하는 테스트 박스');
  await form.getByRole('button',{name:'규격 넣기',exact:true}).click();
+ await form.getByRole('textbox',{name:'가로 cm',exact:true}).fill('34');await form.getByRole('textbox',{name:'세로 cm',exact:true}).fill('25');await form.getByRole('textbox',{name:'높이 cm',exact:true}).fill('21');await form.getByRole('radio',{name:'본제품에 직접 표시',exact:true}).check();
  const before=await form.locator('input,textarea,select').evaluateAll(nodes=>nodes.map(n=>({name:n.getAttribute('name'),value:(n as HTMLInputElement).value,type:(n as HTMLInputElement).type})).filter(n=>n.type!=='file'));
  await expect(page.getByText('입력 내용이 기기에 저장되었습니다.',{exact:true})).toBeVisible();await context(page);await page.locator('.app-header').getByRole('link',{name:'내 이용권'}).click();await page.evaluate(()=>window.dispatchEvent(new Event('aiadcast-checkout-return')));
  await expect(page).toHaveURL(/#create$/);await expect(page.getByText(/이용권 3개 지급 확인 · 현재 잔액 5개/)).toBeVisible();await expect(form.getByLabel('상품명',{exact:true})).toHaveValue('복귀 검증 박스');await expect(form.locator('.reference-photos img')).toHaveCount(1);
