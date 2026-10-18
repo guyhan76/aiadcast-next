@@ -1,4 +1,3 @@
-import {VersionBadge} from './AppVersionInfo';
 import {useRef,useState} from 'react';
 import {betaSession} from './beta-session';
 import {signOut} from './sign-out';
@@ -17,7 +16,7 @@ export function AccountBar({preserve}:{preserve:()=>Promise<void>}){
   finally{locked.current=false;setBusy(false);}
  }
  return <section className="account-bar" aria-label={t('내 계정 및 로그아웃','My account and sign out')}>
-  <div className="account-bar-identity"><a href="#credits">{t('내 계정','My account')}</a><span>{session.user.label}</span><VersionBadge/></div>
+  <div className="account-bar-identity"><a href="#credits">{t('내 계정','My account')}</a><span>{session.user.label}</span></div>
   <button type="button" disabled={busy} onClick={()=>void logout()}>{busy?t('로그아웃 확인 중…','Signing out…'):t('로그아웃','Sign out')}</button>
   {error&&<p role="alert">{error}</p>}
  </section>;
