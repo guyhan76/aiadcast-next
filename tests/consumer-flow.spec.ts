@@ -6,17 +6,17 @@ const first=await sharp({create:{width:340,height:250,channels:4,background:'#bc
 const second=await sharp({create:{width:250,height:210,channels:4,background:'#bd8653'}}).png().toBuffer();
 const ad=await sharp({create:{width:864,height:1536,channels:4,background:'#f2e6db'}}).png().toBuffer();
 const hash=createHash('sha256').update(ad).digest('hex');
-async function mocks(page:Page,{auth=false,enabled=true,admin=false}: {auth?:boolean;enabled?:boolean;admin?:boolean}={}){
+async function mocks(page:Page,{auth=false,enabled=true,admin=false,v2=false}: {auth?:boolean;enabled?:boolean;admin?:boolean;v2?:boolean}={}){
  const adminWallet={available:0,reserved:0,kind:'test',unlimited:true};
  const state={posts:0,accepts:0,body:null as any,job:null as any};
  await page.route('**/api/**',async route=>{const request=route.request(),path=new URL(request.url()).pathname;
  const send=(body:any,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
  if(path==='/api/account/capabilities')return send({email:{enabled:false},checkout:{enabled:false,test:true,currency:'KRW'}});
- if(path==='/api/status')return auth?send({error:{code:'AUTH_REQUIRED'}},401):send({mode:'local-development',commercialReady:false,generation:{enabled,photoPurposes:true,model:'gpt-image-2.5-sunburst',reason:enabled?null:'BUDGET_NOT_AVAILABLE'},wallet:admin?adminWallet:{available:3,reserved:0,kind:'test'},budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}});
+ if(path==='/api/status')return auth?send({error:{code:'AUTH_REQUIRED'}},401):send({mode:'local-development',commercialReady:false,generation:{...(v2?{creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}}:{}),enabled,photoPurposes:true,model:'gpt-image-2.5-sunburst',reason:enabled?null:'BUDGET_NOT_AVAILABLE'},wallet:v2?{available:0,reserved:0,credits:{available:state.posts?20:30,reserved:0},kind:'test'}:admin?adminWallet:{available:3,reserved:0,kind:'test'},budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}});
  if(path==='/api/generations'&&request.method()==='POST'){state.posts++;state.body=request.postDataJSON();const body=state.body;
- state.job={...(admin?{creditPolicy:'admin-unlimited',creditCost:0}:{}),id:'consumer_fixture_1',projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:body.request.mode,sourceHash:body.source?.sha256??null,createdAt:'2026-10-13T00:00:00.000Z',model:'verification.fixture',artifactId:hash,...(body.request.mode==='creative'?{composition:'complete-ad',compositionKey:body.request.output.compositionKey}:{}),artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+ad.toString('base64'),width:864,height:1536,role:body.request.mode==='original'?'background':'creative'},marketingPlan:body.request.marketingPlan,errorCode:null};return send({job:state.job,wallet:admin?adminWallet:{available:2,reserved:1,kind:'test'}});}
- if(path.endsWith('/accept')){state.accepts++;state.job.state='accepted';return send({job:state.job,wallet:admin?adminWallet:{available:2,reserved:0,kind:'test'}});}
- if(path==='/api/generations/consumer_fixture_1')return send({job:state.job,wallet:admin?adminWallet:{available:2,reserved:1,kind:'test'}});
+ state.job={...(v2?{creditUnit:'credit-v2',creditPolicy:'delivered-2026-10-18',creditCaptured:true,creditCost:10}:{}),...(admin?{creditPolicy:'admin-unlimited',creditCost:0}:{}),id:'consumer_fixture_1',projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:body.request.mode,sourceHash:body.source?.sha256??null,createdAt:'2026-10-13T00:00:00.000Z',model:'verification.fixture',artifactId:hash,...(body.request.mode==='creative'?{composition:'complete-ad',compositionKey:body.request.output.compositionKey}:{}),artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+ad.toString('base64'),width:864,height:1536,role:body.request.mode==='original'?'background':'creative'},marketingPlan:body.request.marketingPlan,errorCode:null};return send({job:state.job,wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:1,kind:'test'}});}
+ if(path.endsWith('/accept')){state.accepts++;state.job.state='accepted';return send({job:state.job,wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:0,kind:'test'}});}
+ if(path==='/api/generations/consumer_fixture_1')return send({job:state.job,wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:1,kind:'test'}});
  if(path==='/api/generations')return send({jobs:state.job?[state.job]:[]});
  return send({error:{code:'TEST_ROUTE_UNAVAILABLE'}},404);
  });return state;
@@ -249,4 +249,20 @@ test('starting a fresh draft preserves a lost prior request for recovery without
 
 test('starting the first campaign from home does not create an empty library project',async({page})=>{
  await mocks(page);await page.goto('/');await page.getByRole('button',{name:'내 광고 만들기',exact:true}).click();await expect(page.locator('.consumer-create')).toBeVisible();await page.locator('a[href="#projects"]:visible').first().click();await expect(page.getByRole('heading',{name:'첫 광고를 만들어보세요.',exact:true})).toBeVisible();await expect(page.locator('.project-tile')).toHaveCount(0);
+});
+
+
+test('new credits require explicit ten-credit confirmation before auto creation and accepting never charges again',async({page})=>{
+ const state=await mocks(page,{v2:true}),form=await details(page);
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();
+ const panel=page.getByRole('region',{name:'AI 광고 제작',exact:true});
+ await expect(panel.getByText(/신규 크레딧 잔액: 30/)).toBeVisible();
+ await expect(panel.getByRole('button',{name:'광고 생성 · 10크레딧'})).toBeDisabled();expect(state.posts).toBe(0);
+ await panel.getByRole('checkbox',{name:'이번 생성 10크레딧 차감을 확인했습니다.'}).check();
+ await panel.getByRole('button',{name:'광고 생성 · 10크레딧'}).click();
+ await expect(panel.getByText(/신규 크레딧 잔액: 20/)).toBeVisible();expect(state.posts).toBe(1);expect(state.body.creditQuote).toEqual({unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'});
+ await expect(panel.getByRole('button',{name:'반려 · 자동 복원 없음'})).toBeVisible();
+ await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await panel.getByRole('button',{name:'사용 확정 · 추가 차감 없음'}).click();
+ await expect.poll(()=>state.accepts).toBe(1);expect(state.posts).toBe(1);
+ await expect(panel.getByText(/신규 크레딧 잔액: 20/)).toBeVisible();
 });
