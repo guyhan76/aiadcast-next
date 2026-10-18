@@ -64,6 +64,7 @@ export class TestCheckout {
  async confirm({orderId,ticket,paymentKey,amount}={}){
   if(!this.available())fail('CHECKOUT_UNAVAILABLE',503);
   const row=this.byTicket(orderId,ticket);
+  if(this.now()-row.created>86400000)fail('ORDER_EXPIRED',409);
   if(!Number.isSafeInteger(amount)||amount!==row.amount||typeof paymentKey!=='string'||!paymentKey||paymentKey.length>240)fail('INVALID_CONFIRMATION');
   return this.serialize(orderId,async()=>{
    const current=this.db.prepare('SELECT * FROM test_orders WHERE id=?').get(orderId);

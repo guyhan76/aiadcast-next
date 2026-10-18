@@ -95,6 +95,8 @@ export class TestCheckout {
         if (!this.available())
             fail('CHECKOUT_UNAVAILABLE', 503);
         const row = await this.byTicket(orderId, ticket);
+        if (this.now() - row.created > 86400000)
+            fail('ORDER_EXPIRED', 409);
         if (!Number.isSafeInteger(amount) || amount !== row.amount || typeof paymentKey !== 'string' || !paymentKey || paymentKey.length > 240)
             fail('INVALID_CONFIRMATION');
         return await this.serialize(orderId, async () => {
