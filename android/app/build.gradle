@@ -27,6 +27,15 @@ android {
         buildConfigField 'boolean', 'ALLOW_TEST_CONFIG', 'false'
         resValue 'string', 'app_name', 'aiadcast'
     }
+    signingConfigs {
+        demo {
+            def keyPath = providers.environmentVariable('AIADCAST_DEMO_KEYSTORE').orNull
+            if (keyPath) storeFile file(keyPath)
+            storePassword providers.environmentVariable('AIADCAST_DEMO_STORE_PASSWORD').orNull
+            keyAlias 'aiadcast-demo'
+            keyPassword providers.environmentVariable('AIADCAST_DEMO_STORE_PASSWORD').orNull
+        }
+    }
     buildTypes {
         debug {
             buildConfigField 'boolean', 'ALLOW_TEST_CONFIG', 'true'
@@ -43,6 +52,17 @@ android {
             resValue 'string', 'app_name', 'aiadcast Preview'
             debuggable false
             signingConfig signingConfigs.debug
+            matchingFallbacks = ['debug']
+        }
+        demo {
+            initWith debug
+            applicationIdSuffix '.demo'
+            versionNameSuffix '-demo'
+            resValue 'string', 'app_name', 'aiadcast 시연'
+            buildConfigField 'boolean', 'ALLOW_TEST_CONFIG', 'false'
+            buildConfigField 'String', 'API_ORIGIN', '"https://aiadcast-next.onrender.com"'
+            debuggable false
+            signingConfig signingConfigs.demo
             matchingFallbacks = ['debug']
         }
         release {
