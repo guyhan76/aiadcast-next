@@ -12,6 +12,7 @@ import {EmailAuth} from './email-auth.mjs';
 import {PasswordAuth} from './password-auth.mjs';
 import {TestCheckout} from './test-checkout.mjs';
 import {accountConfiguration} from './account-providers.mjs';
+import {demoSupport} from './demo-support.mjs';
 import {AdminApi} from './admin-api.mjs';
 export const ANDROID_ORIGIN='https://appassets.androidplatform.net';
 export function providerGate(max=2){let active=0;return async task=>{if(active>=max)throw new ProviderFailure('PROVIDER_BUSY',{uncertain:false});active++;try{return await task();}finally{active--;}};}
@@ -60,6 +61,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
     admin.require(user);
     if(url.pathname==='/api/admin/single-box-evaluation'){if(req.method==='GET'){send(res,200,await singleBox.status(user,url.searchParams.get('requestId')??undefined),cors);return;}if(req.method==='POST'){send(res,200,await singleBox.analyze(await read(req,14100000),user),cors);return;}}
     if(url.pathname==='/api/admin/dimension-evaluation'){if(req.method==='GET'){send(res,200,await dimensionAnalysis.status(user,url.searchParams.get('requestId')??undefined),cors);return;}if(req.method==='POST'){send(res,200,await dimensionAnalysis.analyze(await read(req,14_100_000),user),cors);return;}}
+    if(req.method==='POST'&&['/api/admin/demo-support-preview','/api/admin/demo-support'].includes(url.pathname)){send(res,200,await demoSupport(admin,user,await read(req,2048),url.pathname==='/api/admin/demo-support'),cors);return;}
     if(req.method==='POST'&&url.pathname==='/api/admin/october-budget'){send(res,200,admin.activateOctoberBudget(user,await read(req,1024)),cors);return;}
     if(req.method==='GET'&&url.pathname==='/api/admin/overview'){send(res,200,admin.overview(user),cors);return;}
     if(req.method==='POST'&&['/api/admin/grants','/api/admin/allocations','/api/admin/test-ready','/api/admin/revoke'].includes(url.pathname)){

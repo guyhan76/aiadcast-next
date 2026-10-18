@@ -219,8 +219,10 @@ export class GenerationService {
         const attemptId = randomUUID();
         let began = false;
         try {
-            const period = this.period(), limit = await this.budgetLimit(period);
-            const attempt = await this.ledger.beginAttempt({ jobId: id, attemptId, period, maximumMicros: MODEL_COST_HOLD_MICROS, limitMicros: limit, periodScoped: Boolean(this.budgetForPeriod) });
+            const attempt = await this.ledger.transaction(async () => {
+                const period = this.period(), limit = await this.budgetLimit(period);
+                return await this.ledger.beginAttempt({ jobId: id, attemptId, period, maximumMicros: MODEL_COST_HOLD_MICROS, limitMicros: limit, periodScoped: Boolean(this.budgetForPeriod) });
+            });
             if (!attempt.shouldDispatch)
                 return;
             began = true;
@@ -291,9 +293,10 @@ export class GenerationService {
         const status = await this.status();
         if (!status.assistant.available)
             fail(status.assistant.reason, 503);
-        const period = this.period(), limit = await this.budgetLimit(period);
+        const period = this.period();
         try {
             await this.ledger.transaction(async () => {
+                const limit = Math.min(this.budgetMicros, await this.budgetLimit(period));
                 await this.db.prepare('INSERT INTO budgets(period,limit_micros) VALUES (?,?) ON CONFLICT DO NOTHING').run(period, this.budgetMicros);
                 if (this.budgetForPeriod) {
                     if (period !== this.period())
@@ -301,7 +304,7 @@ export class GenerationService {
                     await this.db.prepare('UPDATE budgets SET limit_micros=? WHERE period=?').run(limit, period);
                 }
                 // October image approval never enlarges the text assistant allowance.
-                const held = await this.db.prepare('UPDATE budgets SET held_micros=held_micros+? WHERE period=? AND limit_micros>=? AND spent_micros+held_micros+?<=?').run(TEXT_MAX_HOLD_MICROS, period, this.budgetMicros, TEXT_MAX_HOLD_MICROS, this.budgetMicros);
+                const held = await this.db.prepare('UPDATE budgets SET held_micros=held_micros+? WHERE period=? AND limit_micros>=? AND spent_micros+held_micros+?<=?').run(TEXT_MAX_HOLD_MICROS, period, limit, TEXT_MAX_HOLD_MICROS, limit);
                 if (held.changes !== 1)
                     throw Error();
                 await this.db.prepare("INSERT INTO assistant_requests(request_id,fingerprint,period,held_micros,state,created_at) VALUES (?,?,?,?,'pending',?)").run(request.requestId, fingerprint, period, TEXT_MAX_HOLD_MICROS, this.now());

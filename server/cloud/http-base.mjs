@@ -10,6 +10,7 @@ import { ProviderFailure } from '../openai-image-adapter.mjs';
 import { EmailAuth } from './email-auth-base.mjs';
 import { PasswordAuth } from './password-auth-base.mjs';
 import { TestCheckout } from './test-checkout-base.mjs';
+import { demoSupport } from '../demo-support.mjs';
 import { AdminApi } from './admin-api-base.mjs';
 export const ANDROID_ORIGIN = 'https://appassets.androidplatform.net';
 export function providerGate(max = 2) { let active = 0; return async (task) => { if (active >= max)
@@ -167,6 +168,10 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, now =
                         send(res, 200, await dimensionAnalysis.analyze(await read(req, 14100000), user), cors);
                         return;
                     }
+                }
+                if (req.method === 'POST' && ['/api/admin/demo-support-preview', '/api/admin/demo-support'].includes(url.pathname)) {
+                    send(res, 200, await demoSupport(admin, user, await read(req, 2048), url.pathname === '/api/admin/demo-support'), cors);
+                    return;
                 }
                 if (req.method === 'POST' && url.pathname === '/api/admin/october-budget') {
                     send(res, 200, await admin.activateOctoberBudget(user, await read(req, 1024)), cors);

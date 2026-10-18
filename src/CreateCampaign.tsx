@@ -7,7 +7,7 @@ import {PlanarControl} from './PlanarControl';
 import type {WizardDraft} from './workspace-draft';
 import {DimensionInputs} from './DimensionInputs';
 import {useUiLanguage} from './ui-language';
-import {useId,useState,useLayoutEffect} from 'react';
+import {useId,useState,useLayoutEffect,useRef} from 'react';
 import {Sparkles} from 'lucide-react';
 import type {Project,FooterField} from './model';
 import {dimensionAxes,withCategory,isServiceCategory} from './product';
@@ -27,6 +27,7 @@ import {starterProject,prepareCampaign} from './consumer-campaign';
 export function CreateCampaign({initialKind,onReady,draft,onDraft}:{initialKind?:IndustryKind;onReady:(p:Project)=>Promise<void>;draft?:WizardDraft;onDraft?:(draft:WizardDraft)=>void}){
  const {language,t,text}=useUiLanguage(),id=useId();
  const [project,setProject]=useState(()=>draft?.project??({...starterProject(initialKind==='service'?'services':'other'),locale:language}));
+ const submitting=useRef(false);
  const [chosen,setChosen]=useState(!!draft),[error,setError]=useState(''),[busy,setBusy]=useState(false),[photoImportIssue,setPhotoImportIssue]=useState('');
  useLayoutEffect(()=>{onDraft?.({project,step:0});},[project,onDraft]);
  const example=isTextExample(project);
@@ -35,13 +36,13 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft}:{initialKind?
  function change(fn:(p:Project)=>Project){setProject(fn);setError('');}
  function setCopy(field:'title'|'description'|FooterField,value:string){change(p=>({...p,copy:{...p.copy,[p.locale]:{...p.copy[p.locale],[field]:value}}}));}
  async function submit(){
-  if(busy)return;
+  if(submitting.current)return;
   if(!chosen){setError(t('광고할 산업을 선택해주세요.','Choose your industry.'));document.getElementById(id+'-industry')?.focus();return;}
   if(!project.productName.trim()||!project.productProfile.material.trim()){setError(t('상품·서비스 이름과 상세설명을 입력해주세요.','Enter the name and description.'));return;}
   if(copyMode==='manual'&&!copy.title.trim()){setError(t('직접 사용할 광고 제목을 입력해주세요.','Enter your advertising headline.'));return;}
   const prepared=prepareCampaign(withCreative(project,{copyMode})),issues=generationIssues(prepared);
   if(issues.length){setError(!service&&!prepared.product&&photoImportIssue?photoImportIssue:issues.map(text).join(' '));if(!prepared.product)document.getElementById(id+'-photos')?.focus();return;}
-  setBusy(true);try{await onReady(prepared);}catch{setError(t('입력 내용을 보관하지 못했습니다. 다시 시도해주세요.','Could not keep your inputs. Please try again.'));}finally{setBusy(false);}
+  submitting.current=true;setBusy(true);try{await onReady(prepared);}catch{setError(t('입력 내용을 보관하지 못했습니다. 다시 시도해주세요.','Could not keep your inputs. Please try again.'));}finally{submitting.current=false;setBusy(false);}
  }
  const companyFields:[FooterField,string,string][]=[['company',t('회사명','Company'),'셀업랩스'],['contact',t('연락처','Phone'),'010-0000-0000'],['email',t('이메일 주소','Email'),'hello@brand.com'],['website',t('홈페이지','Website'),'https://www.brand.com']];
  return <div className="create-page consumer-create">
