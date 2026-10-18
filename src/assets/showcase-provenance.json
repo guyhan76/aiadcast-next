@@ -6,43 +6,65 @@
   "files": [
     {
       "path": "showcase-beauty.webp",
-      "sha256": "f0b25262f299c6bacc0ac9f1c7477d69c9fda3dfdecb3a44ff7380710cc568af"
+      "sha256": "f0b25262f299c6bacc0ac9f1c7477d69c9fda3dfdecb3a44ff7380710cc568af",
+      "width": 1080,
+      "height": 1920
     },
     {
       "path": "showcase-luxury.webp",
-      "sha256": "ba51b79629a000b63a2283819587f94cf0d0004bc66cdc1e5f347fba6cfffca0"
+      "sha256": "ba51b79629a000b63a2283819587f94cf0d0004bc66cdc1e5f347fba6cfffca0",
+      "width": 1080,
+      "height": 1920
     },
     {
       "path": "showcase-fashion.webp",
-      "sha256": "ff037572d66ea766cab89b6e4b9d07ba26b62ac5efc048aa5214dbe99cd4d3f1"
+      "sha256": "ff037572d66ea766cab89b6e4b9d07ba26b62ac5efc048aa5214dbe99cd4d3f1",
+      "width": 1080,
+      "height": 1920
     },
     {
       "path": "showcase-jewelry.webp",
-      "sha256": "f003b1e17e667ad97e8a2c626d732ef4108b0882516c055f28aa5dafed4f1208"
+      "sha256": "f003b1e17e667ad97e8a2c626d732ef4108b0882516c055f28aa5dafed4f1208",
+      "width": 1080,
+      "height": 1920
     },
     {
       "path": "showcase-appliance.webp",
-      "sha256": "ab6a871e0c57c94c13af963d45e013e239adc1ed4283de15c303ed3d4f5f0575"
+      "sha256": "ab6a871e0c57c94c13af963d45e013e239adc1ed4283de15c303ed3d4f5f0575",
+      "width": 1080,
+      "height": 1920
     },
     {
       "path": "showcase-travel.webp",
-      "sha256": "d5c563c9c34c832f6493c8eeef0cd4e42eefc1995e5355aaa0212d174a2bad15"
+      "sha256": "d5c563c9c34c832f6493c8eeef0cd4e42eefc1995e5355aaa0212d174a2bad15",
+      "width": 1080,
+      "height": 1920
     },
     {
       "path": "showcase-hotel.webp",
-      "sha256": "1c298124e0413c6beaf501943248cfa28ccf8adcd1481b8090813d8db2fd8676"
+      "sha256": "1c298124e0413c6beaf501943248cfa28ccf8adcd1481b8090813d8db2fd8676",
+      "width": 1080,
+      "height": 1920
     },
     {
       "path": "showcase-insurance.webp",
-      "sha256": "290a4a3073e6aaef4ca5f45b8bd9bc18b24582f2bd70bf083124ce0262d6c6f7"
+      "sha256": "290a4a3073e6aaef4ca5f45b8bd9bc18b24582f2bd70bf083124ce0262d6c6f7",
+      "width": 1080,
+      "height": 1920
     },
     {
       "path": "showcase-hospital.webp",
-      "sha256": "9ca45f2fa64708c5a2b6c0ca90b1ee0756c4429220ffb0a16e8ba6c6cc15f52a"
+      "sha256": "9ca45f2fa64708c5a2b6c0ca90b1ee0756c4429220ffb0a16e8ba6c6cc15f52a",
+      "width": 1080,
+      "height": 1920
     },
     {
       "path": "showcase-mobility.webp",
-      "sha256": "afbfc3ce9a6450ef4b875ba66e7acfd4c0c2bc2d82bb2c0ae041c2cd12ef7bf3"
+      "sha256": "afbfc3ce9a6450ef4b875ba66e7acfd4c0c2bc2d82bb2c0ae041c2cd12ef7bf3",
+      "width": 1080,
+      "height": 1920
     }
-  ]
+  ],
+  "displayRole": "concept-photo-with-dom-copy",
+  "mobileAppGenerationVerified": false
 }
