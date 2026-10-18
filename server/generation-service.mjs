@@ -89,7 +89,7 @@ function persistentLock(path) {
   return () => { try { unlinkSync(lock); } catch {} };
 }
 export class GenerationService {
-  constructor({ databasePath = ':memory:', adapter, assistantAdapter, assistantEnabled = false, enabled = false, budgetMicros = 0, providerConfigured = false, testCredits = 3, databaseLockManagedExternally = false, managedBudgetIncrease = false, now = () => Date.now() } = {}) {
+  constructor({ databasePath = ':memory:', adapter, assistantAdapter, assistantEnabled = false, enabled = false, budgetMicros = 0, providerConfigured = false, testCredits = 3, databaseLockManagedExternally = false, managedBudgetIncrease = false, budgetForPeriod, now = () => Date.now() } = {}) {
     if (!Number.isSafeInteger(budgetMicros) || budgetMicros < 0 || budgetMicros > 100_000_000) throw Error('INVALID_DEVELOPMENT_BUDGET');
     if (!Number.isSafeInteger(testCredits) || testCredits < 0 || testCredits > 30) throw Error('INVALID_TEST_CREDITS');
     if (databasePath !== ':memory:') mkdirSync(dirname(databasePath), { recursive: true, mode: 0o700 });
@@ -97,11 +97,11 @@ export class GenerationService {
     try { this.ledger = new BillingLedger(databasePath, now); }
     catch (error) { this.unlock(); throw error; }
     if (databasePath !== ':memory:') chmodSync(databasePath, 0o600);
-    this.db = this.ledger.db; this.now = now; this.adapter = adapter; this.enabled = enabled; this.assistantAdapter = assistantAdapter; this.assistantEnabled = assistantEnabled; this.budgetMicros = budgetMicros; this.providerConfigured = providerConfigured; this.tasks = new Set();
+    this.db = this.ledger.db; this.now = now; this.adapter = adapter; this.enabled = enabled; this.assistantAdapter = assistantAdapter; this.assistantEnabled = assistantEnabled; this.budgetMicros = budgetMicros; this.providerConfigured = providerConfigured; this.tasks = new Set(); this.budgetForPeriod=budgetForPeriod;
     // The authenticated HTTP service sets this from the server-owned account
     // role. Request JSON, login form fields and client session labels cannot.
     this.adminTestUnlimited = false;
-    if (managedBudgetIncrease) {
+    if (managedBudgetIncrease && !budgetForPeriod) {
       const highest=this.db.prepare('SELECT COALESCE(MAX(limit_micros),0) value FROM budgets').get().value;
       if(highest>budgetMicros){this.ledger.close();this.unlock();throw Error('BUDGET_DECREASE_REQUIRES_REVIEW');}
       this.db.prepare('UPDATE budgets SET limit_micros=?').run(budgetMicros);
@@ -137,18 +137,25 @@ export class GenerationService {
   period() { return new Date(this.now()).toISOString().slice(0, 7); }
   increaseBudget(micros) {
     if(!Number.isSafeInteger(micros)||micros<this.budgetMicros||micros>100_000_000)fail('BUDGET_INCREASE_ONLY');
-    this.ledger.transaction(()=>this.db.prepare('UPDATE budgets SET limit_micros=?').run(micros));
+    if(!this.budgetForPeriod)this.ledger.transaction(()=>this.db.prepare('UPDATE budgets SET limit_micros=?').run(micros));
     this.budgetMicros=micros;
   }
   recordTestPurchase({purchaseId,credits}) { this.ledger.recordVerifiedPurchase({purchaseId,userId:LOCAL_USER,credits});return this.wallet(); }
   wallet() { return { ...this.ledger.wallet(LOCAL_USER), kind: this.adminTestUnlimited ? 'admin-test-unlimited' : 'test-credits', ...(this.adminTestUnlimited ? {unlimited:true} : {}) }; }
+  budgetLimit(period){
+    if(period!==this.period())fail('BUDGET_PERIOD_CHANGED',409);
+    const value=this.budgetForPeriod?this.budgetForPeriod(period):this.budgetMicros;
+    if(!Number.isSafeInteger(value)||value<0||value>100000000)fail('INVALID_DEVELOPMENT_BUDGET');
+    if(period!==this.period())fail('BUDGET_PERIOD_CHANGED',409);
+    return value;
+  }
   status() {
     this.ledger.expire();
-    const budget = this.ledger.budget(this.period());
-    const available = this.budgetMicros - (budget?.spent_micros ?? 0) - (budget?.held_micros ?? 0);
-    const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : this.budgetMicros < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : !this.adminTestUnlimited && this.wallet().available < 1 ? 'NO_TEST_CREDITS' : null;
-    const assistantReason = !this.assistantEnabled ? 'ASSISTANT_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : available < TEXT_MAX_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : null;
-    return { mode: 'local-development', commercialReady: false, generation: { enabled: reason === null, photoPurposes: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet: this.wallet(), budget: { currency: 'USD', period: this.period(), limitMicros: this.budgetMicros, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
+    const period=this.period(),limit=this.budgetLimit(period),budget = this.ledger.budget(period);
+    const available = limit - (budget?.spent_micros ?? 0) - (budget?.held_micros ?? 0);
+    const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : limit < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : !this.adminTestUnlimited && this.wallet().available < 1 ? 'NO_TEST_CREDITS' : null;
+    const assistantReason = !this.assistantEnabled ? 'ASSISTANT_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : this.budgetMicros-(budget?.spent_micros??0)-(budget?.held_micros??0) < TEXT_MAX_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : null;
+    return { mode: 'local-development', commercialReady: false, generation: { enabled: reason === null, photoPurposes: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet: this.wallet(), budget: { currency: 'USD', period, limitMicros: limit, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
   }
   storeAsset(asset) {
     this.db.prepare('INSERT INTO generation_assets VALUES (?,?,?,?,?) ON CONFLICT(hash) DO NOTHING').run(asset.sha256, asset.mime, asset.width, asset.height, asset.bytes);
@@ -226,7 +233,8 @@ export class GenerationService {
   async dispatch(id, request, source, references = []) {
     const attemptId = randomUUID(); let began = false;
     try {
-      const attempt = this.ledger.beginAttempt({ jobId: id, attemptId, period: this.period(), maximumMicros: MODEL_COST_HOLD_MICROS, limitMicros: this.budgetMicros });
+      const period=this.period(),limit=this.budgetLimit(period);
+      const attempt = this.ledger.beginAttempt({ jobId: id, attemptId, period, maximumMicros: MODEL_COST_HOLD_MICROS, limitMicros: limit, periodScoped:Boolean(this.budgetForPeriod) });
       if (!attempt.shouldDispatch) return;
       began = true;
       const result = await this.adapter.generate({ request, source: request.mode === 'creative' ? source : null, references:request.mode==='creative'?references:[], attemptId });
@@ -276,11 +284,13 @@ export class GenerationService {
     }
     const status = this.status();
     if (!status.assistant.available) fail(status.assistant.reason, 503);
-    const period = this.period();
+    const period = this.period(),limit=this.budgetLimit(period);
     try {
       this.ledger.transaction(() => {
         this.db.prepare('INSERT INTO budgets(period,limit_micros) VALUES (?,?) ON CONFLICT DO NOTHING').run(period, this.budgetMicros);
-        const held = this.db.prepare('UPDATE budgets SET held_micros=held_micros+? WHERE period=? AND limit_micros=? AND spent_micros+held_micros+?<=limit_micros').run(TEXT_MAX_HOLD_MICROS, period, this.budgetMicros, TEXT_MAX_HOLD_MICROS);
+        if(this.budgetForPeriod){if(period!==this.period())throw Error('BUDGET_PERIOD_CHANGED');this.db.prepare('UPDATE budgets SET limit_micros=? WHERE period=?').run(limit,period);}
+        // October image approval never enlarges the text assistant allowance.
+        const held = this.db.prepare('UPDATE budgets SET held_micros=held_micros+? WHERE period=? AND limit_micros>=? AND spent_micros+held_micros+?<=?').run(TEXT_MAX_HOLD_MICROS, period, this.budgetMicros, TEXT_MAX_HOLD_MICROS, this.budgetMicros);
         if (held.changes !== 1) throw Error();
         this.db.prepare("INSERT INTO assistant_requests(request_id,fingerprint,period,held_micros,state,created_at) VALUES (?,?,?,?,'pending',?)").run(request.requestId, fingerprint, period, TEXT_MAX_HOLD_MICROS, this.now());
       });

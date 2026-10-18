@@ -15,6 +15,7 @@ export class BetaStore {
   this.db.exec(`PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
    CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,label TEXT NOT NULL,budget INTEGER NOT NULL,credits INTEGER NOT NULL,disabled INTEGER NOT NULL DEFAULT 0);
+   CREATE TABLE IF NOT EXISTS monthly_budget_approvals(period TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),total_micros INTEGER NOT NULL,allocation_micros INTEGER NOT NULL,baseline_total INTEGER NOT NULL,baseline_allocation INTEGER NOT NULL,created INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS invites(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS projects(user_id TEXT NOT NULL REFERENCES users(id),id TEXT NOT NULL,revision INTEGER NOT NULL,name TEXT NOT NULL,json TEXT NOT NULL,bytes INTEGER NOT NULL,updated TEXT NOT NULL,PRIMARY KEY(user_id,id));`);
@@ -29,12 +30,38 @@ export class BetaStore {
   return this.transaction(()=>{
    const stats=this.db.prepare('SELECT COUNT(*) n,COALESCE(SUM(budget),0) budget FROM users').get();
    if(stats.n>=20||stats.budget+budgetMicros>this.cap)fail('BETA_ALLOCATION_EXCEEDED',409);
+   this.validateMonthAllocation(null,budgetMicros);
    const id=randomUUID();this.db.prepare('INSERT INTO users(id,label,budget,credits) VALUES(?,?,?,?)').run(id,label.trim(),budgetMicros,credits);
    return {userId:id,...this.issueInvite(id)};
   });
  }
  setBudget(micros){if(!Number.isSafeInteger(micros)||micros<this.cap||micros>100_000_000)fail('BUDGET_INCREASE_ONLY');this.db.prepare("UPDATE settings SET value=? WHERE key='budget'").run(micros);this.cap=micros;}
- setAllocation(id,micros){return this.transaction(()=>{const user=this.db.prepare('SELECT budget FROM users WHERE id=? AND disabled=0').get(id);if(!user)fail('USER_NOT_FOUND',404);if(!Number.isSafeInteger(micros)||micros<user.budget)fail('ALLOCATION_INCREASE_ONLY');const total=this.db.prepare('SELECT COALESCE(SUM(budget),0) total FROM users').get().total;if(total-user.budget+micros>this.cap)fail('BETA_ALLOCATION_EXCEEDED',409);this.db.prepare('UPDATE users SET budget=? WHERE id=?').run(micros,id);});}
+ setAllocation(id,micros){return this.transaction(()=>{const user=this.db.prepare('SELECT budget FROM users WHERE id=? AND disabled=0').get(id);if(!user)fail('USER_NOT_FOUND',404);if(!Number.isSafeInteger(micros)||micros<user.budget)fail('ALLOCATION_INCREASE_ONLY');const total=this.db.prepare('SELECT COALESCE(SUM(budget),0) total FROM users').get().total;if(total-user.budget+micros>this.cap)fail('BETA_ALLOCATION_EXCEEDED',409);this.validateMonthAllocation(id,micros);this.db.prepare('UPDATE users SET budget=? WHERE id=?').run(micros,id);});}
+ budgetPeriod(){return new Date(this.now()).toISOString().slice(0,7);}
+ monthApproval(){return this.db.prepare("SELECT * FROM monthly_budget_approvals WHERE period=?").get(this.budgetPeriod());}
+ effectiveBudget(id,period){
+  if(period!==this.budgetPeriod())fail('BUDGET_PERIOD_CHANGED',409);
+  const u=this.db.prepare('SELECT * FROM users WHERE id=?').get(id);if(!u)fail('USER_NOT_FOUND',404);
+  const a=this.monthApproval();return a?.user_id===id&&u.role==='admin'&&!u.disabled?a.allocation_micros:u.budget;
+ }
+ effectiveCap(){return this.monthApproval()?.total_micros??this.cap;}
+ validateMonthAllocation(id,micros){
+  const a=this.monthApproval();if(!a)return;
+  const other=this.db.prepare('SELECT COALESCE(SUM(budget),0) n FROM users WHERE id<>? AND id<>?').get(a.user_id,id??'').n;
+  if(a.allocation_micros+other+(id===a.user_id?0:micros)>a.total_micros)fail('BETA_ALLOCATION_EXCEEDED',409);
+ }
+ activateOctoberBudget(id){
+  return this.transaction(()=>{
+   if(this.budgetPeriod()!=='2026-10')fail('MONTH_APPROVAL_EXPIRED',409);
+   const u=this.db.prepare("SELECT * FROM users WHERE id=? AND role='admin' AND disabled=0").get(id);if(!u)fail('ADMIN_REQUIRED',403);
+   const old=this.db.prepare('SELECT * FROM monthly_budget_approvals WHERE period=?').get('2026-10');
+   if(old){if(old.user_id!==id||old.total_micros!==5000000||old.allocation_micros!==5000000)fail('MONTH_APPROVAL_CONFLICT',409);return old;}
+   const other=this.db.prepare('SELECT COALESCE(SUM(budget),0) n FROM users WHERE id<>?').get(id).n;
+   if(other!==0||this.cap>5000000||u.budget>5000000)fail('MONTH_APPROVAL_CONFLICT',409);
+   this.db.prepare('INSERT INTO monthly_budget_approvals VALUES(?,?,?,?,?,?,?)').run('2026-10',id,5000000,5000000,this.cap,u.budget,this.now());
+   return this.monthApproval();
+  });
+ }
  issueInvite(id){const u=this.db.prepare('SELECT id FROM users WHERE id=? AND disabled=0').get(id);if(!u)fail('USER_NOT_FOUND',404);const invite=code(),expires=this.now()+24*60*60*1000;this.db.prepare('DELETE FROM invites WHERE user_id=? OR expires<=?').run(id,this.now());this.db.prepare('INSERT INTO invites VALUES(?,?,?)').run(digest(invite),id,expires);return {invite,expires};}
  login(invite){
   if(typeof invite!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(invite))fail('INVALID_INVITE',401);

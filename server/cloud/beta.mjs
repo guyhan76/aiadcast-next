@@ -90,7 +90,7 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
   app=await createBetaServer({store,publicUrl:config.publicUrl,dimensionAnalysis:dimensionAnalysisService({evaluationEnabled:true,apiKey:config.key,statusReader:(actor,id)=>readCloudEvaluation(accountsDb,actor,id),ledgerFactory:()=>new CloudVisionLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),extraOrigins,staticDirectory,accounts,serviceFactory:async user=>{
    instance?.assert();const db=await new PostgresDatabase(pool,cloudSchema(user.id),{guard}).initialize();
    const s=new CloudGenerationService();s.storage=storage;s.cloudUser=user.id;
-   await s.initialize({db,managedBudgetIncrease:true,enabled:config.enabled,assistantEnabled:config.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter),adapter:{generate:options=>{instance?.assert();return gate(()=>adapter.generate(options));}},assistantAdapter:options=>{instance?.assert();return gate(()=>assistCopy({...options,apiKey:config.key}));}});
+   await s.initialize({db,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:config.enabled,assistantEnabled:config.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter),adapter:{generate:options=>{instance?.assert();return gate(()=>adapter.generate(options));}},assistantAdapter:options=>{instance?.assert();return gate(()=>assistCopy({...options,apiKey:config.key}));}});
    await db.protectTables();return s;
   }});
   await accountsDb.exec(readFileSync(new URL('./bootstrap-owner.sql',import.meta.url),'utf8'));

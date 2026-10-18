@@ -26,7 +26,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
  const email=new EmailAuth(store,{sendMail:accounts.sendMail,publicOrigin:origin,now});
  const password=new PasswordAuth(store,accounts.password,now);password.bootstrapOwner();
  const checkout=new TestCheckout(store,{...accounts,publicOrigin:origin,now,creditPurchase:async(id,purchase)=>{const user=store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id);if(!user)throw new ApiFailure('AUTH_REQUIRED',401);return service(user).recordTestPurchase(purchase);}});
- const admin=new AdminApi(store,{service,accounts,checkout,now});
+ const admin=new AdminApi(store,{service,accounts,checkout,ownerEmail:password.adminEmail,now});
  const send=(res,status,value,cors)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer',...(cors?{'Access-Control-Allow-Origin':cors,'Vary':'Origin'}:{})});res.end(JSON.stringify(value));};
  const read=async(req,max)=>{if(!/^application\/json(?:;.*)?$/i.test(req.headers['content-type']??''))throw new ApiFailure('JSON_REQUIRED',415);if(Number(req.headers['content-length']??0)>max)throw new ApiFailure('REQUEST_TOO_LARGE',413);if(bodies>=2)throw new ApiFailure('SERVER_BUSY',429);bodies++;try{let size=0;const parts=[];for await(const part of req){size+=part.length;if(size>max)throw new ApiFailure('REQUEST_TOO_LARGE',413);parts.push(part);}try{return JSON.parse(Buffer.concat(parts).toString('utf8'));}catch{throw new ApiFailure('INVALID_JSON',400);}}finally{bodies--;}};
  const server=createServer(async(req,res)=>{
@@ -58,6 +58,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
    if(url.pathname.startsWith('/api/admin/')){
     admin.require(user);
     if(url.pathname==='/api/admin/dimension-evaluation'){if(req.method==='GET'){send(res,200,await dimensionAnalysis.status(user,url.searchParams.get('requestId')??undefined),cors);return;}if(req.method==='POST'){send(res,200,await dimensionAnalysis.analyze(await read(req,14_100_000),user),cors);return;}}
+    if(req.method==='POST'&&url.pathname==='/api/admin/october-budget'){send(res,200,admin.activateOctoberBudget(user,await read(req,1024)),cors);return;}
     if(req.method==='GET'&&url.pathname==='/api/admin/overview'){send(res,200,admin.overview(user),cors);return;}
     if(req.method==='POST'&&['/api/admin/grants','/api/admin/allocations','/api/admin/test-ready','/api/admin/revoke'].includes(url.pathname)){
      const body=await read(req,2048);send(res,200,url.pathname.endsWith('/grants')?admin.grant(user,body):url.pathname.endsWith('/allocations')?admin.allocate(user,body):url.pathname.endsWith('/test-ready')?admin.prepareTest(user,body):admin.revoke(user,body),cors);return;
@@ -104,7 +105,7 @@ async function main(){
  }
  const c=betaConfig(),store=new BetaStore(c.directory,c),gate=providerGate(2);
  const adapter=new OpenAIImageAdapter({apiKey:c.key});
- const app=createBetaServer({store,publicUrl:c.publicUrl,accounts:accountConfiguration(),staticDirectory:resolve('dist'),serviceFactory:user=>new GenerationService({databasePath:join(c.directory,'users',user.id+'.sqlite'),databaseLockManagedExternally:true,managedBudgetIncrease:true,enabled:c.enabled,assistantEnabled:c.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(c.key),adapter:{generate:options=>gate(()=>adapter.generate(options))},assistantAdapter:options=>gate(()=>assistCopy({...options,apiKey:c.key}))})});
+ const app=createBetaServer({store,publicUrl:c.publicUrl,accounts:accountConfiguration(),staticDirectory:resolve('dist'),serviceFactory:user=>new GenerationService({databasePath:join(c.directory,'users',user.id+'.sqlite'),databaseLockManagedExternally:true,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:c.enabled,assistantEnabled:c.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(c.key),adapter:{generate:options=>gate(()=>adapter.generate(options))},assistantAdapter:options=>gate(()=>assistCopy({...options,apiKey:c.key}))})});
  app.server.listen(c.port,'0.0.0.0',()=>console.log('Invite beta server started; real payments disabled.'));
  let closing=false;const stop=async()=>{if(closing)return;closing=true;await app.close();store.close();};process.once('SIGTERM',()=>void stop());process.once('SIGINT',()=>void stop());
 }
