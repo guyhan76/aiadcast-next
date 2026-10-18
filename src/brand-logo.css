@@ -1,0 +1,3 @@
+/* Only the supplied wordmark. Existing controls keep their theme colors. */
+.brand-lockup>svg{display:block;width:5.8026346em;height:1em;flex-shrink:0;overflow:visible}
+.wordmark>.brand-lockup{font-size:inherit}
