@@ -87,3 +87,11 @@
 .studio-shell .consumer-create .company-field{position:relative;display:flex;flex-direction:column}
 .studio-shell .consumer-create .company-visible{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:400;color:#6d7075;margin:1px 0}
 .studio-shell .consumer-create .company-visible input{width:15px;height:15px;min-width:15px;padding:0;margin:0;accent-color:#191b1e}
+
+.input-example-guide{margin:8px 0 18px;border:1px solid #dedede;border-radius:10px;background:#fafafa;color:#333;min-width:0}
+.input-example-guide>summary{padding:12px 14px;cursor:pointer;font-size:14px;font-weight:600;line-height:1.6;overflow-wrap:anywhere}
+.input-example-guide>summary:focus-visible{outline:3px solid #ed6a2c;outline-offset:3px;border-radius:8px}
+.input-example-content{padding:0 14px 14px;font-size:14px;line-height:1.75;overflow-wrap:anywhere}
+.input-example-content p{margin:12px 0}
+.input-example-content blockquote{margin:10px 0;padding:10px 12px;border-left:3px solid #ed6a2c;background:#fff}
+.input-example-content .input-example-note{color:#555;font-size:13px;margin-bottom:0}
