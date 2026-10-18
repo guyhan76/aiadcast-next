@@ -34,12 +34,14 @@ test('library and guide show brief essentials while backup and details stay avai
  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
 });
 test('email pages and order review are usable but never pretend to authenticate or charge',async({page})=>{
- await page.route('**/api/account/capabilities',route=>route.fulfill({status:503,json:{error:{code:'UNAVAILABLE'}}}));
+ let connected=false;
+ await page.route('**/api/account/capabilities',route=>connected?route.fulfill({json:{email:{enabled:true},checkout:{enabled:false,test:true,currency:'KRW'}}}):route.fulfill({status:503,json:{error:{code:'UNAVAILABLE'}}}));
  const writes:string[]=[];page.on('request',r=>{if(r.method()==='POST')writes.push(r.url());});
- await page.goto('/#signup');await page.getByLabel('이메일',{exact:true}).fill('invalid');await page.getByRole('heading',{name:'회원가입',exact:true}).click();expect(await page.getByLabel('이메일',{exact:true}).evaluate((e:HTMLInputElement)=>e.validity.typeMismatch)).toBe(true);
- await page.getByLabel('이메일',{exact:true}).fill('test@example.com');await expect(page.locator('.account-page').getByRole('alert')).toHaveCount(0);await expect(page.getByRole('button',{name:'인증메일 받기'})).toBeDisabled();
+ await page.goto('/#signup');await expect(page.locator('.account-page').getByRole('alert')).toContainText('로그인 방식을 확인하지 못했습니다.');await expect(page.locator('.account-page input')).toHaveCount(0);expect(writes).toEqual([]);
+ connected=true;await page.getByRole('button',{name:'로그인 방식 다시 확인'}).click();await page.getByLabel('이메일',{exact:true}).fill('invalid');await page.getByRole('heading',{name:'회원가입',exact:true}).click();expect(await page.getByLabel('이메일',{exact:true}).evaluate((e:HTMLInputElement)=>e.validity.typeMismatch)).toBe(true);
+ await page.getByLabel('이메일',{exact:true}).fill('test@example.com');await expect(page.locator('.account-page').getByRole('alert')).toHaveCount(0);await expect(page.getByRole('button',{name:'인증메일 받기'})).toBeEnabled();
  await page.locator('.app-header').getByRole('link',{name:'로그인',exact:true}).click();await expect(page).toHaveURL(/#login$/);await expect(page.getByLabel('이메일',{exact:true})).toHaveValue('');
- await page.getByRole('button',{name:'이용 요금',exact:true}).click();await page.getByRole('link',{name:'이용권 선택',exact:true}).click();await expect(page).toHaveURL(/#checkout$/);
+ connected=false;await page.getByRole('button',{name:'이용 요금',exact:true}).click();await page.getByRole('link',{name:'이용권 선택',exact:true}).click();await expect(page).toHaveURL(/#checkout$/);
  const checkout=page.locator('.checkout-page');await checkout.getByRole('radio',{name:/묶음형/}).check();await expect(checkout.getByRole('region',{name:'결제 확인'})).toContainText('48,900');
  await checkout.getByLabel('표시 통화').selectOption('USD');await expect(checkout.getByRole('region',{name:'결제 확인'})).toContainText('가격 미정');await expect(checkout.getByRole('region',{name:'결제 확인'})).toContainText('현지 세금 별도');
  await expect(checkout.getByRole('button',{name:'결제 상태 확인 실패',exact:true})).toBeDisabled();await expect(checkout.getByRole('button',{name:'결제 연결 다시 확인',exact:true})).toBeVisible();expect(writes).toEqual([]);
