@@ -9,6 +9,7 @@ import { ApiFailure } from '../generation-service.mjs';
 import { ProviderFailure } from '../openai-image-adapter.mjs';
 import { EmailAuth } from './email-auth-base.mjs';
 import { PasswordAuth } from './password-auth-base.mjs';
+import { boxDimensions } from '../box-dimensions.mjs';
 import { TestCheckout } from './test-checkout-base.mjs';
 import { demoSupport } from '../demo-support.mjs';
 import { AdminApi } from './admin-api-base.mjs';
@@ -22,7 +23,7 @@ finally {
 } }; }
 export function publicOrigin(value) { const u = new URL(value); if (u.protocol !== 'https:' || !u.hostname || u.username || u.password || u.search || u.hash || u.pathname !== '/')
     throw Error('HTTPS_ORIGIN_REQUIRED'); return u.origin; }
-export async function createBetaServer({ store, publicUrl, serviceFactory, now = () => Date.now(), extraOrigins = [], staticDirectory, accounts = {}, dimensionAnalysis = dimensionAnalysisService(), singleBox = singleBoxService() }) {
+export async function createBetaServer({ store, publicUrl, serviceFactory, now = () => Date.now(), extraOrigins = [], staticDirectory, accounts = {}, boxAnalysisOptions = {}, dimensionAnalysis = dimensionAnalysisService(), singleBox = singleBoxService() }) {
     const assets = new Map();
     if (staticDirectory) {
         const scan = (folder, prefix = '') => { for (const item of readdirSync(folder, { withFileTypes: true })) {
@@ -45,6 +46,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, now =
         throw new ApiFailure('RATE_LIMITED', 429); };
     const service = async (user) => { if (!services.has(user.id))
         services.set(user.id, Promise.resolve().then(() => serviceFactory(user))); const instance = await services.get(user.id); instance.adminTestUnlimited = user.role === 'admin'; return instance; };
+    const boxAnalysis = boxDimensions({ ...boxAnalysisOptions, db: store.db, service, now });
     const email = await new EmailAuth().initialize(store, { sendMail: accounts.sendMail, publicOrigin: origin, now });
     const password = await new PasswordAuth().initialize(store, accounts.password, now);
     await password.bootstrapOwner();
@@ -140,8 +142,12 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, now =
                 return;
             }
             const user = await store.authenticate(req.headers.authorization);
+            if (req.method === 'POST' && url.pathname === '/api/box-dimensions') {
+                send(res, 200, await boxAnalysis.request(user, await read(req, 2048)), cors);
+                return;
+            }
             if (req.method === 'GET' && url.pathname === '/api/dimension-analysis') {
-                send(res, 200, dimensionAnalysis.capability(user), cors);
+                send(res, 200, boxAnalysis.capability(user), cors);
                 return;
             }
             if (req.method === 'POST' && url.pathname === '/api/dimension-analysis') {
