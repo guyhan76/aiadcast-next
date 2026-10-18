@@ -86,7 +86,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
    const job=/^\/api\/generations\/([A-Za-z0-9_-]{8,100})(?:\/(accept|reject))?$/.exec(url.pathname);
    if(req.method==='GET'&&job&&!job[2]){const s=service(user);send(res,200,{job:s.job(job[1]),wallet:s.wallet()},cors);return;}
    if(req.method==='POST'&&['/api/generations','/api/assistant'].includes(url.pathname)){const body=await read(req,14_100_000),s=service(user);send(res,url.pathname==='/api/generations'?202:200,await(url.pathname==='/api/generations'?s.create(body):s.assist(body)),cors);return;}
-   if(req.method==='POST'&&job?.[2]){const body=await read(req,2048),s=service(user);send(res,200,job[2]==='accept'?s.accept(job[1],body.artifactId):s.reject(job[1]),cors);return;}
+   if(req.method==='POST'&&job?.[2]){const body=await read(req,2048),s=service(user);send(res,200,job[2]==='accept'?s.accept(job[1],body.artifactId,body.dimensionReview):s.reject(job[1]),cors);return;}
    throw new ApiFailure('NOT_FOUND',404);
   }catch(e){send(res,e instanceof ApiFailure?e.status:500,{error:{code:e instanceof ApiFailure?e.code:'INTERNAL_ERROR'}},cors);}
  });

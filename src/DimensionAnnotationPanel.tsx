@@ -1,3 +1,5 @@
+import {dimensionAxes,axisLabel} from './product';
+import {dimensionLabel} from './dimension-units';
 import {useEffect,useRef,useState} from 'react';
 import type {KeyboardEvent,PointerEvent} from 'react';
 import type {Project} from './model';
@@ -8,7 +10,7 @@ import type {AnnotationAxis,AnnotationProposal,DimensionAnnotation} from './dime
 import {useUiLanguage} from './ui-language';
 import './dimension-annotation.css';
 type Capability={available:boolean;scope:string;reason:string|null};
-export function DimensionAnnotationPanel({project,change}:{project:Project;change:(fn:(p:Project)=>Project)=>void}){
+function VerifiedDimensionAnnotationPanel({project,change}:{project:Project;change:(fn:(p:Project)=>Project)=>void}){
  const {t}=useUiLanguage(),latest=useRef(project);latest.current=project;
  const [cap,setCap]=useState<Capability|null>(null),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[editing,setEditing]=useState<AnnotationProposal|null>(null),[editError,setEditError]=useState('');
  const pending=useRef<AbortController|null>(null),serial=useRef(0),attempted=useRef('');
@@ -54,4 +56,11 @@ export function DimensionAnnotationPanel({project,change}:{project:Project;chang
  {ready&&current?.mode!=='none'&&<><p>{t('숫자는 입력한 규격입니다. 모서리·손잡이 제외 여부와 문구 겹침을 확인해주세요. 위치 수정과 다시 저장에는 분석을 재요청하지 않습니다.','Labels use your saved dimensions. Check edges, handle exclusion and copy overlap. Adjustments and repeat downloads do not request analysis.')}</p><button onClick={()=>{setEditing(structuredClone(current!.proposal!));setEditError('');}}>{t('위치 수정','Adjust positions')}</button></>}
  {editing&&<div className="annotation-editor"><p>{t('점을 끌거나 선택한 점에서 방향키로 이동하세요.','Drag a point or use arrow keys on the focused point.')}</p><div className="annotation-points"><img src={project.generated!.asset.data} alt={t('규격선 위치를 수정할 원본 광고','Original ad for adjusting dimension positions')} draggable={false}/>{annotationAxes.flatMap(axis=>editing.axes[axis].map((pt,end)=><button key={axis+end} className="annotation-handle" style={{left:pt[0]*100+'%',top:pt[1]*100+'%'}} aria-label={`${names[axis]} ${end===0?t('시작점','start'):t('끝점','end')}`} onPointerDown={e=>{e.currentTarget.setPointerCapture(e.pointerId);e.preventDefault();}} onPointerMove={e=>drag(e,axis,end)} onKeyDown={e=>keyMove(e,axis,end)}>{names[axis].slice(0,1)}{end+1}</button>))}</div><button onClick={apply}>{t('위치 적용','Apply positions')}</button><button onClick={()=>setEditing(null)}>{t('수정 취소','Cancel adjustment')}</button>{editError&&<p role="alert">{editError}</p>}</div>}
  {message&&<p role="status">{message}</p>}</section>;
+}
+
+export function DimensionAnnotationPanel(props:{project:Project;change:(fn:(p:Project)=>Project)=>void}){
+ const {t,language}=useUiLanguage(),p=props.project;
+ if(p.dimensionAnnotation?.method!=='ai')return <VerifiedDimensionAnnotationPanel {...props}/>;
+ if(p.dimensionAnnotation.mode==='none')return null;
+ return <section className="dimension-annotation" aria-label={t('AI 자동 규격 표시','AI dimension display')}><h3>{t('AI 자동 규격 표시','AI dimension display')}</h3><p>{p.dimensionAnnotation.mode==='main'?t('본제품에 직접 표시','On the main product'):p.dimensionAnnotation.mode==='inset'?t('같은 제품 작은 사진에 표시','On a small product photo'):t('사진 치수선 없음','No photo arrows')}</p><ul>{dimensionAxes(p.productProfile).map(a=><li key={a}>{axisLabel(a,language,p.productProfile)}: {dimensionLabel(p.dimensions[a],p.dimensions.displayUnit??'mm')}</li>)}</ul><p>{t('광고 이미지 안에 AI가 그린 표시입니다. 자동 측정·정밀 합성·정확도 보증이 아닙니다. 입력 수치와 단위, 각 축의 치수선과 누락 여부를 원본 상품과 비교해 직접 확인해주세요. 수정하려면 입력으로 돌아가세요. 자동으로 재생성하지 않습니다.','These labels were drawn by AI inside the ad, not measured or certified. Compare every value, unit, axis and missing label against your product. Return to the inputs to change the request; regeneration is never automatic.')}</p></section>;
 }
