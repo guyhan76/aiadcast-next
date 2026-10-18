@@ -1,3 +1,4 @@
+import {aiDimensionRequested,projectAiDimensionKey,parseAiDimensionDisplay,validAiDimensionReview,type AiDimensionDisplay,type AiDimensionReview} from './ai-dimension-display.ts';
 import {isTextExample,generationSourceHash} from './generation-input.ts';
 import {parseDimensionPlan,type DimensionPlan} from './dimension-generation.ts';
 import {parsePlanarReport,type PlanarReport} from './planar-proportion.ts';
@@ -12,7 +13,7 @@ import {industryDirections} from './industry.ts';
 import {completeAdKey} from './complete-ad.ts';
 
 export type GeneratedAsset = {
- inputMode?:'text-example';jobId:string;mode:'original'|'creative';sourceHash:string|null;asset:Asset;
+ dimensionDisplay?:AiDimensionDisplay;dimensionReview?:AiDimensionReview;inputMode?:'text-example';jobId:string;mode:'original'|'creative';sourceHash:string|null;asset:Asset;
  role:'background'|'creative';model:string;createdAt:string;specificationKey:string;marketingPlan?:MarketingPlan;
  composition?:'complete-ad'|'photo-plate';compositionKey?:string;dimensionPlan?:DimensionPlan;planarReport?:PlanarReport;planarOriginal?:Asset;
 };
@@ -21,7 +22,7 @@ export type GeneratedAsset = {
 // Keep editable copy, aspect ratio, label visibility, anchors and brief out of it.
 export function generatedCompatibilityKey(p:Project):string {
  return JSON.stringify({
-  sourceHash:generationSourceHash(p),...(isTextExample(p)?{inputMode:'text-example'}:{}),
+  ...(aiDimensionRequested(p)?{aiDimensionInputKey:projectAiDimensionKey(p)}:{}),sourceHash:generationSourceHash(p),...(isTextExample(p)?{inputMode:'text-example'}:{}),
   ...(p.generation.dimensionBased?{dimensionBased:true,dimensionVariant:p.generation.dimensionVariant??'',dimensionBasis:p.generation.dimensionBasis??'outer-body'}:{}),
   ...(p.generation.planarSourceHash?{planarSourceHash:p.generation.planarSourceHash,dimensionVariant:p.generation.dimensionVariant??''}:{}),
   ...(!isTextExample(p)&&p.references?.length?{referenceHashes:p.references.map(a=>a.sha256)}:{}),
@@ -51,6 +52,7 @@ export function hasUsableOriginal(p:Project):boolean{
 // A temporary complete ad for review and the accepted project use exactly the same composition.
 // This does not persist or charge a provider result, and never replaces source bytes.
 export function projectWithGenerated(p:Project,result:GeneratedAsset):Project {
+ if(aiDimensionRequested(p)?result.dimensionDisplay?.inputKey!==projectAiDimensionKey(p):!!result.dimensionDisplay)throw Error('STALE_PROJECT');
  if(result.inputMode!==(isTextExample(p)?'text-example':undefined))throw Error('STALE_PROJECT');
  if(result.sourceHash!==generationSourceHash(p)||result.mode!==p.generation.mode
   ||result.specificationKey!==generatedCompatibilityKey(p)||result.role!==(result.mode==='original'?'background':'creative'))throw Error('STALE_PROJECT');
@@ -106,9 +108,11 @@ export async function parseGenerated(value:unknown,readAsset:(value:unknown)=>Pr
  if(details.planarSourceHash&&!planarReport||planarOriginal&&!planarReport)throw Error('INVALID_PLANAR_REPORT');
  if(planarReport&&(details.planarSourceHash!==r.sourceHash||details.dimensionVariant!==(planarReport.variantLabel??'')))throw Error('INVALID_PLANAR_REPORT');
  if(planarReport&&(!planarOriginal||planarOriginal.sha256!==planarReport.originalHash))throw Error('INVALID_PLANAR_REPORT');
+ const dimensionDisplay=await parseAiDimensionDisplay(r.dimensionDisplay);if(dimensionDisplay&&(!('aiDimensionInputKey' in details)||details.aiDimensionInputKey!==dimensionDisplay.inputKey||r.composition!=='complete-ad'))throw Error('INVALID_AI_DIMENSION_DISPLAY');if('aiDimensionInputKey' in details&&!dimensionDisplay)throw Error('INVALID_AI_DIMENSION_DISPLAY');
  const asset=await readAsset(r.asset);
  if(!asset)throw Error('생성 결과 이미지가 누락되었습니다.');
+ if(r.dimensionReview&&(!dimensionDisplay||!validAiDimensionReview(r.dimensionReview,dimensionDisplay,asset.sha256)))throw Error('INVALID_AI_DIMENSION_REVIEW');
  if(planarReport?.outputRatio&&Math.abs(asset.width/asset.height-planarReport.outputRatio)>1e-9)throw Error('INVALID_PLANAR_REPORT');
- return {...(r.inputMode?{inputMode:r.inputMode}:{}),...(dimensionPlan?{dimensionPlan}:{}),...(planarReport?{planarReport,planarOriginal:planarOriginal!}:{}),jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey,...(marketingPlan?{marketingPlan}:{}),...(r.composition?{composition:r.composition}:{}),...(compositionKey?{compositionKey}:{})};
+ return {...(dimensionDisplay?{dimensionDisplay}:{}),...(r.dimensionReview?{dimensionReview:r.dimensionReview}:{}),...(r.inputMode?{inputMode:r.inputMode}:{}),...(dimensionPlan?{dimensionPlan}:{}),...(planarReport?{planarReport,planarOriginal:planarOriginal!}:{}),jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey,...(marketingPlan?{marketingPlan}:{}),...(r.composition?{composition:r.composition}:{}),...(compositionKey?{compositionKey}:{})};
 }
 

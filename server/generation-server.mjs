@@ -66,7 +66,7 @@ export function createGenerationHttpServer({ service, allowedOrigins = DEFAULT_O
         inFlightBodies++;
         try { body = await readJson(req); } finally { inFlightBodies--; }
         if (url.pathname === '/api/generations') { sendJson(res, 202, await service.create(body), origin); return; }
-        if (route?.[2] === 'accept') { sendJson(res, 200, service.accept(route[1], body?.artifactId), origin); return; }
+        if (route?.[2] === 'accept') { sendJson(res, 200, service.accept(route[1], body?.artifactId, body?.dimensionReview), origin); return; }
         if (route?.[2] === 'reject') { sendJson(res, 200, service.reject(route[1]), origin); return; }
         if (url.pathname === '/api/assistant' && typeof service.assist === 'function') { sendJson(res, 200, await service.assist(body), origin); return; }
       }

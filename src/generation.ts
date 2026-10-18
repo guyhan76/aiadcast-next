@@ -1,3 +1,4 @@
+import {aiDimensionRequested} from './ai-dimension-display.ts';
 import {isTextExample,generationContext,textExampleGeometryError} from './generation-input.ts';
 import {dimensionControlErrors} from './dimension-control.ts';
 import {makeDimensionPlan} from './dimension-generation.ts';
@@ -35,6 +36,7 @@ export function generationIssues(p:Project):string[] {
   const axes=dimensionAxes(p.productProfile);const errors:string[]=[];
   if(p.generation.dimensionBased&&(p.generation.mode!=='creative'||!axes.length||!p.product||photoRole(p,p.product.sha256)!=='subject'||p.generation.dimensionBasis==='garment-flat'&&p.productProfile.specType!=='flat'))errors.push('규격 기반 생성은 실제 상품 사진과 치수 기준에 맞는 숫자 규격이 필요합니다.');
   if(p.generation.planarSourceHash&&(!p.generation.dimensionBased||p.generation.dimensionBasis&&p.generation.dimensionBasis!=='outer-body'||p.generation.mode!=='creative'||p.productProfile.specType!=='flat'||p.generation.planarSourceHash!==p.product?.sha256||photoRole(p,p.generation.planarSourceHash)!=='subject'))errors.push('평면 비례 자동 적용은 현재 실제 상품의 정면 사진과 가로·세로 규격을 확인한 경우에만 사용합니다.');
+  if(aiDimensionRequested(p)&&(!creative||!p.dimensions.visible||!axes.length||!p.product||photoRole(p,p.product.sha256)!=='subject'||p.dimensionControl||p.generation.planarSourceHash||!p.campaign?.creative))errors.push('AI 자동 규격 표시는 실제 상품 사진·입력 규격과 AI 새 광고 모드가 필요합니다. 평면 형상 제어와 함께 사용하지 않습니다.');
   const projectionError=boxProjectionError(p);if(projectionError)errors.push(projectionError);
   const service=isServiceCategory(p.productProfile.category);
   if(!p.product&&!service&&!isTextExample(p))errors.push(creative?'참고할 상품 사진을 추가해주세요.':'원본 상품 사진을 추가해주세요.');
@@ -64,6 +66,7 @@ export function buildGenerationRequest(p:Project) {
     ...(generation.dimensionBased?{dimensionPlan:makeDimensionPlan({sourceHash:p.product!.sha256,variantLabel:generation.dimensionVariant,basis:generation.dimensionBasis,specType:p.productProfile.specType,specifications})}:{}),
     ...(generation.planarSourceHash?{proportionControl:{kind:'flat-front-v1',confirmedSourceHash:generation.planarSourceHash,variantLabel:generation.dimensionVariant??''}}:{}),
     ...(isTextExample(p)?{inputMode:'text-example' as const}:{}),
+    ...(aiDimensionRequested(p)?{dimensionDisplay:{version:1 as const,method:'ai' as const,layout:p.dimensionAnnotation!.mode as 'main'|'inset'}}:{}),
     version:1,mode:generation.mode,operation:appearanceEdit?'image-region':creative?(service?'image-ad-creative':'image-product-concept'):(service?'compose-ad':'compose-original'),
     source:p.product?{sha256:p.product.sha256,role:appearanceEdit?'appearance-edit-reference':creative?'visual-reference':service?'protected-visual':'protected-product',purpose:photoRole(p,p.product.sha256)}:null,
     references:(p.references??[]).map(a=>({sha256:a.sha256,role:'additional-product-reference',purpose:photoRole(p,a.sha256)})),
@@ -75,7 +78,7 @@ export function buildGenerationRequest(p:Project) {
     campaign,creativeDirection:p.campaign?.creative?creativeContract(p):null,attributes:[...(p.productProfile.material?[{name:service?'서비스 내용':'소재',value:p.productProfile.material}]:[]),...campaign.attributes],
     marketingPlan,target:{...marketingPlan.target,method:marketingPlan.method},contentType:campaign.contentType,specificationContract:specificationContract(p),
     specifications:dimensionAxes(p.productProfile).map(axis=>({axis:axis==='width'&&p.productProfile.specType==='cylindrical'?'diameter':axis,value:p.dimensions[axis],unit:'mm'})),
-    output:{format:p.format,width:format.width,height:format.height,locale:p.locale,displayUnit:p.dimensions.displayUnit??'mm',compositionKey:completeAdKey(p),showDimensions:(!p.dimensionAnnotation||p.dimensionAnnotation.mode==='none')&&p.dimensions.visible&&dimensionAxes(p.productProfile).length>0,showDimensionLines:p.dimensions.visible&&p.dimensions.lines&&dimensionAxes(p.productProfile).length>0},
+    output:{format:p.format,width:format.width,height:format.height,locale:p.locale,displayUnit:p.dimensions.displayUnit??'mm',compositionKey:completeAdKey(p),showDimensions:(aiDimensionRequested(p)||!p.dimensionAnnotation||p.dimensionAnnotation.mode==='none')&&p.dimensions.visible&&dimensionAxes(p.productProfile).length>0,showDimensionLines:p.dimensions.visible&&(aiDimensionRequested(p)||p.dimensions.lines)&&dimensionAxes(p.productProfile).length>0},
     claims:{sameProduct:!creative&&!appearanceEdit&&!service&&!!p.product&&!boxProjectionActive(p),exactGeometry:false},
   };
 }

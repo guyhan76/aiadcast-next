@@ -255,7 +255,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, now =
             }
             if (req.method === 'POST' && job?.[2]) {
                 const body = await read(req, 2048), s = await service(user);
-                send(res, 200, job[2] === 'accept' ? await s.accept(job[1], body.artifactId) : await s.reject(job[1]), cors);
+                send(res, 200, job[2] === 'accept' ? await s.accept(job[1], body.artifactId, body.dimensionReview) : await s.reject(job[1]), cors);
                 return;
             }
             throw new ApiFailure('NOT_FOUND', 404);

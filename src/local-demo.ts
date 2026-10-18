@@ -57,7 +57,7 @@ async function handle(path:string,body:any,session:ReturnType<typeof betaSession
  if(path==='/api/generations'&&body){
   const old=Object.values(account!.jobs).find(j=>j.requestId===body.requestId);if(old)return {job:old,wallet:wallet(account!)};
   if(wallet(account!).available<1)failure('NO_TEST_CREDITS');
-  const id=crypto.randomUUID(),request=body.request;if(!request||!['original','creative'].includes(request.mode))failure('INVALID_REQUEST');
+  const id=crypto.randomUUID(),request=body.request;if(request?.dimensionDisplay)failure('AI_DIMENSION_DISPLAY_UNAVAILABLE');if(!request||!['original','creative'].includes(request.mode))failure('INVALID_REQUEST');
   const job:GenerationJob={id,projectId:body.projectId,requestId:body.requestId,state:'running',mode:request.mode,sourceHash:body.source?.sha256??null,createdAt:new Date().toISOString(),model:'local-demo.composition',artifactId:null,artifact:null,errorCode:null};account!.jobs[id]=job;await save(store);
   try{const asset=await composition(request.mode==='original'?null:body.source??null,request.productProfile?.category??'',request.mode==='creative'&&!body.source);const latest=await read(),a=latest.users[user!],j=a.jobs[id];j.state='ready';j.artifactId=asset.sha256;j.artifact={id:asset.sha256,sha256:asset.sha256,dataUrl:asset.data,width:asset.width,height:asset.height,role:request.mode==='original'?'background':'creative'};await save(latest);return {job:j,wallet:wallet(a)};}
   catch(e){const latest=await read();latest.users[user!].jobs[id].state='failed';await save(latest);throw e;}
