@@ -1,4 +1,4 @@
-import {parseAnnotation,type DimensionAnnotation} from './dimension-annotation.ts';
+import {annotationIncomplete,parseAnnotation,type DimensionAnnotation} from './dimension-annotation.ts';
 import type {PhotoView} from './automatic-proportion.ts';
 import {parsePhotoRoles,photoRole,type PhotoRole} from './photo-roles.ts';
 import {validMillimeters,type DimensionUnit} from './dimension-units.ts';
@@ -54,6 +54,7 @@ export async function imageFile(file:File):Promise<Asset> {
 export async function loadImage(data:string):Promise<HTMLImageElement> {const img=new Image();img.src=data;await img.decode();return img;}
 export function exportErrors(p:Project) {
  const errors:string[]=[];
+ const annotationError=annotationIncomplete(p);if(annotationError)errors.push(annotationError);
  const projectionError=boxProjectionError(p);if(projectionError)errors.push(projectionError);
  if(p.generation?.mode==='creative'&&!hasUsableCreative(p))errors.push('새 광고 결과가 아직 준비되지 않았거나 원본·규격·문구·연락처가 변경되었습니다. AI 연결 후 현재 조건으로 생성하고 결과를 승인해주세요.');
  if(!p.product&&!isServiceCategory(p.productProfile.category))errors.push('원본 상품 사진을 먼저 추가해주세요.');

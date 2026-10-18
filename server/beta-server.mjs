@@ -1,3 +1,4 @@
+import {singleBoxService} from './vision-evaluation/single-box-service.mjs';
 import {dimensionAnalysisService} from './vision-evaluation/service.mjs';
 import {createServer} from 'node:http';
 import {readFileSync,readdirSync} from 'node:fs';
@@ -15,7 +16,7 @@ import {AdminApi} from './admin-api.mjs';
 export const ANDROID_ORIGIN='https://appassets.androidplatform.net';
 export function providerGate(max=2){let active=0;return async task=>{if(active>=max)throw new ProviderFailure('PROVIDER_BUSY',{uncertain:false});active++;try{return await task();}finally{active--;}};}
 export function publicOrigin(value){const u=new URL(value);if(u.protocol!=='https:'||!u.hostname||u.username||u.password||u.search||u.hash||u.pathname!=='/')throw Error('HTTPS_ORIGIN_REQUIRED');return u.origin;}
-export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.now(),extraOrigins=[],staticDirectory,accounts={},dimensionAnalysis=dimensionAnalysisService()}) {
+export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.now(),extraOrigins=[],staticDirectory,accounts={},dimensionAnalysis=dimensionAnalysisService(),singleBox=singleBoxService()}) {
  const assets=new Map();
  if(staticDirectory){const scan=(folder,prefix='')=>{for(const item of readdirSync(folder,{withFileTypes:true})){const name=prefix+item.name;if(item.isDirectory())scan(join(folder,item.name),name+'/');else assets.set('/'+name,readFileSync(join(folder,item.name)));}};scan(staticDirectory);}
  const origin=publicOrigin(publicUrl),allowed=new Set([origin,ANDROID_ORIGIN,...extraOrigins.map(publicOrigin)]),services=new Map();
@@ -57,6 +58,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
    if(req.method==='POST'&&url.pathname==='/api/dimension-analysis'){throw new ApiFailure('REFERENCE_EVALUATION_ONLY',403);}
    if(url.pathname.startsWith('/api/admin/')){
     admin.require(user);
+    if(url.pathname==='/api/admin/single-box-evaluation'){if(req.method==='GET'){send(res,200,await singleBox.status(user,url.searchParams.get('requestId')??undefined),cors);return;}if(req.method==='POST'){send(res,200,await singleBox.analyze(await read(req,14100000),user),cors);return;}}
     if(url.pathname==='/api/admin/dimension-evaluation'){if(req.method==='GET'){send(res,200,await dimensionAnalysis.status(user,url.searchParams.get('requestId')??undefined),cors);return;}if(req.method==='POST'){send(res,200,await dimensionAnalysis.analyze(await read(req,14_100_000),user),cors);return;}}
     if(req.method==='POST'&&url.pathname==='/api/admin/october-budget'){send(res,200,admin.activateOctoberBudget(user,await read(req,1024)),cors);return;}
     if(req.method==='GET'&&url.pathname==='/api/admin/overview'){send(res,200,admin.overview(user),cors);return;}
@@ -85,7 +87,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
   }catch(e){send(res,e instanceof ApiFailure?e.status:500,{error:{code:e instanceof ApiFailure?e.code:'INTERNAL_ERROR'}},cors);}
  });
  server.requestTimeout=30_000;server.headersTimeout=10_000;server.maxConnections=100;
- return {server,close:async()=>{await new Promise(resolve=>server.close(resolve));await Promise.all([...services.values()].map(s=>s.close()));services.clear();await dimensionAnalysis.close();}};
+ return {server,close:async()=>{await new Promise(resolve=>server.close(resolve));await Promise.all([...services.values()].map(s=>s.close()));services.clear();await dimensionAnalysis.close();await singleBox.close();}};
 }
 export function betaConfig(env=process.env){
  const publicUrl=publicOrigin(env.AIADCAST_BETA_PUBLIC_ORIGIN??env.RENDER_EXTERNAL_URL??''),directory=resolve(env.AIADCAST_BETA_DATA_DIR??'release/beta-runtime');

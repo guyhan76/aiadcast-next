@@ -66,7 +66,7 @@ export function buildGenerationRequest(p:Project) {
     campaign,creativeDirection:p.campaign?.creative?creativeContract(p):null,attributes:[...(p.productProfile.material?[{name:service?'서비스 내용':'소재',value:p.productProfile.material}]:[]),...campaign.attributes],
     marketingPlan,target:{...marketingPlan.target,method:marketingPlan.method},contentType:campaign.contentType,specificationContract:specificationContract(p),
     specifications:dimensionAxes(p.productProfile).map(axis=>({axis:axis==='width'&&p.productProfile.specType==='cylindrical'?'diameter':axis,value:p.dimensions[axis],unit:'mm'})),
-    output:{format:p.format,width:format.width,height:format.height,locale:p.locale,displayUnit:p.dimensions.displayUnit??'mm',compositionKey:completeAdKey(p),showDimensions:p.dimensions.visible&&dimensionAxes(p.productProfile).length>0,showDimensionLines:p.dimensions.visible&&p.dimensions.lines&&dimensionAxes(p.productProfile).length>0},
+    output:{format:p.format,width:format.width,height:format.height,locale:p.locale,displayUnit:p.dimensions.displayUnit??'mm',compositionKey:completeAdKey(p),showDimensions:(!p.dimensionAnnotation||p.dimensionAnnotation.mode==='none')&&p.dimensions.visible&&dimensionAxes(p.productProfile).length>0,showDimensionLines:p.dimensions.visible&&p.dimensions.lines&&dimensionAxes(p.productProfile).length>0},
     claims:{sameProduct:!creative&&!appearanceEdit&&!service&&!!p.product&&!boxProjectionActive(p),exactGeometry:false},
   };
 }

@@ -265,3 +265,30 @@ test('reference evaluation GET is read-only; duplicate submissions and restarts 
   assert.equal((await restarted.status(admin)).available,false);await assert.rejects(ledger.reserve('22932.jpg',hash),/RECONCILE_REQUIRED/);
  }finally{await pool.end();}
 });
+
+test('single approved box has its own one-call durable ledger, no GET writes and no reset of reference allowance',async()=>{
+ const {SingleBoxLedger,readSingleBoxEvaluation}=await import('../server/vision-evaluation/single-box-ledger.mjs');
+ const {CloudVisionLedger}=await import('../server/vision-evaluation/cloud-ledger.mjs');
+ const {BOX_REFERENCE}=await import('../server/vision-evaluation/single-box-approval.mjs');
+ const pool=await pgPool();try{
+  const db=await new PostgresDatabase(pool,'aiadcast_accounts').initialize();
+  assert.equal((await readSingleBoxEvaluation(db,'admin-one')).ledgerExists,false);
+  assert.equal((await db.prepare("SELECT to_regclass('aiadcast_accounts.dimension_analysis_calls') AS name").get()).name,null);
+  const original=await new CloudVisionLedger().initialize(db),oldId=await original.reserve('22932.jpg',hash);await original.settle(oldId,1000);
+  const a=await new SingleBoxLedger().initialize(db),b=await new SingleBoxLedger().initialize(db),request={id:'single_box_request_0001',actor:'admin-one'};
+  await assert.rejects(a.reserve('22986.png',hash,request),/UNAUTHORIZED_IMAGE/);
+  const runs=await Promise.allSettled([a.reserve('22986.png',BOX_REFERENCE.sha256,request),b.reserve('22986.png',BOX_REFERENCE.sha256,{...request,id:'single_box_request_0002'})]);assert.equal(runs.filter(r=>r.status==='fulfilled').length,1);
+  const row=(await a.rows())[0];assert.equal(row.hold,30000);await a.settle(row.id,null);await a.finish(row.actor_id,row.request_id,{state:'failed',reason:'COST_RECONCILIATION_REQUIRED'});
+  const restarted=await new SingleBoxLedger().initialize(db);await assert.rejects(restarted.reserve('22986.png',BOX_REFERENCE.sha256,{...request,id:'single_box_request_0003'}),/RECONCILE_REQUIRED/);
+  const status=await readSingleBoxEvaluation(db,row.actor_id,row.request_id);assert.equal(status.remainingCalls,0);assert.equal(status.unresolvedCalls,1);assert.equal(status.allowanceUsedMicros,30000);assert.equal(status.request.reason,'COST_RECONCILIATION_REQUIRED');
+  assert.equal((await original.rows()).length,1);await original.reserve('22935.jpg',hash);assert.equal((await restarted.rows()).length,1);
+ }finally{await pool.end();}
+});
+
+test('settled single-box approval cannot spend its unused balance on a second analysis',async()=>{
+ const {SingleBoxLedger,readSingleBoxEvaluation}=await import('../server/vision-evaluation/single-box-ledger.mjs');const {BOX_REFERENCE}=await import('../server/vision-evaluation/single-box-approval.mjs');
+ const pool=await pgPool();try{const db=await new PostgresDatabase(pool,'aiadcast_accounts').initialize(),ledger=await new SingleBoxLedger().initialize(db),actor='single-admin',id='single_known_request_0001';
+ const call=await ledger.reserve('22986.png',BOX_REFERENCE.sha256,{id,actor});await ledger.settle(call,1000);await ledger.finish(actor,id,{requestId:id,sourceHash:BOX_REFERENCE.sha256,state:'ready',verified:false});
+ const restored=await new SingleBoxLedger().initialize(db);assert.equal((await readSingleBoxEvaluation(db,actor,id)).request.state,'ready');await assert.rejects(restored.reserve('22986.png',BOX_REFERENCE.sha256,{id:'single_known_request_0002',actor}),/APPROVAL_LIMIT/);assert.equal((await restored.rows()).length,1);
+ }finally{await pool.end();}
+});

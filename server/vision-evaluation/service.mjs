@@ -5,7 +5,7 @@ import {APPROVED_HASHES,APPROVED_REFERENCES} from './references.mjs';
 import {validateProposal} from './overlay.mjs';
 import {requestView} from './cloud-ledger.mjs';
 const validId=id=>typeof id==='string'&&/^[a-zA-Z0-9_-]{16,100}$/.test(id);
-export function dimensionAnalysisService({apiKey,ledgerFactory,statusReader,gate=fn=>fn(),analyze=analyzeApprovedImage,approvedHashes=APPROVED_HASHES,references=APPROVED_REFERENCES,evaluationEnabled=false}={}){
+export function dimensionAnalysisService({apiKey,ledgerFactory,statusReader,gate=fn=>fn(),analyze=analyzeApprovedImage,approvedHashes=APPROVED_HASHES,references=APPROVED_REFERENCES,evaluationEnabled=false,limitCalls=10,limitMicros=300000}={}){
  let ledger;
  const allowed=user=>Boolean(evaluationEnabled&&apiKey&&ledgerFactory&&user?.role==='admin'&&Object.values(approvedHashes).some(Boolean));
  const admin=user=>{if(user?.role!=='admin')throw new ApiFailure('EVALUATION_ADMIN_ONLY',403);};
@@ -15,8 +15,8 @@ export function dimensionAnalysisService({apiKey,ledgerFactory,statusReader,gate
   async status(user,requestId){
    admin(user);if(requestId!==undefined&&!validId(requestId))throw new ApiFailure('INVALID_REQUEST_ID',400);
    const budget=statusReader?await statusReader(user.id,requestId):null;
-   const available=allowed(user)&&!!budget&&!(budget.unresolvedCalls>0)&&budget.remainingCalls>0&&(budget.allowanceUsedMicros??0)+30000<=300000;
-   return {available,providerConfigured:Boolean(apiKey),generalAnalysisEnabled:false,limitCalls:10,limitMicros:300000,perCallHoldMicros:30000,references:references.map(({name,bytes,sha256,dimensions,basis,label})=>({name,bytes,sha256,dimensions,basis,label})),budget};
+   const available=allowed(user)&&!!budget&&!(budget.unresolvedCalls>0)&&budget.remainingCalls>0&&(budget.allowanceUsedMicros??0)+30000<=limitMicros;
+   return {available,providerConfigured:Boolean(apiKey),generalAnalysisEnabled:false,limitCalls,limitMicros,perCallHoldMicros:30000,references:references.map(({name,bytes,sha256,dimensions,basis,label})=>({name,bytes,sha256,dimensions,basis,label})),budget};
   },
   async analyze(body,user){
    admin(user);if(!allowed(user))throw new ApiFailure('DIMENSION_ANALYSIS_DISABLED',409);
