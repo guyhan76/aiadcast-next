@@ -1,4 +1,4 @@
-import {VersionBadge} from './AppVersionInfo';
+import {AppVersionInfo,VersionBadge} from './AppVersionInfo';
 import {CreditsPage} from './CreditsPage';
 import {apiIdentity} from './api-origin';
 import {readSession} from './account-client';
@@ -125,7 +125,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
    {page==='portfolio'&&<div className="app-page"><PortfolioPage/></div>}
    <div hidden={page!=='create'} className="app-page"><CreateCampaign active={page==='create'} key={wizardKey} onReady={ready} draft={wizardSeed} onDraft={setWizard}/></div>
    <div hidden={page!=='projects'} className="app-page projects-page"><ProjectLibrary items={libraryItems} error={libraryError} onNew={begin} onOpen={p=>void open(p)}/></div>
-   <div hidden={page!=='guide'} className="app-page guide-page"><UsageGuide onNew={begin}/>{page==='guide'&&<div className="app-version-bar"><VersionBadge/></div>}</div>
+   <div hidden={page!=='guide'} className="app-page guide-page"><UsageGuide onNew={begin}/>{page==='guide'&&<><div className="app-version-bar"><VersionBadge/></div>{new URLSearchParams(location.search).get('support')==='1'&&<AppVersionInfo/>}</>}</div>
    {(page==='signup'||page==='login')&&<div className="app-page"><EmailAccountPage key={page} mode={page} preserve={preserve} returnPage={returnPage}/></div>}
    {page==='admin'&&<div className="app-page"><AdminPage backHref={adminBack.current}/></div>}
    {page==='credits'&&<div className="app-page"><CreditsPage returnPage={creditsBack.current}/></div>}

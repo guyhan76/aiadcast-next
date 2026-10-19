@@ -6,7 +6,7 @@ import {useUiLanguage} from './ui-language';
 import './app-version.css';
 type ServerBuild={schemaVersion:1;service:'aiadcast-next';version:string;commit:string|null};
 type NativeBuild={webBuildDigest:string;packagedAt:string};
-export function VersionBadge(){const native=useNativeVersion(),{t}=useUiLanguage();return <a className="version-badge" href="#credits" aria-label={t('앱·서버 버전 보기','View app and server versions')}>{native?`${t('앱','App')} ${native.versionName} · ${native.versionCode}`:`${t('웹','Web')} ${webBuild.version}`}</a>;}
+export function VersionBadge(){const native=useNativeVersion(),{t}=useUiLanguage();return <p className="version-badge" aria-label={t('앱 버전','App version')}>{native?`${t('앱','App')} ${native.versionName} · ${native.versionCode}`:`${t('웹','Web')} ${webBuild.version}`}</p>;}
 export function AppVersionInfo(){
  const {t}=useUiLanguage(),native=useNativeVersion(),[build,setBuild]=useState<NativeBuild>(),[server,setServer]=useState<ServerBuild>(),[busy,setBusy]=useState(false),[checked,setChecked]=useState(''),[failure,setFailure]=useState(''),request=useRef<AbortController|null>(null);
  async function refresh(){if(request.current)return;setServer(undefined);setChecked('');setFailure('');if(offlineDemo())return;const controller=new AbortController();request.current=controller;setBusy(true);const timer=setTimeout(()=>controller.abort(),10000);
