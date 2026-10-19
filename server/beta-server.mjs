@@ -1,3 +1,4 @@
+import {serverBuild} from './build-info.mjs';
 import {singleBoxService} from './vision-evaluation/single-box-service.mjs';
 import {dimensionAnalysisService} from './vision-evaluation/service.mjs';
 import {createServer} from 'node:http';
@@ -39,6 +40,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,now=()=>Date.no
    limit(['/api/auth/login','/api/auth/test/signup','/api/auth/test/login','/api/auth/email/request','/api/auth/email/verify','/api/checkout/confirm','/api/checkout/launch'].includes(url.pathname));
    if(req.headers.origin&&!cors)throw new ApiFailure('ORIGIN_NOT_ALLOWED',403);
    if(req.method==='OPTIONS'){if(!cors)throw new ApiFailure('ORIGIN_NOT_ALLOWED',403);res.writeHead(204,{'Access-Control-Allow-Origin':cors,'Access-Control-Allow-Methods':'GET,POST,OPTIONS','Access-Control-Allow-Headers':'Authorization,Content-Type,X-Aiadcast-Client','Vary':'Origin'});res.end();return;}
+   if(req.method==='GET'&&url.pathname==='/api/version'){send(res,200,serverBuild,cors);return;}
    if(req.method==='GET'&&url.pathname==='/api/health'){send(res,200,{mode:'invite-beta',commercialReady:false},cors);return;}
    if(req.method==='POST'&&!cors)throw new ApiFailure('ORIGIN_REQUIRED',403);
    if(req.method==='POST'&&req.headers['x-aiadcast-client']!=='local-studio')throw new ApiFailure('CLIENT_HEADER_REQUIRED',403);
