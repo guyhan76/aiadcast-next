@@ -22,6 +22,6 @@ for(const failure of ['http','malformed','timeout'] as const)test(`checkout ${fa
  if(failure==='timeout')await page.clock.fastForward(11000);
  await expect(page.getByRole('button',{name:'결제 상태 확인 실패',exact:true})).toBeDisabled();await expect(page.locator('#checkout-availability')).toContainText('확인하지 못했습니다');
  recovered=true;release();await page.getByRole('button',{name:'결제 연결 다시 확인',exact:true}).click();
- await expect(page.getByRole('button',{name:'이메일로 로그인하고 계속',exact:true})).toBeEnabled();await expect(page.locator('#checkout-availability')).toContainText('Toss 테스트 결제');
+ await expect(page.getByRole('button',{name:'이메일로 로그인하고 계속',exact:true})).toBeEnabled();await expect(page.locator('#checkout-availability')).toContainText('시연용 · 실제 청구 없음');
  await expect(page.getByRole('radio',{name:/묶음형/})).toBeChecked();expect(posts).toBe(0);
 });
