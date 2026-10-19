@@ -1,3 +1,4 @@
+import {attachSubjectPhoto} from './helpers/subject-photo';
 import {test,expect} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
 
@@ -31,7 +32,7 @@ test.describe('Independent Korean and English interface',()=>{
   await page.getByRole('combobox',{name:'App language',exact:true}).selectOption('ko');
   await page.getByRole('combobox',{name:'앱 언어',exact:true}).selectOption('en');
   await expect(wizard.getByRole('combobox',{name:'Ad copy language',exact:true})).toHaveValue('ko');
-  await wizard.getByRole('button',{name:'Generate ad',exact:true}).click();
+  await attachSubjectPhoto(page);await wizard.getByRole('button',{name:'Generate ad',exact:true}).click();
   await expect(page).toHaveURL(/#studio$/);await page.goto('/#editor');
   await page.locator('#publishing-tools > summary').click();const download=page.waitForEvent('download');
   await page.getByRole('button',{name:'Save campaign brief',exact:true}).click();

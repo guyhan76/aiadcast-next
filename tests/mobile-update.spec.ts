@@ -15,7 +15,7 @@ test('a single multi-file selection keeps every view and exposes dimensions besi
  await wizard.getByLabel('높이 mm',{exact:true}).fill('210');
 
  await page.reload();await expect(wizard.locator('.reference-photos img')).toHaveCount(3);
- await wizard.getByRole('button',{name:'실사 그대로 사용',exact:true}).click();await wizard.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page).toHaveURL(/#studio$/);await page.goto('/#editor');
+ await wizard.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page).toHaveURL(/#studio$/);await page.goto('/#editor');await page.locator('.editor-details > summary').click();await page.getByRole('radio',{name:'사진과 문구로 직접 만들기',exact:true}).check();await page.locator('.editor-details > summary').click();
  const status=page.getByRole('region',{name:'규격 적용 확인',exact:true});
  await expect(status).toContainText('가로 340 mm × 세로 250 mm × 높이 210 mm');
  await expect(status).toContainText('원본 사진 형상 유지');await expect(status).toContainText('실물 비례: 검증 전');

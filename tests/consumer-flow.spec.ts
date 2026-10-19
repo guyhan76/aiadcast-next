@@ -21,7 +21,7 @@ async function mocks(page:Page,{auth=false,enabled=true,admin=false,v2=false}: {
  return send({error:{code:'TEST_ROUTE_UNAVAILABLE'}},404);
  });return state;
 }
-async function details(page:Page,service=true){await page.goto('/#create');const form=page.locator('.consumer-create');await form.getByLabel('산업 선택').selectOption(service?'lodging':'boxes');await form.getByLabel(service?'서비스명':'상품명',{exact:true}).fill(service?'숲속 숙소':'우체국3호박스');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill(service?'숲 전망의 객실, 1박 120,000원':'B골, 크라프트재질, 튼튼하고 습기에 강하다. 빠른배송. 10개 19,800원');return form;}
+async function details(page:Page,service=true){await page.goto('/#create');const form=page.locator('.consumer-create');await form.getByLabel('산업 선택').selectOption(service?'lodging':'boxes');await form.getByLabel(service?'서비스명':'상품명',{exact:true}).fill(service?'숲속 숙소':'우체국3호박스');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill(service?'숲 전망의 객실, 1박 120,000원':'B골, 크라프트재질, 튼튼하고 습기에 강하다. 빠른배송. 10개 19,800원');if(service)await form.getByLabel('참조사진 추가').setInputFiles({name:'service.png',mimeType:'image/png',buffer:first});return form;}
 
 test('eight inputs submit actual generation request once and a complete accepted PNG can be saved',async({page})=>{
  const state=await mocks(page),form=await details(page,false);
@@ -41,8 +41,8 @@ test('eight inputs submit actual generation request once and a complete accepted
  const save=result.getByRole('button',{name:'이미지 저장 · 공유',exact:true});await expect(save).toBeEnabled();await expect(result.getByText('앱에서는 파일 저장 또는 다른 앱 공유를 선택합니다.',{exact:false})).toHaveCount(0);const pending=page.waitForEvent('download');await save.click();expect((await pending).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
  await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('textbox',{name:'광고 제목',exact:true})).toHaveValue('보내는 마음까지, 든든하게.');
 });
-test('photo-free service AI copy requests no dimensions and generates automatically after submit',async({page})=>{
- const state=await mocks(page),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(state.posts).toBe(1);expect(state.body.source).toBeNull();expect(state.body.request.specifications).toEqual([]);expect(state.body.request.output.showDimensions).toBe(false);expect(state.body.request.creativeDirection.copyMode).toBe('ai');
+test('photo-backed service AI copy requests no dimensions and generates automatically after submit',async({page})=>{
+ const state=await mocks(page),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(state.posts).toBe(1);expect(state.body.source.sha256).toBe(createHash('sha256').update(first).digest('hex'));expect(state.body.request.specifications).toEqual([]);expect(state.body.request.output.showDimensions).toBe(false);expect(state.body.request.creativeDirection.copyMode).toBe('ai');
 });
 test('unauthenticated creation keeps details and offers visible login rather than a disabled unexplained generator',async({page})=>{
  const state=await mocks(page,{auth:true}),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByRole('link',{name:'로그인하고 생성하기',exact:true})).toBeVisible();expect(state.posts).toBe(0);
@@ -67,19 +67,19 @@ test('photo purpose survives draft reload and travels with the correct uploaded 
  expect(state.body.references[0].sha256).toBe(createHash('sha256').update(second).digest('hex'));
 });
 
-test('original photo choice reaches review acceptance and download without opening the advanced editor',async({page})=>{
+test('single photo reference path reaches review acceptance and download without opening the advanced editor',async({page})=>{
  const state=await mocks(page),form=await details(page,false);
  await form.getByLabel('참조사진 추가').setInputFiles({name:'actual.png',mimeType:'image/png',buffer:first});
  await expect(form.locator('.reference-item')).toHaveCount(1);
- await form.getByRole('button',{name:'실사 그대로 사용',exact:true}).click();
+ await expect(form.getByRole('button',{name:'실사 그대로 사용',exact:true})).toHaveCount(0);
  await form.getByRole('button',{name:'직접 입력',exact:true}).click();await form.getByRole('textbox',{name:'광고 제목',exact:true}).fill('확정 문구');
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();const result=page.locator('.simple-ad-result');
- await expect(result.locator('.generation-ad-preview')).toBeVisible();expect(state.body.request.mode).toBe('original');
+ await expect(result.locator('.generation-ad-preview')).toBeVisible();expect(state.body.request.mode).toBe('creative');
  await expect(page.locator('.editor-container')).toHaveCount(0);
  await result.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await result.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  const save=result.getByRole('button',{name:'이미지 저장 · 공유',exact:true});await expect(save).toBeEnabled();
  const download=page.waitForEvent('download');await save.click();expect((await download).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.posts).toBe(1);
- await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('button',{name:'실사 그대로 사용',exact:true})).toHaveAttribute('aria-pressed','true');await expect(form.getByRole('textbox',{name:'광고 설명',exact:true})).toHaveValue('');
+ await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('button',{name:'실사 그대로 사용',exact:true})).toHaveCount(0);await expect(form.getByRole('textbox',{name:'광고 설명',exact:true})).toHaveValue('');
 });
 
 test('photo size overflow shows a prominent red notice, retains valid previews and sends the attached original bytes',async({page})=>{
@@ -223,7 +223,7 @@ test('navigation starts a separate new ad after acceptance and preserves the pre
  await page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await page.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();await expect(page.getByRole('button',{name:'이미지 저장 · 공유',exact:true})).toBeEnabled();
  const oldId=state.body.projectId;
  await page.locator('a[href="#create"]:visible').first().click();await expect(form.getByLabel('상품명',{exact:true})).toHaveValue('');expect(state.posts).toBe(1);
- await form.getByLabel('산업 선택').selectOption('lodging');await form.getByLabel('서비스명',{exact:true}).fill('다음 서비스');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('두 번째 독립 광고');await form.getByRole('button',{name:'광고 생성',exact:true}).click();
+ await form.getByLabel('산업 선택').selectOption('lodging');await form.getByLabel('서비스명',{exact:true}).fill('다음 서비스');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('두 번째 독립 광고');await form.getByLabel('참조사진 추가').setInputFiles({name:'service.png',mimeType:'image/png',buffer:first});await form.getByRole('button',{name:'광고 생성',exact:true}).click();
  await expect.poll(()=>state.posts).toBe(2);expect(state.body.projectId).not.toBe(oldId);expect(state.accepts).toBe(1);
  await page.locator('a[href="#projects"]:visible').first().click();await expect(page.locator('.project-tile')).toHaveCount(2);
 });

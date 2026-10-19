@@ -1,3 +1,4 @@
+import {attachSubjectPhoto} from './helpers/subject-photo';
 import {test,expect} from '@playwright/test';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -40,7 +41,7 @@ test('server signup, operator allocation, generation review and PNG export work 
   await page.locator('.admin-page').getByRole('button',{name:'새로고침',exact:true}).click();await page.getByLabel('대상 회원',{exact:true}).selectOption({label:'member@example.com'});await page.getByRole('button',{name:'테스트 이용권 지급',exact:true}).click();await expect(page.locator('.admin-notice')).toContainText('지급했습니다');
   await page.getByLabel('월 공급사 배정액 USD',{exact:true}).fill('0.5');await page.getByRole('button',{name:'배정액 적용',exact:true}).click();await expect(page.locator('.admin-notice')).toContainText('배정을 적용했습니다');
   for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}await page.setViewportSize({width:390,height:844});
-  await shop.goto('/#create');const wizard=shop.locator('.create-page');await wizard.getByLabel('산업 선택').selectOption('lodging');await wizard.getByRole('textbox',{name:'상세설명',exact:true}).fill('편안한 호텔 객실');await wizard.getByLabel('서비스명',{exact:true}).fill('테스트 호텔');await wizard.getByRole('button',{name:/9:16/}).click();const dispatched=shop.waitForResponse(r=>new URL(r.url()).pathname==='/api/generations'&&r.request().method()==='POST');await wizard.getByRole('button',{name:'광고 생성',exact:true}).click();
+  await shop.goto('/#create');const wizard=shop.locator('.create-page');await wizard.getByLabel('산업 선택').selectOption('lodging');await wizard.getByRole('textbox',{name:'상세설명',exact:true}).fill('편안한 호텔 객실');await wizard.getByLabel('서비스명',{exact:true}).fill('테스트 호텔');await wizard.getByRole('button',{name:/9:16/}).click();await attachSubjectPhoto(shop);const dispatched=shop.waitForResponse(r=>new URL(r.url()).pathname==='/api/generations'&&r.request().method()==='POST');await wizard.getByRole('button',{name:'광고 생성',exact:true}).click();
   const response=await dispatched;expect(response.status()).toBe(202);const created=await response.json();expect(created.job.state).toBe('running');expect(calls).toBe(1);
   const panel=shop.locator('.generation-panel');await expect(panel.getByText('시안 제작 중',{exact:true})).toBeVisible();
   // Release the fixture only after the running job is visible, then wait for the

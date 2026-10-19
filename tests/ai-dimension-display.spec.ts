@@ -3,7 +3,7 @@ import sharp from 'sharp';
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {normalizeGenerationRequest} from '../server/generation-service.mjs';
-import {reloadDraft} from './helpers/workspace';
+import {reloadDraft,seedLegacyDimensionDraft} from './helpers/workspace';
 const bytes=await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="864" height="1536"><rect width="864" height="1536" fill="#eee8dc"/><text x="70" y="120" font-size="32">MOCK AI DISPLAY - NOT A LIVE RESULT</text><path d="M180 420 L540 420 L660 300 L300 300Z" fill="#bf9a64"/><path d="M180 420 L540 420 L540 800 L180 800Z" fill="#a98151"/><path d="M540 420 L660 300 L660 680 L540 800Z" fill="#806342"/><path d="M180 870 H540 M710 320 V700 M540 920 L660 800" stroke="#fff" stroke-width="8"/><text x="280" y="930" font-size="38">30 cm</text><text x="590" y="980" font-size="38">20 cm</text><text x="690" y="520" font-size="38">10 cm</text></svg>')).png().toBuffer(),hash=createHash('sha256').update(bytes).digest('hex');
 async function setup(page:Page,{supported=true,lost=false,badHash=false}={}){const state={posts:0,accepts:0,analyses:0,job:null as any,request:null as any,review:null as any};await page.route('**/api/**',async route=>{const request=route.request(),path=new URL(request.url()).pathname;const wallet={available:state.job?33:34,reserved:state.job?.state==='ready'?1:0,kind:'test'};
  if(path==='/api/account/capabilities')return route.fulfill({json:{email:{enabled:false},checkout:{enabled:false,test:true,currency:'KRW'}}});
@@ -26,8 +26,9 @@ test('wrong result input hash cannot reach review acceptance or final image save
 for(const layout of ['main','inset','none'])for(const dimensionBased of [false,true])test(`placement payload ${layout} is independent of dimension reference ${dimensionBased}`,async({page})=>{
  const state=await setup(page),form=await input(page,layout);
  if(layout==='none')await form.getByRole('radio',{name:'사진 치수선 없음',exact:true}).check();
- await form.getByRole('checkbox',{name:'규격을 AI 참고로 전달',exact:true}).setChecked(dimensionBased);
+ await expect(form.getByRole('checkbox',{name:'규격을 AI 참고로 전달',exact:true})).toHaveCount(0);
+ if(dimensionBased)await seedLegacyDimensionDraft(page);
  await expect(form.getByRole('checkbox',{name:'광고에 규격 표시',exact:true})).toBeChecked();
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect.poll(()=>state.posts).toBe(1);
- expect(state.request.dimensionDisplay?.layout).toBe(layout==='none'?undefined:layout);expect(state.request.output.showDimensionLines).toBe(layout!=='none');expect(!!state.request.dimensionPlan).toBe(dimensionBased);expect(state.request.specifications.map((s:any)=>s.value)).toEqual(['300','200','100']);expect(state.analyses).toBe(0);expect(state.accepts).toBe(0);
+ expect(state.request.dimensionDisplay?.layout).toBe(layout==='none'?undefined:layout);expect(state.request.output.showDimensionLines).toBe(layout!=='none');expect(state.request.dimensionPlan).toBeUndefined();expect(state.request.proportionControl).toBeUndefined();expect(state.request.specifications.map((s:any)=>s.value)).toEqual(['300','200','100']);expect(state.analyses).toBe(0);expect(state.accepts).toBe(0);
 });

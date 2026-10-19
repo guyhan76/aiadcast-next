@@ -1,3 +1,4 @@
+import {attachSubjectPhoto} from './helpers/subject-photo';
 import {authenticatedTest as test,expect,type Page} from './helpers/authenticated';
 import sharp from 'sharp';
 import {createHash} from 'node:crypto';
@@ -21,7 +22,7 @@ async function mocks(page:Page,{auth=false,enabled=true,admin=false,v2=false,run
  return send({error:{code:'TEST_ROUTE_UNAVAILABLE'}},404);
  });return state;
 }
-async function details(page:Page,service=true){await page.goto('/#create');const form=page.locator('.consumer-create');await form.getByLabel('산업 선택').selectOption(service?'lodging':'boxes');await form.getByLabel(service?'서비스명':'상품명',{exact:true}).fill(service?'숲속 숙소':'우체국3호박스');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill(service?'숲 전망의 객실, 1박 120,000원':'B골, 크라프트재질, 튼튼하고 습기에 강하다. 빠른배송. 10개 19,800원');return form;}
+async function details(page:Page,service=true){await page.goto('/#create');const form=page.locator('.consumer-create');await form.getByLabel('산업 선택').selectOption(service?'lodging':'boxes');await form.getByLabel(service?'서비스명':'상품명',{exact:true}).fill(service?'숲속 숙소':'우체국3호박스');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill(service?'숲 전망의 객실, 1박 120,000원':'B골, 크라프트재질, 튼튼하고 습기에 강하다. 빠른배송. 10개 19,800원');await attachSubjectPhoto(page);return form;}
 
 test('a budget block distinguishes an existing running request without claiming a new dispatch',async({page})=>{
  const state=await mocks(page,{running:true}),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();const panel=page.locator('.generation-panel');await expect(panel.getByText('시안 제작 중',{exact:true})).toBeVisible();expect(state.posts).toBe(1);

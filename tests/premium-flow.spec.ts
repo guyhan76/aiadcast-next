@@ -1,3 +1,4 @@
+import {attachSubjectPhoto} from './helpers/subject-photo';
 import {test,expect} from '@playwright/test';
 import sharp from 'sharp';
 import {createHash} from 'node:crypto';
@@ -35,8 +36,8 @@ test('simple campaign supports 10 references, individual footer choices, reviewe
  page.on('dialog',d=>d.accept());await page.getByLabel('프로젝트 파일 선택').setInputFiles({name:'restore.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(saved))});await expect(page.getByRole('status').filter({hasText:'프로젝트를 열었습니다.'})).toBeVisible();const restored=await backup(page);expect(restored.references.map((a:any)=>a.sha256)).toEqual(saved.references.map((a:any)=>a.sha256));expect(restored.footer).toEqual(saved.footer);
  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
 });
-test('English service can start without photo, and offline generation is honest',async({page})=>{
- await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','en'));await page.route('**/api/**',r=>r.fulfill({status:503,body:'{}'}));await page.goto('/');await page.getByRole('button',{name:'Create an ad',exact:true}).click();const form=page.locator('.create-page');await form.getByLabel('Choose an industry').selectOption('yoga');await form.getByLabel('Service name',{exact:true}).fill('Studio Bloom');await form.getByRole('textbox',{name:'Description',exact:true}).fill('Private yoga classes');await form.getByRole('button',{name:'Generate ad',exact:true}).click();await expect(page.locator('.simple-ad-result')).toBeVisible();await expect(page.locator('.simple-generation-block')).toBeVisible();await expect(page.getByRole('button',{name:'Save image',exact:true})).toHaveCount(0);await expect(page.locator('.generation-ad-preview')).toHaveCount(0);
+test('English service requires a photo, and offline generation is honest',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','en'));await page.route('**/api/**',r=>r.fulfill({status:503,body:'{}'}));await page.goto('/');await page.getByRole('button',{name:'Create an ad',exact:true}).click();const form=page.locator('.create-page');await form.getByLabel('Choose an industry').selectOption('yoga');await form.getByLabel('Service name',{exact:true}).fill('Studio Bloom');await form.getByRole('textbox',{name:'Description',exact:true}).fill('Private yoga classes');await form.getByRole('button',{name:'Generate ad',exact:true}).click();await expect(form.getByRole('alert')).toBeVisible();await expect(page.locator('.simple-ad-result')).toHaveCount(0);await attachSubjectPhoto(page);await form.getByRole('button',{name:'Generate ad',exact:true}).click();await expect(page.locator('.simple-ad-result')).toBeVisible();await expect(page.locator('.simple-generation-block')).toBeVisible();await expect(page.getByRole('button',{name:'Save image',exact:true})).toHaveCount(0);await expect(page.locator('.generation-ad-preview')).toHaveCount(0);
 
 });
 
