@@ -2,7 +2,7 @@ import {authenticatedTest as test,expect} from './helpers/authenticated';
 import {reloadDraft} from './helpers/workspace';
 
 for(const service of [false,true])test(`example guides preserve ${service?'service':'product'} inputs through keyboard toggles, mode changes and reload`,async({page},info)=>{
- let generationPosts=0;await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',r=>{if(r.request().method()==='POST'&&r.request().url().includes('/generations'))generationPosts++;return r.fulfill({status:401,json:{error:{code:'AUTH_REQUIRED'}}});});
+ let generationPosts=0;await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',r=>{if(r.request().method()==='POST'&&r.request().url().includes('/generations'))generationPosts++;return r.fulfill({status:503,json:{error:{code:'API_UNAVAILABLE'}}});});
  await page.goto('/#create');const form=page.locator('.consumer-create');await form.getByLabel('산업 선택').selectOption(service?'lodging':'other');
  const name=form.getByRole('textbox',{name:service?'서비스명':'상품명',exact:true}),facts=form.getByRole('textbox',{name:'상세설명',exact:true});
  await name.fill(service?'내 숙소':'내 텀블러');await facts.fill('고객이 입력한 실제 특징과 조건');await form.getByRole('button',{name:'직접 입력',exact:true}).click();
