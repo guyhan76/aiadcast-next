@@ -50,5 +50,5 @@ guestTest('a session belonging to another origin is never sent to the newly sele
 });
 test('an unrelated JSON endpoint cannot crash the editor or enable signup and checkout',async({page})=>{
  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({unrelated:'endpoint'})}));
- await page.goto('/#studio');await expect(page.getByRole('region',{name:'AI 광고 제작',exact:true})).toBeVisible();await page.goto('/#guide');await page.locator('.account-drawer>summary').click();const panel=page.getByRole('region',{name:'가입·결제 테스트 연결'});await expect(panel).toContainText('연결되지 않음');await expect(panel.getByRole('button',{name:'회원가입 시험 시작'})).toBeDisabled();expect(errors).toEqual([]);
+ await page.goto('/#studio');await expect(page.getByRole('region',{name:'AI 광고 제작',exact:true})).toBeVisible();await page.evaluate(()=>sessionStorage.removeItem('aiadcast.beta-session'));await page.goto('/#guide');await page.reload();await page.locator('.account-drawer>summary').click();const panel=page.getByRole('region',{name:'가입·결제 테스트 연결'});await expect(panel).toContainText('연결되지 않음');await expect(panel.getByRole('button',{name:'회원가입 시험 시작'})).toBeDisabled();expect(errors).toEqual([]);
 });
