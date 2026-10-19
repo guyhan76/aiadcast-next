@@ -40,15 +40,33 @@ export class BetaStore {
  setAllocation(id,micros){return this.transaction(()=>{const user=this.db.prepare('SELECT budget FROM users WHERE id=? AND disabled=0').get(id);if(!user)fail('USER_NOT_FOUND',404);if(!Number.isSafeInteger(micros)||micros<user.budget)fail('ALLOCATION_INCREASE_ONLY');const total=this.db.prepare('SELECT COALESCE(SUM(budget),0) total FROM users').get().total;if(total-user.budget+micros>this.cap)fail('BETA_ALLOCATION_EXCEEDED',409);this.validateMonthAllocation(id,micros);this.db.prepare('UPDATE users SET budget=? WHERE id=?').run(micros,id);});}
  budgetPeriod(){return new Date(this.now()).toISOString().slice(0,7);}
  monthApproval(){return this.db.prepare("SELECT * FROM monthly_budget_approvals WHERE period=?").get(this.budgetPeriod());}
+ // Approved 2026-10-19: exact existing account, October only; no persisted allocation edits.
+ approvedDemoMember(){
+  if(this.budgetPeriod()!=='2026-10'||this.now()<Date.UTC(2026,9,19))return null;
+  const id='a3c39e4d-8621-4f0d-9021-2621a8cecdee';
+  const user=this.db.prepare("SELECT id FROM users WHERE id=? AND role='member' AND disabled=0").get(id);
+  if(!user)return null;
+  const identities=this.db.prepare('SELECT user_id FROM email_identities WHERE email=?').all('guyhan76@gmail.com');
+  return identities.length===1&&identities[0].user_id===id?id:null;
+ }
  effectiveBudget(id,period){
   if(period!==this.budgetPeriod())fail('BUDGET_PERIOD_CHANGED',409);
   const u=this.db.prepare('SELECT * FROM users WHERE id=?').get(id);if(!u)fail('USER_NOT_FOUND',404);
   const a=this.monthApproval(),r=this.db.prepare('SELECT * FROM monthly_demo_support WHERE period=?').get(period);
   const baseline=a?.user_id===id&&u.role==='admin'&&!u.disabled?a.allocation_micros:u.budget;
   if(r?.owner_id===id)return Math.min(baseline,a.allocation_micros-r.micros);
-  return baseline+(r?.user_id===id?r.micros:0);
+  const existing=baseline+(r?.user_id===id?r.micros:0);
+  if(id===this.approvedDemoMember()){if(existing>10000000)fail('APPROVED_BUDGET_CONFLICT',409);return 10000000;}
+  return existing;
  }
- effectiveCap(){return this.monthApproval()?.total_micros??this.cap;}
+ effectiveCap(){
+  const baseline=this.monthApproval()?.total_micros??this.cap;
+  if(!this.approvedDemoMember())return baseline;
+  const period=this.budgetPeriod(),users=this.db.prepare('SELECT id FROM users').all();
+  const allocated=users.map(u=>this.effectiveBudget(u.id,period)).reduce((sum,value)=>sum+value,0);
+  if(period!==this.budgetPeriod())fail('BUDGET_PERIOD_CHANGED',409);
+  return Math.max(baseline,allocated);
+ }
  validateMonthAllocation(id,micros){
   const a=this.monthApproval();if(!a)return;
   const other=this.db.prepare('SELECT COALESCE(SUM(budget),0) n FROM users WHERE id<>? AND id<>?').get(a.user_id,id??'').n;
