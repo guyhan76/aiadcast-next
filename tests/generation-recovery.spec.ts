@@ -24,7 +24,7 @@ async function recoveryApi(page:Page,scenario:'invalid-first'|'lose-second'){
    state.posts++;
    if(scenario==='invalid-first'&&state.posts===1)return json({error:{code:'INVALID_REQUEST'}},400);
    const body=request.postDataJSON();
-   const job:GenerationJob={id:`recovery_job_${state.posts}`,projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:body.request.mode,sourceHash:body.source?.sha256??null,createdAt:'2026-10-10T01:00:00.000Z',model:'gpt-image-2.5-sunburst',artifactId:artifactHash,artifact:{id:artifactHash,sha256:artifactHash,dataUrl:'data:image/png;base64,'+png.toString('base64'),width:12,height:8,role:'background'},errorCode:null};
+   const job:GenerationJob={id:`recovery_job_${state.posts}`,projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:body.request.mode,sourceHash:body.source?.sha256??null,createdAt:'2026-10-10T01:00:00.000Z',model:'gpt-image-2.5-sunburst',artifactId:artifactHash,artifact:{id:artifactHash,sha256:artifactHash,dataUrl:'data:image/png;base64,'+png.toString('base64'),width:12,height:8,role:body.request.mode==='original'?'background':'creative'},errorCode:null};
    state.jobs.push(job);state.wallet={available:9-state.acceptedIds.length,reserved:1,kind:'test'};
    if(scenario==='lose-second'&&state.posts===2)return route.abort('failed');
    return json({job,wallet:state.wallet});
@@ -46,7 +46,7 @@ async function recoveryApi(page:Page,scenario:'invalid-first'|'lose-second'){
 
 test('a definite validation rejection clears pending state so a corrected request can be submitted',async({page})=>{
  const {panel,state}=await recoveryApi(page,'invalid-first');
- const create=panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true});await create.click();
+ const create=panel.locator('.generate-button');await create.click();
  await expect(panel.getByRole('alert')).toBeVisible();await expect(create).toBeEnabled();
  await expect(panel.getByText(/중복 생성을 막기 위해 새 요청을 보류/)).toHaveCount(0);
  expect(await page.evaluate(()=>Object.keys(localStorage).filter(key=>key.startsWith('aiadcast.pending-generation.')))).toEqual([]);
@@ -57,7 +57,7 @@ test('a definite validation rejection clears pending state so a corrected reques
 
 test('a lost second response hides the old accepted job and recovers only the matching request',async({page})=>{
  const {panel,state}=await recoveryApi(page,'lose-second');
- const create=panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true});
+ const create=panel.locator('.generate-button');
  await create.click();await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
  await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  await expect(panel.getByText('사용 확정한 시안',{exact:true})).toBeVisible();expect(state.acceptedIds).toEqual(['recovery_job_1']);
@@ -79,7 +79,7 @@ test('a lost second response hides the old accepted job and recovers only the ma
 
 test('a durably accepted result does not remain pending when its old status endpoint is unavailable after reload',async({page})=>{
  const {panel,state}=await recoveryApi(page,'lose-second');
- await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();
+ await panel.locator('.generate-button').click();
  await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
  const legacy=await page.evaluate(()=>Object.entries(localStorage).find(([k])=>k.includes('pending-generation.'))!);
  await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
@@ -89,12 +89,12 @@ test('a durably accepted result does not remain pending when its old status endp
  await page.evaluate(([key,value])=>localStorage.setItem(key,value),legacy);
  await page.route('**/api/generations/recovery_job_1',r=>r.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}}));
  await reloadSavedEditor(page,'recovery_job_1');
- await expect(panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true})).toBeEnabled();
+ await expect(panel.locator('.generate-button')).toBeEnabled();
  await expect(panel.getByText(/중복 생성을 막기 위해 새 요청을 보류/)).toHaveCount(0);
  expect(state.posts).toBe(1);expect(state.acceptedIds).toEqual(['recovery_job_1']);
 });
 
 test('uncertain provider work keeps its reservation protected after reload and does not auto-dispatch',async({page})=>{
- const {panel,state}=await recoveryApi(page,'lose-second');await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();
- state.jobs[0].state='uncertain';await reloadSavedEditor(page);await expect(panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true})).toBeDisabled();await expect(panel).toContainText('AI 공급사의 사용량을 확인하기 전에는');expect(state.posts).toBe(1);expect(state.wallet.reserved).toBe(1);expect(state.acceptedIds).toEqual([]);
+ const {panel,state}=await recoveryApi(page,'lose-second');await panel.locator('.generate-button').click();await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();
+ state.jobs[0].state='uncertain';await reloadSavedEditor(page);await expect(panel.locator('.generate-button')).toBeDisabled();await expect(panel).toContainText('AI 공급사의 사용량을 확인하기 전에는');expect(state.posts).toBe(1);expect(state.wallet.reserved).toBe(1);expect(state.acceptedIds).toEqual([]);
 });
