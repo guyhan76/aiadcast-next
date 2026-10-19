@@ -1,29 +1,42 @@
+import {consumeLoginDestination,rememberLoginDestination} from './login-navigation';
 import {rememberCheckout} from './checkout-return';
 import {offlineDemo} from './demo-mode';
 import {useEffect,useRef,useState} from 'react';
 import {ArrowLeft,Check,Mail} from 'lucide-react';
 import {useUiLanguage} from './ui-language';
 import {formatPrice,pricingCatalog,type PricingCurrency} from './pricing';
-import {apiRequest} from './generation-client';
+import {apiRequest,ApiRequestFailure} from './generation-client';
 import {betaSession,setBetaSession,storageNamespace,accountNamespace,type BetaSession} from './beta-session';
 import {carryGuestWorkspace} from './workspace-draft';
 import {accountError,exchangeEmail,readSession,type Capabilities,type EmailRequest,type TestOrder} from './account-client';
 import './account-pages.css';
 export {PaymentBrowserPage} from './PaymentBrowserPage';
 type Context={preserve:()=>Promise<void>;returnPage:'create'|'studio'|'editor'|'home'};
-function useCapabilities(){
- const [value,setValue]=useState<Capabilities|null>(null),[failed,setFailed]=useState(false),[attempt,setAttempt]=useState(0);
+// Login discovery retries only reads; malformed capabilities never select a fallback form.
+// Three 20s attempts plus 1s/2s backoff bound the wait to about 63s.
+function useCapabilities(autoRetry=false){
+ const [value,setValue]=useState<Capabilities|null>(null),[failed,setFailed]=useState(false),[attempt,setAttempt]=useState(0),[reconnecting,setReconnecting]=useState(false);
  useEffect(()=>{
-  let active=true;const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),10000);
-  apiRequest<Capabilities>('/api/account/capabilities',undefined,controller.signal).then(v=>{
-   if(typeof v?.email?.enabled!=='boolean'||typeof v?.checkout?.enabled!=='boolean'||v.checkout.test!==true||v.checkout.currency!=='KRW')throw Error('INVALID_CAPABILITIES');
-   if(v.password!==undefined&&(typeof v.password?.enabled!=='boolean'||(v.password.enabled&&(v.password.test!==true||typeof v.password.adminReady!=='boolean'||typeof v.password.adminEmail!=='string'))))throw Error('INVALID_CAPABILITIES');
-   if(active)setValue(v);
-  }).catch(()=>{if(active)setFailed(true);}).finally(()=>clearTimeout(timer));
-  return()=>{active=false;clearTimeout(timer);controller.abort();};
- },[attempt]);
- function retry(){setValue(null);setFailed(false);setAttempt(n=>n+1);}
- return {value,failed,retry};
+  let active=true,controller:AbortController|undefined,timer:ReturnType<typeof setTimeout>|undefined,retryTimer:ReturnType<typeof setTimeout>|undefined;
+  async function load(index:number){
+   controller=new AbortController();timer=setTimeout(()=>controller?.abort(),autoRetry?20000:10000);
+   try{
+    const v=await apiRequest<Capabilities>('/api/account/capabilities',undefined,controller.signal);
+    if(typeof v?.email?.enabled!=='boolean'||typeof v?.checkout?.enabled!=='boolean'||v.checkout.test!==true||v.checkout.currency!=='KRW')throw Error('INVALID_CAPABILITIES');
+    if(v.password!==undefined&&(typeof v.password?.enabled!=='boolean'||(v.password.enabled&&(v.password.test!==true||typeof v.password.adminReady!=='boolean'||typeof v.password.adminEmail!=='string'))))throw Error('INVALID_CAPABILITIES');
+    if(active)setValue(v);
+   }catch(error){
+    if(!active)return;
+    const transient=error instanceof ApiRequestFailure?[408,429,500,502,503,504].includes(error.status):error instanceof TypeError||error instanceof Error&&['AbortError','TimeoutError'].includes(error.name)||error instanceof Error&&error.message==='API_UNAVAILABLE';
+    if(autoRetry&&transient&&index<2){setReconnecting(true);retryTimer=setTimeout(()=>void load(index+1),1000*(index+1));}
+    else setFailed(true);
+   }finally{clearTimeout(timer);}
+  }
+  void load(0);
+  return()=>{active=false;clearTimeout(timer);clearTimeout(retryTimer);controller?.abort();};
+ },[attempt,autoRetry]);
+ function retry(){setValue(null);setFailed(false);setReconnecting(false);setAttempt(n=>n+1);}
+ return {value,failed,retry,reconnecting};
 }
 function PasswordAccountPage({mode,preserve,returnPage,cap}:Context&{mode:'signup'|'login';cap:NonNullable<Capabilities['password']>}){
  const {t,language}=useUiLanguage(),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[confirm,setConfirm]=useState(''),[name,setName]=useState(''),[admin,setAdmin]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
@@ -36,7 +49,7 @@ function PasswordAccountPage({mode,preserve,returnPage,cap}:Context&{mode:'signu
    await preserve();
    const session=await apiRequest<BetaSession>(signup?'/api/auth/test/signup':'/api/auth/test/login',{email,password,...(signup?{name}:{})});
    await carryGuestWorkspace(accountNamespace(session.user.id));setPassword('');setConfirm('');
-   const paymentReturn=sessionStorage.getItem('aiadcast.checkout-login-return')==='1';sessionStorage.removeItem('aiadcast.checkout-login-return');setBetaSession(session,paymentReturn?'checkout-return':admin&&returnPage==='home'?'admin':returnPage);
+   setBetaSession(session,consumeLoginDestination());
   }catch(e){setMessage(accountError(e,language==='ko'));}finally{locked.current=false;setBusy(false);}
  }
  function selectAdmin(value:boolean){setAdmin(value);setEmail(value?cap.adminEmail:'');setPassword('');setConfirm('');setMessage('');}
@@ -51,7 +64,6 @@ function PasswordAccountPage({mode,preserve,returnPage,cap}:Context&{mode:'signu
    {admin&&!cap.adminReady&&<p role="status" className="connection-notice">{t('관리자 비밀번호를 서버에 한 번 설정해야 합니다. 설정 후 바로 로그인할 수 있습니다.','Set the administrator password on the server once, then sign in directly.')}</p>}
    <button className="primary-action" disabled={busy||Boolean(admin&&!cap.adminReady)}>{busy?t('처리 중…','Working…'):signup?t('가입하고 시작하기','Sign up and start'):t('로그인하고 계속','Sign in and continue')}</button>
   </form>
-  <p className="account-help">{t('테스트 모드 · 이메일 인증을 생략합니다. 입력한 이메일의 소유 여부는 확인하지 않습니다.','Test mode · Email verification is skipped. Ownership of the email address is not verified.')}</p>
   {!admin&&<p className="account-switch">{signup?t('이미 가입하셨나요?','Already have an account?'):t('처음 이용하시나요?','New here?')} <a href={signup?'#login':'#signup'}>{signup?t('로그인','Sign in'):t('회원가입','Sign up')}</a></p>}
   <button className="guest-link" onClick={()=>selectAdmin(!admin)}>{admin?t('일반 회원으로 이용하기','Use a member account'):t('관리자 로그인','Administrator sign-in')}</button>
   {message&&<p role="alert">{message}</p>}
@@ -59,11 +71,11 @@ function PasswordAccountPage({mode,preserve,returnPage,cap}:Context&{mode:'signu
 }
 function InviteAccountPage({preserve,returnPage}:Context){
  const {t}=useUiLanguage(),[invite,setInvite]=useState(''),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
- async function login(){if(busy)return;setBusy(true);setMessage('');try{await preserve();const session=await apiRequest<BetaSession>('/api/auth/login',{invite:invite.trim()});await carryGuestWorkspace(accountNamespace(session.user.id));setBetaSession(session,returnPage);}catch(e){setMessage(e instanceof Error&&e.message==='INVALID_INVITE'?t('초대코드를 확인해주세요. 만료된 코드는 관리자에게 다시 요청해주세요.','Check the invitation code. Ask the administrator for a new code if it expired.'):t('로그인하지 못했습니다. 초대코드와 연결 상태를 확인해주세요.','Could not sign in. Check the invitation code and connection.'));}finally{setBusy(false);}}
+ async function login(){if(busy)return;setBusy(true);setMessage('');try{await preserve();const session=await apiRequest<BetaSession>('/api/auth/login',{invite:invite.trim()});await carryGuestWorkspace(accountNamespace(session.user.id));setBetaSession(session,consumeLoginDestination());}catch(e){setMessage(e instanceof Error&&e.message==='INVALID_INVITE'?t('초대코드를 확인해주세요. 만료된 코드는 관리자에게 다시 요청해주세요.','Check the invitation code. Ask the administrator for a new code if it expired.'):t('로그인하지 못했습니다. 초대코드와 연결 상태를 확인해주세요.','Could not sign in. Check the invitation code and connection.'));}finally{setBusy(false);}}
  return <section className="account-page"><a className="page-back" href={'#'+returnPage}><ArrowLeft size={18}/>{t('돌아가기','Back')}</a><h1>{t('테스트 로그인','Test sign-in')}</h1><p className="page-intro">{t('받으신 초대코드로 로그인하면 입력한 광고를 이어서 생성할 수 있습니다.','Sign in with your invitation code to continue generating your ad.')}</p><form onSubmit={e=>{e.preventDefault();void login();}}><label className="field">{t('초대코드','Invitation code')}<input type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={43} value={invite} onChange={e=>setInvite(e.target.value)}/></label><button className="primary-action" disabled={busy||invite.trim().length!==43}>{busy?t('로그인 중…','Signing in…'):t('로그인하고 계속','Sign in and continue')}</button></form><p className="account-help">{t('현재 비공개 베타입니다. 이메일 회원가입은 아직 연결되지 않았습니다. 초대코드는 관리자에게 받으세요.','This is a private beta. Email signup is not connected yet. Ask the administrator for an invitation.')}</p>{message&&<p role="alert">{message}</p>}</section>;
 }
 export function EmailAccountPage({mode,preserve,returnPage}:Context&{mode:'signup'|'login'}){
- const {t,language}=useUiLanguage(),ko=language==='ko',capability=useCapabilities(),cap=capability.value,key='aiadcast.email-request:'+storageNamespace();
+ const {t,language}=useUiLanguage(),ko=language==='ko',capability=useCapabilities(true),cap=capability.value,key='aiadcast.email-request:'+storageNamespace();
  const [email,setEmail]=useState(''),[request,setRequest]=useState<EmailRequest|undefined>(()=>readSession(key));
  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[expired,setExpired]=useState(false),locked=useRef(false);
  const latest=useRef({preserve,returnPage});latest.current={preserve,returnPage};
@@ -71,12 +83,12 @@ export function EmailAccountPage({mode,preserve,returnPage}:Context&{mode:'signu
  async function demoVerify(){if(!request)return;setBusy(true);try{await apiRequest('/api/demo/auth/verify',request);await check();}catch(e){setMessage(accountError(e,ko));}finally{setBusy(false);}}
  async function check(){if(!request||locked.current)return;locked.current=true;try{
   if(Date.now()>=request.expires){setExpired(true);return;}
-  const result=await exchangeEmail(request);if(result.session){await latest.current.preserve();await carryGuestWorkspace(accountNamespace(result.session.user.id));sessionStorage.removeItem(key);const target=sessionStorage.getItem('aiadcast.auth-return')==='checkout'?'checkout':latest.current.returnPage;sessionStorage.removeItem('aiadcast.auth-return');const paymentReturn=sessionStorage.getItem('aiadcast.checkout-login-return')==='1';sessionStorage.removeItem('aiadcast.checkout-login-return');setBetaSession(result.session,paymentReturn?'checkout-return':target);}
+  const result=await exchangeEmail(request);if(result.session){await latest.current.preserve();await carryGuestWorkspace(accountNamespace(result.session.user.id));sessionStorage.removeItem(key);setBetaSession(result.session,consumeLoginDestination());}
  }catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;}}
  useEffect(()=>{if(!cap?.email.enabled||cap.password?.enabled&&!demo||!request||expired)return;const timer=setInterval(()=>{if(document.visibilityState==='visible')void check();},3000);return()=>clearInterval(timer);},[request,expired,ko,cap,demo]);
  async function submit(){if(locked.current)return;locked.current=true;setBusy(true);setMessage('');try{await preserve();const result=await apiRequest<EmailRequest>('/api/auth/email/request',{email});sessionStorage.setItem(key,JSON.stringify(result));setRequest(result);setExpired(false);}catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;setBusy(false);}}
  if(!betaSession()&&!cap)return <section className="account-page"><a className="page-back" href={'#'+returnPage}><ArrowLeft size={18}/>{t('돌아가기','Back')}</a><h1>{signup?t('회원가입','Sign up'):t('로그인','Sign in')}</h1>
-  {capability.failed?<><p role="alert">{t('로그인 방식을 확인하지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해주세요. 계속되면 관리자에게 문의해주세요.','Could not check the sign-in method. Check your connection and retry. If this continues, contact your administrator.')}</p><button className="primary-action" onClick={capability.retry}>{t('로그인 방식 다시 확인','Retry sign-in setup')}</button></>:<p role="status" aria-live="polite">{t('로그인 방식을 확인하고 있습니다…','Checking how to sign in…')}</p>}
+  {capability.failed?<><p role="alert">{t('로그인 방식을 확인하지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해주세요. 계속되면 관리자에게 문의해주세요.','Could not check the sign-in method. Check your connection and retry. If this continues, contact your administrator.')}</p><button className="primary-action" onClick={capability.retry}>{t('로그인 방식 다시 확인','Retry sign-in setup')}</button></>:<p role="status" aria-live="polite">{capability.reconnecting?t('서버 연결을 다시 확인하고 있습니다. 잠시만 기다려주세요…','Checking the server connection again. Please wait…'):t('로그인 방식을 확인하고 있습니다…','Checking how to sign in…')}</p>}
   <a className="guest-link" href="#create">{t('광고 편집 계속하기','Continue editing your ad')}</a></section>;
  if(!betaSession()&&cap?.password?.enabled&&!demo)return <PasswordAccountPage mode={mode} preserve={preserve} returnPage={returnPage} cap={cap.password}/>;
  if(!betaSession()&&cap&&!cap.email.enabled&&!demo)return <InviteAccountPage preserve={preserve} returnPage={returnPage}/>;
@@ -115,7 +127,7 @@ export function CheckoutPage({preserve,returnPage}:Context){
  }
  useEffect(()=>{if(!session)return;void refresh();const timer=setInterval(()=>{if(document.visibilityState==='visible'&&order&&order.state==='pending')void refresh();},5000);return()=>clearInterval(timer);},[order?.id,order?.state,session?.token]);
  async function checkout(){if(locked.current||!cap?.checkout.enabled)return;locked.current=true;setBusy(true);setMessage('');try{
-  await preserve();if(!session){sessionStorage.setItem('aiadcast.auth-return','checkout');location.hash='login';return;}
+  await preserve();if(!session){rememberLoginDestination('checkout');location.hash='login';return;}
   const key='aiadcast.checkout-request:'+session.user.id+':'+selected;
   let requestId=sessionStorage.getItem(key);if(!requestId){requestId=crypto.randomUUID();sessionStorage.setItem(key,requestId);}
   const result=await apiRequest<TestOrder>('/api/checkout/orders',{pack:selected,requestId,agreed});keepOrder(result);rememberCheckout(result,returnPage);

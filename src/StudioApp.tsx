@@ -1,3 +1,4 @@
+import {clearLoginDestination} from './login-navigation';
 import {AppVersionInfo,VersionBadge} from './AppVersionInfo';
 import {CreditsPage} from './CreditsPage';
 import {apiIdentity} from './api-origin';
@@ -38,6 +39,7 @@ const navigation=[['home','홈',Home],['create','광고 만들기',Plus],['proje
 function currentPage():Page {if(new URLSearchParams(location.search).get('checkout')==='return')return 'payment-return';const route=location.hash.slice(1).split('?')[0];return ['portfolio','home','create','projects','guide','studio','signup','login','credits','checkout','verify','pay','payment-return','checkout-return','admin','editor'].includes(route)?route as Page:'home';}
 export default function StudioApp(){
  const [route,setRoute]=useState(currentPage);
+ useEffect(()=>{if(route!=='login'&&route!=='signup')clearLoginDestination();},[route]);
  useEffect(()=>{const update=()=>setRoute(currentPage());window.addEventListener('hashchange',update);return()=>window.removeEventListener('hashchange',update);},[]);
  useEffect(()=>{const resume=()=>{location.hash='checkout-return';};window.addEventListener('aiadcast-checkout-return',resume);return()=>window.removeEventListener('aiadcast-checkout-return',resume);},[]);
  if(['localhost','127.0.0.1'].includes(location.hostname)&&new URLSearchParams(location.search).get('materialStudio')==='1')return <MaterialStudio/>;
