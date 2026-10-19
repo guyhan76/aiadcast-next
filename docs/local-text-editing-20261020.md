@@ -26,3 +26,5 @@ AAB 생성은 Play 제출 승인이나 심사 통과를 뜻하지 않는다. `.d
 - 새 개인 개발자 계정의 프로덕션 접근에는 해당하는 경우 최소12명/연속14일 비공개 테스트와 신청 심사가 필요하다. Console 계정 종류·상태는 조회하지 않았다.
 
 공식 기준(확인일 2026-10-19): [결제 정책](https://support.google.com/googleplay/android-developer/answer/9858738), [앱 서명](https://developer.android.com/studio/publish/app-signing), [앱 생성](https://support.google.com/googleplay/android-developer/answer/9859152), [개인 계정 테스트 요건](https://support.google.com/googleplay/android-developer/answer/14151465).
+
+최신 사용자 지시로 Google Play 준비는 보류했다. 이후 추가 조사·설정·등록·AAB 재빌드를 하지 않는다. 시연 APK만 전달하며 기존 AAB는 최종 전달 대상이 아니다. 최종 화면 검증에서는 긴 세로 이미지의 상속된 최대 높이 제한을 제거해 표시 영역과 편집 좌표가 일치하도록 했다.
