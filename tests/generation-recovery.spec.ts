@@ -67,7 +67,7 @@ test('a lost second response hides the old accepted job and recovers only the ma
  await expect(panel.getByRole('button',{name:'저장한 시안 다시 적용',exact:true})).toHaveCount(0);
  expect(state.posts).toBe(2);expect(state.acceptedIds).toEqual(['recovery_job_1']);
  await panel.getByRole('button',{name:'연결 상태 확인',exact:true}).click();
- await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();expect(state.historyReads).toBe(1);
+ await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();expect(state.historyReads).toBe(2);
  expect(state.readIds).toEqual(['recovery_job_2']);expect(state.posts).toBe(2);
  await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
  await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();

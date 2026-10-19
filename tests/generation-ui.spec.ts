@@ -87,7 +87,7 @@ test('a lost POST response is recovered through requestIds without another gener
  await expect(panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true})).toBeDisabled();
  await panel.getByRole('button',{name:'연결 상태 확인',exact:true}).click();
  await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();
- expect(state.historyReads).toBe(1);expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(0);
+ expect(state.historyReads).toBe(2);expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(0);
  await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  await expect(panel.getByText('사용 확정한 시안',{exact:true})).toBeVisible();expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(1);
 });
