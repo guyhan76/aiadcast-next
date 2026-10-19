@@ -21,6 +21,7 @@ for(const mode of ['original','text-example'] as const)test(`saved ${mode} draft
  const state=await api(page),f=await form(page);
  await f.getByLabel('참조사진 추가').setInputFiles([{name:'front.png',mimeType:'image/png',buffer:image},{name:'style.png',mimeType:'image/png',buffer:second}]);await f.getByLabel('2 사진 용도',{exact:true}).selectOption('style');
  await seedLegacyMode(page,mode);await expect(f.locator('.reference-item')).toHaveCount(2);await expect(f.getByLabel('2 사진 용도',{exact:true})).toHaveValue('style');
+ await f.locator('[data-guide="facts"] summary').click();await expect(f.locator('[data-guide="facts"]')).not.toContainText('설명으로 예시 만들기');
  for(const name of ['설명으로 예시 만들기','실사 그대로 사용'])await expect(f.getByRole('button',{name,exact:true})).toHaveCount(0);
  await f.getByRole('button',{name:'광고 생성',exact:true}).click();const review=page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true});await expect(review).toBeEnabled();
  expect(state.body.request.mode).toBe('creative');expect(state.body.request.inputMode).toBeUndefined();expect(state.body.source.sha256).toBe(hash);expect(state.body.references).toHaveLength(1);expect(state.body.request.preserveProduct).toBe(false);
