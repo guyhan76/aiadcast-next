@@ -39,9 +39,9 @@ test('PNG export has the selected size and preserves visible product pixels',asy
  }
 });
 test('invalid dimensions and overflowing copy cannot silently export',async({page})=>{
- await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();await expect(page.getByRole('alert')).toContainText('상품 사진');
- await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles(photo);await expect(page.locator('.editor-container .feedback[role="status"]')).toContainText('원본 사진을 추가');await page.getByRole('button',{name:'규격',exact:false}).first().click();await page.getByLabel('가로 mm',{exact:true}).fill('-3');await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();await expect(page.getByRole('alert')).toContainText('규격은');await page.getByLabel('가로 mm',{exact:true}).fill('300');
- await page.getByRole('button',{name:'문구·언어',exact:false}).click();await page.getByRole('textbox',{name:'홍보 제목',exact:true}).fill('너무 긴 홍보 문구를 입력했습니다. '.repeat(7));await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();await expect(page.getByRole('alert')).toContainText('제목이(가) 영역을 넘습니다');
+ await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();await expect(page.locator('.editor-container .feedback[role="alert"]')).toContainText('상품 사진');
+ await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles(photo);await expect(page.locator('.editor-container .feedback[role="status"]')).toContainText('원본 사진을 추가');await page.getByRole('button',{name:'규격',exact:false}).first().click();await page.getByLabel('가로 mm',{exact:true}).fill('-3');await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();await expect(page.locator('.editor-container .feedback[role="alert"]')).toContainText('규격은');await page.getByLabel('가로 mm',{exact:true}).fill('300');
+ await page.getByRole('button',{name:'문구·언어',exact:false}).click();await page.getByRole('textbox',{name:'홍보 제목',exact:true}).fill('너무 긴 홍보 문구를 입력했습니다. '.repeat(7));await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();await expect(page.locator('.editor-container .feedback[role="alert"]')).toContainText('제목이(가) 영역을 넘습니다');
 });
 test('Instagram exports preserve the editable original and validate each target before downloading',async({page})=>{
  await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles(photo);await expect(page.locator('.editor-container .feedback[role="status"]')).toContainText('원본 사진을 추가');
@@ -63,7 +63,7 @@ test('Instagram exports preserve the editable original and validate each target 
  await page.getByRole('button',{name:'이 기기에 저장',exact:true}).click();await expect(page.locator('.editor-container .feedback[role="status"]')).toContainText('이 기기에 저장');
  await page.reload();await page.locator('.editor-details > summary').click();await page.getByRole('button',{name:'저장한 작업',exact:true}).click();await page.getByRole('button',{name:/새 프로젝트/}).click();
  await page.getByRole('button',{name:'문구·언어',exact:false}).click();await expect(page.getByRole('textbox',{name:'홍보 제목',exact:true})).toHaveValue('이번 주 신상품');
- await page.getByRole('textbox',{name:'홍보 제목',exact:true}).fill('');await page.getByRole('button',{name:'피드 이미지 PNG 저장',exact:true}).click();await expect(page.getByRole('alert')).toContainText('피드 이미지 저장: 제목을 입력');
+ await page.getByRole('textbox',{name:'홍보 제목',exact:true}).fill('');await page.getByRole('button',{name:'피드 이미지 PNG 저장',exact:true}).click();await expect(page.locator('.editor-container .feedback[role="alert"]')).toContainText('피드 이미지 저장: 제목을 입력');
  await page.locator('.editor-tabs').getByRole('button',{name:/광고 정보/}).click();await page.getByRole('radio',{name:'새로운 광고 이미지 만들기',exact:true}).check();
  for(const label of ['피드 이미지','스토리 이미지','릴스용 정지 이미지'])await expect(page.getByRole('button',{name:`${label} PNG 저장`,exact:true})).toBeDisabled();
 });

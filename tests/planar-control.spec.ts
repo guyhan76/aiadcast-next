@@ -36,7 +36,7 @@ test('opt-in planar generation preserves drafts, separate source and raw result 
  }finally{await service.close();}
 });
 test('unsupported server blocks opt-in dispatch and unsupported dimensions never enable it',async({page})=>{
- let posts=0;await page.route('**/api/**',r=>{if(r.request().method()==='POST')posts++;return r.fulfill({json:new URL(r.request().url()).pathname==='/api/status'?{generation:{enabled:true,photoPurposes:true},wallet:{available:3,reserved:0},budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}}:{email:{enabled:false},checkout:{enabled:false}}});});
+ let posts=0;await page.route('**/api/**',r=>{if(r.request().method()==='POST')posts++;return r.fulfill({json:new URL(r.request().url()).pathname==='/api/status'?{generation:{enabled:true,photoPurposes:true},wallet:{available:3,reserved:0},budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}}:new URL(r.request().url()).pathname==='/api/generations'?{jobs:[],wallet:{available:3,reserved:0}}:{email:{enabled:false},checkout:{enabled:false}}});});
  const f=await form(page),toggle=f.getByRole('checkbox',{name:/규격을 AI 참고로 전달/});await f.getByLabel('규격 형식').selectOption('cylindrical');await expect(toggle).toBeEnabled();await toggle.check();await expect(f.getByRole('checkbox',{name:'정면 평면 자동 보정',exact:true})).toBeDisabled();await toggle.uncheck();await f.getByLabel('규격 형식').selectOption('flat');await toggle.check();await f.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByRole('alert')).toContainText('서버가 규격 기반 생성을 지원하지 않습니다');expect(posts).toBe(0);
 });
 test('measured garment and container variants are optional and retain numeric measurements on reload',async({page})=>{
