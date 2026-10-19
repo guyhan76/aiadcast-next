@@ -38,3 +38,11 @@ for(const layout of ['main','inset','none'])for(const dimensionBased of [false,t
  else if(layout==='inset'){assert.match(guard,/INSET ONLY/);assert.match(guard,/SAME product/);assert.match(guard,/open\/closed state/);}
  else {assert.match(guard,/NO DIMENSION ARROWS/);assert.match(guard,/Do not draw measurement arrows/);}
 });
+
+for(const layout of ['main','inset','none'])test(`photo shape is preserved independently of ${layout} dimension labels`,()=>{
+ const p=project(layout);p.dimensions.height='250';const r=normalizeGenerationRequest(buildGenerationRequest(p)),prompt=promptFor(r);
+ assert.match(prompt,/PHOTO SHAPE PRIORITY/);assert.match(prompt,/Do not make the body taller, deeper, wider or thinner/);assert.match(prompt,/not a guarantee of identity, physical accuracy or arrow placement/);assert.doesNotMatch(prompt,/Reconcile named width|internal dimensions are for proportions|supplied size is guidance for generation/);
+ assert.equal(r.dimensionPlan,undefined);assert.equal(r.dimensionDisplay?.layout,layout==='none'?undefined:layout);assert.match(prompt,/FINISHED premium advertising/);
+});
+
+test('historical original-photo background requests retain their empty-background prompt',()=>{const p=project('none');p.generation.mode='original';const r=normalizeGenerationRequest(buildGenerationRequest(p)),prompt=promptFor(r);assert.doesNotMatch(prompt,/PHOTO SHAPE PRIORITY/);assert.match(prompt,/Empty scene\/background only/);});
