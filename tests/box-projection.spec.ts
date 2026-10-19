@@ -23,7 +23,7 @@ test('source faces, dimensions and confirmation survive edit/save/import without
  await page.getByRole('radio',{name:'요약과 치수선',exact:true}).check();
  await page.getByLabel('규격 박스 구성 사용',{exact:true}).check();
  await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();
- await expect(page.getByRole('alert')).toContainText('일곱');
+ await expect(page.locator('.editor-container .feedback[role="alert"]')).toContainText('일곱');
  const photo=page.getByRole('img',{name:'박스 모서리를 지정할 원본 사진',exact:true});
  for(let i=0;i<7;i++){
   await page.getByRole('group',{name:'사진 모서리 선택'}).getByRole('button').nth(i).click();
@@ -65,7 +65,7 @@ test('source faces, dimensions and confirmation survive edit/save/import without
  expect((await backup(page)).product.data).toBe(p.product.data);
  await page.getByRole('radio',{name:'표시 안 함',exact:true}).check();
  await page.getByLabel('높이 mm',{exact:true}).fill('');
- await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();await expect(page.getByRole('alert')).toContainText('세 치수');
+ await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();await expect(page.locator('.editor-container .feedback[role="alert"]')).toContainText('세 치수');
  await page.getByLabel('높이 mm',{exact:true}).fill('210');
  await page.getByRole('button',{name:'이 기기에 저장',exact:true}).click();
  await expect(page.getByRole('status').filter({hasText:'이 기기에 저장'})).toBeVisible();
@@ -76,7 +76,7 @@ test('source faces, dimensions and confirmation survive edit/save/import without
  const restored=await backup(page);expect(restored.boxProjection).toEqual(p.boxProjection);expect(restored.product.data).toBe(p.product.data);
  await page.getByLabel('선택한 모서리 X %',{exact:true}).fill('89');
  await expect(page.locator('.projection-state')).not.toContainText('투영 적용됨');
- await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();await expect(page.getByRole('alert')).toContainText('일곱');
+ await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();await expect(page.locator('.editor-container .feedback[role="alert"]')).toContainText('일곱');
  for(const width of [320,390,1440]){await page.setViewportSize({width,height:950});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
  await page.locator('.editor-tabs').getByRole('button',{name:/광고 정보/}).click();
  await page.getByRole('button',{name:'1 사진 삭제',exact:true}).click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({...file,buffer:await sharp(fixture).flop().png().toBuffer()});
