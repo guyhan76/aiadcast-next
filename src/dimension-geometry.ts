@@ -2,20 +2,21 @@ import {validMillimeters} from './dimension-units.ts';
 export type GeometryShape='auto'|'cuboid'|'straight-cylinder'|'plane';
 type Spec={axis:string;value:string;unit:string};
 type Input={category:string;specType:string;shape?:GeometryShape;basis?:string;specifications:Spec[]};
-export type GeometryContract={version:1;category:string;specType:string;priority:'dimensions-first';shape:Exclude<GeometryShape,'auto'>|'unresolved';basis:string;measurements:Spec[];referenceUse:'appearance-only';coverage:'body-only'|'plane-only'|'insufficient-shape';missing:string[];outputGeometryVerified:false};
+export type GeometryContract={version:1;category:string;specType:string;priority:'dimensions-first';shape:Exclude<GeometryShape,'auto'>|'unresolved';basis:string;measurements:Spec[];referenceUse:'appearance-only'|'documented-structure-and-appearance';coverage:'body-only'|'plane-only'|'insufficient-shape';missing:string[];outputGeometryVerified:false};
 const flexible=new Set(['fashion','bags','shoes','jewelry','accessories','shoppingbags','pouches']);
 export function dimensionGeometry(input:Input):GeometryContract{
  const {category,specType}=input,shape=input.shape??'auto',basis=input.basis??'outer-body';
  if(!['auto','cuboid','straight-cylinder','plane'].includes(shape)||!['outer-body','inner-body','body','garment-flat'].includes(basis))throw Error('INVALID_GEOMETRY');
- const axes=specType==='rectangular'?['width','depth','height']:specType==='cylindrical'?['diameter','height']:specType==='flat'?['width','depth']:[];
+ const axes=specType==='rectangular'?['width','depth','height']:specType==='cylindrical'?['diameter','height']:specType==='flat'?['width','depth']:specType==='frontal'?['width','height']:[];
  if(!axes.length||input.specifications.length!==axes.length||input.specifications.some((s,i)=>s.axis!==axes[i]||s.unit!=='mm'||!validMillimeters(s.value)))throw Error('INVALID_GEOMETRY');
  let selected:GeometryContract['shape']=shape==='auto'?(category==='boxes'&&specType==='rectangular'?'cuboid':['labels','plasticfilm'].includes(category)&&specType==='flat'?'plane':'unresolved'):shape;
  const missing:string[]=[];
+ if(specType==='frontal'&&shape!=='auto')throw Error('GEOMETRY_SPEC_MISMATCH');
  if(flexible.has(category)||basis==='garment-flat'){selected='unresolved';missing.push('silhouette-and-landmark-measurements');}
  else if(basis!=='outer-body'){selected='unresolved';missing.push('external-measurements-or-wall-thickness');}
  else if(selected==='cuboid'&&specType!=='rectangular'||selected==='straight-cylinder'&&specType!=='cylindrical'||selected==='plane'&&specType!=='flat')throw Error('GEOMETRY_SPEC_MISMATCH');
- if(selected==='unresolved'&&!missing.length)missing.push(specType==='cylindrical'?'body-profile-neck-shoulder-cap':'shape-profile-and-measurement-landmarks');
- return {version:1,category,specType,priority:'dimensions-first',shape:selected,basis,measurements:input.specifications.map(s=>({...s})),referenceUse:'appearance-only',coverage:selected==='unresolved'?'insufficient-shape':selected==='plane'?'plane-only':'body-only',missing,outputGeometryVerified:false};
+ if(selected==='unresolved'&&!missing.length)missing.push(specType==='frontal'?'depth-curvature-and-part-measurements':specType==='cylindrical'?'body-profile-neck-shoulder-cap':'shape-profile-and-measurement-landmarks');
+ return {version:1,category,specType,priority:'dimensions-first',shape:selected,basis,measurements:input.specifications.map(s=>({...s})),referenceUse:specType==='frontal'?'documented-structure-and-appearance':'appearance-only',coverage:selected==='unresolved'?'insufficient-shape':selected==='plane'?'plane-only':'body-only',missing,outputGeometryVerified:false};
 }
 export type Point3=[number,number,number];
 // This mesh is authoritative only for the declared mathematical body, not a reconstructed product.
@@ -45,7 +46,7 @@ export function geometryGuideSvg(contract:GeometryContract){
 
 export function projectGeometry(p:import('./model.ts').Project):GeometryContract|null{
  if(p.generation.geometryVersion!==1||p.generation.mode!=='creative'||p.productProfile.specType==='none'||!p.product||p.generation.inputMode==='text-example'||p.generation.planarSourceHash||p.dimensionControl)return null;
- const axes=p.productProfile.specType==='cylindrical'?['width','height'] as const:p.productProfile.specType==='flat'?['width','depth'] as const:['width','depth','height'] as const;
+ const axes=(p.productProfile.specType==='cylindrical'||p.productProfile.specType==='frontal')?['width','height'] as const:p.productProfile.specType==='flat'?['width','depth'] as const:['width','depth','height'] as const;
  return dimensionGeometry({category:p.productProfile.category,specType:p.productProfile.specType,shape:p.generation.geometryShape,basis:p.generation.dimensionBasis,specifications:axes.map(axis=>({axis:axis==='width'&&p.productProfile.specType==='cylindrical'?'diameter':axis,value:p.dimensions[axis],unit:'mm'}))});
 }
 export function projectGeometryKey(p:import('./model.ts').Project){try{return projectGeometry(p);}catch{return {invalid:true,category:p.productProfile.category,shape:p.generation.geometryShape,basis:p.generation.dimensionBasis,dimensions:[p.dimensions.width,p.dimensions.depth,p.dimensions.height]};}}

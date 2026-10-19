@@ -14,6 +14,7 @@ export function dimensionGuide(result:Pick<GeneratedAsset,'specificationKey'|'di
   if(['fashion','bags','shoes','jewelry','accessories','shoppingbags','pouches'].includes(profile.category)||plan?.basis==='garment-flat')return {reason:t('의류·가방 등 비정형 상품의 규격 도식은 지원하지 않습니다.','Diagrams for apparel, bags and irregular products are not supported.')};
   if(!Array.isArray(specs)||specs.length!==axes.length||specs.some((s,i)=>s?.axis!==axes[i]||s.unit!=='mm'||typeof s.value!=='string'||!validMillimeters(s.value)))throw Error('INVALID');
   if(plan&&(plan.specType!==profile.specType||plan.sourceHash!==saved.sourceHash||plan.measurements.length!==specs.length||plan.measurements.some((m,i)=>m.value!==specs[i].value||m.axis!==(profile.specType==='cylindrical'&&specs[i].axis==='width'?'diameter':specs[i].axis))))throw Error('INVALID');
+  if(profile.specType==='frontal')return {reason:t('가로·높이만으로 곡면이나 깊이를 재구성하지 않습니다. 원본과 측정 부위를 비교해주세요.','Width and height cannot reconstruct curvature or depth. Compare the source and measurement landmarks.')};
   const basis=plan?.basis??'unspecified';
   const values=specs.map(s=>s.value) as string[],nums=values.map(Number),[a,b,c]=nums;
   const primitives:GuidePrimitive[]=[];

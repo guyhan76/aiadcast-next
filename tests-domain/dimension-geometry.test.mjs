@@ -64,3 +64,14 @@ test('saved results cannot lose their geometry contract while retaining a new re
  assert.deepEqual((await parseGenerated(result,async x=>x)).dimensionGeometry,dimensionGeometry);
  await assert.rejects(parseGenerated({...result,dimensionGeometry:undefined},async x=>x),/INVALID_GEOMETRY/);
 });
+test('partial monitor body extents preserve reference structure without inventing a box, depth or image offset',async()=>{
+ const p=project('main');p.productName='49인치 커브드 울트라와이드 모니터';p.productProfile={...p.productProfile,category:'electronics',specType:'frontal'};p.dimensions={...p.dimensions,width:'1189',height:'366.6',depth:'999'};
+ const r=normalizeGenerationRequest(buildGenerationRequest(p)),c=r.dimensionGeometry;
+ assert.deepEqual(r.specifications,[{axis:'width',value:'1189',unit:'mm'},{axis:'height',value:'366.6',unit:'mm'}]);
+ assert.equal(c.shape,'unresolved');assert.equal(c.outputGeometryVerified,false);assert.equal(await structuralGuide(c),null);assert.equal(geometryMesh(c),null);assert.deepEqual(parseGeometryContract(c),c);
+ for(const shape of ['cuboid','plane','straight-cylinder'])assert.throws(()=>dimensionGeometry({category:'electronics',specType:'frontal',shape,specifications:r.specifications}));
+ const prompt=promptFor(r);assert.match(prompt,/No deterministic structural guide is attached/);assert.match(prompt,/Never span the stand with a body-height arrow/);assert.doesNotMatch(prompt,/Input dimensions override its silhouette|IMAGE 1 is a deterministic/);assert.match(prompt,/ACTUAL SUBJECT images: 1/);assert.match(prompt,/DIRECT layout/);assert.doesNotMatch(prompt,/999/);
+ let calls=0;const adapter=new OpenAIImageAdapter({apiKey:'local-fixture-only',fetchImpl:async(url,options)=>{calls++;assert.equal(options.body.getAll('image[]').length,1);assert.deepEqual(Buffer.from(await options.body.getAll('image[]')[0].arrayBuffer()),source);return new Response(JSON.stringify({data:[{b64_json:source.toString('base64')}]}),{status:200});}});
+ const result=await adapter.generate({request:r,source:{bytes:source,mime:'image/png',sha256:hash(source),width:800,height:300},attemptId:'monitor-local-fixture'});assert.equal(calls,1);assert.equal(result.geometryGuide.guideHash,null);assert.equal(result.geometryGuide.outputGeometryVerified,false);
+ const changed=structuredClone(p);changed.dimensions.height='367';assert.notEqual(projectAiDimensionKey(p),projectAiDimensionKey(changed));
+});

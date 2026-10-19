@@ -68,7 +68,7 @@ export function normalizeGenerationRequest(value) {
     try{normalized.dimensionGeometry=dimensionGeometry({category:value.productProfile.category,specType:value.productProfile.specType,shape:value.dimensionGeometry.shape==='unresolved'?'auto':value.dimensionGeometry.shape,basis:value.dimensionGeometry.basis,specifications});}catch{fail('INVALID_GEOMETRY');}
   }
   if(value.dimensionDisplay!==undefined){
-    const d=value.dimensionDisplay,axes={rectangular:['width','depth','height'],flat:['width','depth'],cylindrical:['diameter','height']}[value.productProfile?.specType];
+    const d=value.dimensionDisplay,axes={rectangular:['width','depth','height'],flat:['width','depth'],frontal:['width','height'],cylindrical:['diameter','height']}[value.productProfile?.specType];
     if(!d||d.version!==1||d.method!=='ai'||!['main','inset'].includes(d.layout)||value.mode!=='creative'||value.subjectType!=='physical-product'||textExample||!value.source||value.source.purpose==='style'||!compositionKey||value.creativeDirection?.visual?.id!=='auto'||!normalized.output.showDimensions||!normalized.output.showDimensionLines||value.proportionControl||!axes||specifications.length!==axes.length||specifications.some((v,i)=>v.axis!==axes[i])||!['mm','cm','inch'].includes(value.output.displayUnit))fail('INVALID_AI_DIMENSION_DISPLAY');
     const inputKey=aiDimensionInputKey({...normalized,dimensionDisplay:d});
     normalized.dimensionDisplay={version:1,method:'ai',layout:d.layout,inputKey,inputHash:hashBytes(Buffer.from(inputKey))};
