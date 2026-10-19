@@ -52,6 +52,17 @@ export class BetaStore {
         fail('BETA_ALLOCATION_EXCEEDED', 409); await this.validateMonthAllocation(id, micros); await this.db.prepare('UPDATE users SET budget=? WHERE id=?').run(micros, id); }); }
     budgetPeriod() { return new Date(this.now()).toISOString().slice(0, 7); }
     async monthApproval() { return await this.db.prepare("SELECT * FROM monthly_budget_approvals WHERE period=?").get(this.budgetPeriod()); }
+    // Approved 2026-10-19: exact existing account, October only; no persisted allocation edits.
+    async approvedDemoMember() {
+        if (this.budgetPeriod() !== '2026-10' || this.now() < Date.UTC(2026, 9, 19))
+            return null;
+        const id = 'a3c39e4d-8621-4f0d-9021-2621a8cecdee';
+        const user = await this.db.prepare("SELECT id FROM users WHERE id=? AND role='member' AND disabled=0").get(id);
+        if (!user)
+            return null;
+        const identities = await this.db.prepare('SELECT user_id FROM email_identities WHERE email=?').all('guyhan76@gmail.com');
+        return identities.length === 1 && identities[0].user_id === id ? id : null;
+    }
     async effectiveBudget(id, period) {
         if (period !== this.budgetPeriod())
             fail('BUDGET_PERIOD_CHANGED', 409);
@@ -62,9 +73,24 @@ export class BetaStore {
         const baseline = a?.user_id === id && u.role === 'admin' && !u.disabled ? a.allocation_micros : u.budget;
         if (r?.owner_id === id)
             return Math.min(baseline, a.allocation_micros - r.micros);
-        return baseline + (r?.user_id === id ? r.micros : 0);
+        const existing = baseline + (r?.user_id === id ? r.micros : 0);
+        if (id === await this.approvedDemoMember()) {
+            if (existing > 10000000)
+                fail('APPROVED_BUDGET_CONFLICT', 409);
+            return 10000000;
+        }
+        return existing;
     }
-    async effectiveCap() { return (await this.monthApproval())?.total_micros ?? this.cap; }
+    async effectiveCap() {
+        const baseline = (await this.monthApproval())?.total_micros ?? this.cap;
+        if (!await this.approvedDemoMember())
+            return baseline;
+        const period = this.budgetPeriod(), users = await this.db.prepare('SELECT id FROM users').all();
+        const allocated = (await Promise.all(users.map(async (u) => await this.effectiveBudget(u.id, period)))).reduce((sum, value) => sum + value, 0);
+        if (period !== this.budgetPeriod())
+            fail('BUDGET_PERIOD_CHANGED', 409);
+        return Math.max(baseline, allocated);
+    }
     async validateMonthAllocation(id, micros) {
         const a = await this.monthApproval();
         if (!a)
