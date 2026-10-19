@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {authenticatedTest as test,expect} from './helpers/authenticated';
 import sharp from 'sharp';
 const photos=await Promise.all(['#bf8e52','#449966','#5577bb'].map(async(color,i)=>({name:`view-${i+1}.png`,mimeType:'image/png',buffer:await sharp({create:{width:400,height:300,channels:3,background:color}}).png().toBuffer()})));
 test('a single multi-file selection keeps every view and exposes dimensions beside the preview',async({page})=>{
@@ -36,7 +36,7 @@ test('a bad file in a new batch keeps both existing and valid new photos',async(
 });
 test('test server readiness requires valid responses and delegates preview configuration without secrets',async({page})=>{
  await page.addInitScript(()=>{(window as any).__AIADCAST_TEST_CONNECTION__=true;(window as any).nativeRequests=[];(window as any).AiadcastNative={postMessage:(value:string)=>{(window as any).nativeRequests.push(JSON.parse(value));window.dispatchEvent(new CustomEvent('aiadcast-test-connection',{detail:{status:'error'}}));}};});
- let ready=false;await page.route('**/api/**',route=>{expect(route.request().headers().authorization).toBeUndefined();const path=new URL(route.request().url()).pathname;return route.fulfill({contentType:'application/json',body:JSON.stringify(path==='/api/health'?{mode:'invite-beta',commercialReady:false}:path==='/api/status'?{mode:'invite-beta',commercialReady:false,generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}:{email:{enabled:ready},checkout:{enabled:ready,test:true,currency:'KRW'}})});});
+ let ready=false;await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',route=>{expect(route.request().headers().authorization).toBeUndefined();const path=new URL(route.request().url()).pathname;return route.fulfill({contentType:'application/json',body:JSON.stringify(path==='/api/health'?{mode:'invite-beta',commercialReady:false}:path==='/api/status'?{mode:'invite-beta',commercialReady:false,generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}:{email:{enabled:ready},checkout:{enabled:ready,test:true,currency:'KRW'}})});});
  await page.goto('/#guide');await page.goto('/#guide');await page.locator('.account-drawer>summary').click();const panel=page.getByRole('region',{name:'가입·결제 테스트 연결'});await expect(panel).toContainText('응답 확인');await expect(panel.getByRole('button',{name:'회원가입 시험 시작'})).toBeDisabled();
  ready=true;await panel.getByRole('button',{name:'연결 상태 다시 확인'}).click();await expect(panel).toContainText('수신 시험 필요');await expect(panel).toContainText('승인 시험 필요');await expect(panel.getByRole('button',{name:'회원가입 시험 시작'})).toBeEnabled();
  await panel.getByLabel('테스트 서버 주소').fill('https://beta.example.com');await panel.getByRole('button',{name:'연결 주소 저장'}).click();await expect(panel.getByRole('alert')).toBeVisible();expect(await page.evaluate(()=>(window as any).nativeRequests)).toEqual([{type:'configure-test-server',origin:'https://beta.example.com'}]);
@@ -49,6 +49,6 @@ test('a session belonging to another origin is never sent to the newly selected 
  await page.goto('/#checkout');await expect(page.getByRole('button',{name:'이메일로 로그인하고 계속'})).toBeVisible();await expect(page.getByRole('heading',{name:'테스트 이용권이 추가되었습니다'})).toHaveCount(0);await expect.poll(()=>requests.some(url=>url.endsWith('/api/account/capabilities'))).toBe(true);
 });
 test('an unrelated JSON endpoint cannot crash the editor or enable signup and checkout',async({page})=>{
- const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));await page.route('**/api/**',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({unrelated:'endpoint'})}));
+ const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({unrelated:'endpoint'})}));
  await page.goto('/#studio');await expect(page.getByRole('region',{name:'AI 광고 제작',exact:true})).toBeVisible();await page.goto('/#guide');await page.locator('.account-drawer>summary').click();const panel=page.getByRole('region',{name:'가입·결제 테스트 연결'});await expect(panel).toContainText('연결되지 않음');await expect(panel.getByRole('button',{name:'회원가입 시험 시작'})).toBeDisabled();expect(errors).toEqual([]);
 });

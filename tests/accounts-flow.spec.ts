@@ -1,8 +1,11 @@
-import {test,expect,type Page} from '@playwright/test';
+import {newProject} from '../src/model';
+import {withCategory} from '../src/product';
+import {createHash} from 'node:crypto';
+import {test,expect,type Page} from './helpers/authenticated';
 import sharp from 'sharp';
 const photo=await sharp({create:{width:200,height:300,channels:4,background:'#abcdef'}}).png().toBuffer();
 const session={token:'a'.repeat(43),expires:Date.now()+86400000,user:{id:'email-user-123',label:'test@example.com'}};
-async function setup(page:Page){const state={approved:false,requests:[] as string[],order:undefined as any,paid:false};await page.route('**/api/**',async route=>{
+async function setup(page:Page){const state={approved:false,requests:[] as string[],order:undefined as any,paid:false};await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async route=>{
  const req=route.request(),path=new URL(req.url()).pathname;state.requests.push(path);
  const reply=(data:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
  if(path==='/api/account/capabilities')return reply({email:{enabled:true},checkout:{enabled:true,test:true,currency:'KRW'}});
@@ -15,10 +18,12 @@ async function setup(page:Page){const state={approved:false,requests:[] as strin
  if(path==='/api/projects')return reply({projects:[]});
  return reply({error:{code:'NOT_FOUND'}},404);
  });return state;}
-test('email login keeps photos, wizard step and checkout selection across reload and account remount',async({page})=>{
- const state=await setup(page);await page.goto('/#create');const wizard=page.locator('.create-page');
- await wizard.getByLabel('산업 선택').selectOption('boxes');await wizard.getByLabel('상품명',{exact:true}).fill('이어 만드는 광고');await wizard.getByLabel('참조사진 추가').setInputFiles({name:'product.png',mimeType:'image/png',buffer:photo});
- await wizard.locator('[data-order="2"] summary').click();await wizard.getByRole('textbox',{name:'회사명',exact:true}).fill('selluplabs');
+test('email login keeps legacy guest photos, wizard step and checkout selection across reload and account remount',async({page})=>{
+ const state=await setup(page);await page.goto('/#home');await expect(page.locator('.app-header')).toBeVisible();const wizard=page.locator('.create-page');
+ // Existing guest drafts from older APKs must survive the new early gate.
+ const legacy=withCategory(newProject(),'boxes');legacy.productName='이어 만드는 광고';legacy.copy.ko.company='selluplabs';legacy.product={name:'product.png',data:'data:image/png;base64,'+photo.toString('base64'),width:200,height:300,sha256:createHash('sha256').update(photo).digest('hex')};
+ await page.evaluate(async project=>{await new Promise<void>((resolve,reject)=>{const r=indexedDB.open('aiadcast-workspace-drafts',1);r.onupgradeneeded=()=>r.result.createObjectStore('drafts');r.onsuccess=()=>{const db=r.result,tx=db.transaction('drafts','readwrite');tx.objectStore('drafts').put({wizard:{project,step:0},editor:project,returnPage:'create'},'guest');tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);};r.onerror=()=>reject(r.error);});},legacy);
+ await page.reload();await page.goto('/#create');await expect(page.getByRole('region',{name:'로그인 안내'})).toBeVisible();await expect(wizard).toHaveCount(0);
  await page.locator('.app-header').getByRole('button',{name:'이용 요금',exact:true}).click();await page.getByRole('link',{name:'이용권 선택',exact:true}).click();await page.getByRole('radio',{name:/묶음형/}).check();
  await page.getByRole('button',{name:'이메일로 로그인하고 계속'}).click();await page.locator('.account-page').getByLabel('이메일',{exact:true}).fill('test@example.com');await page.getByRole('button',{name:'인증메일 받기'}).click();await expect(page.getByRole('heading',{name:'메일함을 확인해주세요'})).toBeVisible();
  await page.reload();await expect(page.getByRole('heading',{name:'메일함을 확인해주세요'})).toBeVisible();state.approved=true;await page.getByRole('button',{name:'인증 상태 확인'}).click();await expect(page).toHaveURL(/#checkout$/);
@@ -37,7 +42,7 @@ test('cancelled checkout preserves the selected pack and does not grant credits'
 test('hosted payment uses the server quote and confirms a return before displaying success',async({page},info)=>{
  const grant={orderId:'order-browser-123',ticket:'t'.repeat(43)};let confirmation:any;
  await page.route('https://js.tosspayments.com/v2/standard',route=>route.fulfill({contentType:'text/javascript',body:'window.TossPayments=(key)=>({payment:({customerKey})=>({requestPayment:async(options)=>{window.testPayment={key,customerKey,options};}})});'}));
- await page.route('**/api/**',route=>{const path=new URL(route.request().url()).pathname;const reply=(body:unknown)=>route.fulfill({contentType:'application/json',body:JSON.stringify(body)});
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',route=>{const path=new URL(route.request().url()).pathname;const reply=(body:unknown)=>route.fulfill({contentType:'application/json',body:JSON.stringify(body)});
   if(path==='/api/status')return reply({mode:'invite-beta',commercialReady:false,generation:{enabled:false,reason:'GENERATION_DISABLED'},assistant:{available:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}});
   if(path==='/api/checkout/launch'){expect(route.request().postDataJSON()).toEqual(grant);return reply({id:grant.orderId,credits:3,amount:6900,clientKey:'test_ck_example',customerKey:'user-123',orderName:'aiadcast 3개 광고 테스트 이용권',successUrl:'https://beta.example.com/?checkout=return',failUrl:'https://beta.example.com/?checkout=return'});}
   if(path==='/api/checkout/receipt')return reply({id:grant.orderId,state:'paid',credits:3,receipt:{verified:true,grantedCredits:3,balance:3}});

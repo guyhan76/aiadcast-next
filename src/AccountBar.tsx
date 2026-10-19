@@ -3,10 +3,10 @@ import {betaSession} from './beta-session';
 import {signOut} from './sign-out';
 import {useUiLanguage} from './ui-language';
 import './account-bar.css';
-export function AccountBar({preserve}:{preserve:()=>Promise<void>}){
+export function AccountBar({preserve,enabled=true}:{preserve:()=>Promise<void>;enabled?:boolean}){
  const {t}=useUiLanguage(),session=betaSession();
  const [busy,setBusy]=useState(false),[error,setError]=useState('');const locked=useRef(false);
- if(!session)return null;
+ if(!enabled||!session)return null;
  async function logout(){
   if(locked.current)return;
   if(!window.confirm(t('현재 작업을 이 기기에 보관한 뒤 로그아웃합니다. 서버 저장은 별도입니다. 계속할까요?','Your current work will be kept on this device before signing out. Server saving is separate. Continue?')))return;

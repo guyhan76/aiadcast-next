@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {authenticatedTest as test,expect} from './helpers/authenticated';
 import {readFile} from 'node:fs/promises';
 import sharp from 'sharp';
 const photo=await sharp({create:{width:400,height:300,channels:4,background:'#dddddd'}}).png().toBuffer();

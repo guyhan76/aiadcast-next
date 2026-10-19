@@ -7,7 +7,7 @@ import {GenerationService} from '../server/generation-service.mjs';
 import {createBetaServer} from '../server/beta-server.mjs';
 
 test('owner applies the fixed October cap once through real HTTP and it expires at UTC month rollover',async({page},info)=>{
- let time=Date.parse('2026-10-18T00:00:00Z');const now=()=>time;
+ let time=Date.parse('2026-10-18T00:00:00Z');const now=()=>time;await page.clock.setFixedTime(time);
  const dir=mkdtempSync(join(tmpdir(),'october-browser-')),store=new BetaStore(dir,{monthlyBudgetMicros:1000000,now});
  const services=new Map<string,GenerationService>(),origin='https://beta.example.com';let providerCalls=0;
  const app=createBetaServer({store,publicUrl:origin,now,accounts:{password:{enabled:true,adminEmail:'owner@example.com',adminPassword:'Fixture-private-owner-2026!'}},serviceFactory:u=>{

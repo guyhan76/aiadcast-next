@@ -1,8 +1,8 @@
-import {test,expect} from '@playwright/test';
+import {authenticatedTest as test,expect} from './helpers/authenticated';
 import {readFile} from 'node:fs/promises';
 const original=await readFile(new URL('../src/assets/aiadcast-wordmark.svg',import.meta.url),'utf8');
 test('all app wordmarks reuse official outlines and identical orange ai/triangle without recoloring controls',async({page},info)=>{
- await page.route('**/api/**',route=>route.fulfill({status:new URL(route.request().url()).pathname==='/api/account/capabilities'?200:401,contentType:'application/json',body:JSON.stringify({email:{enabled:false},checkout:{enabled:false},error:{code:'AUTH_REQUIRED'}})}));
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',route=>route.fulfill({status:new URL(route.request().url()).pathname==='/api/account/capabilities'?200:401,contentType:'application/json',body:JSON.stringify({email:{enabled:false},checkout:{enabled:false},error:{code:'AUTH_REQUIRED'}})}));
  for(const route of ['home','create','projects','guide','login','signup','checkout','credits','checkout-return','admin','editor','verify','pay','payment-return']){
   await page.goto('/#'+route);const logos=page.locator('.brand-lockup');await expect(logos.first()).toBeAttached();
   for(const logo of await logos.all()){

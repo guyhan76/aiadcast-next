@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';import sharp from 'sharp';import{createHash}from'node:crypto';import{readFile}from'node:fs/promises';
+import {authenticatedTest as test,expect} from './helpers/authenticated';import sharp from 'sharp';import{createHash}from'node:crypto';import{readFile}from'node:fs/promises';
 // Deliberately synthetic raster: this checks job/review/export plumbing, not material quality.
 const raster=await sharp({create:{width:900,height:900,channels:4,background:'#aa8866'}}).png().toBuffer();
 const input={shape:'open-carton',widthMm:500,depthMm:350,heightMm:200},id='11111111-1111-1111-1111-111111111111';

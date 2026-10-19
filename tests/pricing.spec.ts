@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {authenticatedTest as test,expect} from './helpers/authenticated';
 
 test('approved packs keep currency independent of guide and ad languages, without checkout',async({page})=>{
  await page.goto('/#studio');await page.locator('.editor-details > summary').click();

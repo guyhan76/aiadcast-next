@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {authenticatedTest as test,expect} from './helpers/authenticated';
 
 test('lookbook advances in order every five seconds and supports pause, manual selection and resume',async({page})=>{
  await page.emulateMedia({reducedMotion:'no-preference'});await page.clock.install();await page.goto('/');

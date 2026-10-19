@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {authenticatedTest as test,expect} from './helpers/authenticated';
 import sharp from 'sharp';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
@@ -9,7 +9,7 @@ async function backup(page:import('@playwright/test').Page){const d=page.waitFor
 test('simple campaign supports 10 references, individual footer choices, reviewed generation and full-frame export',async({page})=>{
  let sent:any,job:any,accepts=0;
  await page.addInitScript(()=>{const w=window as any;w.drawn=[];const original=CanvasRenderingContext2D.prototype.fillText;CanvasRenderingContext2D.prototype.fillText=function(value,x,y,max){w.drawn.push(value);return max===undefined?original.call(this,value,x,y):original.call(this,value,x,y,max);};});
- await page.route('**/api/**',route=>{const req=route.request(),url=new URL(req.url());const respond=(b:any)=>route.fulfill({contentType:'application/json',body:JSON.stringify(b)});const wallet={available:3,reserved:0};
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',route=>{const req=route.request(),url=new URL(req.url());const respond=(b:any)=>route.fulfill({contentType:'application/json',body:JSON.stringify(b)});const wallet={available:3,reserved:0};
  if(url.pathname==='/api/status')return respond({mode:'local-development',commercialReady:false,generation:{enabled:true,photoPurposes:true},assistant:{available:false},wallet,budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}});
  if(url.pathname==='/api/generations'&&req.method()==='POST'){sent=req.postDataJSON();job={id:'premium_job_001',projectId:sent.projectId,requestIds:[sent.requestId],composition:'complete-ad',compositionKey:sent.request.output.compositionKey,state:'ready',mode:'creative',sourceHash:sent.source.sha256,createdAt:new Date().toISOString(),model:'gpt-image-2.5-sunburst',artifactId:hash(result),artifact:{id:hash(result),sha256:hash(result),dataUrl:'data:image/png;base64,'+result.toString('base64'),width:1024,height:1280,role:'creative'}};return respond({job,wallet});}
  if(url.pathname==='/api/generations/premium_job_001')return respond({job,wallet});
@@ -36,7 +36,7 @@ test('simple campaign supports 10 references, individual footer choices, reviewe
  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
 });
 test('English service can start without photo, and offline generation is honest',async({page})=>{
- await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','en'));await page.route('**/api/**',r=>r.fulfill({status:503,body:'{}'}));await page.goto('/');await page.getByRole('button',{name:'Create an ad',exact:true}).click();const form=page.locator('.create-page');await form.getByLabel('Choose an industry').selectOption('yoga');await form.getByLabel('Service name',{exact:true}).fill('Studio Bloom');await form.getByRole('textbox',{name:'Description',exact:true}).fill('Private yoga classes');await form.getByRole('button',{name:'Generate ad',exact:true}).click();await expect(page.locator('.simple-ad-result')).toBeVisible();await expect(page.locator('.simple-generation-block')).toBeVisible();await expect(page.getByRole('button',{name:'Save image',exact:true})).toHaveCount(0);await expect(page.locator('.generation-ad-preview')).toHaveCount(0);
+ await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','en'));await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',r=>r.fulfill({status:503,body:'{}'}));await page.goto('/');await page.getByRole('button',{name:'Create an ad',exact:true}).click();const form=page.locator('.create-page');await form.getByLabel('Choose an industry').selectOption('yoga');await form.getByLabel('Service name',{exact:true}).fill('Studio Bloom');await form.getByRole('textbox',{name:'Description',exact:true}).fill('Private yoga classes');await form.getByRole('button',{name:'Generate ad',exact:true}).click();await expect(page.locator('.simple-ad-result')).toBeVisible();await expect(page.locator('.simple-generation-block')).toBeVisible();await expect(page.getByRole('button',{name:'Save image',exact:true})).toHaveCount(0);await expect(page.locator('.generation-ad-preview')).toHaveCount(0);
 
 });
 

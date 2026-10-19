@@ -1,4 +1,4 @@
-import {test,expect,type Page} from '@playwright/test';
+import {authenticatedTest as test,expect,type Page} from './helpers/authenticated';
 import {readFile} from 'node:fs/promises';
 import sharp from 'sharp';
 import {industryGroups} from '../src/industry';

@@ -1,5 +1,5 @@
-import {test,expect} from '@playwright/test';
-import type {Page} from '@playwright/test';
+import {authenticatedTest as test,expect} from './helpers/authenticated';
+import type {Page} from './helpers/authenticated';
 import sharp from 'sharp';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
@@ -14,7 +14,7 @@ type MockJob={id:string;projectId:string;requestIds:string[];state:string;mode:s
 async function mockApi(page:Page,{dropResponse=false,corruptArtifact=false}={}){
  const state={generationPosts:0,acceptPosts:0,rejectPosts:0,historyReads:0,lastBody:null as Record<string,any>|null,job:null as MockJob|null,wallet:{available:10,reserved:0,kind:'test'}};
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
- await page.route('**/api/**',async route=>{
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async route=>{
   const req=route.request(),url=new URL(req.url());
   const respond=(body:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
   if(url.pathname==='/api/status')return respond({mode:'local-development',commercialReady:false,generation:{enabled:true,model:'gpt-image-2.5-sunburst',reason:null},wallet:state.wallet,budget:{limitMicros:1000000,spentMicros:0,heldMicros:0},assistant:{available:false}});

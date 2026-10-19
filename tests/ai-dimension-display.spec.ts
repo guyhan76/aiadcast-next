@@ -1,11 +1,11 @@
-import {test,expect,type Page} from '@playwright/test';
+import {authenticatedTest as test,expect,type Page} from './helpers/authenticated';
 import sharp from 'sharp';
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {normalizeGenerationRequest} from '../server/generation-service.mjs';
 import {reloadDraft} from './helpers/workspace';
 const bytes=await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="864" height="1536"><rect width="864" height="1536" fill="#eee8dc"/><text x="70" y="120" font-size="32">MOCK AI DISPLAY - NOT A LIVE RESULT</text><path d="M180 420 L540 420 L660 300 L300 300Z" fill="#bf9a64"/><path d="M180 420 L540 420 L540 800 L180 800Z" fill="#a98151"/><path d="M540 420 L660 300 L660 680 L540 800Z" fill="#806342"/><path d="M180 870 H540 M710 320 V700 M540 920 L660 800" stroke="#fff" stroke-width="8"/><text x="280" y="930" font-size="38">30 cm</text><text x="590" y="980" font-size="38">20 cm</text><text x="690" y="520" font-size="38">10 cm</text></svg>')).png().toBuffer(),hash=createHash('sha256').update(bytes).digest('hex');
-async function setup(page:Page,{supported=true,lost=false,badHash=false}={}){const state={posts:0,accepts:0,analyses:0,job:null as any,request:null as any,review:null as any};await page.route('**/api/**',async route=>{const request=route.request(),path=new URL(request.url()).pathname;const wallet={available:state.job?33:34,reserved:state.job?.state==='ready'?1:0,kind:'test'};
+async function setup(page:Page,{supported=true,lost=false,badHash=false}={}){const state={posts:0,accepts:0,analyses:0,job:null as any,request:null as any,review:null as any};await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async route=>{const request=route.request(),path=new URL(request.url()).pathname;const wallet={available:state.job?33:34,reserved:state.job?.state==='ready'?1:0,kind:'test'};
  if(path==='/api/account/capabilities')return route.fulfill({json:{email:{enabled:false},checkout:{enabled:false,test:true,currency:'KRW'}}});
  if(path==='/api/status')return route.fulfill({json:{generation:{enabled:true,aiDimensionDisplay:supported,photoPurposes:true},wallet,budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}}});
  if(path==='/api/dimension-analysis'){state.analyses++;return route.fulfill({json:{available:false}});}

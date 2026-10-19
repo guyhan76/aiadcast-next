@@ -1,8 +1,8 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './helpers/authenticated';
 async function setup(page:any,previewDelay=0){
  await page.addInitScript(()=>{sessionStorage.setItem('aiadcast.beta-session',JSON.stringify({token:'a'.repeat(43),expires:Date.now()+86400000,user:{id:'owner-fixture',label:'Owner',role:'admin'}}));localStorage.setItem('aiadcast.ui-language','ko');});
  const state={previews:0,applies:0,applied:false,conflict:false};const budget={limitMicros:0,spentMicros:0,heldMicros:0};
- await page.route('**/api/**',async(route:any)=>{const path=new URL(route.request().url()).pathname;
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async(route:any)=>{const path=new URL(route.request().url()).pathname;
   if(path==='/api/admin/overview')return route.fulfill({json:{demoSupportAvailable:true,budget:{...budget,limitMicros:5000000,allocatedMicros:5000000},readiness:{},users:[{id:'member-fixture',label:'한동석',email:'guyhan76@gmail.com',role:'member',disabled:false,projects:0,wallet:{available:state.applied?3:1,reserved:0},budget:{...budget,limitMicros:state.applied?1000000:0},generation:{enabled:state.applied,reason:'BUDGET_NOT_AVAILABLE'}}],jobs:[],orders:[],audit:[]}});
   const quote={applied:state.applied,email:'guyhan76@gmail.com',quoteToken:'fixture-quote',addedCredits:2,totalMicros:5000000,memberLimitMicros:1000000,ownerLimitMicros:4000000,spentMicros:527300,heldMicros:100000,wallet:{available:state.applied?3:1,reserved:0}};
   if(path==='/api/admin/demo-support-preview'){if(state.previews===1&&previewDelay)await new Promise(resolve=>setTimeout(resolve,previewDelay));state.previews++;return route.fulfill({json:quote});}

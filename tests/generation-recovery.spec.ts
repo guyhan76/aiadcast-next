@@ -1,5 +1,5 @@
-import {test,expect} from '@playwright/test';
-import type {Page} from '@playwright/test';
+import {authenticatedTest as test,expect} from './helpers/authenticated';
+import type {Page} from './helpers/authenticated';
 import type {GenerationJob} from '../src/generation-client';
 import sharp from 'sharp';
 import {createHash} from 'node:crypto';
@@ -8,7 +8,7 @@ import {readFile} from 'node:fs/promises';
 const png=await sharp({create:{width:12,height:8,channels:4,background:{r:33,g:94,b:174,alpha:1}}}).png().toBuffer();
 
 async function reloadSavedEditor(page:Page,jobId?:string){
- await expect.poll(()=>page.evaluate(async(jobId)=>new Promise<boolean>((resolve,reject)=>{const r=indexedDB.open('aiadcast-workspace-drafts',1);r.onsuccess=()=>{const q=r.result.transaction('drafts').objectStore('drafts').get('guest');q.onsuccess=()=>{resolve(jobId?q.result?.editor.generated?.jobId===jobId:!!q.result?.editor.product);r.result.close();};q.onerror=()=>reject(q.error);};}),jobId)).toBe(true);
+ await expect.poll(()=>page.evaluate(async(jobId)=>new Promise<boolean>((resolve,reject)=>{const r=indexedDB.open('aiadcast-workspace-drafts',1);r.onsuccess=()=>{const q=r.result.transaction('drafts').objectStore('drafts').get('editor-fixture-user');q.onsuccess=()=>{resolve(jobId?q.result?.editor.generated?.jobId===jobId:!!q.result?.editor.product);r.result.close();};q.onerror=()=>reject(q.error);};}),jobId)).toBe(true);
  page.once('dialog',d=>d.accept());await page.reload();
 }
 
@@ -16,7 +16,7 @@ const artifactHash=createHash('sha256').update(png).digest('hex');
 async function recoveryApi(page:Page,scenario:'invalid-first'|'lose-second'){
  const state={posts:0,historyReads:0,readIds:[] as string[],acceptedIds:[] as string[],jobs:[] as GenerationJob[],wallet:{available:10,reserved:0,kind:'test'}};
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
- await page.route('**/api/**',async route=>{
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async route=>{
   const request=route.request(),path=new URL(request.url()).pathname;
   const json=(value:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(value)});
   if(path==='/api/status')return json({mode:'local-development',commercialReady:false,generation:{enabled:true,model:'gpt-image-2.5-sunburst',reason:null},wallet:state.wallet,budget:{limitMicros:1000000,spentMicros:0,heldMicros:0},assistant:{available:false}});

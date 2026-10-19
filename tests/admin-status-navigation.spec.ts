@@ -1,4 +1,4 @@
-import {test,expect,type Page,type Route} from '@playwright/test';
+import {test,expect,type Page,type Route} from './helpers/authenticated';
 const referenceStatus={available:true,providerConfigured:true,generalAnalysisEnabled:false,limitCalls:10,limitMicros:300000,perCallHoldMicros:30000,references:[],budget:{ledgerExists:false,usedCalls:null,allowanceUsedMicros:null,knownCostMicros:null,unresolvedCalls:null,remainingCalls:10,request:null}};
 const overview={readiness:{imageProviderConfigured:true,generationSwitch:true},budget:{limitMicros:5000000,allocatedMicros:5000000,spentMicros:527300,heldMicros:0},users:[],jobs:[],orders:[],audit:[]};
 type Mode='ok'|'hold'|'fail'|'invalid'|'auth';
@@ -7,7 +7,7 @@ async function setup(page:Page){
  const held:{route:Route;done:()=>void;body:unknown}[]=[];
  await page.addInitScript(()=>sessionStorage.setItem('aiadcast.beta-session',JSON.stringify({token:'a'.repeat(43),expires:Date.now()+3600000,user:{id:'admin-fixture',label:'Operator',role:'admin'}})));
  page.on('requestfailed',r=>{if(new URL(r.url()).pathname.startsWith('/api/admin/'))aborted++;});
- await page.route('**/api/**',async route=>{
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async route=>{
   const path=new URL(route.request().url()).pathname;if(route.request().method()!=='GET'){posts++;return route.fulfill({status:500,json:{error:{code:'NO_MUTATION_EXPECTED'}}});}
   if(path==='/api/admin/overview'||path==='/api/admin/dimension-evaluation'){
    const isOverview=path.endsWith('/overview'),mode=isOverview?overviewMode:statusMode,body=isOverview?overview:referenceStatus;if(isOverview)overviewGets++;else gets++;

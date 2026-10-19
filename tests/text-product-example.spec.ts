@@ -1,11 +1,11 @@
-import {test,expect,type Page} from '@playwright/test';
+import {authenticatedTest as test,expect,type Page} from './helpers/authenticated';
 import sharp from 'sharp';import {createHash} from 'node:crypto';import {readFile} from 'node:fs/promises';
 import {reloadDraft} from './helpers/workspace';
 const image=await sharp({create:{width:864,height:1536,channels:4,background:'#6485a6'}}).png().toBuffer(),hash=createHash('sha256').update(image).digest('hex');
 const second=await sharp({create:{width:20,height:20,channels:4,background:'#a26688'}}).png().toBuffer();
 async function api(page:Page,{supported=true,lost=false,statusGate=Promise.resolve()}={}){
  const state={posts:0,accepts:0,body:null as any,job:null as any,history:0};const wallet={available:3,reserved:0,kind:'test'};
- await page.route('**/api/**',async r=>{const path=new URL(r.request().url()).pathname,send=(json:unknown)=>r.fulfill({json});
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async r=>{const path=new URL(r.request().url()).pathname,send=(json:unknown)=>r.fulfill({json});
   if(path==='/api/status'){await statusGate;return send({mode:'local-development',commercialReady:false,generation:{enabled:true,model:'fixture',reason:null,textExamples:supported,photoPurposes:true},wallet,budget:{limitMicros:2000000,spentMicros:0,heldMicros:0}});}
   if(path==='/api/generations'&&r.request().method()==='POST'){state.posts++;const b=state.body=r.request().postDataJSON();state.job={id:'text_example_job',projectId:b.projectId,requestId:b.requestId,inputMode:b.request.inputMode,state:'ready',mode:'creative',sourceHash:null,createdAt:'2026-10-18T00:00:00.000Z',model:'fixture',artifactId:hash,composition:'complete-ad',compositionKey:b.request.output.compositionKey,artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+image.toString('base64'),width:864,height:1536,role:'creative'},marketingPlan:b.request.marketingPlan,errorCode:null};return lost?r.abort('failed'):send({job:state.job,wallet});}
   if(path==='/api/generations'){state.history++;return send({jobs:state.job?[state.job]:[]});}
