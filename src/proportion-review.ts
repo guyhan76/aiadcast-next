@@ -44,7 +44,7 @@ export function measureFrontRatio(image:ReviewImage,mark:MeasuredPhoto,expected:
 export function buildProportionReport(context:ProportionContext,measurement:ProportionMeasurement,createdAt=new Date().toISOString()) {
  if(!validImage(context.source)||!validImage(context.result))throw Error('INVALID_REVIEW_IMAGE');
  const verticalAxis=context.specType==='flat'?'depth':'height';
- const expectedAxes=context.specType==='none'?[]:context.specType==='flat'?['width','depth']:context.specType==='cylindrical'?['width','height']:['width','depth','height'];
+ const expectedAxes=context.specType==='none'?[]:context.specType==='flat'?['width','depth']:(context.specType==='cylindrical'||context.specType==='frontal')?['width','height']:['width','depth','height'];
  if(context.specifications.length!==expectedAxes.length||context.specifications.some((s,i)=>s.axis!==expectedAxes[i]||s.unit!=='mm'||!Number.isFinite(s.value)||s.value<=0||s.value>100000))throw Error('INVALID_REVIEW_SPECIFICATIONS');
  if(!Number.isFinite(Date.parse(createdAt))||new Date(createdAt).toISOString()!==createdAt)throw Error('INVALID_REVIEW_TIME');
  const width=context.specifications.find(s=>s.axis==='width')?.value;

@@ -12,7 +12,7 @@ async function setup(page:Page){const state={approved:false,requests:[] as strin
  if(path==='/api/auth/email/request')return reply({requestId:'request-email-123',pollToken:'p'.repeat(43),expires:Date.now()+600000});
  if(path==='/api/auth/email/exchange')return reply(state.approved?{state:'verified',session}:{state:'pending'});
  if(path==='/api/auth/email/verify'){state.approved=true;return reply({verified:true});}
- if(path==='/api/status')return reply({mode:'invite-beta',commercialReady:false,generation:{enabled:false,reason:'GENERATION_DISABLED'},assistant:{available:false},wallet:{available:0,reserved:0,credits:{available:state.paid?180:0,reserved:0}},budget:{limitMicros:0}});
+ if(path==='/api/status')return reply({mode:'invite-beta',commercialReady:false,generation:{dimensionGeometry:true,enabled:false,reason:'GENERATION_DISABLED'},assistant:{available:false},wallet:{available:0,reserved:0,credits:{available:state.paid?180:0,reserved:0}},budget:{limitMicros:0}});
  if(path==='/api/checkout/orders'&&req.method()==='POST'){const b=req.postDataJSON();expect(b.pack).toBe('credits-v2-180');expect(b.agreed).toBe(true);expect(b.amount).toBeUndefined();state.order={id:'order-test-123',credits:180,amount:48900,unit:'credit-v2',currency:'KRW',state:'pending',pack:'credits-v2-180',test:true,created:Date.now(),checkoutUrl:'https://beta.example.com/#pay?orderId=order-test-123&ticket='+('t'.repeat(43))};return reply(state.order);}
  if(path==='/api/checkout/orders/order-test-123')return reply({...state.order,state:state.paid?'paid':'pending'});
  if(path==='/api/projects')return reply({projects:[]});
@@ -43,7 +43,7 @@ test('hosted payment uses the server quote and confirms a return before displayi
  const grant={orderId:'order-browser-123',ticket:'t'.repeat(43)};let confirmation:any;
  await page.route('https://js.tosspayments.com/v2/standard',route=>route.fulfill({contentType:'text/javascript',body:'window.TossPayments=(key)=>({payment:({customerKey})=>({requestPayment:async(options)=>{window.testPayment={key,customerKey,options};}})});'}));
  await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',route=>{const path=new URL(route.request().url()).pathname;const reply=(body:unknown)=>route.fulfill({contentType:'application/json',body:JSON.stringify(body)});
-  if(path==='/api/status')return reply({mode:'invite-beta',commercialReady:false,generation:{enabled:false,reason:'GENERATION_DISABLED'},assistant:{available:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}});
+  if(path==='/api/status')return reply({mode:'invite-beta',commercialReady:false,generation:{dimensionGeometry:true,enabled:false,reason:'GENERATION_DISABLED'},assistant:{available:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}});
   if(path==='/api/checkout/launch'){expect(route.request().postDataJSON()).toEqual(grant);return reply({id:grant.orderId,credits:3,amount:6900,clientKey:'test_ck_example',customerKey:'user-123',orderName:'aiadcast 3개 광고 테스트 이용권',successUrl:'https://beta.example.com/?checkout=return',failUrl:'https://beta.example.com/?checkout=return'});}
   if(path==='/api/checkout/receipt')return reply({id:grant.orderId,state:'paid',credits:3,receipt:{verified:true,grantedCredits:3,balance:3}});
   if(path==='/api/checkout/confirm'){confirmation=route.request().postDataJSON();return reply({state:'paid'});}

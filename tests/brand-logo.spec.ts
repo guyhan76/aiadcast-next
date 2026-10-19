@@ -2,7 +2,7 @@ import {authenticatedTest as test,expect} from './helpers/authenticated';
 import {readFile} from 'node:fs/promises';
 const original=await readFile(new URL('../src/assets/aiadcast-wordmark.svg',import.meta.url),'utf8');
 test('all app wordmarks reuse official outlines and identical orange ai/triangle without recoloring controls',async({page},info)=>{
- await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',route=>route.fulfill({json:new URL(route.request().url()).pathname==='/api/status'?{generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}:{email:{enabled:false},checkout:{enabled:false,test:true,currency:'KRW'}}}));
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',route=>route.fulfill({json:new URL(route.request().url()).pathname==='/api/status'?{generation:{dimensionGeometry:true,enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}:{email:{enabled:false},checkout:{enabled:false,test:true,currency:'KRW'}}}));
  for(const route of ['home','create','projects','guide','login','signup','checkout','credits','checkout-return','admin','editor','verify','pay','payment-return']){
   await page.goto('/#'+route);await expect(page.getByRole('region',{name:'내 계정 및 로그아웃'})).toBeVisible();const logos=page.locator('.brand-lockup');await expect(logos.first()).toBeAttached();
   for(const logo of await logos.all()){

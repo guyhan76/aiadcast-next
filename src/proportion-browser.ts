@@ -7,7 +7,7 @@ export async function preflightProportions(project:Project){
  if(isTextExample(project))return null;
  // A selected target variant may intentionally differ from the reference size.
  if(project.generation.dimensionBased&&project.generation.mode==='creative')return null;
- const settings=project.proportionViews;if(!settings?.confirmed||project.productProfile.specType==='none')return null;
+ const settings=project.proportionViews;if(!settings?.confirmed||(project.productProfile.specType==='none'||project.productProfile.specType==='frontal'))return null;
  const dimensions={width:Number(project.dimensions.width),depth:Number(project.dimensions.depth),height:Number(project.dimensions.height)};
  const photos=referenceAssets(project).filter(p=>photoRole(project,p.sha256)==='subject');if(!photos.length)return null;
  const rows=await Promise.all(photos.map(async p=>assessView(await analysePhoto(p),settings.views[p.sha256]??'unconfirmed',dimensions,true)));

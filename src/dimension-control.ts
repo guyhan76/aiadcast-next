@@ -7,6 +7,7 @@ export function semanticMeasurements(p:Project):SemanticMeasurement[]{
  if(p.productProfile.specType==='none')return [];
  if(p.productProfile.specType==='cylindrical')return [m('body.diameter',p.dimensions.width),m('body.height',p.dimensions.height,['cap','shoulder'])];
  if(p.generation.dimensionBasis==='garment-flat')return [m('garment.chestFlatWidth',p.dimensions.width,[],'laid-flat'),m('garment.totalLength',p.dimensions.depth,[],'laid-flat')];
+ if(p.productProfile.specType==='frontal')return [m('body.width',p.dimensions.width),m('body.height',p.dimensions.height,['stand','attachments'])];
  if(p.productProfile.specType==='flat')return [m('plane.width',p.dimensions.width),m('plane.height',p.dimensions.depth)];
  return [m('body.width',p.dimensions.width),m('body.depth',p.dimensions.depth),m('body.height',p.dimensions.height,p.productProfile.category==='boxes'?['flaps']:['handles','attachments'])];
 }

@@ -4,7 +4,7 @@ const email={email:{enabled:true},checkout:{enabled:false,test:true,currency:'KR
 const password={...email,email:{enabled:false},password:{enabled:true,test:true,adminReady:true,adminEmail:'owner@example.com'}};
 async function base(page:Page){
  const writes:string[]=[];
- await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',r=>{if(r.request().method()!=='GET')writes.push(new URL(r.request().url()).pathname);return r.fulfill({json:{projects:[],generation:{enabled:false},assistant:{available:false},wallet:{available:0,reserved:0}}});});
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',r=>{if(r.request().method()!=='GET')writes.push(new URL(r.request().url()).pathname);return r.fulfill({json:{projects:[],generation:{dimensionGeometry:true,enabled:false},assistant:{available:false},wallet:{available:0,reserved:0}}});});
  return writes;
 }
 async function noForm(page:Page){await expect(page.locator('.account-page input')).toHaveCount(0);await expect(page.getByRole('button',{name:'인증메일 받기',exact:true})).toHaveCount(0);await expect(page.getByText('이메일 인증 연결 준비 중입니다.',{exact:true})).toHaveCount(0);}

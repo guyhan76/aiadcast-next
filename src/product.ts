@@ -4,15 +4,15 @@ import {isPhysicalCategory,resolveIndustryCategory} from './industry.ts';
 import type {ProductCategory} from './industry.ts';
 export {productCategories} from './industry.ts';
 export type {ProductCategory} from './industry.ts';
-export type SpecType = 'rectangular' | 'flat' | 'cylindrical' | 'none';
+export type SpecType = 'rectangular' | 'flat' | 'frontal' | 'cylindrical' | 'none';
 export type ProductProfile = {category: ProductCategory; specType: SpecType; material: string};
-export const specTypes = [['rectangular','가로 × 세로 × 높이'],['flat','가로 × 세로'],['cylindrical','지름 × 높이'],['none','규격 정보 없음']] as const;
+export const specTypes = [['rectangular','가로 × 세로 × 높이'],['flat','가로 × 세로'],['frontal','본체 가로 × 높이 · 깊이 미지정'],['cylindrical','지름 × 높이'],['none','규격 정보 없음']] as const;
 export const defaultProfile = ():ProductProfile => ({category:'other',specType:'rectangular',material:''});
 export const isServiceCategory = (category:ProductCategory) => !isPhysicalCategory(category);
 export function withCategory(p:Project,category:ProductCategory):Project {
   if(p.productProfile.category===category)return p;
   const noSpecsByDefault=isServiceCategory(category)||category==='automotive';
-  return {...p,...(noSpecsByDefault&&p.generation.dimensionBased?{generation:{...p.generation,dimensionBased:false,planarSourceHash:undefined}}:{}),productProfile:{...p.productProfile,category,specType:noSpecsByDefault?'none':p.productProfile.specType},dimensions:noSpecsByDefault?{...p.dimensions,visible:false,lines:false}:p.dimensions};
+  return {...p,generation:{...p.generation,geometryShape:undefined,...(noSpecsByDefault&&p.generation.dimensionBased?{dimensionBased:false,planarSourceHash:undefined}:{})},productProfile:{...p.productProfile,category,specType:noSpecsByDefault?'none':p.productProfile.specType},dimensions:noSpecsByDefault?{...p.dimensions,visible:false,lines:false}:p.dimensions};
 }
 export function parseProfile(value:unknown):ProductProfile {
   if(value===undefined)return defaultProfile(); // Earlier project files remain compatible.
@@ -25,7 +25,7 @@ export function parseProfile(value:unknown):ProductProfile {
 export function dimensionAxes(profile?:ProductProfile):('width'|'depth'|'height')[] {
   if(profile?.specType==='none')return [];
   if(profile?.specType==='flat')return ['width','depth'];
-  if(profile?.specType==='cylindrical')return ['width','height'];
+  if(profile?.specType==='cylindrical'||profile?.specType==='frontal')return ['width','height'];
   return ['width','depth','height'];
 }
 export function axisLabel(axis:'width'|'depth'|'height',locale:'ko'|'en',profile?:ProductProfile) {

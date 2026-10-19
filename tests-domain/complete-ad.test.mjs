@@ -18,7 +18,7 @@ function fixture(category='boxes'){
  p.copy.ko={title:'보내는 마음까지, 든든하게.',description:'B골 크라프트재질 · 빠른배송 · 10개 19,800원',company:'셀업랩스',contact:'010-5635-6211',email:'selluplabs@gmail.com',website:'https://selluplabs-homepage.selluplabs.workers.dev/'};
  return p;
 }
-function generated(p){return {jobId:'complete_fixture',mode:'creative',role:'creative',model:'verification.fixture',sourceHash:p.product?.sha256??null,createdAt:'2026-10-13T00:00:00.000Z',specificationKey:generatedCompatibilityKey(p),composition:'complete-ad',compositionKey:completeAdKey(p),asset:{name:'ad.png',data:'data:image/png;base64,example',width:864,height:1536,sha256:'b'.repeat(64)}};}
+function generated(p){return {dimensionGeometry:buildGenerationRequest(p).dimensionGeometry,jobId:'complete_fixture',mode:'creative',role:'creative',model:'verification.fixture',sourceHash:p.product?.sha256??null,createdAt:'2026-10-13T00:00:00.000Z',specificationKey:generatedCompatibilityKey(p),composition:'complete-ad',compositionKey:completeAdKey(p),asset:{name:'ad.png',data:'data:image/png;base64,example',width:864,height:1536,sha256:'b'.repeat(64)}};}
 test('finished campaigns select industry-specific scenes while preserving supplied copy and CTA policy',()=>{
  const expected={boxes:'actual carton',beauty:'actual cosmetic packaging',food:'food or produce',fashion:'fabric drape',jewelry:'actual setting, cut and metal',electronics:'appliance or device',travel:'destination or experience',lodging:'documented room',restaurant:'supplied menu item',hospital:'supplied consultation',insurance:'conceptual planning scene',lease:'actual vehicle',industrial:'actual component'};
  const scenes=new Set();

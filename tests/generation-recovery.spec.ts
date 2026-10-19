@@ -19,12 +19,12 @@ async function recoveryApi(page:Page,scenario:'invalid-first'|'lose-second'){
  await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async route=>{
   const request=route.request(),path=new URL(request.url()).pathname;
   const json=(value:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(value)});
-  if(path==='/api/status')return json({mode:'local-development',commercialReady:false,generation:{enabled:true,model:'gpt-image-2.5-sunburst',reason:null},wallet:state.wallet,budget:{limitMicros:1000000,spentMicros:0,heldMicros:0},assistant:{available:false}});
+  if(path==='/api/status')return json({mode:'local-development',commercialReady:false,generation:{dimensionGeometry:true,enabled:true,model:'gpt-image-2.5-sunburst',reason:null},wallet:state.wallet,budget:{limitMicros:1000000,spentMicros:0,heldMicros:0},assistant:{available:false}});
   if(path==='/api/generations'&&request.method()==='POST'){
    state.posts++;
    if(scenario==='invalid-first'&&state.posts===1)return json({error:{code:'INVALID_REQUEST'}},400);
    const body=request.postDataJSON();
-   const job:GenerationJob={id:`recovery_job_${state.posts}`,projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:body.request.mode,sourceHash:body.source?.sha256??null,createdAt:'2026-10-10T01:00:00.000Z',model:'gpt-image-2.5-sunburst',artifactId:artifactHash,artifact:{id:artifactHash,sha256:artifactHash,dataUrl:'data:image/png;base64,'+png.toString('base64'),width:12,height:8,role:'background'},errorCode:null};
+   const job:GenerationJob={id:`recovery_job_${state.posts}`,projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:body.request.mode,dimensionGeometry:body.request.dimensionGeometry,sourceHash:body.source?.sha256??null,createdAt:'2026-10-10T01:00:00.000Z',model:'gpt-image-2.5-sunburst',artifactId:artifactHash,artifact:{id:artifactHash,sha256:artifactHash,dataUrl:'data:image/png;base64,'+png.toString('base64'),width:12,height:8,role:'background'},errorCode:null};
    state.jobs.push(job);state.wallet={available:9-state.acceptedIds.length,reserved:1,kind:'test'};
    if(scenario==='lose-second'&&state.posts===2)return route.abort('failed');
    return json({job,wallet:state.wallet});

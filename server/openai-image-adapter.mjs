@@ -1,3 +1,4 @@
+import {structuralGuide,geometryBrief} from './dimension-geometry-guide.mjs';
 import {preparePlanarSource,requestPlanarRatio,controlPlanarResult} from './planar-proportion.mjs';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
@@ -8,7 +9,7 @@ import {finishedAdQualityBrief} from './finished-ad-quality.mjs';
 
 // Pinned, opt-in development adapter. No model discovery or automatic upgrades.
 export const IMAGE_MODEL = 'gpt-image-2.5-sunburst';
-export const IMAGE_REVISION = 'gpt-image-2.5-sunburst/aiadcast-images-v16-industry-quality/2026-10-18';
+export const IMAGE_REVISION = 'gpt-image-2.5-sunburst/aiadcast-images-v18-partial-body-extents/2026-10-19';
 export const PRICE_VERSION = 'openai-direct-images-2026-10-10';
 export const GENERATION_SIZES = Object.freeze({
   '1:1': '1024x1024', '4:5': '1024x1280', '3:4': '960x1280',
@@ -63,12 +64,13 @@ RATIO ADAPTATION: Recompose the page for its requested ratio. For a square page,
 }
 export function photoRoleBrief(request,{complete=true}={}){
  const photos=[...(request.source?[request.source]:[]),...request.references??[]];
- if(request.mode==='original'||!photos.some(photo=>photo.purpose==='style'))return '';
- const subjects=photos.flatMap((photo,i)=>photo.purpose==='style'?[]:[i+1]);
- const styles=photos.flatMap((photo,i)=>photo.purpose==='style'?[i+1]:[]);
+ if(request.mode==='original'||!request.dimensionGeometry&&!photos.some(photo=>photo.purpose==='style'))return '';
+ const offset=request.dimensionGeometry&&request.dimensionGeometry.shape!=='unresolved'?1:0;
+ const subjects=photos.flatMap((photo,i)=>photo.purpose==='style'?[]:[i+1+offset]);
+ const styles=photos.flatMap((photo,i)=>photo.purpose==='style'?[i+1+offset]:[]);
  return `REFERENCE PURPOSE MAP (image numbers follow the exact upload order):
-ACTUAL SUBJECT images: ${subjects.length?subjects.join(', '):'none'}. DESIGN REFERENCE images: ${styles.join(', ')}.
-${subjects.length?`Image ${subjects[0]} establishes the actual advertised subject. Other ACTUAL SUBJECT images show its relevant details or actual service evidence. Keep its silhouette, materials, printing, colors, attachments and identity; do not replace it with a subject from a DESIGN REFERENCE.`:'No image establishes the actual business premises, staff or inventory. Create a conceptual service composition from the supplied business facts, not a claim that the design reference depicts this business.'}
+ACTUAL SUBJECT images: ${subjects.length?subjects.join(', '):'none'}. DESIGN REFERENCE images: ${styles.join(', ')||'none'}; never borrow its facts, price, dimensions, claims or contact information.
+${subjects.length?`Image ${subjects[0]} establishes the actual advertised subject. Other ACTUAL SUBJECT images show its relevant details or actual service evidence. ${request.dimensionGeometry&&request.dimensionGeometry.shape!=='unresolved'?'Input dimensions override its silhouette; preserve materials, printing, colors, attachments and identity;':'Keep its silhouette, materials, printing, colors, attachments and identity;'} do not replace it with a subject from a DESIGN REFERENCE.`:'No image establishes the actual business premises, staff or inventory. Create a conceptual service composition from the supplied business facts, not a claim that the design reference depicts this business.'}
 DESIGN REFERENCE images guide ${complete?'color palette, lighting, typography hierarchy and composition':'color palette, lighting and photographic atmosphere only; do not reproduce page layouts or typography in this photo plate'}. Adapt those design qualities to the ACTUAL SUBJECT and requested format. Do not copy their product, portrait, property, brand, logo, headline, figures, price, loan terms, performance promises, contact details or business identity. A style reference is not factual evidence, a measurement reference or permission to add a CTA. Subject identity takes priority when a reference style conflicts with it. Original files remain stored separately; generated resemblance and text accuracy require human review.`;
 }
 export function dimensionBoundaryBrief(request){
@@ -198,6 +200,7 @@ export class OpenAIImageAdapter {
     if (!this.apiKey) throw new ProviderFailure('PROVIDER_NOT_CONFIGURED', { uncertain: false });
     const size = photographSize(request);
     if (!size) throw new ProviderFailure('UNSUPPORTED_FORMAT', { uncertain: false });
+    const guide=request.dimensionGeometry?await structuralGuide(request.dimensionGeometry):null;
     const prompt = promptFor(request);
     let reference = request.mode === 'creative' ? source : null;
     if(request.proportionControl)reference={...source,bytes:await preparePlanarSource(source.bytes,requestPlanarRatio(request)),mime:'image/png'};
@@ -207,7 +210,7 @@ export class OpenAIImageAdapter {
       body = new FormData();
       body.set('model', IMAGE_MODEL); body.set('prompt', prompt); body.set('size', size);
       body.set('quality', 'high'); body.set('n', '1'); body.set('output_format', 'png');
-      for(const [i,ref] of [reference,...references].entries())body.append(references.length?'image[]':'image',new Blob([ref.bytes],{type:ref.mime}),`reference-${i+1}.${ref.mime.split('/')[1]}`);
+      for(const [i,ref] of [...(guide?[guide]:[]),reference,...references].entries())body.append(references.length||guide?'image[]':'image',new Blob([ref.bytes],{type:ref.mime}),`reference-${i+1}.${ref.mime.split('/')[1]}`);
     } else {
       headers['Content-Type'] = 'application/json';
       body = JSON.stringify({ model: IMAGE_MODEL, prompt, size, quality: 'high', n: 1, output_format: 'png' });
@@ -235,7 +238,7 @@ export class OpenAIImageAdapter {
     const cost = imageUsageCost(result.usage);
     let planar={};
     if(request.proportionControl){const original={...meta,bytes};const controlled=await controlPlanarResult(bytes,requestPlanarRatio(request));bytes=controlled.bytes;meta=await validateImage(bytes,'image/png',{maximumPixels:8_294_400,maximumBytes:16_000_000});planar={planarReport:{...controlled.report,variantLabel:request.proportionControl.variantLabel},planarOriginal:original};}
-    return { ...meta, bytes,...planar, usage: result.usage ?? null, cost, providerRequestId: response.headers.get('x-request-id')?.slice(0, 200) ?? null, model: IMAGE_MODEL, revision: IMAGE_REVISION, role: request.mode === 'original' ? 'background' : 'creative', composition: completeAdRequest(request)?'complete-ad':'photo-plate', size, quality: 'high' };
+    return { ...meta, bytes,...planar,...(request.dimensionGeometry?{geometryGuide:{contractHash:hashBytes(Buffer.from(JSON.stringify(request.dimensionGeometry))),guideHash:guide?.sha256??null,outputGeometryVerified:false}}:{}), usage: result.usage ?? null, cost, providerRequestId: response.headers.get('x-request-id')?.slice(0, 200) ?? null, model: IMAGE_MODEL, revision: IMAGE_REVISION, role: request.mode === 'original' ? 'background' : 'creative', composition: completeAdRequest(request)?'complete-ad':'photo-plate', size, quality: 'high' };
   }
 }
 
@@ -246,6 +249,6 @@ function planarPrompt(request){
 }
 
 export function promptFor(request){
- const prompt=basePromptFor(request);if(!request.dimensionPlan)return prompt;
+ const base=basePromptFor(request);const prompt=request.dimensionGeometry?geometryBrief(request.dimensionGeometry)+'\n'+(request.dimensionGeometry.shape==='unresolved'?base:base.replaceAll('Keep the same silhouette, construction, colors, physical printing, attachments and materials.','Keep documented construction, colors, physical printing, attachments and materials; input dimensions override the old silhouette.').replaceAll('Reconcile named width, depth, height or diameter with the reference silhouette','Prioritize named width, depth, height or diameter over the reference silhouette')):base;if(!request.dimensionPlan)return prompt;
  return prompt+`\nDIMENSION-BASED SINGLE VARIANT: ${JSON.stringify(request.dimensionPlan)}. Generate only this selected size variant of the documented product. Preserve its construction, material, identity and approved advertising copy; do not create a size comparison montage or infer other variants. Use named measured axes rather than resizing the advertisement canvas. Respect the explicit measurement basis: inner-body means interior body dimensions, outer-body means exterior body dimensions, and body does not specify interior versus exterior. Never infer wall thickness or convert between inner and outer measurements. Body measurements exclude open packaging flaps, handles and shadows. For containers, diameter/height or other supplied dimensions constrain the outer shape; volume alone does not establish geometry or capacity accuracy. For garment-flat measurements, width is laid-flat chest width and depth is garment length, not cuboid depth or body circumference. Do not infer measurements from S/M/L labels or add undocumented fit claims. Missing dimensions remain unknown. These are generation constraints, not a certification of physical accuracy. Keep the existing complete-ad art direction and copy quality unless the explicitly selected isolated-plane mode applies.`;
 }

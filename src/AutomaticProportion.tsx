@@ -14,7 +14,7 @@ export function AutomaticProportion({project,change}:{project:Project;change:(fn
  // Whole advertising pages are not isolated product outlines. Never measure their page silhouette as product geometry.
  const output=hasUsableCreative(project)&&!hasCompleteAd(project)?project.generated!.asset:null;
  useEffect(()=>{let alive=true;setBusy(true);setError('');setOutlines({});Promise.all([...photos,...(output?[output]:[])].map(async p=>[p.sha256,await analysePhoto(p)] as const)).then(rows=>{if(alive)setOutlines(Object.fromEntries(rows));}).catch(()=>{if(alive)setError(t('사진을 분석하지 못했습니다. 사진 파일을 확인해주세요.','Could not analyze the photos. Check the image files.'));}).finally(()=>{if(alive)setBusy(false);});return()=>{alive=false};},[key,output?.sha256]);
- if(!photos.length||project.productProfile.specType==='none')return null;
+ if(!photos.length||(project.productProfile.specType==='none'||project.productProfile.specType==='frontal'))return null;
  const dimensions={width:Number(project.dimensions.width),depth:Number(project.dimensions.depth),height:Number(project.dimensions.height)};
  const rows=photos.map(photo=>({photo,view:settings.views[photo.sha256]??'unconfirmed',outline:outlines[photo.sha256]})).map(r=>({...r,assessment:r.outline?assessView(r.outline,r.view,dimensions,settings.confirmed):null}));
  const resultAssessment=output&&outlines[output.sha256]?assessView(outlines[output.sha256],settings.resultView??'unconfirmed',dimensions,settings.confirmed):null;

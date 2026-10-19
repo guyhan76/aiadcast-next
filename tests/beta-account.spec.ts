@@ -7,7 +7,7 @@ async function setup(page:Page){
   const reply=(body:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
   state.requests.push({path,auth});
   if(path==='/api/auth/login'){const {invite}=req.postDataJSON();const name=invite==='a'.repeat(43)?'alpha':'bravo';return reply({token:(name==='alpha'?'A':'B').repeat(43),expires:Date.now()+86400000,user:{id:'tester_'+name,label:name}});}
-  if(path==='/api/status')return reply({mode:'invite-beta',commercialReady:false,generation:{enabled:false,reason:'GENERATION_DISABLED'},wallet:{available:3,reserved:0},budget:{limitMicros:0},assistant:{available:false}});
+  if(path==='/api/status')return reply({mode:'invite-beta',commercialReady:false,generation:{dimensionGeometry:true,enabled:false,reason:'GENERATION_DISABLED'},wallet:{available:3,reserved:0},budget:{limitMicros:0},assistant:{available:false}});
   if(path==='/api/auth/logout')return reply({signedOut:true});
   if(!auth)return reply({error:{code:'AUTH_REQUIRED'}},401);
   const user=auth==='Bearer '+'A'.repeat(43)?'alpha':'bravo';

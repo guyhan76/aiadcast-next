@@ -53,7 +53,7 @@ test('generation job and saved project retain the original plan after form edits
  const service=new GenerationService({enabled:true,providerConfigured:true,budgetMicros:1000000,adapter});t.after(()=>service.close());
  const created=await service.create({projectId:p.id,requestId:randomUUID(),request,source});await service.waitForIdle();
  const job=service.job(created.job.id);assert.equal(job.state,'ready');assert.equal(calls[0].source.sha256,source.sha256);assert.deepEqual(job.marketingPlan,request.marketingPlan);
- const metadata={jobId:job.id,mode:job.mode,sourceHash:job.sourceHash,asset:source,role:'creative',model:'fixture',createdAt:job.createdAt,specificationKey:generatedCompatibilityKey(p),marketingPlan:job.marketingPlan};
+ const metadata={dimensionGeometry:job.dimensionGeometry,jobId:job.id,mode:job.mode,sourceHash:job.sourceHash,asset:source,role:'creative',model:'fixture',createdAt:job.createdAt,specificationKey:generatedCompatibilityKey(p),marketingPlan:job.marketingPlan};
  p.productName='새 상품';p.dimensions.width='100';assert.equal(service.job(job.id).marketingPlan.input.name,'맞춤형 상자');
  const saved=await parseGenerated(metadata,async()=>source);assert.equal(saved.marketingPlan.input.specifications[0].value,'600');assert.deepEqual(parseMarketingPlan(JSON.parse(JSON.stringify(saved.marketingPlan))),saved.marketingPlan);
  const legacy={...metadata};delete legacy.marketingPlan;assert.equal((await parseGenerated(legacy,async()=>source)).marketingPlan,undefined);

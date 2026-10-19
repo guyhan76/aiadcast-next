@@ -1,3 +1,4 @@
+import {projectGeometry} from '../src/dimension-geometry.ts';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {newProject,exportErrors,importProject} from '../src/model.ts';
@@ -9,7 +10,7 @@ const creative={name:'generated.png',data:'data:image/png;base64,generated',sha2
 function fixture(service=false){
  let p=newProject();if(service)p=withCategory(p,'education');else p.product=structuredClone(original);
  p.generation.mode='creative';
- p.generated={jobId:'job_123',mode:'creative',sourceHash:p.product?.sha256??null,asset:structuredClone(creative),role:'creative',model:'gpt-image-2.5-sunburst',createdAt:'2026-10-10T01:00:00.000Z',specificationKey:generatedCompatibilityKey(p)};
+ p.generated={dimensionGeometry:projectGeometry(p)??undefined,jobId:'job_123',mode:'creative',sourceHash:p.product?.sha256??null,asset:structuredClone(creative),role:'creative',model:'gpt-image-2.5-sunburst',createdAt:'2026-10-10T01:00:00.000Z',specificationKey:generatedCompatibilityKey(p)};
  return p;
 }
 test('accepted creative is separate from source and selected for export and geometry',()=>{

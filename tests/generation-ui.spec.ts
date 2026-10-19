@@ -10,18 +10,18 @@ const generatedBytes=await sharp({create:{width:600,height:400,channels:4,backgr
 const hash=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const originalPhoto={name:'source.png',mimeType:'image/png',buffer:originalBytes};
 const expectedArtifactHash=hash(generatedBytes);
-type MockJob={id:string;projectId:string;requestIds:string[];state:string;mode:string;sourceHash:string|null;createdAt:string;model:string;artifactId:string;artifact:Record<string,unknown>|null;errorCode:null;marketingPlan:unknown};
+type MockJob={dimensionGeometry?:unknown;id:string;projectId:string;requestIds:string[];state:string;mode:string;sourceHash:string|null;createdAt:string;model:string;artifactId:string;artifact:Record<string,unknown>|null;errorCode:null;marketingPlan:unknown};
 async function mockApi(page:Page,{dropResponse=false,corruptArtifact=false}={}){
  const state={generationPosts:0,acceptPosts:0,rejectPosts:0,historyReads:0,lastBody:null as Record<string,any>|null,job:null as MockJob|null,wallet:{available:10,reserved:0,kind:'test'}};
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
  await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async route=>{
   const req=route.request(),url=new URL(req.url());
   const respond=(body:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
-  if(url.pathname==='/api/status')return respond({mode:'local-development',commercialReady:false,generation:{enabled:true,model:'gpt-image-2.5-sunburst',reason:null},wallet:state.wallet,budget:{limitMicros:1000000,spentMicros:0,heldMicros:0},assistant:{available:false}});
+  if(url.pathname==='/api/status')return respond({mode:'local-development',commercialReady:false,generation:{dimensionGeometry:true,enabled:true,model:'gpt-image-2.5-sunburst',reason:null},wallet:state.wallet,budget:{limitMicros:1000000,spentMicros:0,heldMicros:0},assistant:{available:false}});
   if(url.pathname==='/api/generations'&&req.method()==='POST'){
    state.generationPosts++;const body=req.postDataJSON();state.lastBody=body;
    state.wallet={available:9,reserved:1,kind:'test'};
-   state.job={id:'generation_fixture_1',projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:body.request.mode,sourceHash:body.source?.sha256??null,createdAt:'2026-10-10T01:00:00.000Z',model:'gpt-image-2.5-sunburst',artifactId:expectedArtifactHash,artifact:{id:expectedArtifactHash,sha256:corruptArtifact?'c'.repeat(64):expectedArtifactHash,dataUrl:'data:image/png;base64,'+generatedBytes.toString('base64'),width:600,height:400,role:body.request.mode==='original'?'background':'creative'},errorCode:null,marketingPlan:body.request.marketingPlan};
+   state.job={id:'generation_fixture_1',projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:body.request.mode,dimensionGeometry:body.request.dimensionGeometry,sourceHash:body.source?.sha256??null,createdAt:'2026-10-10T01:00:00.000Z',model:'gpt-image-2.5-sunburst',artifactId:expectedArtifactHash,artifact:{id:expectedArtifactHash,sha256:corruptArtifact?'c'.repeat(64):expectedArtifactHash,dataUrl:'data:image/png;base64,'+generatedBytes.toString('base64'),width:600,height:400,role:body.request.mode==='original'?'background':'creative'},errorCode:null,marketingPlan:body.request.marketingPlan};
    if(dropResponse)return route.abort('failed');
    return respond({job:state.job,wallet:state.wallet});
   }
