@@ -15,7 +15,7 @@ test('approved packs keep currency independent of guide and ad languages, withou
  await dialog.getByRole('button',{name:'USD · $',exact:true}).click();
  await expect(dialog.locator('.pack-price')).toHaveText(['Not priced','Not priced','Not priced']);
  await expect(dialog.getByText('USD prices exclude applicable local sales tax.',{exact:true})).toBeVisible();
- await expect(dialog.getByText(/Test checkout and credits do not involve real charges/)).toBeVisible();
+ await expect(dialog.getByText('Demo · No real charge',{exact:true})).toBeVisible();
  await expect(dialog.getByRole('button',{name:/buy|purchase|pay/i})).toHaveCount(0);
  await expect(dialog.getByText(/Reels exports are still images/)).toBeVisible();
  for(const width of [320,390,768,1440]){
