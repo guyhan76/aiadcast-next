@@ -22,7 +22,7 @@ test('photo, hidden dimensions, attributes, target and card format survive norma
  assert.equal(normalized.target.segment,'procurement');assert.equal(normalized.contentType,'card');
  const prompt=promptFor(normalized);assert.match(prompt,/후렉소/);assert.match(prompt,/구매·유통/);assert.match(prompt,/"value":"600"/);assert.match(prompt,/"contentType":"card"/);
  assert.deepEqual(normalized.marketingPlan.normalizedRatios.map(r=>r.ratio),[1,2/3,1/3]);
- assert.equal(normalized.marketingPlan.geometryVerified,false);assert.match(prompt,/not proof of exact/);
+ assert.equal(normalized.marketingPlan.geometryVerified,false);assert.match(prompt,/not a guarantee of identity, physical accuracy or arrow placement/);assert.match(prompt,/Do not make the body taller, deeper, wider or thinner/);
 });
 test('category and supplied dimensions influence the target; missing specs never invent measurements',()=>{
  const p=product();assert.equal(marketingPlanForProject(p).target.segment,'procurement');
