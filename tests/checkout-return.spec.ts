@@ -39,3 +39,10 @@ test('older APK purchase can be selected from authenticated history without anot
 test('expired app authentication prompts same-account login without treating payment as failed',async({page})=>{
  await mocks(page);await page.addInitScript(s=>sessionStorage.setItem('aiadcast.beta-session',JSON.stringify(s)),session);await page.route('**/api/checkout/orders/'+order.id,r=>r.fulfill({status:401,contentType:'application/json',body:JSON.stringify({error:{code:'AUTH_REQUIRED'}})}));await page.goto('/');await context(page);await page.goto('/#checkout-return');await expect(page.getByRole('link',{name:'로그인',exact:true})).toBeVisible();expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();expect(await page.evaluate(()=>localStorage.getItem('aiadcast.checkout-continuation'))).toContain(order.id);
 });
+
+test('verified payment notice expires and does not follow users into the guide',async({page})=>{
+ await page.clock.install();await mocks(page);await page.addInitScript(s=>sessionStorage.setItem('aiadcast.beta-session',JSON.stringify(s)),session);
+ await page.goto('/');await context(page);await page.goto('/#checkout-return');await expect(page).toHaveURL(/#create$/);await expect(page.getByText(/이용권 3개 지급 확인/)).toBeVisible();
+ await page.goto('/#guide');await expect(page.getByText(/이용권 3개 지급 확인/)).toHaveCount(0);await page.goto('/#create');await expect(page.getByText(/이용권 3개 지급 확인/)).toHaveCount(0);
+ await page.goto('/#checkout-return');await expect(page).toHaveURL(/#create$/);await expect(page.getByText(/이용권 3개 지급 확인/)).toBeVisible();await page.clock.fastForward(60001);await expect(page.getByText(/이용권 3개 지급 확인/)).toHaveCount(0);
+});

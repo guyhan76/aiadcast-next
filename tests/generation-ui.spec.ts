@@ -84,10 +84,8 @@ test('changing the source while reviewing makes the old visual inapplicable',asy
 test('a lost POST response is recovered through requestIds without another generation POST',async({page})=>{
  const {state,panel}=await mockApi(page,{dropResponse:true});
  await panel.locator('.generate-button').click();
- await expect(panel.getByRole('alert')).toContainText('자동으로 다시 생성하지 않습니다');
- await expect(panel.locator('.generate-button')).toBeDisabled();
- await panel.getByRole('button',{name:'연결 상태 확인',exact:true}).click();
  await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();
+ await expect(panel.getByRole('alert')).toHaveCount(0);await expect(panel.locator('.generate-button')).toBeDisabled();
  expect(state.historyReads).toBe(2);expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(0);
  await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  await expect(panel.getByText('사용 확정한 시안',{exact:true})).toBeVisible();expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(1);

@@ -1,5 +1,4 @@
 import {clearLoginDestination} from './login-navigation';
-import {AppVersionInfo,VersionBadge} from './AppVersionInfo';
 import {CreditsPage} from './CreditsPage';
 import {apiIdentity} from './api-origin';
 import {readSession} from './account-client';
@@ -59,7 +58,13 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  const submittedWizard=useRef<string|undefined>(restored?.returnPage==='studio'?restored?.wizard?.project.id:undefined);
  const [wizardKey,setWizardKey]=useState(0),[items,setItems]=useState<Project[]>([]),[libraryError,setLibraryError]=useState('');
  const [draftSaving,setDraftSaving]=useState(false),[draftError,setDraftError]=useState(false);
- const [paymentNotice,setPaymentNotice]=useState(()=>{const v=readSession<{userId:string;origin:string;credits:number;balance:number}>('aiadcast.checkout-confirmed');return v?.userId===betaSession()?.user.id&&v?.origin===apiIdentity()?v:undefined;});
+ const [paymentNotice,setPaymentNotice]=useState(()=>{const v=readSession<{userId:string;origin:string;credits:number;balance:number;confirmedAt:number}>('aiadcast.checkout-confirmed');return v?.userId===betaSession()?.user.id&&v?.origin===apiIdentity()&&Number.isFinite(v.confirmedAt)&&Date.now()-v.confirmedAt>=0&&Date.now()-v.confirmedAt<60000?v:undefined;});
+ useEffect(()=>{
+  if(!paymentNotice)return;
+  const clear=()=>{sessionStorage.removeItem('aiadcast.checkout-confirmed');setPaymentNotice(undefined);};
+  if(!['create','studio','editor'].includes(page)){clear();return;}
+  const timer=setTimeout(clear,Math.max(0,60000-(Date.now()-paymentNotice.confirmedAt)));return()=>clearTimeout(timer);
+ },[page,paymentNotice]);
  const [switchError,setSwitchError]=useState('');const [generationIntent,setGenerationIntent]=useState<string|undefined>();
  const [wizard,setWizard]=useState<WizardDraft|undefined>(restored?.wizard),[wizardSeed,setWizardSeed]=useState(restored?.wizard);
  const [returnPage,setReturnPage]=useState<WorkspaceDraft['returnPage']>(restored?.returnPage??'home');
@@ -118,7 +123,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
    {page==='create'&&<p className="workspace-save-state" aria-live="polite">{draftSaving?(language==='ko'?'입력 내용 저장 중…':'Saving your draft…'):draftError?(language==='ko'?'입력 내용 저장 실패':'Draft could not be saved'):(language==='ko'?'입력 내용이 기기에 저장되었습니다.':'Draft saved on this device.')}</p>}
    {draftError&&<p className="wizard-error" role="alert">{text('입력 내용을 기기에 보관하지 못했습니다. 저장 공간을 확인해주세요.')}</p>}
    {switchError&&<p className="wizard-error" role="alert">{switchError}</p>}
-   {paymentNotice&&page!=='credits'&&<div className="connection-notice" role="status">{language==='ko'?`이용권 ${paymentNotice.credits}개 지급 확인 · 현재 잔액 ${paymentNotice.balance}개. 저장한 작업을 이어갑니다. 생성 예산과 규격 준비 상태는 별도입니다.`:`${paymentNotice.credits} credits confirmed · Balance ${paymentNotice.balance}. Continue your saved work. Generation budget and dimension readiness are separate.`}<button type="button" onClick={()=>{sessionStorage.removeItem('aiadcast.checkout-confirmed');setPaymentNotice(undefined);}}>{language==='ko'?'확인':'Dismiss'}</button></div>}
+   {paymentNotice&&['create','studio','editor'].includes(page)&&<div className="connection-notice" role="status">{language==='ko'?`이용권 ${paymentNotice.credits}개 지급 확인 · 현재 잔액 ${paymentNotice.balance}개.`:`${paymentNotice.credits} credits confirmed · Balance ${paymentNotice.balance}.`}<button type="button" onClick={()=>{sessionStorage.removeItem('aiadcast.checkout-confirmed');setPaymentNotice(undefined);}}>{language==='ko'?'확인':'Dismiss'}</button></div>}
    {(page!=='studio'||simpleStudio)&&page!=='editor'&&<header className="app-header"><a href="#home" className="mobile-brand" aria-label={text("aiadcast 홈")}><Brand/></a><span className="workspace-label">{language==='ko'?'내 상품과 서비스를 위한 광고 작업실':'SELLUPLABS / CREATIVE WORKSPACE'}</span><div className="app-header-actions"><LanguageSwitcher/><PricingDialog/>{betaSession()?.user.role==='admin'&&<a className="account-link" href="#admin">{language==='ko'?'관리자':'Admin'}</a>}<a className="account-link" href={betaSession()?"#credits":"#login"}>{text(betaSession()?"내 이용권":"로그인")}</a></div></header>}
 
    <div hidden={page!=='home'} className="home-page app-page">
@@ -127,7 +132,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
    {page==='portfolio'&&<div className="app-page"><PortfolioPage/></div>}
    <div hidden={page!=='create'} className="app-page"><CreateCampaign active={page==='create'} key={wizardKey} onReady={ready} draft={wizardSeed} onDraft={setWizard}/></div>
    <div hidden={page!=='projects'} className="app-page projects-page"><ProjectLibrary items={libraryItems} error={libraryError} onNew={begin} onOpen={p=>void open(p)}/></div>
-   <div hidden={page!=='guide'} className="app-page guide-page"><UsageGuide onNew={begin}/>{page==='guide'&&<><div className="app-version-bar"><VersionBadge/></div>{new URLSearchParams(location.search).get('support')==='1'&&<AppVersionInfo/>}</>}</div>
+   <div hidden={page!=='guide'} className="app-page guide-page"><UsageGuide onNew={begin}/></div>
    {(page==='signup'||page==='login')&&<div className="app-page"><EmailAccountPage key={page} mode={page} preserve={preserve} returnPage={returnPage}/></div>}
    {page==='admin'&&<div className="app-page"><AdminPage backHref={adminBack.current}/></div>}
    {page==='credits'&&<div className="app-page"><CreditsPage returnPage={creditsBack.current}/></div>}
