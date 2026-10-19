@@ -12,7 +12,7 @@ for(const mode of ['login','signup'])test(`slow ${mode} shows neutral loading th
  const writes=await base(page);let release!:()=>void;const pending=new Promise<void>(resolve=>release=resolve);
  await page.route('**/api/account/capabilities',async r=>{await pending;await r.fulfill({json:password});});
  await page.goto('/#'+mode);await expect(page.getByRole('status')).toHaveText('로그인 방식을 확인하고 있습니다…');await noForm(page);
- release();await expect(page.getByLabel('비밀번호',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:mode==='login'?'로그인하고 계속':'가입하고 시작하기',exact:true})).toBeVisible();await expect(page.getByText(/테스트 모드 · 이메일 인증을 생략합니다/)).toBeVisible();expect(writes).toEqual([]);
+ release();await expect(page.getByLabel('비밀번호',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:mode==='login'?'로그인하고 계속':'가입하고 시작하기',exact:true})).toBeVisible();await expect(page.getByText(/테스트 모드 · 이메일 인증을 생략합니다/)).toHaveCount(0);expect(writes).toEqual([]);
 });
 for(const failure of ['offline','http','timeout'])test(`${failure} automatically recovers without choosing an auth mode or writing`,async({page})=>{
  const writes=await base(page);let calls=0;await page.clock.install();
@@ -25,7 +25,7 @@ for(const failure of ['offline','http','timeout'])test(`${failure} automatically
  if(failure==='timeout')await page.clock.fastForward(20001);
  await expect(page.getByRole('status')).toContainText('서버 연결을 다시 확인');await expect(page.getByRole('alert')).toHaveCount(0);
  await page.clock.fastForward(1001);await expect(page.getByLabel('비밀번호',{exact:true})).toBeVisible();
- await expect(page.getByText(/테스트 모드 · 이메일 인증을 생략합니다/)).toBeVisible();expect(calls).toBe(2);expect(writes).toEqual([]);
+ await expect(page.getByText(/테스트 모드 · 이메일 인증을 생략합니다/)).toHaveCount(0);expect(calls).toBe(2);expect(writes).toEqual([]);
 });
 for(const failure of ['malformed','invalid-password','forbidden'])test(`${failure} fails closed without automatic retry and permits manual retry`,async({page})=>{
  const writes=await base(page);let calls=0;await page.clock.install();

@@ -63,7 +63,6 @@ function PasswordAccountPage({mode,preserve,returnPage,cap}:Context&{mode:'signu
    {admin&&!cap.adminReady&&<p role="status" className="connection-notice">{t('관리자 비밀번호를 서버에 한 번 설정해야 합니다. 설정 후 바로 로그인할 수 있습니다.','Set the administrator password on the server once, then sign in directly.')}</p>}
    <button className="primary-action" disabled={busy||Boolean(admin&&!cap.adminReady)}>{busy?t('처리 중…','Working…'):signup?t('가입하고 시작하기','Sign up and start'):t('로그인하고 계속','Sign in and continue')}</button>
   </form>
-  <p className="account-help">{t('테스트 모드 · 이메일 인증을 생략합니다. 입력한 이메일의 소유 여부는 확인하지 않습니다.','Test mode · Email verification is skipped. Ownership of the email address is not verified.')}</p>
   {!admin&&<p className="account-switch">{signup?t('이미 가입하셨나요?','Already have an account?'):t('처음 이용하시나요?','New here?')} <a href={signup?'#login':'#signup'}>{signup?t('로그인','Sign in'):t('회원가입','Sign up')}</a></p>}
   <button className="guest-link" onClick={()=>selectAdmin(!admin)}>{admin?t('일반 회원으로 이용하기','Use a member account'):t('관리자 로그인','Administrator sign-in')}</button>
   {message&&<p role="alert">{message}</p>}
