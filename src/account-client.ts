@@ -2,7 +2,7 @@ import {apiRequest,ApiRequestFailure} from './generation-client';
 import type {BetaSession} from './beta-session';
 export type Capabilities={email:{enabled:boolean};password?:{enabled:boolean;test:true;adminReady:boolean;adminEmail:string};checkout:{enabled:boolean;test:true;currency:'KRW'}};
 export type EmailRequest={requestId:string;pollToken:string;expires:number};
-export type TestOrder={id:string;pack:string;credits:number;amount:number;currency:'KRW';state:'pending'|'verified'|'paid'|'canceled';created:number;test:true;checkoutUrl?:string;receipt?:{verified:true;grantedCredits:number;balance:number}};
+export type TestOrder={unit?:'legacy-ticket'|'credit-v2';policy?:string;id:string;pack:string;credits:number;amount:number;currency:'KRW';state:'pending'|'verified'|'paid'|'canceled';created:number;test:true;checkoutUrl?:string;receipt?:{verified:true;grantedCredits:number;balance:number}};
 const exchanges=new Map<string,Promise<{state:'pending'|'verified';session?:BetaSession}>>();
 export function exchangeEmail(request:EmailRequest){
  let p=exchanges.get(request.requestId);
@@ -12,6 +12,7 @@ export function exchangeEmail(request:EmailRequest){
 export function accountError(error:unknown,ko:boolean){
  const code=error instanceof ApiRequestFailure?error.code:'';
  const messages:Record<string,[string,string]>={
+  SKU_RETIRED:['이전 상품은 새로 주문할 수 없습니다. 최신 상품을 선택해주세요. 기존 주문은 내역에서 확인할 수 있습니다.','This old product is retired. Choose a current pack; existing orders remain available in history.'],
   PURCHASE_NOT_VERIFIED:['지급 내역을 아직 확인하지 못했습니다. 새 결제 없이 다시 확인해주세요.','Credits are not verified yet. Recheck without starting another payment.'],
   EMAIL_RATE_LIMIT:['잠시 후 다시 요청해주세요.','Please wait before requesting another email.'],
   RATE_LIMITED:['잠시 후 다시 시도해주세요.','Please try again shortly.'],
