@@ -1,4 +1,4 @@
-import {test,expect,type Page} from '@playwright/test';
+import {authenticatedTest as test,expect,type Page} from './helpers/authenticated';
 import sharp from 'sharp';
 import {readFile} from 'node:fs/promises';
 const bytes=await sharp({create:{width:400,height:300,channels:4,background:'#b58354'}}).png().toBuffer();

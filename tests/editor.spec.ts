@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {authenticatedTest as test,expect} from './helpers/authenticated';
 import sharp from 'sharp';
 import {selectIndustry} from './helpers/industry';
 import {readFile} from 'node:fs/promises';

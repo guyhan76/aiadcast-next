@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {authenticatedTest as test,expect} from './helpers/authenticated';
 import {mkdir} from 'node:fs/promises';
 test('box shape follows dimensions and remains explicitly unverified',async({page},testInfo)=>{
  await page.goto('/#editor');await page.locator('.editor-details > summary').click();

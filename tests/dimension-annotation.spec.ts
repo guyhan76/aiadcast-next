@@ -1,4 +1,4 @@
-import {test,expect,type Page} from '@playwright/test';
+import {authenticatedTest as test,expect,type Page} from './helpers/authenticated';
 import sharp from 'sharp';
 import {readFile,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
@@ -8,7 +8,7 @@ const bytes=await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" wid
 const proposal=()=>({located:true,product:[.1,.2,.4,.35],axes:{width:[[.12,.5],[.36,.5]],depth:[[.36,.5],[.48,.4]],height:[[.48,.4],[.48,.22]]},protectedText:[[.1,.04,.8,.08],[.1,.82,.8,.08]],existingAnnotations:[],inset:[.65,.35,.3,.4]});
 async function setup(page:Page,{available=true,fail=false,delay=false,missing=false,reviewOnly=false,dimensions=['300','200','100'],mode='none' as 'none'|'main'|'inset'}={}){
  let generations=0,analyses=0,job:any,release:(()=>void)|undefined;
- await page.route('**/api/**',async route=>{
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async route=>{
   const r=route.request(),path=new URL(r.url()).pathname,wallet={available:5,reserved:0,kind:'test'};let data:any={};
   if(path==='/api/status')data={generation:{enabled:true,photoPurposes:true},wallet,budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}};
   else if(path==='/api/dimension-analysis'){
@@ -23,9 +23,9 @@ async function setup(page:Page,{available=true,fail=false,delay=false,missing=fa
  await page.goto('/#create');const form=page.locator('.consumer-create');await form.getByLabel('산업 선택').selectOption('boxes');await form.getByLabel('상품명',{exact:true}).fill('박스 규격');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('10개 19,800원');await form.getByLabel('참조사진 추가').setInputFiles({name:'source.png',mimeType:'image/png',buffer:bytes});await form.getByRole('button',{name:'규격 넣기',exact:true}).click();await form.getByLabel('규격 단위').selectOption('mm');for(const [axis,value] of [['가로',dimensions[0]],['세로',dimensions[1]],['높이',dimensions[2]]])await form.getByLabel(axis+' mm',{exact:true}).fill(value);
  // Restore a legacy campaign directly. New creation intentionally exposes only AI layouts.
  await expect(page.getByText('입력 내용이 기기에 저장되었습니다.',{exact:true})).toBeVisible();
- const draft=await page.evaluate(async()=>new Promise<any>((resolve,reject)=>{const r=indexedDB.open('aiadcast-workspace-drafts',1);r.onsuccess=()=>{const q=r.result.transaction('drafts').objectStore('drafts').get('guest');q.onsuccess=()=>{resolve(q.result);r.result.close();};q.onerror=()=>reject(q.error);};}));
+ const draft=await page.evaluate(async()=>new Promise<any>((resolve,reject)=>{const r=indexedDB.open('aiadcast-workspace-drafts',1);r.onsuccess=()=>{const q=r.result.transaction('drafts').objectStore('drafts').get('editor-fixture-user');q.onsuccess=()=>{resolve(q.result);r.result.close();};q.onerror=()=>reject(q.error);};}));
  const legacy=prepareCampaign(draft.wizard.project);legacy.dimensionAnnotation={method:'verified',mode,snapshot:JSON.stringify({dimensions:['width','depth','height'].map(a=>legacy.dimensions[a as 'width'|'depth'|'height']),basis:'outer-body'})};
- await page.evaluate(async({draft,legacy})=>new Promise<void>((resolve,reject)=>{const r=indexedDB.open('aiadcast-workspace-drafts',1);r.onsuccess=()=>{const tx=r.result.transaction('drafts','readwrite');tx.objectStore('drafts').put({...draft,editor:legacy,returnPage:'studio'},'guest');tx.oncomplete=()=>{r.result.close();resolve();};tx.onerror=()=>reject(tx.error);};}),{draft,legacy});
+ await page.evaluate(async({draft,legacy})=>new Promise<void>((resolve,reject)=>{const r=indexedDB.open('aiadcast-workspace-drafts',1);r.onsuccess=()=>{const tx=r.result.transaction('drafts','readwrite');tx.objectStore('drafts').put({...draft,editor:legacy,returnPage:'studio'},'editor-fixture-user');tx.oncomplete=()=>{r.result.close();resolve();};tx.onerror=()=>reject(tx.error);};}),{draft,legacy});
  await page.goto('/#studio');await page.reload();await page.locator('.generation-panel').getByRole('button',{name:'광고 생성 · 1개',exact:true}).click();
  if(reviewOnly||mode!=='none'&&(!available||missing))return {counts:()=>({generations,analyses}),release:()=>release?.(),recover:()=>{fail=false;}};
  await page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await page.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();await expect(page.locator('.accepted-ad')).toBeVisible();

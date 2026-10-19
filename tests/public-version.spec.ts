@@ -1,9 +1,9 @@
-import {test,expect,type Page} from '@playwright/test';
+import {test,expect,type Page} from './helpers/authenticated';
 const native={versionName:'0.2.40-demo',versionCode:42,packageName:'com.selluplabs.aiadcast.next.demo'};
 async function guest(page:Page){
  await page.addInitScript(native=>{(window as any).__AIADCAST_NATIVE_VERSION__=native;localStorage.setItem('aiadcast.ui-language','ko');},native);
  const calls:{path:string;method:string;authorization?:string}[]=[];
- await page.route('**/api/**',r=>{const path=new URL(r.request().url()).pathname;calls.push({path,method:r.request().method(),authorization:r.request().headers().authorization});return r.fulfill({status:path==='/api/version'?404:200,json:path==='/api/account/capabilities'?{email:{enabled:false},password:{enabled:true,test:true,adminReady:false},checkout:{enabled:false}}:path==='/api/auth/logout'?{signedOut:true}:{projects:[]}});});
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',r=>{const path=new URL(r.request().url()).pathname;calls.push({path,method:r.request().method(),authorization:r.request().headers().authorization});return r.fulfill({status:path==='/api/version'?404:200,json:path==='/api/account/capabilities'?{email:{enabled:false},password:{enabled:true,test:true,adminReady:false},checkout:{enabled:false}}:path==='/api/auth/logout'?{signedOut:true}:{projects:[]}});});
  return calls;
 }
 test('logged-out main screens and login show one reachable version below the header at narrow widths',async({page})=>{

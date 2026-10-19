@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './helpers/authenticated';
 import sharp from 'sharp';
 
 test('home names the six requested channels in both languages and discloses concept provenance',async({page})=>{

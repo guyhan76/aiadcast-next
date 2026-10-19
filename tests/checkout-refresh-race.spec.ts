@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {authenticatedTest as test,expect} from './helpers/authenticated';
 
 test('manual payment refresh during the initial read is retained; balance alone never proves the order paid',async({page})=>{
  const session={token:'a'.repeat(43),expires:Date.now()+86400000,user:{id:'checkout-race-user',label:'fixture@example.com'}};
@@ -8,7 +8,7 @@ test('manual payment refresh during the initial read is retained; balance alone 
  await page.clock.install();await page.clock.pauseAt(new Date());
  let releaseInitial!:()=>void,releasePaid!:()=>void,reads=0,posts=0;
  const initial=new Promise<void>(r=>releaseInitial=r),paid=new Promise<void>(r=>releasePaid=r);
- await page.route('**/api/**',async route=>{
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async route=>{
   const request=route.request(),path=new URL(request.url()).pathname;if(request.method()==='POST')posts++;
   if(path==='/api/account/capabilities')return route.fulfill({json:{email:{enabled:true},checkout:{enabled:true,test:true,currency:'KRW'}}});
   if(path==='/api/checkout/orders/'+order.id){const n=++reads;if(n===1){await initial;return route.fulfill({json:order});}await paid;return route.fulfill({json:{...order,state:'paid'}});}

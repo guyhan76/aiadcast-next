@@ -1,11 +1,11 @@
-import {test,expect,type Page} from '@playwright/test';
+import {test,expect,type Page} from './helpers/authenticated';
 import sharp from 'sharp';
 const picture=await sharp({create:{width:40,height:60,channels:4,background:'#abcdef'}}).png().toBuffer();
 const account=(name:string)=>({token:(name==='alpha'?'a':'b').repeat(43),expires:Date.now()+86400000,user:{id:'account-'+name,label:name}});
 async function setup(page:Page){
  await page.addInitScript(s=>{if(!sessionStorage.getItem('fixture-seeded')){sessionStorage.setItem('aiadcast.beta-session',JSON.stringify(s));sessionStorage.setItem('fixture-seeded','1');}localStorage.setItem('aiadcast.ui-language','ko');},account('alpha'));
  const state={calls:0,status:200,wait:Promise.resolve(),loginDelayMs:0};
- await page.route('**/api/**',async route=>{const path=new URL(route.request().url()).pathname;
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async route=>{const path=new URL(route.request().url()).pathname;
   if(path==='/api/account/capabilities')return route.fulfill({json:{email:{enabled:false},password:{enabled:true,test:true,adminReady:true,adminEmail:'owner@example.com'},checkout:{enabled:false,test:true,currency:'KRW'}}});
   if(path==='/api/auth/logout'){state.calls++;await state.wait;return route.fulfill({status:state.status,json:state.status===200?{signedOut:true}:{error:{code:state.status===401?'AUTH_REQUIRED':'UNAVAILABLE'}}});}
   if(path==='/api/auth/test/login'){if(state.loginDelayMs)await new Promise(r=>setTimeout(r,state.loginDelayMs));return route.fulfill({json:account(route.request().postDataJSON().email.startsWith('alpha')?'alpha':'bravo')});}

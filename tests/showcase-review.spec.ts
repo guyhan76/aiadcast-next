@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './helpers/authenticated';
 import {mkdir,readFile} from 'node:fs/promises';
 import campaigns from '../src/assets/lookbook-campaigns.json' with {type:'json'};
 

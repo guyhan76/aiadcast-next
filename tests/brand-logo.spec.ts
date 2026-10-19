@@ -1,10 +1,10 @@
-import {test,expect} from '@playwright/test';
+import {authenticatedTest as test,expect} from './helpers/authenticated';
 import {readFile} from 'node:fs/promises';
 const original=await readFile(new URL('../src/assets/aiadcast-wordmark.svg',import.meta.url),'utf8');
 test('all app wordmarks reuse official outlines and identical orange ai/triangle without recoloring controls',async({page},info)=>{
- await page.route('**/api/**',route=>route.fulfill({status:new URL(route.request().url()).pathname==='/api/account/capabilities'?200:401,contentType:'application/json',body:JSON.stringify({email:{enabled:false},checkout:{enabled:false},error:{code:'AUTH_REQUIRED'}})}));
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',route=>route.fulfill({json:new URL(route.request().url()).pathname==='/api/status'?{generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}:{email:{enabled:false},checkout:{enabled:false,test:true,currency:'KRW'}}}));
  for(const route of ['home','create','projects','guide','login','signup','checkout','credits','checkout-return','admin','editor','verify','pay','payment-return']){
-  await page.goto('/#'+route);const logos=page.locator('.brand-lockup');await expect(logos.first()).toBeAttached();
+  await page.goto('/#'+route);await expect(page.getByRole('region',{name:'내 계정 및 로그아웃'})).toBeVisible();const logos=page.locator('.brand-lockup');await expect(logos.first()).toBeAttached();
   for(const logo of await logos.all()){
    await expect(logo).toHaveAttribute('aria-label','aiadcast');await expect(logo.locator('svg')).toHaveCount(1);
    await expect(logo.locator('svg > g > g').nth(0)).toHaveCSS('fill','rgb(232, 114, 42)');

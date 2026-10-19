@@ -1,4 +1,4 @@
-import {test,expect,type Page} from '@playwright/test';
+import {test,expect,type Page} from './helpers/authenticated';
 import sharp from 'sharp';
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
@@ -8,7 +8,7 @@ const proposal={located:true,product:[.1,.2,.4,.35],axes:{width:[[.12,.5],[.36,.
 async function setup(page:Page,{lost=false}={}){
  let posts=0,result:any=null;
  await page.addInitScript(()=>sessionStorage.setItem('aiadcast.beta-session',JSON.stringify({token:'a'.repeat(43),expires:Date.now()+3600000,user:{id:'admin-fixture',label:'Operator',role:'admin'}})));
- await page.route('**/api/**',async route=>{
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async route=>{
   const path=new URL(route.request().url()).pathname,send=(body:any)=>route.fulfill({json:body});
   if(path==='/api/admin/overview')return send({readiness:{},budget:{limitMicros:0,spentMicros:0,heldMicros:0,allocatedMicros:0},users:[],jobs:[],orders:[],audit:[]});
   if(path==='/api/admin/dimension-evaluation'){

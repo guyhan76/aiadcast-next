@@ -1,8 +1,8 @@
-import {test,expect,type Page} from '@playwright/test';import sharp from 'sharp';import {readFile,writeFile} from 'node:fs/promises';import {createHash} from 'node:crypto';
+import {authenticatedTest as test,expect,type Page} from './helpers/authenticated';import sharp from 'sharp';import {readFile,writeFile} from 'node:fs/promises';import {createHash} from 'node:crypto';
 const bytes=await sharp({create:{width:600,height:400,channels:4,background:'#397095'}}).png().toBuffer(),hash=createHash('sha256').update(bytes).digest('hex');
 async function generate(page:Page,{shape='rectangular',basis='inner-body',category='boxes',values=['450','300','400']}={}){
  let calls=0;let job:any;let request:any;
- await page.route('**/api/**',async route=>{const r=route.request(),path=new URL(r.url()).pathname;let data:any={};const wallet={available:5,reserved:0,kind:'test'};
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async route=>{const r=route.request(),path=new URL(r.url()).pathname;let data:any={};const wallet={available:5,reserved:0,kind:'test'};
  if(path==='/api/status')data={generation:{enabled:true,dimensionVariants:true,planarControl:true,photoPurposes:true},wallet,budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}};
  else if(path==='/api/generations'&&r.method()==='POST'){calls++;request=r.postDataJSON();job={id:'guide-fixture',requestIds:[request.requestId],projectId:request.projectId,state:'ready',mode:request.request.mode,sourceHash:request.source.sha256,createdAt:'2026-10-17T00:00:00.000Z',model:'fixture',artifactId:hash,artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+bytes.toString('base64'),width:600,height:400,role:'creative'},dimensionPlan:request.request.dimensionPlan,marketingPlan:request.request.marketingPlan};data={job,wallet};}
  else if(path.endsWith('/accept')){job.state='accepted';data={job,wallet};}

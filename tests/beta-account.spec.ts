@@ -1,8 +1,8 @@
-import {test,expect,type Page} from '@playwright/test';
+import {test,expect,type Page} from './helpers/authenticated';
 async function setup(page:Page){
  const state={byUser:new Map<string,Map<string,{project:any;revision:number}>>(),requests:[] as {path:string;auth:string}[]};
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
- await page.route('**/api/**',async route=>{
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async route=>{
   const req=route.request(),path=new URL(req.url()).pathname,auth=req.headers().authorization??'';
   const reply=(body:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
   state.requests.push({path,auth});

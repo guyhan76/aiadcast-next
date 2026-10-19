@@ -1,4 +1,4 @@
-import {test,expect,type Page} from '@playwright/test';
+import {authenticatedTest as test,expect,type Page} from './helpers/authenticated';
 import sharp from 'sharp';
 import {createHash} from 'node:crypto';
 import {reloadDraft} from './helpers/workspace';
@@ -9,7 +9,7 @@ const hash=createHash('sha256').update(ad).digest('hex');
 async function mocks(page:Page,{auth=false,enabled=true,admin=false,v2=false}: {auth?:boolean;enabled?:boolean;admin?:boolean;v2?:boolean}={}){
  const adminWallet={available:0,reserved:0,kind:'test',unlimited:true};
  const state={posts:0,accepts:0,body:null as any,job:null as any};
- await page.route('**/api/**',async route=>{const request=route.request(),path=new URL(request.url()).pathname;
+ await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async route=>{const request=route.request(),path=new URL(request.url()).pathname;
  const send=(body:any,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
  if(path==='/api/account/capabilities')return send({email:{enabled:false},checkout:{enabled:false,test:true,currency:'KRW'}});
  if(path==='/api/status')return auth?send({error:{code:'AUTH_REQUIRED'}},401):send({mode:'local-development',commercialReady:false,generation:{...(v2?{creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}}:{}),enabled,photoPurposes:true,model:'gpt-image-2.5-sunburst',reason:enabled?null:'BUDGET_NOT_AVAILABLE'},wallet:v2?{available:0,reserved:0,credits:{available:state.posts?20:30,reserved:0},kind:'test'}:admin?adminWallet:{available:3,reserved:0,kind:'test'},budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}});
@@ -44,9 +44,12 @@ test('eight inputs submit actual generation request once and a complete accepted
 test('photo-free service AI copy requests no dimensions and generates automatically after submit',async({page})=>{
  const state=await mocks(page),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(state.posts).toBe(1);expect(state.body.source).toBeNull();expect(state.body.request.specifications).toEqual([]);expect(state.body.request.output.showDimensions).toBe(false);expect(state.body.request.creativeDirection.copyMode).toBe('ai');
 });
-test('unauthenticated creation keeps details and offers visible login rather than a disabled unexplained generator',async({page})=>{
- const state=await mocks(page,{auth:true}),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByRole('link',{name:'로그인하고 생성하기',exact:true})).toBeVisible();expect(state.posts).toBe(0);
- await page.getByRole('link',{name:'로그인하고 생성하기',exact:true}).click();await expect(page.getByRole('heading',{name:'테스트 로그인',exact:true})).toBeVisible();await expect(page.getByLabel('초대코드')).toBeVisible();await page.getByRole('link',{name:'돌아가기',exact:true}).click();await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByLabel('서비스명',{exact:true})).toHaveValue('숲속 숙소');
+test('revoked session blocks generation early and retains the account draft through cancellation',async({page})=>{
+ const state=await mocks(page),form=await details(page);await expect(page.locator('.workspace-save-state')).toContainText('저장되었습니다');
+ await page.route('**/api/auth/me',r=>r.fulfill({status:401,json:{error:{code:'AUTH_REQUIRED'}}}));await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+ await expect(page.getByRole('region',{name:'로그인 안내'})).toContainText('만료');await expect(form).not.toBeVisible();expect(state.posts).toBe(0);
+ await page.getByRole('button',{name:'로그인하고 계속',exact:true}).click();await expect(page.getByRole('heading',{name:'테스트 로그인',exact:true})).toBeVisible();await page.getByRole('link',{name:'돌아가기',exact:true}).click();await expect(page).toHaveURL(/#home$/);
+ await page.unroute('**/api/auth/me');await page.route('**/api/auth/me',async r=>r.fulfill({json:{user:await page.evaluate(()=>JSON.parse(sessionStorage.getItem('aiadcast.beta-session')!).user)}}));await page.goto('/#create');await expect(form.getByLabel('서비스명',{exact:true})).toHaveValue('숲속 숙소');expect(state.posts).toBe(0);
 });
 test('budget blockage gives a clear reason and never dispatches a provider request',async({page})=>{
  const state=await mocks(page,{enabled:false}),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByText('이용권과 별도로 이미지 생성용 예산의 사용·보류액 또는 생성 전 예약금 때문에 지금 생성할 수 없습니다. 관리자에게 남은 예산을 확인해주세요.')).toBeVisible();expect(state.posts).toBe(0);

@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {authenticatedTest as test,test as guestTest,expect} from './helpers/authenticated';
 import {readFile} from 'node:fs/promises';
 import sharp from 'sharp';
 const photo=await sharp({create:{width:400,height:300,channels:4,background:'#dddddd'}}).png().toBuffer();
@@ -33,7 +33,7 @@ test('library and guide show brief essentials while backup and details stay avai
  await expect(guide.locator('details[open]')).toHaveCount(0);await guide.getByText('만든 광고를 다시 수정할 수 있나요?',{exact:true}).click();await expect(guide.getByText(/PNG·JPG만으로는/)).toBeVisible();
  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
 });
-test('email pages and order review are usable but never pretend to authenticate or charge',async({page})=>{
+guestTest('email pages and order review are usable but never pretend to authenticate or charge',async({page})=>{
  let connected=false;
  await page.route('**/api/account/capabilities',route=>connected?route.fulfill({json:{email:{enabled:true},checkout:{enabled:false,test:true,currency:'KRW'}}}):route.fulfill({status:503,json:{error:{code:'UNAVAILABLE'}}}));
  const writes:string[]=[];page.on('request',r=>{if(r.method()==='POST')writes.push(r.url());});
