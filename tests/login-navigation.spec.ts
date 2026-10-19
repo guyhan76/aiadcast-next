@@ -29,7 +29,7 @@ for(const stale of [false,true])test(`${stale?'stale stored studio/projects dest
  expect(writes).toEqual(['/api/auth/test/login']);
 });
 test('abandoned explicit checkout login does not redirect a later ordinary login',async({page})=>{
- await setup(page);await page.goto('/#checkout');await page.getByRole('checkbox',{name:/이용권 수량/}).check();await page.getByRole('button',{name:'이메일로 로그인하고 계속'}).click();await expect(page).toHaveURL(/#login$/);
+ await setup(page);await page.goto('/#checkout');await page.getByRole('button',{name:'이메일로 로그인하고 계속'}).click();await expect(page).toHaveURL(/#login$/);
  await page.getByRole('link',{name:'홈',exact:true}).filter({visible:true}).click();await page.locator('.app-header').getByRole('link',{name:'로그인',exact:true}).click();
  await page.getByLabel('이메일',{exact:true}).fill('navigation@example.com');await page.getByLabel('비밀번호',{exact:true}).fill('Fixture-password!');await page.getByRole('button',{name:'로그인하고 계속',exact:true}).click();await expect(page).toHaveURL(/#home$/);
 });
