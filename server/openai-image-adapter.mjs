@@ -236,7 +236,23 @@ function planarPrompt(request){
  return `Create only ONE isolated flat rectangular product plate from the supplied reference. The first image is a deterministic guide made from the actual source pixels and named width/depth dimensions. Preserve product identity, material, intrinsic print and a straight-on orthographic front view. Keep all four straight sides fully visible, parallel to the image axes, with clear white margins. No perspective, depth, folds, occlusion, cast shadows, extra objects, advertising copy, dimension text or background scene. Do not copy business facts from styling references. Target visible plane width/depth ratio: ${requestPlanarRatio(request)}. This is a declared planar view, not reconstruction or verification of 3D geometry. Lighting/material rendering may be new; retain the documented product. The app checks and fits only the isolated plane, and composes advertising text separately. If hidden or ambiguous details are not established, do not invent them. Customer context: ${JSON.stringify({productName:request.productName,specifications:request.specifications,attributes:request.attributes,brief:request.brief,target:request.target})}`;
 }
 
-export function promptFor(request){
+function generationPrompt(request){
  const prompt=basePromptFor(request);if(!request.dimensionPlan)return prompt;
  return prompt+`\nDIMENSION-BASED SINGLE VARIANT: ${JSON.stringify(request.dimensionPlan)}. Generate only this selected size variant of the documented product. Preserve its construction, material, identity and approved advertising copy; do not create a size comparison montage or infer other variants. Use named measured axes rather than resizing the advertisement canvas. Respect the explicit measurement basis: inner-body means interior body dimensions, outer-body means exterior body dimensions, and body does not specify interior versus exterior. Never infer wall thickness or convert between inner and outer measurements. Body measurements exclude open packaging flaps, handles and shadows. For containers, diameter/height or other supplied dimensions constrain the outer shape; volume alone does not establish geometry or capacity accuracy. For garment-flat measurements, width is laid-flat chest width and depth is garment length, not cuboid depth or body circumference. Do not infer measurements from S/M/L labels or add undocumented fit claims. Missing dimensions remain unknown. These are generation constraints, not a certification of physical accuracy. Keep the existing complete-ad art direction and copy quality unless the explicitly selected isolated-plane mode applies.`;
+}
+
+
+// Explicit customer placement wins over style references and generic layout suggestions.
+export function promptFor(request){
+ const prompt=generationPrompt(request);
+ if(!completeAdRequest(request))return prompt;
+ const layout=request.dimensionDisplay?.method==='ai'?request.dimensionDisplay.layout:undefined;
+ const rule=layout==='main'
+  ? 'MAIN ONLY: Place every requested dimension arrow and exact value on the MAIN advertised product itself. Do not move measurements to a small product photo, thumbnail, lower-right inset, separate diagram or specification panel. If space is tight, adjust the main product view, text spacing or contrast; never fall back to an inset. Preserve the referenced open/closed state and construction; do not substitute a closed box for an open box.'
+  : layout==='inset'
+  ? 'INSET ONLY: Keep dimension arrows off the main hero. Add one small photo of the SAME product at the lower right and put every requested dimension arrow and exact value on that product. Match the main product identity, construction, material and open/closed state; never substitute a different or closed product for an open one.'
+  : request.output.showDimensionLines===false
+  ? 'NO DIMENSION ARROWS: Do not draw measurement arrows, dimension lines or a measured product inset anywhere. Numeric specification text is allowed only when showDimensions is true.'
+  : '';
+ return rule?prompt+'\nCUSTOMER DIMENSION PLACEMENT — HIGHEST LAYOUT PRIORITY: '+rule+' This explicit selection overrides any conflicting style reference, recipe, brief or generic composition suggestion. Keep the other advertising style and supplied facts unchanged. Placement instructions do not certify physical proportions or measurement accuracy.':prompt;
 }
