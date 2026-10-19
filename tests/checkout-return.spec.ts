@@ -12,11 +12,11 @@ test('native return verifies paid ledger, refreshes credits and resumes original
  await form.getByRole('button',{name:'규격 넣기',exact:true}).click();
  await form.getByRole('textbox',{name:'가로 cm',exact:true}).fill('34');await form.getByRole('textbox',{name:'세로 cm',exact:true}).fill('25');await form.getByRole('textbox',{name:'높이 cm',exact:true}).fill('21');await form.getByRole('radio',{name:'본제품에 직접 표시',exact:true}).check();
  const before=await form.locator('input,textarea,select').evaluateAll(nodes=>nodes.map(n=>({name:n.getAttribute('name'),value:(n as HTMLInputElement).value,type:(n as HTMLInputElement).type})).filter(n=>n.type!=='file'));
- await expect(page.getByText('입력 내용이 기기에 저장되었습니다.',{exact:true})).toBeVisible();await context(page);await page.locator('.app-header').getByRole('link',{name:'내 이용권'}).click();await page.evaluate(()=>window.dispatchEvent(new Event('aiadcast-checkout-return')));
+ await expect(page.getByText('입력 내용이 기기에 저장되었습니다.',{exact:true})).toBeVisible();await context(page);await page.locator('.app-header').getByRole('link',{name:'내 이용권'}).click();await page.locator('.credits-page').getByRole('link',{name:'광고 이미지 만들기',exact:true}).click();
  await expect(page).toHaveURL(/#create$/);await expect(page.getByText(/이용권 3개 지급 확인 · 현재 잔액 5개/)).toBeVisible();await expect(form.getByLabel('상품명',{exact:true})).toHaveValue('복귀 검증 박스');await expect(form.locator('.reference-photos img')).toHaveCount(1);
  const after=await form.locator('input,textarea,select').evaluateAll(nodes=>nodes.map(n=>({name:n.getAttribute('name'),value:(n as HTMLInputElement).value,type:(n as HTMLInputElement).type})).filter(n=>n.type!=='file'));expect(after).toEqual(before);expect(calls).toContain('/api/checkout/orders/'+order.id);expect(calls.some(p=>p.startsWith('/api/generations'))).toBe(false);
  await page.screenshot({path:info.outputPath('checkout-resumed-mock.png'),fullPage:true});
- await page.goto('/#checkout-return');await expect(page).toHaveURL(/#create$/);await expect(form.locator('.reference-photos img')).toHaveCount(1);
+ await page.evaluate(()=>window.dispatchEvent(new Event('aiadcast-checkout-return')));await expect(page).toHaveURL(/#create$/);await expect(form.locator('.reference-photos img')).toHaveCount(1);
 });
 test('different account, missing context and expired context never inspect an order or overwrite work',async({page})=>{
  const calls=await mocks(page);await page.addInitScript(s=>sessionStorage.setItem('aiadcast.beta-session',JSON.stringify(s)),session);await page.goto('/');await context(page,'other-user-123');await page.goto('/#checkout-return');await expect(page.getByText('결제를 시작한 계정으로 로그인해주세요.',{exact:false})).toBeVisible();expect(calls).not.toContain('/api/checkout/orders/'+order.id);
