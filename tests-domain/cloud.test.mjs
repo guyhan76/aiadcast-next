@@ -303,6 +303,13 @@ test('cloud text-only product jobs omit photos, enforce ownership and keep a sin
  const bad=await s.call('/api/generations',{token,body:{...body,source}});assert.equal(bad.data.error.code,'TEXT_EXAMPLE_PHOTOS_NOT_ALLOWED');assert.equal(calls,0);
  const [a,b]=await Promise.all([s.call('/api/generations',{token,body}),s.call('/api/generations',{token,body})]);assert.equal(a.status,202,JSON.stringify(a.data));assert.equal(a.data.job.id,b.data.job.id);const id=a.data.job.id;let pending;for(let i=0;i<100;i++){pending=(await s.call('/api/generations/'+id,{token})).data.job;if(pending.state!=='running')break;await new Promise(r=>setTimeout(r,5));}assert.equal(pending.state,'ready');assert.equal(calls,1);
  assert.equal((await s.call('/api/generations/'+id,{token:other.token})).status,404);
+ const historyPath='/api/generations?projectId='+encodeURIComponent(p.id);
+ assert.equal((await s.call(historyPath)).status,401);
+ assert.deepEqual((await s.call(historyPath,{token:other.token})).data.jobs,[]);
+ const ownHistory=(await s.call(historyPath,{token})).data;
+ assert.equal(ownHistory.jobs.length,1);assert.equal(ownHistory.jobs[0].id,id);assert.equal(ownHistory.jobs[0].artifact,null);
+ assert.equal(ownHistory.wallet.available,2);assert.equal(ownHistory.wallet.reserved,1);assert.equal(calls,1);
+
  await s.restart();const ready=(await s.call('/api/generations/'+id,{token})).data.job;assert.equal(ready.inputMode,'text-example');assert.equal(ready.sourceHash,null);assert.equal(ready.state,'ready');
  for(let i=0;i<2;i++)assert.equal((await s.call('/api/generations/'+id+'/accept',{token,body:{artifactId:ready.artifactId}})).status,200);
  const status=(await s.call('/api/status',{token})).data;assert.equal(status.wallet.available,2);assert.equal(status.wallet.reserved,0);assert.equal(status.budget.spentMicros,1);assert.equal(calls,1);
