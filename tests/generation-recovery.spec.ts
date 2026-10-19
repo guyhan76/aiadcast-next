@@ -61,14 +61,11 @@ test('a lost second response hides the old accepted job and recovers only the ma
  await create.click();await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
  await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  await expect(panel.getByText('사용 확정한 시안',{exact:true})).toBeVisible();expect(state.acceptedIds).toEqual(['recovery_job_1']);
- await create.click();await expect(panel.getByRole('alert')).toContainText('자동으로 다시 생성하지 않습니다');
- await expect(create).toBeDisabled();await expect(panel.getByText(/중복 생성을 막기 위해 새 요청을 보류/)).toBeVisible();
+ await create.click();
+ await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();
+ await expect(panel.getByRole('alert')).toHaveCount(0);await expect(create).toBeDisabled();
  await expect(panel.getByText('사용 확정한 시안',{exact:true})).toHaveCount(0);
- await expect(panel.getByRole('button',{name:'저장한 시안 다시 적용',exact:true})).toHaveCount(0);
- expect(state.posts).toBe(2);expect(state.acceptedIds).toEqual(['recovery_job_1']);
- await panel.getByRole('button',{name:'연결 상태 확인',exact:true}).click();
- await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();expect(state.historyReads).toBe(2);
- expect(state.readIds).toEqual(['recovery_job_2']);expect(state.posts).toBe(2);
+ expect(state.historyReads).toBe(2);expect(state.readIds).toEqual(['recovery_job_2']);expect(state.posts).toBe(2);expect(state.acceptedIds).toEqual(['recovery_job_1']);
  await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
  await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  await expect(panel.getByText('사용 확정한 시안',{exact:true})).toBeVisible();expect(state.acceptedIds).toEqual(['recovery_job_1','recovery_job_2']);

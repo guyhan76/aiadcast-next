@@ -14,7 +14,7 @@ export function CheckoutReturnPage(){
  async function check(){if(!same||!context||locked.current)return;locked.current=true;setBusy(true);setMessage('');try{
   const value=await apiRequest<TestOrder>('/api/checkout/orders/'+context.orderId);
   if(value.id!==context.orderId||!verifiedReceipt(value))throw Error('PURCHASE_NOT_VERIFIED');
-  setOrder(value);sessionStorage.setItem('aiadcast.checkout-confirmed',JSON.stringify({userId:context.userId,origin:context.origin,credits:value.receipt!.grantedCredits,balance:value.receipt!.balance}));window.dispatchEvent(new Event('aiadcast-credit-refresh'));location.hash=context.route;
+  setOrder(value);sessionStorage.setItem('aiadcast.checkout-confirmed',JSON.stringify({userId:context.userId,origin:context.origin,credits:value.receipt!.grantedCredits,balance:value.receipt!.balance,confirmedAt:Date.now()}));window.dispatchEvent(new Event('aiadcast-credit-refresh'));location.hash=context.route;
  }catch(e){if(e instanceof ApiRequestFailure&&e.status===401){setBetaSession(null,'checkout-return');return;}setMessage(accountError(e,language==='ko'));}finally{locked.current=false;setBusy(false);}}
  useEffect(()=>{void check();},[same,context?.orderId]);
  return <section className="account-page"><h1>{t('이용권 지급 확인','Confirm your credits')}</h1>

@@ -7,17 +7,17 @@ const first=await sharp({create:{width:340,height:250,channels:4,background:'#bc
 const second=await sharp({create:{width:250,height:210,channels:4,background:'#bd8653'}}).png().toBuffer();
 const ad=await sharp({create:{width:864,height:1536,channels:4,background:'#f2e6db'}}).png().toBuffer();
 const hash=createHash('sha256').update(ad).digest('hex');
-async function mocks(page:Page,{auth=false,enabled=true,admin=false,v2=false,running=false}: {auth?:boolean;enabled?:boolean;admin?:boolean;v2?:boolean;running?:boolean}={}){
+async function mocks(page:Page,{auth=false,enabled=true,admin=false,v2=false,running=false,lost=false}: {lost?:boolean;auth?:boolean;enabled?:boolean;admin?:boolean;v2?:boolean;running?:boolean}={}){
  const adminWallet={available:0,reserved:0,kind:'test',unlimited:true};
- const state={posts:0,accepts:0,body:null as any,job:null as any};
+ const state={posts:0,accepts:0,reads:0,failReads:0,lost,body:null as any,job:null as any};
  await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async route=>{const request=route.request(),path=new URL(request.url()).pathname;
  const send=(body:any,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
  if(path==='/api/account/capabilities')return send({email:{enabled:false},checkout:{enabled:false,test:true,currency:'KRW'}});
  if(path==='/api/status')return auth?send({error:{code:'AUTH_REQUIRED'}},401):send({mode:'local-development',commercialReady:false,generation:{dimensionGeometry:true,...(v2?{creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}}:{}),enabled,photoPurposes:true,model:'gpt-image-2.5-sunburst',reason:enabled?null:'BUDGET_NOT_AVAILABLE'},wallet:v2?{available:0,reserved:0,credits:{available:state.posts?20:30,reserved:0},kind:'test'}:admin?adminWallet:{available:3,reserved:0,kind:'test'},budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}});
  if(path==='/api/generations'&&request.method()==='POST'){state.posts++;state.body=request.postDataJSON();const body=state.body;
- state.job={...(v2?{creditUnit:'credit-v2',creditPolicy:'delivered-2026-10-18',creditCaptured:true,creditCost:10}:{}),...(admin?{creditPolicy:'admin-unlimited',creditCost:0}:{}),id:'consumer_fixture_1',projectId:body.projectId,requestIds:[body.requestId],state:running?'running':'ready',mode:body.request.mode,sourceHash:body.source?.sha256??null,createdAt:'2026-10-13T00:00:00.000Z',model:'verification.fixture',artifactId:hash,...(body.request.mode==='creative'?{composition:'complete-ad',dimensionGeometry:body.request.dimensionGeometry,compositionKey:body.request.output.compositionKey}:{}),artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+ad.toString('base64'),width:864,height:1536,role:body.request.mode==='original'?'background':'creative'},marketingPlan:body.request.marketingPlan,errorCode:null};return send({job:state.job,wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:1,kind:'test'}});}
+ state.job={...(v2?{creditUnit:'credit-v2',creditPolicy:'delivered-2026-10-18',creditCaptured:true,creditCost:10}:{}),...(admin?{creditPolicy:'admin-unlimited',creditCost:0}:{}),id:'consumer_fixture_1',projectId:body.projectId,requestIds:[body.requestId],state:running?'running':'ready',mode:body.request.mode,sourceHash:body.source?.sha256??null,createdAt:'2026-10-13T00:00:00.000Z',model:'verification.fixture',artifactId:hash,...(body.request.mode==='creative'?{composition:'complete-ad',dimensionGeometry:body.request.dimensionGeometry,compositionKey:body.request.output.compositionKey}:{}),artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+ad.toString('base64'),width:864,height:1536,role:body.request.mode==='original'?'background':'creative'},marketingPlan:body.request.marketingPlan,errorCode:null};if(state.lost)return;return send({job:{...state.job,artifact:running?null:state.job.artifact},wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:1,kind:'test'}});}
  if(path.endsWith('/accept')){state.accepts++;state.job.state='accepted';return send({job:state.job,wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:0,kind:'test'}});}
- if(path==='/api/generations/consumer_fixture_1')return send({job:state.job,wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:1,kind:'test'}});
+ if(path==='/api/generations/consumer_fixture_1'){state.reads++;if(state.failReads>0){state.failReads--;return route.abort('failed');}return send({job:{...state.job,artifact:state.job.state==='running'?null:state.job.artifact},wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:1,kind:'test'}});}
  if(path==='/api/generations')return send({jobs:state.job?[state.job]:[]});
  return send({error:{code:'TEST_ROUTE_UNAVAILABLE'}},404);
  });return state;
@@ -36,7 +36,7 @@ for(const missing of [false,true])test(`existing ready result recovers despite f
  if(missing)await page.evaluate(()=>{for(const k of Object.keys(localStorage))if(k.includes('pending-generation.'))localStorage.removeItem(k);});
  await page.route('**/api/status',r=>r.fulfill({status:503,json:{error:{code:'STATUS_UNAVAILABLE'}}}));
  await page.reload();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(state.posts).toBe(1);expect(state.accepts).toBe(0);
- await page.getByRole('button',{name:'기존 결과 다시 확인',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(state.posts).toBe(1);
+ await expect(page.getByRole('button',{name:'기존 결과 다시 확인',exact:true})).toHaveCount(0);await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(state.posts).toBe(1);
  await page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await page.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();await expect(page.getByRole('button',{name:'이미지 저장 · 공유',exact:true})).toBeEnabled();expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
 });
 
@@ -70,4 +70,34 @@ test('ambiguous history blocks new creation and cannot select an arbitrary ready
  const state=await mocks(page,{running:true}),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByText('시안 제작 중',{exact:true})).toBeVisible();state.job.state='ready';
  await page.evaluate(()=>{for(const k of Object.keys(localStorage))if(k.includes('pending-generation.'))localStorage.removeItem(k);});
  await page.route('**/api/generations?*',r=>r.fulfill({json:{jobs:[state.job,{...state.job,id:'second-job'}]}}));await page.reload();await expect(page.getByText(/기존 작업을 확인하지 못했습니다/)).toBeVisible();await expect(page.locator('.generate-button')).toBeDisabled();await expect(page.locator('.generation-ad-preview')).toHaveCount(0);expect(state.posts).toBe(1);expect(state.accepts).toBe(0);
+});
+
+for(const v2 of [false,true])test(`timed out dispatch recovers one request and clean result without a second charge v2=${v2}`,async({page})=>{
+ await page.clock.install();const state=await mocks(page,{lost:true,running:true,v2}),form=await details(page);
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();if(v2){await page.getByRole('checkbox',{name:'이번 생성 10크레딧 차감을 확인했습니다.',exact:true}).check();await page.locator('.generate-button').click();}await expect.poll(()=>state.posts).toBe(1);
+ await page.clock.fastForward(30001);await expect(page.getByText('시안 제작 중',{exact:true})).toBeVisible();
+ const id=state.job.id,requestId=state.body.requestId;state.failReads=1;
+ await page.clock.fastForward(2001);await expect.poll(()=>state.reads).toBe(2);
+ state.job.state='ready';await page.clock.fastForward(2001);await expect(page.locator('.generation-ad-preview')).toBeVisible();
+ await expect(page.locator('.generate-button')).toHaveText('생성 완료 · 결과 확인');await expect(page.locator('.generation-panel').getByRole('alert')).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'기존 결과 다시 확인',exact:true})).toHaveCount(0);await expect(page.getByText(/이전 요청 상태를 확인/)).toHaveCount(0);
+ expect(state.posts).toBe(1);expect(state.accepts).toBe(0);expect(state.job.id).toBe(id);expect(state.job.requestIds).toContain(requestId);if(v2){await expect(page.locator('.generation-hint').first()).toContainText('20');expect(state.body.creditQuote.amount).toBe(10);}
+ const reads=state.reads;await page.clock.fastForward(120000);expect(state.reads).toBe(reads);expect(state.posts).toBe(1);
+});
+test('three failed result reads stop with explicit recovery and never dispatch another generation',async({page})=>{
+ await page.clock.install();const state=await mocks(page,{running:true}),form=await details(page);
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByText('시안 제작 중',{exact:true})).toBeVisible();state.failReads=3;
+ for(let i=1;i<=3;i++){await page.clock.fastForward(2001);await expect.poll(()=>state.reads).toBe(i);}
+ await expect(page.getByRole('button',{name:'기존 결과 다시 확인',exact:true})).toBeVisible();await expect(page.getByText(/결과 확인이 지연되고 있습니다/)).toBeVisible();
+ await page.clock.fastForward(120000);expect(state.reads).toBe(3);expect(state.posts).toBe(1);
+ state.job.state='ready';await page.getByRole('button',{name:'기존 결과 다시 확인',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();await expect(page.getByRole('button',{name:'기존 결과 다시 확인',exact:true})).toHaveCount(0);expect(state.posts).toBe(1);expect(state.accepts).toBe(0);
+});
+
+test('lost dispatch with unavailable history stops after three read attempts and manual recovery never reposts',async({page})=>{
+ await page.clock.install();const state=await mocks(page,{lost:true,running:true});let reads=0;
+ await page.route('**/api/generations?*',r=>{if(!state.posts)return r.fulfill({json:{jobs:[]}});reads++;return r.fulfill({status:503,json:{error:{code:'UNAVAILABLE'}}});});
+ const form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect.poll(()=>state.posts).toBe(1);
+ await page.clock.fastForward(30001);await expect.poll(()=>reads).toBe(1);await page.clock.fastForward(1001);await expect.poll(()=>reads).toBe(2);await page.clock.fastForward(2001);await expect.poll(()=>reads).toBe(3);
+ await expect(page.getByRole('button',{name:'기존 결과 다시 확인',exact:true})).toBeEnabled();await expect(page.locator('.generate-button')).toBeDisabled();await page.clock.fastForward(120000);expect(reads).toBe(3);expect(state.posts).toBe(1);
+ state.job.state='ready';await page.unroute('**/api/generations?*');await page.getByRole('button',{name:'기존 결과 다시 확인',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(state.posts).toBe(1);expect(state.accepts).toBe(0);
 });
