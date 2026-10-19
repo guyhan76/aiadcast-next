@@ -1,3 +1,4 @@
+import {TextLayerEditor} from './TextLayerEditor';
 import {BrandLogo} from './BrandLogo';
 import {AutomaticProportion} from './AutomaticProportion';
 import {AppFooter} from './AppFooter';
@@ -117,7 +118,7 @@ export default function App({initialProject,onProjectChange}:{initialProject?:Pr
      <div className="preview-foot"><span><ShieldCheck size={14}/>{creative?text("창작 모드 · 설정 저장 가능"):project.product?(boxProjectionReady(project)?t('원본 면 · 규격 박스 구성','Source faces · dimensioned box'):text("원본 사진 사용")):service?text("문구·배경으로 구성"):text("상품 사진을 추가해주세요")}</span><span>{outputFormat.width} × {outputFormat.height} px</span></div>
      <DimensionApplication project={project} onEdit={()=>{setTab('dimensions');const details=document.querySelector('.editor-details') as HTMLDetailsElement|null;if(details){details.open=true;details.scrollIntoView({block:'start'});}}}/><AutomaticProportion project={project} change={change}/>
      <CompareReview project={project} disabled={busy||pendingCreative} onDownload={download}/>
-     <GenerationPanel key={`generation-${project.id}`} project={project} change={change}/>
+     <GenerationPanel key={`generation-${project.id}`} project={project} change={change}/>{!pendingCreative&&<TextLayerEditor project={project} change={change}/>}
      <div className="editor-actions"><button className="save-button" disabled={busy} onClick={()=>void save()}><Save size={17}/>{text("이 기기에 저장")}</button><button className="export-button" disabled={busy||pendingCreative} onClick={()=>void exportPng()}><ArrowDownToLine size={17}/>{busy?text("처리 중…"):pendingCreative?text("AI 시안 확인 후 저장"):text("PNG 내보내기")}</button></div>
      <button className="direction-jump" onClick={()=>{const d=document.getElementById('publishing-tools') as HTMLDetailsElement;if(d){d.open=true;d.scrollIntoView({block:'start'});}}}>{t('게시글과 활용 방법 보기','View post copy and publishing tips')}</button>
     </section>
