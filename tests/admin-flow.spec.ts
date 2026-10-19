@@ -27,7 +27,7 @@ test('server signup, operator allocation, generation review and PNG export work 
  const proxy=async(p:typeof page)=>{await p.route('**/api/**',async route=>{const request=route.request(),url=new URL(request.url());const response=await route.fetch({url:'http://127.0.0.1:'+port+url.pathname+url.search,headers:{...request.headers(),origin}});await route.fulfill({response});});};
  try{
   await Promise.all([proxy(page),proxy(shop),proxy(proof)]);
-  await page.goto('/#guide');await page.locator('.account-drawer>summary').click();await page.getByRole('button',{name:'테스트 로그인',exact:true}).click();await page.getByLabel('초대코드',{exact:true}).fill(invite.invite);await page.locator('.beta-account-panel').getByRole('button',{name:'로그인',exact:true}).click();
+  await page.goto('/?support=1#guide');await page.locator('.account-drawer>summary').click();await page.getByRole('button',{name:'테스트 로그인',exact:true}).click();await page.getByLabel('초대코드',{exact:true}).fill(invite.invite);await page.locator('.beta-account-panel').getByRole('button',{name:'로그인',exact:true}).click();
   await page.locator('.app-header').getByRole('link',{name:'관리자',exact:true}).click();await expect(page.locator('.admin-page').getByRole('heading',{name:'회원 목록',exact:true})).toBeVisible();
   await shop.goto('/#signup');await shop.locator('.account-page').getByLabel('이메일',{exact:true}).fill('member@example.com');await shop.getByRole('button',{name:'인증메일 받기',exact:true}).click();await expect(shop.getByRole('heading',{name:'메일함을 확인해주세요'})).toBeVisible();
   await expect.poll(()=>mail.length).toBe(1);const token=new URLSearchParams(new URL(mail[0].url).hash.split('?')[1]).get('token');

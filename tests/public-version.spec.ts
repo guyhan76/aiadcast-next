@@ -6,12 +6,13 @@ async function guest(page:Page){
  await page.route('**/api/**',r=>{const path=new URL(r.request().url()).pathname;calls.push({path,method:r.request().method(),authorization:r.request().headers().authorization});return r.fulfill({status:path==='/api/version'?404:200,json:path==='/api/account/capabilities'?{email:{enabled:false},password:{enabled:true,test:true,adminReady:false},checkout:{enabled:false}}:path==='/api/auth/logout'?{signedOut:true}:{projects:[]}});});
  return calls;
 }
-test('logged-out main screens and login show one reachable version below the header at narrow widths',async({page})=>{
+test('version lives in the guide, with no test connection badge on ordinary screens',async({page})=>{
  const calls=await guest(page);
  for(const route of ['home','create','projects','guide','login']){
   await page.goto('/#'+route);const badge=page.getByRole('link',{name:'앱·서버 버전 보기'});
-  await expect(badge).toHaveCount(1);await expect(badge).toHaveText('앱 0.2.40-demo · 42');
-  for(const width of [320,390]){await page.setViewportSize({width,height:844});await expect(badge).toBeVisible();const rect=await badge.boundingBox(),header=await page.locator('.app-header').boundingBox();expect(rect!.y).toBeGreaterThanOrEqual(header!.y+header!.height);expect(rect!.height).toBeGreaterThanOrEqual(44);expect(rect!.y+rect!.height).toBeLessThan(844);expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
+  await expect(page.locator('.account-drawer')).toHaveCount(0);
+  await expect(badge).toHaveCount(route==='guide'?1:0);
+  if(route==='guide'){await expect(badge).toHaveText('앱 0.2.40-demo · 42');for(const width of [320,390]){await page.setViewportSize({width,height:844});await badge.scrollIntoViewIfNeeded();await expect(badge).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}}
  }
  expect(calls.some(c=>c.path==='/api/account/credits')).toBe(false);
 });
@@ -24,15 +25,15 @@ test('guest detail survives server failure without account reads and returns to 
  await badge.click();await page.goBack();await expect(page).toHaveURL(/#guide$/);
 });
 test('session transitions preserve a single public badge and guest detail cannot retain prior account data',async({page})=>{
- const calls=await guest(page);await page.goto('/');
+ const calls=await guest(page);await page.goto('/#guide');
  await page.evaluate(()=>{sessionStorage.setItem('aiadcast.beta-session',JSON.stringify({token:'a'.repeat(43),expires:Date.now()+86400000,user:{id:'public-version-user',label:'Private account label'}}));window.dispatchEvent(new CustomEvent('aiadcast-session-change',{detail:{returnPage:'home'}}));});
- await expect(page.getByRole('region',{name:'내 계정 및 로그아웃'})).toContainText('Private account label');await expect(page.getByRole('link',{name:'앱·서버 버전 보기'})).toHaveCount(1);
+ await expect(page.getByRole('region',{name:'내 계정 및 로그아웃'})).toContainText('Private account label');await page.goto('/#guide');await expect(page.getByRole('link',{name:'앱·서버 버전 보기'})).toHaveCount(1);
  page.on('dialog',d=>d.accept());await page.getByRole('button',{name:'로그아웃',exact:true}).click();await expect(page.getByRole('region',{name:'내 계정 및 로그아웃'})).toHaveCount(0);
- await expect(page.getByRole('link',{name:'앱·서버 버전 보기'})).toHaveCount(1);const after=calls.length;await page.getByRole('link',{name:'앱·서버 버전 보기'}).click();await expect(page.getByRole('region',{name:'앱·서버 버전',exact:true})).toContainText('0.2.40-demo');await expect(page.getByText('Private account label')).toHaveCount(0);expect(calls.slice(after).some(c=>c.path==='/api/account/credits')).toBe(false);
+ await page.goto('/#guide');await expect(page.getByRole('link',{name:'앱·서버 버전 보기'})).toHaveCount(1);const after=calls.length;await page.getByRole('link',{name:'앱·서버 버전 보기'}).click();await expect(page.getByRole('region',{name:'앱·서버 버전',exact:true})).toContainText('0.2.40-demo');await expect(page.getByText('Private account label')).toHaveCount(0);expect(calls.slice(after).some(c=>c.path==='/api/account/credits')).toBe(false);
 });
-test('standalone account and return screens also expose exactly one version badge',async({page})=>{
+test('standalone payment and account screens do not repeat version badges',async({page})=>{
  await guest(page);
  for(const route of ['verify','pay','payment-return','checkout-return']){
-  await page.goto('/#'+route);const badge=page.getByRole('link',{name:'앱·서버 버전 보기'});await expect(badge).toHaveCount(1);await expect(badge).toBeVisible();await expect(badge).toHaveText('앱 0.2.40-demo · 42');
+  await page.goto('/#'+route);const badge=page.getByRole('link',{name:'앱·서버 버전 보기'});await expect(badge).toHaveCount(0);
  }
 });
