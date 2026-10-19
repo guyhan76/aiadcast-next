@@ -1,4 +1,4 @@
-import {authenticatedTest as test,expect,type Page} from './helpers/authenticated';
+import {test,expect,type Page} from './helpers/authenticated';
 const email={email:{enabled:true},checkout:{enabled:false,test:true,currency:'KRW'}};
 // Shape used by the existing db15 server; no new API fields required.
 const password={...email,email:{enabled:false},password:{enabled:true,test:true,adminReady:true,adminEmail:'owner@example.com'}};

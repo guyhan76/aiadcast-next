@@ -1,4 +1,4 @@
-import {authenticatedTest as test,expect} from './helpers/authenticated';
+import {authenticatedTest as test,test as guestTest,expect} from './helpers/authenticated';
 import sharp from 'sharp';
 const photos=await Promise.all(['#bf8e52','#449966','#5577bb'].map(async(color,i)=>({name:`view-${i+1}.png`,mimeType:'image/png',buffer:await sharp({create:{width:400,height:300,channels:3,background:color}}).png().toBuffer()})));
 test('a single multi-file selection keeps every view and exposes dimensions beside the preview',async({page})=>{
@@ -34,7 +34,7 @@ test('a bad file in a new batch keeps both existing and valid new photos',async(
  await page.goto('/#create');const wizard=page.locator('.create-page');await wizard.getByLabel('산업 선택').selectOption('boxes');await wizard.getByRole('textbox',{name:'상세설명',exact:true}).fill('원본 사진과 입력 규격을 유지하는 시험 상품');await wizard.getByLabel('참조사진 추가').setInputFiles(photos.slice(0,2));await expect(wizard.locator('.reference-photos img')).toHaveCount(2);
  await wizard.getByLabel('참조사진 추가').setInputFiles([photos[2],{name:'bad.png',mimeType:'image/png',buffer:Buffer.from('not an image')}]);await expect(wizard.locator('.reference-photos [role=alert]')).toBeVisible();await expect(wizard.locator('.reference-photos img')).toHaveCount(3);
 });
-test('test server readiness requires valid responses and delegates preview configuration without secrets',async({page})=>{
+guestTest('test server readiness requires valid responses and delegates preview configuration without secrets',async({page})=>{
  await page.addInitScript(()=>{(window as any).__AIADCAST_TEST_CONNECTION__=true;(window as any).nativeRequests=[];(window as any).AiadcastNative={postMessage:(value:string)=>{(window as any).nativeRequests.push(JSON.parse(value));window.dispatchEvent(new CustomEvent('aiadcast-test-connection',{detail:{status:'error'}}));}};});
  let ready=false;await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',route=>{expect(route.request().headers().authorization).toBeUndefined();const path=new URL(route.request().url()).pathname;return route.fulfill({contentType:'application/json',body:JSON.stringify(path==='/api/health'?{mode:'invite-beta',commercialReady:false}:path==='/api/status'?{mode:'invite-beta',commercialReady:false,generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}:{email:{enabled:ready},checkout:{enabled:ready,test:true,currency:'KRW'}})});});
  await page.goto('/#guide');await page.goto('/#guide');await page.locator('.account-drawer>summary').click();const panel=page.getByRole('region',{name:'가입·결제 테스트 연결'});await expect(panel).toContainText('응답 확인');await expect(panel.getByRole('button',{name:'회원가입 시험 시작'})).toBeDisabled();
@@ -43,7 +43,7 @@ test('test server readiness requires valid responses and delegates preview confi
  for(const width of [320,390,768]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
  await page.setViewportSize({width:390,height:844});await panel.screenshot({path:'/tmp/aiadcast-019-connection.png'});
 });
-test('a session belonging to another origin is never sent to the newly selected test server',async({page})=>{
+guestTest('a session belonging to another origin is never sent to the newly selected test server',async({page})=>{
  await page.addInitScript(()=>{(window as any).__AIADCAST_API_ORIGIN__='https://new-server.example.com';sessionStorage.setItem('aiadcast.beta-session',JSON.stringify({token:'a'.repeat(43),expires:Date.now()+86400000,user:{id:'existing-user-123',label:'Private'},origin:'https://old-server.example.com'}));});
  const requests:string[]=[];await page.route('https://new-server.example.com/api/**',route=>{requests.push(route.request().url());expect(route.request().headers().authorization).toBeUndefined();return route.fulfill({contentType:'application/json',headers:{'Access-Control-Allow-Origin':'*'},body:JSON.stringify(new URL(route.request().url()).pathname==='/api/status'?{mode:'invite-beta',commercialReady:false,generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}:{email:{enabled:true},checkout:{enabled:true,test:true,currency:'KRW'}})});});
  await page.goto('/#checkout');await expect(page.getByRole('button',{name:'이메일로 로그인하고 계속'})).toBeVisible();await expect(page.getByRole('heading',{name:'테스트 이용권이 추가되었습니다'})).toHaveCount(0);await expect.poll(()=>requests.some(url=>url.endsWith('/api/account/capabilities'))).toBe(true);
