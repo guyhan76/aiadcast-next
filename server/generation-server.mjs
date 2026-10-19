@@ -57,7 +57,7 @@ export function createGenerationHttpServer({ service, allowedOrigins = DEFAULT_O
       const url = new URL(req.url, ownOrigin);
       if (req.method === 'GET' && url.pathname === '/api/status') { sendJson(res, 200, service.status(), origin); return; }
       if (req.method === 'GET' && url.pathname === '/api/generations') { sendJson(res, 200, service.history(url.searchParams.has('projectId') ? url.searchParams.get('projectId') : undefined), origin); return; }
-      const route = /^\/api\/generations\/([A-Za-z0-9_-]{8,100})(?:\/(accept|reject))?$/.exec(url.pathname);
+      const route = /^\/api\/generations\/([A-Za-z0-9_-]{8,100})(?:\/(accept|reject|report))?$/.exec(url.pathname);
       if (req.method === 'GET' && route && !route[2]) { sendJson(res, 200, { job:service.job(route[1]),wallet:service.wallet() }, origin); return; }
       if (req.method === 'POST') {
         if (req.headers['x-aiadcast-client'] !== 'local-studio') throw new ApiFailure('CLIENT_HEADER_REQUIRED', 403);
@@ -67,6 +67,7 @@ export function createGenerationHttpServer({ service, allowedOrigins = DEFAULT_O
         try { body = await readJson(req); } finally { inFlightBodies--; }
         if (url.pathname === '/api/generations') { sendJson(res, 202, await service.create(body), origin); return; }
         if (route?.[2] === 'accept') { sendJson(res, 200, service.accept(route[1], body?.artifactId, body?.dimensionReview), origin); return; }
+        if (route?.[2] === 'report') { sendJson(res, 200, service.reportDefect(route[1], body), origin); return; }
         if (route?.[2] === 'reject') { sendJson(res, 200, service.reject(route[1]), origin); return; }
         if (url.pathname === '/api/assistant' && typeof service.assist === 'function') { sendJson(res, 200, await service.assist(body), origin); return; }
       }

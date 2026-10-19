@@ -41,7 +41,7 @@ test('atomic support moves one of the existing five dollars and grants only miss
  assert.equal(await s.store.effectiveBudget(s.actor.id,'2026-10'),4000000);assert.equal(await s.store.effectiveBudget(s.body.userId,'2026-10'),1000000);assert.equal((await s.member.wallet()).available,3);
  assert.equal((await s.db.prepare('SELECT COUNT(*) n FROM admin_grants').get()).n,1);assert.equal((await s.db.prepare('SELECT COUNT(*) n FROM monthly_demo_support').get()).n,1);
  await s.member.ledger.reserve({jobId:'used-credit',userId:'aiadcast-next-local-developer',credits:1,requestHash:'used-credit',modelRevision:'fixture',expiresAt:Date.parse('2026-10-19')});
- await s.apply(q);assert.deepEqual(await s.member.wallet(),{available:2,reserved:1,kind:'test-credits'});await s.admin.activateOctoberBudget(s.actor,{});
+ await s.apply(q);assert.deepEqual(await s.member.wallet(),{available:2,reserved:1,kind:'test-credits',credits:{available:0,reserved:0}});await s.admin.activateOctoberBudget(s.actor,{});
  assert.equal(await s.store.effectiveBudget(s.actor.id,'2026-10'),4000000);assert.equal(s.calls(),0);
  // Fresh store instance reads persisted transfer rather than restoring the full admin allocation.
  const reopened=await new BetaStore().initialize(s.db,{monthlyBudgetMicros:1000000,now:()=>Date.parse('2026-10-18')});assert.equal(await reopened.effectiveBudget(s.actor.id,'2026-10'),4000000);
@@ -59,7 +59,7 @@ test('owner spent and uncertain holds are protected, changed quotes rejected, re
  await assert.rejects(s.apply(q),/DEMO_SUPPORT_OWNER_BUDGET_IN_USE/);assert.equal((await s.member.wallet()).available,1);
  await s.owner.db.prepare('UPDATE budgets SET held_micros=? WHERE period=?').run(500000,'2026-10');await assert.rejects(s.apply(q),/DEMO_SUPPORT_QUOTE_CHANGED/);
  await s.member.ledger.reserve({jobId:'held-credit',userId:'aiadcast-next-local-developer',credits:1,requestHash:'held-credit',modelRevision:'fixture',expiresAt:Date.parse('2026-10-19')});
- const fresh=await s.quote();assert.equal(fresh.addedCredits,2);await s.apply(fresh);assert.deepEqual(await s.member.wallet(),{available:2,reserved:1,kind:'test-credits'});assert.equal((await s.owner.status()).generation.reason,'BUDGET_NOT_AVAILABLE');
+ const fresh=await s.quote();assert.equal(fresh.addedCredits,2);await s.apply(fresh);assert.deepEqual(await s.member.wallet(),{available:2,reserved:1,kind:'test-credits',credits:{available:0,reserved:0}});assert.equal((await s.owner.status()).generation.reason,'BUDGET_NOT_AVAILABLE');
  assert.deepEqual(await s.owner.ledger.budget('2026-10'),{period:'2026-10',limit_micros:5000000,spent_micros:3500000,held_micros:500000});
 });
 test('target email, role, owner identity, expiry and unsupported storage fail closed',async t=>{
