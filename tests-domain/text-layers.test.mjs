@@ -1,0 +1,6 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {parseTextLayers,parseTextEdit,layerRect} from '../src/text-layers.ts';
+const layer={id:'one',text:'더욱 19,800원',x:.1,y:.1,width:.8,height:.2,size:.05,color:'#111111',cover:'#ffffff',bold:true,align:'center'};
+test('local text layer validation preserves Korean and confines rounded edge coordinates',()=>{assert.deepEqual(parseTextLayers([layer]),[layer]);assert.deepEqual(layerRect({...layer,x:.95,width:.05},101,99),{x:96,y:10,width:5,height:20});for(const bad of [{x:-.1},{width:2},{size:Infinity},{cover:'url(secret)'},{text:'x'.repeat(501)},{align:'evil'}])assert.throws(()=>parseTextLayers([{...layer,...bad}]));assert.throws(()=>parseTextLayers(Array(21).fill(layer)));});
+test('project layer parser keeps saved and draft layers separate and validates source',async()=>{assert.equal(await parseTextEdit(undefined,async()=>null),undefined);const source={sha256:'abc'};const parsed=await parseTextEdit({source,layers:[layer],saved:[]},async a=>a);assert.deepEqual(parsed,{source,layers:[layer],saved:[]});assert.notEqual(parsed.layers[0],layer);await assert.rejects(()=>parseTextEdit({source:null,layers:[],saved:[]},async()=>null));});
