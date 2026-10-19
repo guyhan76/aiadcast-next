@@ -44,3 +44,5 @@ for(const layout of ['main','inset','none'])test(`photo shape is preserved indep
  assert.match(prompt,/PHOTO SHAPE PRIORITY/);assert.match(prompt,/Do not make the body taller, deeper, wider or thinner/);assert.match(prompt,/not a guarantee of identity, physical accuracy or arrow placement/);assert.doesNotMatch(prompt,/Reconcile named width|internal dimensions are for proportions|supplied size is guidance for generation/);
  assert.equal(r.dimensionPlan,undefined);assert.equal(r.dimensionDisplay?.layout,layout==='none'?undefined:layout);assert.match(prompt,/FINISHED premium advertising/);
 });
+
+test('historical original-photo background requests retain their empty-background prompt',()=>{const p=project('none');p.generation.mode='original';const r=normalizeGenerationRequest(buildGenerationRequest(p)),prompt=promptFor(r);assert.doesNotMatch(prompt,/PHOTO SHAPE PRIORITY/);assert.match(prompt,/Empty scene\/background only/);});

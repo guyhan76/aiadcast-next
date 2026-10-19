@@ -8,4 +8,4 @@ The user's 300×200×250 mm inset example showed the same open product but an in
 
 A separate APK branch fix/retire-dimension-reshape-20261019 removes dimension guidance, text-example and original-photo mode choices from new demo creation, normalizes old draft flags and requires a photo. Historical result metadata/protocol remains supported. Older installed clients can still explicitly request the legacy modes; this server change is not an API shutdown of those protocols. Install the new APK as well as deploying this exact server branch to apply the complete scope reduction.
 
-Validation: 21 related domain tests pass, including all dimension placements with/without legacy plans. No production deployment, paid call, key or budget-setting changes performed.
+Validation: 22 related domain tests pass, including all dimension placements with/without legacy plans. No production deployment, paid call, key or budget-setting changes performed.
