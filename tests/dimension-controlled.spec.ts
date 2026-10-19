@@ -14,10 +14,10 @@ for(const shape of ['box','cylinder']as const)test(`dimension-controlled ${shape
  await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await f.getByLabel('높이 mm',{exact:true}).fill('400');await f.getByRole('button',{name:'기하 검증 이미지 만들기',exact:true}).click();await expect(result.getByRole('checkbox')).toBeEnabled();await expect(result.getByRole('button',{name:'검증 이미지 저장',exact:true})).toBeDisabled();expect(await canvas.evaluate((c:HTMLCanvasElement)=>c.toDataURL())).not.toBe(reviewed);expect(posts).toBe(0);
 });
 
-test('unsupported bag and garment shapes never become generic boxes, and original mode stays separate',async({page})=>{
+test('unsupported bag and garment shapes never become generic boxes, and retired original choice stays absent',async({page})=>{
  await page.route('**/api/**',r=>r.fulfill({json:{}}));await page.goto('/?dimensionProof=1#create');const f=page.locator('.consumer-create');
  for(const category of ['bags','fashion']){await f.getByLabel('산업 선택').selectOption(category);await f.getByRole('button',{name:'규격 넣기',exact:true}).click();await expect(f.getByRole('checkbox',{name:'규격 기하 검증용 구성',exact:true})).toBeDisabled();}
- await f.getByLabel('산업 선택').selectOption('boxes');await f.getByRole('checkbox',{name:'규격 기하 검증용 구성',exact:true}).check();await f.getByRole('button',{name:'실사 그대로 사용',exact:true}).click();await expect(f.getByRole('checkbox',{name:'규격 기하 검증용 구성',exact:true})).toHaveCount(0);await f.getByRole('button',{name:'AI로 새 광고 생성',exact:true}).click();await expect(f.getByRole('checkbox',{name:'규격 기하 검증용 구성',exact:true})).not.toBeChecked();
+ await f.getByLabel('산업 선택').selectOption('boxes');await f.getByRole('checkbox',{name:'규격 기하 검증용 구성',exact:true}).check();await expect(f.getByRole('button',{name:'실사 그대로 사용',exact:true})).toHaveCount(0);await f.getByRole('checkbox',{name:'규격 기하 검증용 구성',exact:true}).uncheck();await expect(f.getByRole('checkbox',{name:'규격 기하 검증용 구성',exact:true})).not.toBeChecked();
 });
 
 test('ordinary advertising creation does not offer schematic proofs as finished product ads',async({page})=>{await page.goto('/#create');const f=page.locator('.consumer-create');await f.getByLabel('산업 선택').selectOption('boxes');await f.getByRole('button',{name:'규격 넣기',exact:true}).click();await expect(f.getByRole('checkbox',{name:'규격 기하 검증용 구성',exact:true})).toHaveCount(0);await expect(f.getByRole('button',{name:'광고 생성',exact:true})).toBeVisible();});

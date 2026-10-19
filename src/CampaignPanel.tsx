@@ -4,7 +4,7 @@ import {useState} from 'react';
 import {Plus,X} from 'lucide-react';
 import {defaultCampaign} from './campaign';
 import type {Campaign} from './campaign';
-import {buildGenerationRequest} from './generation';
+import {buildNewGenerationRequest} from './generation';
 import {PublishingPanel} from './PublishingPanel';
 import type {PublishingImageTarget} from './PublishingPanel';
 import {currentDraft,publishingChannels} from './publishing';
@@ -18,7 +18,7 @@ export function CampaignFields({project,change}:Pick<Props,'project'|'change'>){
 export function CampaignPanel({project,change,message,onExportImage,imageDisabled}:Props&{onExportImage:(target:PublishingImageTarget)=>Promise<string|null>;imageDisabled:boolean}){
  const {text}=useUiLanguage();
  const guide=marketingPlanForProject(project);
- function exportBrief(){try{const request=buildGenerationRequest(project);const blob=new Blob([JSON.stringify({status:'current-plan-export',request,guide,generationSnapshot:project.generated?.marketingPlan??null,publishing:publishingChannels.map(channel=>currentDraft(project,channel))},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='aiadcast-campaign-brief.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);message(text('광고 기획과 생성 요청 정보를 저장했습니다. AI 생성은 실행하지 않았습니다.'));}catch(e){message(e instanceof Error?text(e.message):text('광고 정보를 확인해주세요.'));}}
+ function exportBrief(){try{const request=buildNewGenerationRequest(project);const blob=new Blob([JSON.stringify({status:'current-plan-export',request,guide,generationSnapshot:project.generated?.marketingPlan??null,publishing:publishingChannels.map(channel=>currentDraft(project,channel))},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='aiadcast-campaign-brief.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);message(text('광고 기획과 생성 요청 정보를 저장했습니다. AI 생성은 실행하지 않았습니다.'));}catch(e){message(e instanceof Error?text(e.message):text('광고 정보를 확인해주세요.'));}}
  return <PublishingPanel project={project} change={change} onExportBrief={exportBrief} onExportImage={onExportImage} imageDisabled={imageDisabled}/>;
 }
 

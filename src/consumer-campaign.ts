@@ -1,3 +1,4 @@
+import {withoutDimensionReshape} from './generation.ts';
 import {isTextExample} from './generation-input.ts';
 import {newProject} from './model.ts';
 import type {Project} from './model.ts';
@@ -18,7 +19,7 @@ export function automaticDimensionDraft(project:Project):Project{
  return {...project,dimensionAnnotation:{method:'ai',mode:a?.mode??'none',snapshot:''}};
 }
 export function prepareCampaign(project:Project):Project{
- project=automaticDimensionDraft(project);
+ project=withoutDimensionReshape(automaticDimensionDraft(project));
  const automatic=creativeSettings(project).copyMode==='ai';
  return {...project,name:project.productName+(project.locale==='ko'?' 광고':' ad'),presentation:'campaign',generation:{...project.generation,brief:project.generation.mode==='creative'&&!project.generation.brief.trim()?finishedAdBrief:project.generation.brief},updatedAt:new Date().toISOString(),copy:{...project.copy,[project.locale]:{...project.copy[project.locale],...(automatic?creativeCopy(project):{})}}};
 }
