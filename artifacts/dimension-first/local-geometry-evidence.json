@@ -1,0 +1,155 @@
+[
+  {
+    "sizeMm": [
+      350,
+      300,
+      250
+    ],
+    "worldSpan": [
+      350,
+      300,
+      250
+    ],
+    "contract": {
+      "version": 1,
+      "category": "boxes",
+      "specType": "rectangular",
+      "priority": "dimensions-first",
+      "shape": "cuboid",
+      "basis": "outer-body",
+      "measurements": [
+        {
+          "axis": "width",
+          "value": "350",
+          "unit": "mm"
+        },
+        {
+          "axis": "depth",
+          "value": "300",
+          "unit": "mm"
+        },
+        {
+          "axis": "height",
+          "value": "250",
+          "unit": "mm"
+        }
+      ],
+      "referenceUse": "appearance-only",
+      "coverage": "body-only",
+      "missing": [],
+      "outputGeometryVerified": false
+    },
+    "camera": {
+      "projection": "perspective",
+      "yaw": 35,
+      "pitch": 24,
+      "distance": 1400,
+      "uniformScale": 1881.6599540140835
+    },
+    "guideHash": "8eeffbba3daccd9c03cb3a62724ab2cd2d97448343fbb42177ee014818fb4583",
+    "guidePixelsOnly": true,
+    "aiGeneratedOutputTested": false
+  },
+  {
+    "sizeMm": [
+      600,
+      100,
+      50
+    ],
+    "worldSpan": [
+      600,
+      100,
+      50
+    ],
+    "contract": {
+      "version": 1,
+      "category": "boxes",
+      "specType": "rectangular",
+      "priority": "dimensions-first",
+      "shape": "cuboid",
+      "basis": "outer-body",
+      "measurements": [
+        {
+          "axis": "width",
+          "value": "600",
+          "unit": "mm"
+        },
+        {
+          "axis": "depth",
+          "value": "100",
+          "unit": "mm"
+        },
+        {
+          "axis": "height",
+          "value": "50",
+          "unit": "mm"
+        }
+      ],
+      "referenceUse": "appearance-only",
+      "coverage": "body-only",
+      "missing": [],
+      "outputGeometryVerified": false
+    },
+    "camera": {
+      "projection": "perspective",
+      "yaw": 35,
+      "pitch": 24,
+      "distance": 2400,
+      "uniformScale": 2779.7269827446776
+    },
+    "guideHash": "e22267237357b6847819de02a4fc06b770a016317d1260d3882e8d3fceed67bc",
+    "guidePixelsOnly": true,
+    "aiGeneratedOutputTested": false
+  },
+  {
+    "sizeMm": [
+      100,
+      600,
+      500
+    ],
+    "worldSpan": [
+      100,
+      600,
+      500
+    ],
+    "contract": {
+      "version": 1,
+      "category": "boxes",
+      "specType": "rectangular",
+      "priority": "dimensions-first",
+      "shape": "cuboid",
+      "basis": "outer-body",
+      "measurements": [
+        {
+          "axis": "width",
+          "value": "100",
+          "unit": "mm"
+        },
+        {
+          "axis": "depth",
+          "value": "600",
+          "unit": "mm"
+        },
+        {
+          "axis": "height",
+          "value": "500",
+          "unit": "mm"
+        }
+      ],
+      "referenceUse": "appearance-only",
+      "coverage": "body-only",
+      "missing": [],
+      "outputGeometryVerified": false
+    },
+    "camera": {
+      "projection": "perspective",
+      "yaw": 35,
+      "pitch": 24,
+      "distance": 2400,
+      "uniformScale": 2250.0834808824643
+    },
+    "guideHash": "78c7b9b16eb0f2e0004d61522ce31f051c3a8c1b9811708cb36226f3c000afa4",
+    "guidePixelsOnly": true,
+    "aiGeneratedOutputTested": false
+  }
+]

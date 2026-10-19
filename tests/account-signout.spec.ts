@@ -9,7 +9,7 @@ async function setup(page:Page){
   if(path==='/api/account/capabilities')return route.fulfill({json:{email:{enabled:false},password:{enabled:true,test:true,adminReady:true,adminEmail:'owner@example.com'},checkout:{enabled:false,test:true,currency:'KRW'}}});
   if(path==='/api/auth/logout'){state.calls++;await state.wait;return route.fulfill({status:state.status,json:state.status===200?{signedOut:true}:{error:{code:state.status===401?'AUTH_REQUIRED':'UNAVAILABLE'}}});}
   if(path==='/api/auth/test/login'){if(state.loginDelayMs)await new Promise(r=>setTimeout(r,state.loginDelayMs));return route.fulfill({json:account(route.request().postDataJSON().email.startsWith('alpha')?'alpha':'bravo')});}
-  if(path==='/api/status')return route.fulfill({json:{generation:{enabled:false,reason:'GENERATION_DISABLED'},wallet:{available:0,reserved:0},budget:{limitMicros:0},assistant:{available:false}}});
+  if(path==='/api/status')return route.fulfill({json:{generation:{dimensionGeometry:true,enabled:false,reason:'GENERATION_DISABLED'},wallet:{available:0,reserved:0},budget:{limitMicros:0},assistant:{available:false}}});
   if(path==='/api/projects')return route.fulfill({json:{projects:[]}});
   return route.fulfill({status:403,json:{error:{code:'ADMIN_REQUIRED'}}});
  });return state;

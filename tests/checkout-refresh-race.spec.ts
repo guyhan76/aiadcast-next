@@ -12,7 +12,7 @@ test('manual payment refresh during the initial read is retained; balance alone 
   const request=route.request(),path=new URL(request.url()).pathname;if(request.method()==='POST')posts++;
   if(path==='/api/account/capabilities')return route.fulfill({json:{email:{enabled:true},checkout:{enabled:true,test:true,currency:'KRW'}}});
   if(path==='/api/checkout/orders/'+order.id){const n=++reads;if(n===1){await initial;return route.fulfill({json:order});}await paid;return route.fulfill({json:{...order,state:'paid'}});}
-  if(path==='/api/status')return route.fulfill({json:{mode:'invite-beta',commercialReady:false,generation:{enabled:false,reason:'GENERATION_DISABLED'},wallet:{available:30,reserved:0},budget:{limitMicros:0}}});
+  if(path==='/api/status')return route.fulfill({json:{mode:'invite-beta',commercialReady:false,generation:{dimensionGeometry:true,enabled:false,reason:'GENERATION_DISABLED'},wallet:{available:30,reserved:0},budget:{limitMicros:0}}});
   if(path==='/api/projects')return route.fulfill({json:{projects:[]}});
   return route.fulfill({json:{}});
  });

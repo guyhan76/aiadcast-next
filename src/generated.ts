@@ -1,3 +1,4 @@
+import {parseGeometryContract,projectGeometryKey,type GeometryContract} from './dimension-geometry.ts';
 import {aiDimensionRequested,projectAiDimensionKey,parseAiDimensionDisplay,validAiDimensionReview,type AiDimensionDisplay,type AiDimensionReview} from './ai-dimension-display.ts';
 import {isTextExample,generationSourceHash} from './generation-input.ts';
 import {parseDimensionPlan,type DimensionPlan} from './dimension-generation.ts';
@@ -13,6 +14,7 @@ import {industryDirections} from './industry.ts';
 import {completeAdKey} from './complete-ad.ts';
 
 export type GeneratedAsset = {
+ dimensionGeometry?:GeometryContract;
  dimensionDisplay?:AiDimensionDisplay;dimensionReview?:AiDimensionReview;inputMode?:'text-example';jobId:string;mode:'original'|'creative';sourceHash:string|null;asset:Asset;
  role:'background'|'creative';model:string;createdAt:string;specificationKey:string;marketingPlan?:MarketingPlan;
  composition?:'complete-ad'|'photo-plate';compositionKey?:string;dimensionPlan?:DimensionPlan;planarReport?:PlanarReport;planarOriginal?:Asset;
@@ -22,7 +24,7 @@ export type GeneratedAsset = {
 // Keep editable copy, aspect ratio, label visibility, anchors and brief out of it.
 export function generatedCompatibilityKey(p:Project):string {
  return JSON.stringify({
-  ...(aiDimensionRequested(p)?{aiDimensionInputKey:projectAiDimensionKey(p)}:{}),sourceHash:generationSourceHash(p),...(isTextExample(p)?{inputMode:'text-example'}:{}),
+  ...(projectGeometryKey(p)?{dimensionGeometry:projectGeometryKey(p)}:{}),  ...(aiDimensionRequested(p)?{aiDimensionInputKey:projectAiDimensionKey(p)}:{}),sourceHash:generationSourceHash(p),...(isTextExample(p)?{inputMode:'text-example'}:{}),
   ...(p.generation.dimensionBased?{dimensionBased:true,dimensionVariant:p.generation.dimensionVariant??'',dimensionBasis:p.generation.dimensionBasis??'outer-body'}:{}),
   ...(p.generation.planarSourceHash?{planarSourceHash:p.generation.planarSourceHash,dimensionVariant:p.generation.dimensionVariant??''}:{}),
   ...(!isTextExample(p)&&p.references?.length?{referenceHashes:p.references.map(a=>a.sha256)}:{}),
@@ -79,7 +81,7 @@ export async function parseGenerated(value:unknown,readAsset:(value:unknown)=>Pr
  if(value===undefined)return undefined;
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('생성 결과 형식이 올바르지 않습니다.');
  const r=value as GeneratedAsset;
- const jobId=metadataString(r.jobId,128),model=metadataString(r.model,160),createdAt=metadataString(r.createdAt,40),specificationKey=metadataString(r.specificationKey,4096);
+ const jobId=metadataString(r.jobId,128),model=metadataString(r.model,160),createdAt=metadataString(r.createdAt,40),specificationKey=metadataString(r.specificationKey,8192);
  if(!/^[A-Za-z0-9_-]+$/.test(jobId)||!/^[A-Za-z0-9._:/-]+$/.test(model)||!['original','creative'].includes(r.mode)||!validHash(r.sourceHash)
   ||r.role!==(r.mode==='original'?'background':'creative')||!Number.isFinite(Date.parse(createdAt))||new Date(createdAt).toISOString()!==createdAt)throw Error('생성 결과의 제작 정보가 올바르지 않습니다.');
  // Reject malformed metadata before decoding any imported data URL.
@@ -93,7 +95,7 @@ export async function parseGenerated(value:unknown,readAsset:(value:unknown)=>Pr
  }
  let key:unknown;try{key=JSON.parse(specificationKey);}catch{throw Error('생성 결과의 규격 정보를 확인해주세요.');}
  if(!key||typeof key!=='object'||Array.isArray(key))throw Error('생성 결과의 규격 정보를 확인해주세요.');
- const details=key as {sourceHash:unknown;mode:unknown;productProfile:unknown;specifications:unknown;planarSourceHash?:unknown;dimensionVariant?:unknown;dimensionBased?:unknown;dimensionBasis?:unknown;inputMode?:unknown};
+ const details=key as {dimensionGeometry?:unknown;sourceHash:unknown;mode:unknown;productProfile:unknown;specifications:unknown;planarSourceHash?:unknown;dimensionVariant?:unknown;dimensionBased?:unknown;dimensionBasis?:unknown;inputMode?:unknown};
  if(r.inputMode!==undefined&&r.inputMode!=='text-example'||details.inputMode!==r.inputMode||r.inputMode==='text-example'&&(r.sourceHash!==null||r.mode!=='creative'||r.composition!=='complete-ad'))throw Error('생성 예시 정보를 확인해주세요.');
  if(details.sourceHash!==r.sourceHash||details.mode!==r.mode||!Array.isArray(details.specifications))throw Error('생성 결과의 원본·규격 정보가 일치하지 않습니다.');
  if(!details.productProfile||typeof details.productProfile!=='object'||Array.isArray(details.productProfile))throw Error('생성 결과의 상품 정보를 확인해주세요.');
@@ -101,6 +103,8 @@ export async function parseGenerated(value:unknown,readAsset:(value:unknown)=>Pr
  if(details.specifications.length!==axes.length||details.specifications.some((entry,index)=>!entry||typeof entry!=='object'||entry.axis!==axes[index]||entry.unit!=='mm'||typeof entry.value!=='string'||!validMillimeters(entry.value)))throw Error('생성 결과의 규격 정보를 확인해주세요.');
  const marketingPlan=parseMarketingPlan(r.marketingPlan);
  if(marketingPlan&&(marketingPlan.input.sourceHash!==r.sourceHash||marketingPlan.input.mode!==r.mode))throw Error('생성 결과의 광고 기획과 원본 정보가 일치하지 않습니다.');
+ const dimensionGeometry=parseGeometryContract(r.dimensionGeometry);
+ if(JSON.stringify(dimensionGeometry)!==JSON.stringify(details.dimensionGeometry))throw Error('INVALID_GEOMETRY');
  const dimensionPlan=parseDimensionPlan(r.dimensionPlan);
  if(details.dimensionBased===true&&!dimensionPlan)throw Error('INVALID_DIMENSION_PLAN');
  if(dimensionPlan&&(dimensionPlan.sourceHash!==r.sourceHash||details.dimensionBased!==true||dimensionPlan.variantLabel!==details.dimensionVariant||dimensionPlan.basis!==details.dimensionBasis||dimensionPlan.specType!==(details.productProfile as {specType:string}).specType||dimensionPlan.measurements.length!==(details.specifications as unknown[]).length||dimensionPlan.measurements.some((m,i)=>{const spec=(details.specifications as {axis:string;value:string;unit:string}[])[i];return m.value!==spec?.value||m.axis!==(profile.specType==='cylindrical'&&spec?.axis==='width'?'diameter':spec?.axis)||m.unit!==spec?.unit;})))throw Error('INVALID_DIMENSION_PLAN');
@@ -113,6 +117,6 @@ export async function parseGenerated(value:unknown,readAsset:(value:unknown)=>Pr
  if(!asset)throw Error('생성 결과 이미지가 누락되었습니다.');
  if(r.dimensionReview&&(!dimensionDisplay||!validAiDimensionReview(r.dimensionReview,dimensionDisplay,asset.sha256)))throw Error('INVALID_AI_DIMENSION_REVIEW');
  if(planarReport?.outputRatio&&Math.abs(asset.width/asset.height-planarReport.outputRatio)>1e-9)throw Error('INVALID_PLANAR_REPORT');
- return {...(dimensionDisplay?{dimensionDisplay}:{}),...(r.dimensionReview?{dimensionReview:r.dimensionReview}:{}),...(r.inputMode?{inputMode:r.inputMode}:{}),...(dimensionPlan?{dimensionPlan}:{}),...(planarReport?{planarReport,planarOriginal:planarOriginal!}:{}),jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey,...(marketingPlan?{marketingPlan}:{}),...(r.composition?{composition:r.composition}:{}),...(compositionKey?{compositionKey}:{})};
+ return {...(dimensionGeometry?{dimensionGeometry}:{}),...(dimensionDisplay?{dimensionDisplay}:{}),...(r.dimensionReview?{dimensionReview:r.dimensionReview}:{}),...(r.inputMode?{inputMode:r.inputMode}:{}),...(dimensionPlan?{dimensionPlan}:{}),...(planarReport?{planarReport,planarOriginal:planarOriginal!}:{}),jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey,...(marketingPlan?{marketingPlan}:{}),...(r.composition?{composition:r.composition}:{}),...(compositionKey?{compositionKey}:{})};
 }
 

@@ -6,7 +6,7 @@ async function setup(page:Page,options:{session?:typeof account;delay?:Promise<v
  const calls:string[]=[];await page.route('**/api/**',async r=>{const path=new URL(r.request().url()).pathname;calls.push(path);if(path==='/api/auth/me'){await options.delay;if(options.failure)return r.fulfill({status:options.failure,json:{error:{code:'AUTH_REQUIRED'}}});return r.fulfill({json:{user:account.user}});}
  if(path==='/api/account/capabilities')return r.fulfill({json:{email:{enabled:false},password:{enabled:true,test:true,adminReady:false,adminEmail:''},checkout:{enabled:false,test:true,currency:'KRW'}}});
  if(path==='/api/auth/test/login'){options.failure=0;return r.fulfill({json:account});}if(path==='/api/auth/logout')return r.fulfill({json:{signedOut:true}});
- if(path==='/api/status')return r.fulfill({json:{generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}});return r.fulfill({json:{projects:[]}});
+ if(path==='/api/status')return r.fulfill({json:{generation:{dimensionGeometry:true,enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}});return r.fulfill({json:{projects:[]}});
  });return calls;
 }
 async function signIn(page:Page){await page.getByRole('button',{name:'로그인하고 계속',exact:true}).click();await page.getByLabel('이메일',{exact:true}).fill('owner@example.com');await page.getByLabel('비밀번호',{exact:true}).fill('fixture-password');await page.locator('form').getByRole('button',{name:'로그인하고 계속',exact:true}).click();}

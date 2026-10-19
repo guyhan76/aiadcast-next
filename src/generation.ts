@@ -1,3 +1,4 @@
+import {projectGeometry,type GeometryShape} from './dimension-geometry.ts';
 import {aiDimensionRequested} from './ai-dimension-display.ts';
 import {isTextExample,generationContext,textExampleGeometryError} from './generation-input.ts';
 import {dimensionControlErrors} from './dimension-control.ts';
@@ -15,8 +16,8 @@ import {creativeContract} from './creative.ts';
 import {boxProjectionActive,boxProjectionError} from './box-projection.ts';
 import {publicAdCopy,completeAdKey} from './complete-ad.ts';
 export type GenerationMode = 'original' | 'creative';
-export type GenerationSettings = {mode:GenerationMode;brief:string;inputMode?:'photo'|'text-example';photoMode?:GenerationMode;planarSourceHash?:string;dimensionVariant?:string;dimensionBased?:boolean;dimensionBasis?:'outer-body'|'inner-body'|'body'|'garment-flat'};
-export const defaultGeneration = ():GenerationSettings => ({mode:'original',brief:''});
+export type GenerationSettings = {geometryVersion?:1;geometryShape?:GeometryShape;mode:GenerationMode;brief:string;inputMode?:'photo'|'text-example';photoMode?:GenerationMode;planarSourceHash?:string;dimensionVariant?:string;dimensionBased?:boolean;dimensionBasis?:'outer-body'|'inner-body'|'body'|'garment-flat'};
+export const defaultGeneration = ():GenerationSettings => ({mode:'original',brief:'',geometryVersion:1});
 export function parseGeneration(value:unknown):GenerationSettings {
   if(value===undefined)return defaultGeneration();
   if(!value||typeof value!=='object')throw Error('이미지 제작 방식이 올바르지 않습니다.');
@@ -26,7 +27,9 @@ export function parseGeneration(value:unknown):GenerationSettings {
   if(settings.dimensionVariant!==undefined&&(typeof settings.dimensionVariant!=='string'||settings.dimensionVariant.length>80))throw Error('규격 이름을 확인해주세요.');
   if(settings.dimensionBased!==undefined&&typeof settings.dimensionBased!=='boolean'||settings.dimensionBasis!==undefined&&!['outer-body','inner-body','body','garment-flat'].includes(settings.dimensionBasis))throw Error('규격 기반 생성 옵션을 확인해주세요.');
   if(settings.planarSourceHash!==undefined&&!/^[a-f0-9]{64}$/.test(settings.planarSourceHash))throw Error('평면 비례 적용 사진을 확인해주세요.');
-  return {mode:settings.mode,brief:settings.brief,...(settings.inputMode?{inputMode:settings.inputMode}:{}),...(settings.photoMode?{photoMode:settings.photoMode}:{}),...(settings.dimensionBased?{dimensionBased:true,dimensionVariant:settings.dimensionVariant??'',dimensionBasis:settings.dimensionBasis??'outer-body',...(settings.planarSourceHash?{planarSourceHash:settings.planarSourceHash}:{})}:{})};
+  if(settings.geometryVersion!==undefined&&settings.geometryVersion!==1)throw Error('INVALID_GEOMETRY');
+  if(settings.geometryShape!==undefined&&!['auto','cuboid','straight-cylinder','plane'].includes(settings.geometryShape))throw Error('INVALID_GEOMETRY');
+  return {...(settings.geometryVersion?{geometryVersion:settings.geometryVersion}:{}),...(settings.dimensionBasis?{dimensionBasis:settings.dimensionBasis}:{}),...(settings.geometryShape?{geometryShape:settings.geometryShape}:{}),mode:settings.mode,brief:settings.brief,...(settings.inputMode?{inputMode:settings.inputMode}:{}),...(settings.photoMode?{photoMode:settings.photoMode}:{}),...(settings.dimensionBased?{dimensionBased:true,dimensionVariant:settings.dimensionVariant??'',dimensionBasis:settings.dimensionBasis??'outer-body',...(settings.planarSourceHash?{planarSourceHash:settings.planarSourceHash}:{})}:{})};
 }
 export function generationIssues(p:Project):string[] {
   const textError=textExampleGeometryError(p);if(textError)return [textError];
@@ -44,6 +47,7 @@ export function generationIssues(p:Project):string[] {
   if(creative&&!service&&!isTextExample(p)&&p.product&&[p.product,...p.references??[]].every(a=>photoRole(p,a.sha256)==='style'))errors.push('디자인 참고 외에 실제 상품 사진을 한 장 이상 추가해주세요.');
   if(creative&&service&&!p.product&&!p.generation.brief.trim()&&!p.campaign?.creative&&!p.conversation?.turns.some(t=>t.state==='recorded'))errors.push('사진 없이 만들 광고의 내용과 요청사항을 입력해주세요.');
   if(axes.some(axis=>!validMillimeters(p.dimensions[axis])))errors.push('생성에 참고할 규격은 0보다 크고 100,000 mm 이하로 입력해주세요.');
+  try{projectGeometry(p);}catch{errors.push('입력 규격과 선택한 몸통 형태를 확인해주세요.');}
   const assessment=assessReference(generationContext(p));if(['mismatch','invalid'].includes(assessment.status))errors.push(assessment.message);
   return errors;
 }
@@ -63,6 +67,7 @@ export function buildGenerationRequest(p:Project) {
   if(appearanceEdit&&!p.product)throw Error('상품 인쇄·색상을 수정하려면 실제 상품 사진을 추가해주세요.');
   const specifications=dimensionAxes(p.productProfile).map(axis=>({axis:axis==='width'&&p.productProfile.specType==='cylindrical'?'diameter':axis,value:p.dimensions[axis],unit:'mm'}));
   return {
+    ...(projectGeometry(p)?{dimensionGeometry:projectGeometry(p)}:{}),
     ...(generation.dimensionBased?{dimensionPlan:makeDimensionPlan({sourceHash:p.product!.sha256,variantLabel:generation.dimensionVariant,basis:generation.dimensionBasis,specType:p.productProfile.specType,specifications})}:{}),
     ...(generation.planarSourceHash?{proportionControl:{kind:'flat-front-v1',confirmedSourceHash:generation.planarSourceHash,variantLabel:generation.dimensionVariant??''}}:{}),
     ...(isTextExample(p)?{inputMode:'text-example' as const}:{}),

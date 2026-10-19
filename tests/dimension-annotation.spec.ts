@@ -10,12 +10,12 @@ async function setup(page:Page,{available=true,fail=false,delay=false,missing=fa
  let generations=0,analyses=0,job:any,release:(()=>void)|undefined;
  await page.route(url=>url.pathname.startsWith('/api/')&&url.pathname!=='/api/auth/me',async route=>{
   const r=route.request(),path=new URL(r.url()).pathname,wallet={available:5,reserved:0,kind:'test'};let data:any={};
-  if(path==='/api/status')data={generation:{enabled:true,photoPurposes:true},wallet,budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}};
+  if(path==='/api/status')data={generation:{dimensionGeometry:true,enabled:true,photoPurposes:true},wallet,budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}};
   else if(path==='/api/dimension-analysis'){
    if(r.method()==='GET')data={available,scope:'approved-reference-evaluation',reason:available?null:'REFERENCES_NOT_VERIFIED'};
    else{analyses++;expect(r.postDataJSON().source.sha256).toBe(hash);if(delay)await new Promise<void>(resolve=>release=resolve);if(fail)return route.fulfill({status:409,json:{error:{code:'DIMENSION_LOCATION_UNCERTAIN'}}});data={sourceHash:hash,proposal:missing?undefined:proposal(),verified:false};}
   }else if(path==='/api/generations'&&r.method()==='POST'){
-   generations++;const body=r.postDataJSON();if(mode!=='none')expect(body.request.output.showDimensions).toBe(false);job={id:'annotation-fixture',projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:'creative',sourceHash:body.source.sha256,createdAt:'2026-10-17T00:00:00.000Z',model:'fixture',artifactId:hash,composition:'complete-ad',compositionKey:body.request.output.compositionKey,artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+bytes.toString('base64'),width:800,height:1000,role:'creative'},marketingPlan:body.request.marketingPlan};data={job,wallet};
+   generations++;const body=r.postDataJSON();if(mode!=='none')expect(body.request.output.showDimensions).toBe(false);job={id:'annotation-fixture',projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:'creative',sourceHash:body.source.sha256,createdAt:'2026-10-17T00:00:00.000Z',model:'fixture',artifactId:hash,composition:'complete-ad',dimensionGeometry:body.request.dimensionGeometry,compositionKey:body.request.output.compositionKey,artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+bytes.toString('base64'),width:800,height:1000,role:'creative'},marketingPlan:body.request.marketingPlan};data={job,wallet};
   }else if(path.endsWith('/accept')){job.state='accepted';data={job,wallet};}
   else if(path.startsWith('/api/generations/'))data={job,wallet};else if(path==='/api/generations')data={jobs:job?[job]:[]};else if(path==='/api/account/capabilities')data={email:{enabled:false},checkout:{enabled:false}};
   await route.fulfill({json:data});
