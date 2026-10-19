@@ -1,3 +1,4 @@
+import {consumeLoginDestination,rememberLoginDestination} from './login-navigation';
 import {rememberCheckout} from './checkout-return';
 import {offlineDemo} from './demo-mode';
 import {useEffect,useRef,useState} from 'react';
@@ -48,7 +49,7 @@ function PasswordAccountPage({mode,preserve,returnPage,cap}:Context&{mode:'signu
    await preserve();
    const session=await apiRequest<BetaSession>(signup?'/api/auth/test/signup':'/api/auth/test/login',{email,password,...(signup?{name}:{})});
    await carryGuestWorkspace(accountNamespace(session.user.id));setPassword('');setConfirm('');
-   const paymentReturn=sessionStorage.getItem('aiadcast.checkout-login-return')==='1';sessionStorage.removeItem('aiadcast.checkout-login-return');setBetaSession(session,paymentReturn?'checkout-return':admin&&returnPage==='home'?'admin':returnPage);
+   setBetaSession(session,consumeLoginDestination());
   }catch(e){setMessage(accountError(e,language==='ko'));}finally{locked.current=false;setBusy(false);}
  }
  function selectAdmin(value:boolean){setAdmin(value);setEmail(value?cap.adminEmail:'');setPassword('');setConfirm('');setMessage('');}
@@ -70,7 +71,7 @@ function PasswordAccountPage({mode,preserve,returnPage,cap}:Context&{mode:'signu
 }
 function InviteAccountPage({preserve,returnPage}:Context){
  const {t}=useUiLanguage(),[invite,setInvite]=useState(''),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
- async function login(){if(busy)return;setBusy(true);setMessage('');try{await preserve();const session=await apiRequest<BetaSession>('/api/auth/login',{invite:invite.trim()});await carryGuestWorkspace(accountNamespace(session.user.id));setBetaSession(session,returnPage);}catch(e){setMessage(e instanceof Error&&e.message==='INVALID_INVITE'?t('초대코드를 확인해주세요. 만료된 코드는 관리자에게 다시 요청해주세요.','Check the invitation code. Ask the administrator for a new code if it expired.'):t('로그인하지 못했습니다. 초대코드와 연결 상태를 확인해주세요.','Could not sign in. Check the invitation code and connection.'));}finally{setBusy(false);}}
+ async function login(){if(busy)return;setBusy(true);setMessage('');try{await preserve();const session=await apiRequest<BetaSession>('/api/auth/login',{invite:invite.trim()});await carryGuestWorkspace(accountNamespace(session.user.id));setBetaSession(session,consumeLoginDestination());}catch(e){setMessage(e instanceof Error&&e.message==='INVALID_INVITE'?t('초대코드를 확인해주세요. 만료된 코드는 관리자에게 다시 요청해주세요.','Check the invitation code. Ask the administrator for a new code if it expired.'):t('로그인하지 못했습니다. 초대코드와 연결 상태를 확인해주세요.','Could not sign in. Check the invitation code and connection.'));}finally{setBusy(false);}}
  return <section className="account-page"><a className="page-back" href={'#'+returnPage}><ArrowLeft size={18}/>{t('돌아가기','Back')}</a><h1>{t('테스트 로그인','Test sign-in')}</h1><p className="page-intro">{t('받으신 초대코드로 로그인하면 입력한 광고를 이어서 생성할 수 있습니다.','Sign in with your invitation code to continue generating your ad.')}</p><form onSubmit={e=>{e.preventDefault();void login();}}><label className="field">{t('초대코드','Invitation code')}<input type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={43} value={invite} onChange={e=>setInvite(e.target.value)}/></label><button className="primary-action" disabled={busy||invite.trim().length!==43}>{busy?t('로그인 중…','Signing in…'):t('로그인하고 계속','Sign in and continue')}</button></form><p className="account-help">{t('현재 비공개 베타입니다. 이메일 회원가입은 아직 연결되지 않았습니다. 초대코드는 관리자에게 받으세요.','This is a private beta. Email signup is not connected yet. Ask the administrator for an invitation.')}</p>{message&&<p role="alert">{message}</p>}</section>;
 }
 export function EmailAccountPage({mode,preserve,returnPage}:Context&{mode:'signup'|'login'}){
@@ -82,7 +83,7 @@ export function EmailAccountPage({mode,preserve,returnPage}:Context&{mode:'signu
  async function demoVerify(){if(!request)return;setBusy(true);try{await apiRequest('/api/demo/auth/verify',request);await check();}catch(e){setMessage(accountError(e,ko));}finally{setBusy(false);}}
  async function check(){if(!request||locked.current)return;locked.current=true;try{
   if(Date.now()>=request.expires){setExpired(true);return;}
-  const result=await exchangeEmail(request);if(result.session){await latest.current.preserve();await carryGuestWorkspace(accountNamespace(result.session.user.id));sessionStorage.removeItem(key);const target=sessionStorage.getItem('aiadcast.auth-return')==='checkout'?'checkout':latest.current.returnPage;sessionStorage.removeItem('aiadcast.auth-return');const paymentReturn=sessionStorage.getItem('aiadcast.checkout-login-return')==='1';sessionStorage.removeItem('aiadcast.checkout-login-return');setBetaSession(result.session,paymentReturn?'checkout-return':target);}
+  const result=await exchangeEmail(request);if(result.session){await latest.current.preserve();await carryGuestWorkspace(accountNamespace(result.session.user.id));sessionStorage.removeItem(key);setBetaSession(result.session,consumeLoginDestination());}
  }catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;}}
  useEffect(()=>{if(!cap?.email.enabled||cap.password?.enabled&&!demo||!request||expired)return;const timer=setInterval(()=>{if(document.visibilityState==='visible')void check();},3000);return()=>clearInterval(timer);},[request,expired,ko,cap,demo]);
  async function submit(){if(locked.current)return;locked.current=true;setBusy(true);setMessage('');try{await preserve();const result=await apiRequest<EmailRequest>('/api/auth/email/request',{email});sessionStorage.setItem(key,JSON.stringify(result));setRequest(result);setExpired(false);}catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;setBusy(false);}}
@@ -126,7 +127,7 @@ export function CheckoutPage({preserve,returnPage}:Context){
  }
  useEffect(()=>{if(!session)return;void refresh();const timer=setInterval(()=>{if(document.visibilityState==='visible'&&order&&order.state==='pending')void refresh();},5000);return()=>clearInterval(timer);},[order?.id,order?.state,session?.token]);
  async function checkout(){if(locked.current||!cap?.checkout.enabled)return;locked.current=true;setBusy(true);setMessage('');try{
-  await preserve();if(!session){sessionStorage.setItem('aiadcast.auth-return','checkout');location.hash='login';return;}
+  await preserve();if(!session){rememberLoginDestination('checkout');location.hash='login';return;}
   const key='aiadcast.checkout-request:'+session.user.id+':'+selected;
   let requestId=sessionStorage.getItem(key);if(!requestId){requestId=crypto.randomUUID();sessionStorage.setItem(key,requestId);}
   const result=await apiRequest<TestOrder>('/api/checkout/orders',{pack:selected,requestId,agreed});keepOrder(result);rememberCheckout(result,returnPage);
