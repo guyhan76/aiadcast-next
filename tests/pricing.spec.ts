@@ -55,3 +55,14 @@ test('USD display packs disclose unchanged KRW settlement and never submit a USD
  for(const [credits,krw] of [[30,'₩9,900'],[100,'₩29,800'],[180,'₩48,900']] as const){await page.locator(`input[value="credits-v2-${credits}"]`).check();await expect(page.getByRole('region',{name:'결제 확인'})).toContainText(krw);await expect(page.getByRole('region',{name:'결제 확인'})).toContainText('USD 결제는 지원하지 않습니다.');await expect(page.getByRole('button',{name:'이메일로 로그인하고 계속'})).toBeDisabled();}
  expect(posts).toBe(0);await page.getByRole('combobox',{name:'표시 통화',exact:true}).selectOption('KRW');await expect(page.getByRole('region',{name:'결제 확인'})).toContainText('₩48,900');
 });
+
+test('signed-in header credits label follows UI language without changing its destination',async({page})=>{
+ let posts=0;
+ await page.addInitScript(()=>sessionStorage.setItem('aiadcast.beta-session',JSON.stringify({token:'a'.repeat(43),expires:Date.now()+86400000,user:{id:'header-test-user',label:'test@example.com'}})));
+ await page.route('**/api/**',r=>{if(r.request().method()!=='GET')posts++;return r.fulfill({json:{jobs:[],email:{enabled:false},generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}});});
+ await page.goto('/#home');const header=page.locator('.app-header');
+ await expect(header.getByRole('link',{name:'내 이용권',exact:true})).toHaveAttribute('href','#credits');
+ await header.getByRole('combobox',{name:'앱 언어',exact:true}).selectOption('en');
+ await expect(header.getByRole('link',{name:'My Credits',exact:true})).toHaveAttribute('href','#credits');await expect(header.getByText('내 이용권',{exact:true})).toHaveCount(0);
+ await header.getByRole('combobox',{name:'App language',exact:true}).selectOption('ko');await expect(header.getByRole('link',{name:'내 이용권',exact:true})).toHaveAttribute('href','#credits');expect(posts).toBe(0);
+});
