@@ -15,10 +15,10 @@ export function HistoricalAdResult({project}:{project:Project}){
   const {job}=await apiRequest<{job:GenerationJob}>(`/api/generations/${encodeURIComponent(id)}`,undefined,controller.signal);
   if(job.id!==id||job.projectId!==project.id||job.state!=='accepted'||job.composition!=='complete-ad')throw Error('INVALID_HISTORY');
   const image=await verifiedArtifact(job);
-  if(!controller.signal.aborted){setAsset(image);setSelected(id);setMessage(t('저장된 완료 결과를 불러왔습니다. 새로 생성하지 않았습니다.','Loaded the saved completed result without generating again.'));}
+  if(!controller.signal.aborted){setAsset(image);setSelected(id);setMessage('');}
  }
  function failure(error:unknown){
-  setMessage(error instanceof ApiRequestFailure&&[401,403].includes(error.status)?t('이 계정으로 완료 기록을 확인할 수 없습니다. 로그인 계정을 확인해주세요.','Cannot access completed history with this account. Check your sign-in.'):t('완료 원본을 불러오지 못했습니다. 파일이 없거나 연결을 확인할 수 없습니다. 프로젝트는 유지되며 새로 생성하지 않았습니다.','Could not load the completed original. The file may be unavailable or the connection could not be verified. Your project is preserved; no new image was generated.'));
+  setMessage(error instanceof ApiRequestFailure&&[401,403].includes(error.status)?t('로그인 계정을 확인해주세요.','Check your sign-in account.'):t('저장된 이미지를 불러오지 못했습니다.','Could not load the saved image.'));
  }
  async function recover(id?:string){
   request.current?.abort();const controller=new AbortController();request.current=controller;setBusy(true);setMessage('');
@@ -34,7 +34,7 @@ export function HistoricalAdResult({project}:{project:Project}){
    if(!Array.isArray(history.jobs))throw Error('INVALID_HISTORY');
    const completed=history.jobs.filter(j=>j.projectId===project.id&&j.state==='accepted'&&j.composition==='complete-ad');
    if(controller.signal.aborted)return;setJobs(completed);
-   if(!completed.length){setMessage(t('이 프로젝트의 완료 원본을 찾지 못했습니다. 프로젝트는 유지되며 새로 생성하지 않았습니다.','No completed original was found for this project. Your project is preserved; no new image was generated.'));return;}
+   if(!completed.length){setMessage(t('이 프로젝트에서 저장된 완료 이미지를 찾지 못했습니다.','No saved completed image was found for this project.'));return;}
    setSelected(completed[0].id);await loadJob(completed[0].id,controller);
   }catch(e){if(!controller.signal.aborted)failure(e);}
   finally{if(request.current===controller){setBusy(false);request.current=null;}}
@@ -46,7 +46,7 @@ export function HistoricalAdResult({project}:{project:Project}){
     try{
      const a=local.asset;
      const image=await verifiedArtifact({artifact:{...a,id:a.sha256,dataUrl:a.data,role:local.role},artifactId:a.sha256,id:local.jobId});
-     if(controller.signal.aborted)return;setAsset(image);setBusy(false);setMessage(t('기기에 저장된 과거 원본입니다. 현재 입력 변경은 반영되지 않습니다.','This is the original saved on this device. Current input changes are not applied.'));return;
+     if(controller.signal.aborted)return;setAsset(image);setBusy(false);setMessage('');return;
     }catch{/* Missing or damaged local bytes can be recovered from completed history. */}
    }
    if(!controller.signal.aborted)void recover();
@@ -58,10 +58,8 @@ export function HistoricalAdResult({project}:{project:Project}){
   const blob=await (await fetch(asset.data)).blob(),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='aiadcast-previous-original.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
  }
  return <section className="historical-ad" aria-label={t('과거 완료 결과','Previous completed result')}>
-  <h2>{t('과거 완료 결과','Previous completed result')}</h2>
-  <p>{t('생성 당시 원본 보기 · 재생성 및 이용권 차감 없음. 이후 편집한 글씨·치수선은 이 원본에 추가되지 않습니다.','View the original generated image without regeneration or credit charges. Later text edits and dimension overlays are not added to this original.')}</p>
   {jobs.length>1&&<label>{t('완료 기록 선택','Choose completed result')}<select value={selected} disabled={busy} onChange={e=>{setAsset(null);setSelected(e.target.value);void recover(e.target.value);}}>{jobs.map(j=><option key={j.id} value={j.id}>{new Date(j.createdAt).toLocaleString()} · {j.id}</option>)}</select></label>}
-  {asset&&<><img src={asset.data} alt={t('과거에 생성한 광고 원본','Previously generated ad original')} style={{display:'block',maxWidth:'100%',height:'auto'}}/><button onClick={()=>void download()}>{t('과거 원본 저장 · 공유','Save / share previous original')}</button></>}
+  {asset&&<><img src={asset.data} alt={t('과거에 생성한 광고 원본','Previously generated ad original')} style={{display:'block',maxWidth:'100%',height:'auto'}}/><button onClick={()=>void download()}>{t('원본 저장 · 공유','Save / share original')}</button></>}
   {busy&&<p role="status">{t('과거 완료 결과 확인 중…','Checking completed history…')}</p>}
   {message&&<p role="status">{message}</p>}
   {!asset&&<button disabled={busy} onClick={()=>void recover(selected||undefined)}>{t('과거 결과 다시 확인','Retry previous result')}</button>}

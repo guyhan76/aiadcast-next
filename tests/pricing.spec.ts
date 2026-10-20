@@ -66,3 +66,13 @@ test('signed-in header credits label follows UI language without changing its de
  await expect(header.getByRole('link',{name:'My Credits',exact:true})).toHaveAttribute('href','#credits');await expect(header.getByText('내 이용권',{exact:true})).toHaveCount(0);
  await header.getByRole('combobox',{name:'App language',exact:true}).selectOption('ko');await expect(header.getByRole('link',{name:'내 이용권',exact:true})).toHaveAttribute('href','#credits');expect(posts).toBe(0);
 });
+
+
+test('initial English guest header says Sign in and switches back to Korean',async({page})=>{
+ await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','en'));
+ await page.route('**/api/**',r=>r.fulfill({json:{email:{enabled:false}}}));
+ await page.goto('/#home');const header=page.locator('.app-header');
+ await expect(header.getByRole('link',{name:'Sign in',exact:true})).toHaveAttribute('href','#login');
+ await header.getByRole('combobox',{name:'App language',exact:true}).selectOption('ko');
+ await expect(header.getByRole('link',{name:'로그인',exact:true})).toHaveAttribute('href','#login');
+});

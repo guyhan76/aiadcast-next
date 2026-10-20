@@ -31,10 +31,10 @@ async function setup(page:Page,kind:Case){
  return {p,writes:()=>writes,details:()=>details};
 }
 const region=(page:Page)=>page.getByRole('region',{name:'과거 완료 결과',exact:true});
-async function assertDownload(page:Page){const event=page.waitForEvent('download');await region(page).getByRole('button',{name:'과거 원본 저장 · 공유',exact:true}).click();expect(await readFile((await(await event).path())!)).toEqual(bytes);}
+async function assertDownload(page:Page){const event=page.waitForEvent('download');await region(page).getByRole('button',{name:'원본 저장 · 공유',exact:true}).click();expect(await readFile((await(await event).path())!)).toEqual(bytes);}
 for(const kind of ['local','accepted','broken-local','older-id'] as const)test(`${kind}: reopen/download original without generation or changing project`,async({page})=>{
  const state=await setup(page,kind);await expect(region(page).getByRole('img')).toHaveAttribute('src',data);await assertDownload(page);
- await expect(page.getByRole('heading',{name:'새 광고 생성',exact:true})).toBeVisible();await expect(page.locator('.accepted-ad')).toHaveCount(0);
+ await expect(page.locator('.new-ad-options')).not.toHaveAttribute('open');await expect(page.locator('.generation-panel')).not.toBeVisible();await expect(page.locator('.accepted-ad')).toHaveCount(0);
  if(kind==='local')expect(state.details()).toBe(0);else expect(state.details()).toBeGreaterThan(0);
  const saved=await page.evaluate(async id=>new Promise<any>(resolve=>{const r=indexedDB.open('aiadcast-editor',1);r.onsuccess=()=>{const q=r.result.transaction('projects').objectStore('projects').get(id);q.onsuccess=()=>{resolve(q.result);r.result.close();};};}),state.p.id);
  expect(saved).toEqual(state.p);expect(state.writes()).toBe(0);
@@ -42,7 +42,7 @@ for(const kind of ['local','accepted','broken-local','older-id'] as const)test(`
 });
 for(const kind of ['missing','wrong-list','wrong-detail','denied','hash-mismatch','missing-artifact'] as const)test(`${kind}: fail closed and retry without generation`,async({page})=>{
  const state=await setup(page,kind);await expect(region(page).getByRole('button',{name:'과거 결과 다시 확인'})).toBeEnabled();await expect(region(page).getByRole('img')).toHaveCount(0);
- await expect(region(page)).toContainText(kind==='denied'?'로그인 계정을 확인':'새로 생성하지 않았습니다');
+ await expect(region(page)).toContainText(kind==='denied'?'로그인 계정을 확인':kind==='missing'||kind==='wrong-list'?'완료 이미지를 찾지 못했습니다':'이미지를 불러오지 못했습니다');
  await region(page).getByRole('button',{name:'과거 결과 다시 확인'}).click();await expect(region(page).getByRole('button',{name:'과거 결과 다시 확인'})).toBeEnabled();await expect(region(page).getByRole('img')).toHaveCount(0);
  if(kind==='wrong-list')expect(state.details()).toBe(0);expect(state.writes()).toBe(0);
 });
