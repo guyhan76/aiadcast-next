@@ -1,3 +1,5 @@
+import {TextLayerEditor} from './TextLayerEditor';
+import {BrandLogo} from './BrandLogo';
 import {AutomaticProportion} from './AutomaticProportion';
 import {AppFooter} from './AppFooter';
 import {DimensionInputs} from './DimensionInputs';
@@ -102,7 +104,7 @@ export default function App({initialProject,onProjectChange}:{initialProject?:Pr
  const copy=project.copy[project.locale];
  const setCopy=(field:keyof Copy,value:string)=>change(p=>({...p,copy:{...p.copy,[p.locale]:{...p.copy[p.locale],[field]:value}}}));
  return <>
-  <header className="topbar"><a className="wordmark" href="#home" aria-label={text("aiadcast 홈")}><b>ai</b>adcast<i/></a><span className="edition">CREATIVE STUDIO</span><div className="topbar-actions"><LanguageSwitcher/><PricingDialog/><button className="library-button" onClick={openLibrary}><FolderOpen size={17}/><span>{text("저장한 작업")}</span></button></div></header>
+  <header className="topbar"><a className="wordmark" href="#home" aria-label={text("aiadcast 홈")}><BrandLogo/></a><span className="edition">CREATIVE STUDIO</span><div className="topbar-actions"><LanguageSwitcher/><PricingDialog/><button className="library-button" onClick={openLibrary}><FolderOpen size={17}/><span>{text("저장한 작업")}</span></button></div></header>
   <main id="main" className="workspace">
    <div className="page-heading"><div><div className="eyebrow">YOUR BRAND. YOUR STORY.</div><h1>{creative?<>{text("새로운 광고를,")}<br className="mobile-only"/>{text("구상해보세요.")}</>:service?<>{text("서비스의 가치를,")}<br className="mobile-only"/>{text("분명하게 전하세요.")}</>:<>{text("상품은 그대로.")}<br className="mobile-only"/>{text("표현은 자유롭게.")}</>}</h1><p>{creative?text("사진·광고 내용으로 제작 방향을 정하세요. 규격은 필요할 때만 사용합니다."):service?text("규격 없이 사진·배경·문구로 광고를 구성하세요."):text("원본 사진을 보존하고, 필요한 부분만 수정하세요.")}</p></div><button className="new-button" onClick={()=>{if(!dirty.current||confirm(text("저장하지 않은 편집을 닫고 새 작업을 시작할까요?")))load({...newProject(),name:t('새 프로젝트','New project'),locale:language});}}><Plus size={17}/>{text("새 작업")}</button></div>
    <div className="scope-note"><ShieldCheck size={18}/><span>{text("개발 테스트 버전입니다. AI 연결 상태는 아래에서 확인하세요. 실제 결제와 자동 배경 제거는 준비 중입니다.")}</span></div>
@@ -116,7 +118,7 @@ export default function App({initialProject,onProjectChange}:{initialProject?:Pr
      <div className="preview-foot"><span><ShieldCheck size={14}/>{creative?text("창작 모드 · 설정 저장 가능"):project.product?(boxProjectionReady(project)?t('원본 면 · 규격 박스 구성','Source faces · dimensioned box'):text("원본 사진 사용")):service?text("문구·배경으로 구성"):text("상품 사진을 추가해주세요")}</span><span>{outputFormat.width} × {outputFormat.height} px</span></div>
      <DimensionApplication project={project} onEdit={()=>{setTab('dimensions');const details=document.querySelector('.editor-details') as HTMLDetailsElement|null;if(details){details.open=true;details.scrollIntoView({block:'start'});}}}/><AutomaticProportion project={project} change={change}/>
      <CompareReview project={project} disabled={busy||pendingCreative} onDownload={download}/>
-     <GenerationPanel key={`generation-${project.id}`} project={project} change={change}/>
+     <GenerationPanel key={`generation-${project.id}`} project={project} change={change}/>{!pendingCreative&&<TextLayerEditor project={project} change={change}/>}
      <div className="editor-actions"><button className="save-button" disabled={busy} onClick={()=>void save()}><Save size={17}/>{text("이 기기에 저장")}</button><button className="export-button" disabled={busy||pendingCreative} onClick={()=>void exportPng()}><ArrowDownToLine size={17}/>{busy?text("처리 중…"):pendingCreative?text("AI 시안 확인 후 저장"):text("PNG 내보내기")}</button></div>
      <button className="direction-jump" onClick={()=>{const d=document.getElementById('publishing-tools') as HTMLDetailsElement;if(d){d.open=true;d.scrollIntoView({block:'start'});}}}>{t('게시글과 활용 방법 보기','View post copy and publishing tips')}</button>
     </section>

@@ -6,9 +6,9 @@ export const pricingCatalog = {
   version: 'test-credits-v2-2026-10-18', status: 'approved', purchasesEnabled: false,
   standardCredits: 10,
   packs: [
-    {id:'credits-v2-30', credits:30, creditsPerGeneration:10, prices:{KRW:9900, USD:null}},
-    {id:'credits-v2-100', credits:100, creditsPerGeneration:10, prices:{KRW:29800, USD:null}},
-    {id:'credits-v2-180', credits:180, creditsPerGeneration:10, prices:{KRW:48900, USD:null}},
+    {id:'credits-v2-30', credits:30, creditsPerGeneration:10, prices:{KRW:9900, USD:790}},
+    {id:'credits-v2-100', credits:100, creditsPerGeneration:10, prices:{KRW:29800, USD:2199}},
+    {id:'credits-v2-180', credits:180, creditsPerGeneration:10, prices:{KRW:48900, USD:3599}},
   ],
 } as const;
 // Compatibility export for integrations written before the prices were approved.

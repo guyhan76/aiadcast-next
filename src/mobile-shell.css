@@ -1,0 +1,6 @@
+/* The web app uses the same compact layout on desktop and phones. */
+#root{width:100%;max-width:430px;min-height:100dvh;margin-inline:auto;container-type:inline-size;container-name:app-shell}
+body{margin:0;background:#e9e9e9}
+#root .studio-shell{min-height:100dvh}
+#root .mobile-app-nav{max-width:430px;margin-inline:auto}
+#root dialog{box-sizing:border-box;max-width:min(406px,calc(100vw - 24px))}

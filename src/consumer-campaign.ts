@@ -1,3 +1,4 @@
+import {withoutDimensionReshape} from './generation.ts';
 import {isTextExample} from './generation-input.ts';
 import {newProject} from './model.ts';
 import type {Project} from './model.ts';
@@ -11,7 +12,14 @@ export const finishedAdBrief='Create one unified finished advertisement with a d
 export function starterProject(category:ProductCategory='other'):Project{
  const p=withCategory(newProject(),category);return {...p,name:'',format:'9:16',presentation:'campaign',generation:{mode:'creative',brief:''},background:{...p.background,color:'#f8f7f4'},productProfile:{...p.productProfile,specType:'none'},dimensions:{...p.dimensions,displayUnit:'cm',width:'',depth:'',height:'',visible:false,lines:false},campaign:{...defaultCampaign(),creative:defaultCreative()},footer:{company:true,contact:true,email:true,website:true},copy:{ko:{title:'',description:'',company:'',contact:'',email:'',website:''},en:{title:'',description:'',company:'',contact:'',email:'',website:''}}};
 }
+export function automaticDimensionDraft(project:Project):Project{
+ const a=project.dimensionAnnotation;
+ if(project.generation.mode!=='creative'||a?.method==='ai')return project;
+ // Migrate only a creation draft. Stored results and their review evidence stay unchanged.
+ return {...project,dimensionAnnotation:{method:'ai',mode:a?.mode??'none',snapshot:''}};
+}
 export function prepareCampaign(project:Project):Project{
+ project=withoutDimensionReshape(automaticDimensionDraft(project));
  const automatic=creativeSettings(project).copyMode==='ai';
  return {...project,name:project.productName+(project.locale==='ko'?' 광고':' ad'),presentation:'campaign',generation:{...project.generation,brief:project.generation.mode==='creative'&&!project.generation.brief.trim()?finishedAdBrief:project.generation.brief},updatedAt:new Date().toISOString(),copy:{...project.copy,[project.locale]:{...project.copy[project.locale],...(automatic?creativeCopy(project):{})}}};
 }

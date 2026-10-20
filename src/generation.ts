@@ -28,6 +28,26 @@ export function parseGeneration(value:unknown):GenerationSettings {
   if(settings.planarSourceHash!==undefined&&!/^[a-f0-9]{64}$/.test(settings.planarSourceHash))throw Error('평면 비례 적용 사진을 확인해주세요.');
   return {mode:settings.mode,brief:settings.brief,...(settings.inputMode?{inputMode:settings.inputMode}:{}),...(settings.photoMode?{photoMode:settings.photoMode}:{}),...(settings.dimensionBased?{dimensionBased:true,dimensionVariant:settings.dimensionVariant??'',dimensionBasis:settings.dimensionBasis??'outer-body',...(settings.planarSourceHash?{planarSourceHash:settings.planarSourceHash}:{})}:{})};
 }
+// Retire new size-driven reshaping without rewriting historical result keys or metadata.
+export function withoutDimensionReshape(p:Project):Project {
+ if(!p.generation.dimensionBased&&!p.generation.planarSourceHash)return p;
+ const {dimensionBased,planarSourceHash,dimensionVariant,dimensionBasis,...generation}=p.generation;
+ return {...p,generation};
+}
+export function photoGenerationDraft(p:Project):Project {
+ p=withoutDimensionReshape(p);
+ if(p.generation.mode==='creative'&&p.generation.inputMode!=='text-example'&&!p.generation.photoMode)return p;
+ const {inputMode,photoMode,...generation}=p.generation;
+ return {...p,generation:{...generation,mode:'creative'}};
+}
+export function newGenerationIssues(p:Project):string[]{
+ p=photoGenerationDraft(p);
+ return !p.product?['광고에 참고할 상품·공간 사진을 추가해주세요.']:generationIssues(p);
+}
+export function buildNewGenerationRequest(p:Project){
+ p=photoGenerationDraft(p);const issues=newGenerationIssues(p);if(issues.length)throw Error(issues.join(' '));
+ return buildGenerationRequest(p);
+}
 export function generationIssues(p:Project):string[] {
   const textError=textExampleGeometryError(p);if(textError)return [textError];
   if(isTextExample(p)&&(p.generation.mode!=='creative'||!p.productName.trim()||!p.productProfile.material.trim()))return ['설명 예시는 AI 새 광고 모드에서 상품명과 상세설명이 필요합니다.'];

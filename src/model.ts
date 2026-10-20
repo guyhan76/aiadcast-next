@@ -1,3 +1,4 @@
+import {parseTextEdit,type TextEdit} from './text-layers.ts';
 import {aiDimensionReviewError} from './ai-dimension-display.ts';
 import {isTextExample,textExampleGeometryError} from './generation-input.ts';
 import {parseDimensionControl,dimensionControlErrors,dimensionControlKey,type DimensionControl} from './dimension-control.ts';
@@ -31,7 +32,7 @@ export type Asset = {name:string;data:string;width:number;height:number;sha256:s
 export type Copy = {title:string;description:string;company:string;contact:string;website:string;email?:string};
 export type FooterField = 'company'|'contact'|'email'|'website';
 export type Project = {
- version:1;id:string;name:string;updatedAt:string;locale:Locale;format:ImageFormat;
+ textEdit?:TextEdit;version:1;id:string;name:string;updatedAt:string;locale:Locale;format:ImageFormat;
  product:Asset|null;references?:Asset[];referenceRoles?:Record<string,PhotoRole>;footer?:Record<FooterField,boolean>;presentation?:'campaign';productName:string;productProfile:ProductProfile;generation:GenerationSettings;scale:number;
  background:{color:string;image:Asset|null};ink:'dark'|'light';
  dimensionControl?:DimensionControl;dimensionAnnotation?:DimensionAnnotation;publishing?:Publishing;campaign?:Campaign;referenceCheck?:ReferenceCheck;conversation?:Conversation;generated?:GeneratedAsset;boxProjection?:BoxProjection;
@@ -86,7 +87,7 @@ export async function importProject(raw:unknown):Promise<Project> {
  if(r.presentation==='campaign')p.presentation='campaign';
  for(const lang of ['ko','en'] as const)if(r.copy[lang].email!==undefined)p.copy[lang].email=string(r.copy[lang].email,100);
  if(r.dimensions.displayUnit!==undefined){if(!['cm','mm','inch'].includes(r.dimensions.displayUnit))throw Error('규격 단위를 확인해주세요.');p.dimensions.displayUnit=r.dimensions.displayUnit;}
- p.dimensions.visible=r.dimensions.visible;p.dimensions.lines=r.dimensions.lines;p.conversation=parseConversation(r.conversation);p.generated=await parseGenerated(r.generated,asset);p.boxProjection=parseBoxProjection(r.boxProjection);p.publishing=parsePublishing(r.publishing);p.dimensionAnnotation=parseAnnotation(r.dimensionAnnotation);p.dimensionControl=parseDimensionControl(r.dimensionControl);return p;
+ p.dimensions.visible=r.dimensions.visible;p.dimensions.lines=r.dimensions.lines;p.conversation=parseConversation(r.conversation);p.generated=await parseGenerated(r.generated,asset);p.boxProjection=parseBoxProjection(r.boxProjection);p.publishing=parsePublishing(r.publishing);p.dimensionAnnotation=parseAnnotation(r.dimensionAnnotation);p.dimensionControl=parseDimensionControl(r.dimensionControl);p.textEdit=await parseTextEdit(r.textEdit,asset);return p;
 }
 
 export const referenceAssets=(p:Project):Asset[]=>[...(p.product?[p.product]:[]),...(p.references??[])];
