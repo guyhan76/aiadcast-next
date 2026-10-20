@@ -1,3 +1,4 @@
+import {setUnacceptedPreview} from './PreviewLeaveGuard';
 import {aiDimensionRequested,projectAiDimensionKey,parseAiDimensionDisplay,validAiDimensionReview,type AiDimensionReview} from './ai-dimension-display';
 import {isTextExample,generationInputs,generationSourceHash} from './generation-input';
 import {DimensionAnnotationPanel} from './DimensionAnnotationPanel';
@@ -41,6 +42,7 @@ type JobResponse={job:GenerationJob;wallet:ApiStatus['wallet']};
 type AdPreview={source:Project;composed:Project;dataUrl:string;errors:string[];jobId:string};
 export function GenerationPanel({project,change,simple=false,onCreativeDraft,autoRequest,onAutoHandled}:{project:Project;change:(fn:(p:Project)=>Project)=>void;simple?:boolean;onCreativeDraft?:()=>Promise<void>;autoRequest?:string;onAutoHandled?:()=>void}){
  const {t}=useUiLanguage();const [status,setStatus]=useState<ApiStatus|null>(null),[job,setJob]=useState<GenerationJob|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[reviewed,setReviewed]=useState(false);
+ useEffect(()=>{setUnacceptedPreview(job?.state==='ready');return()=>setUnacceptedPreview(false);},[job?.state]);
  const dispatching=useRef(false),generationRequest=useRef<AbortController|null>(null);
  const [recoveryChecked,setRecoveryChecked]=useState(false),[recoveryError,setRecoveryError]=useState('');
  const recoveryRequest=useRef<AbortController|null>(null);
@@ -182,7 +184,8 @@ export function GenerationPanel({project,change,simple=false,onCreativeDraft,aut
    if(!alive.current)return;
    if(reviewedAd.source!==latest.current||record.key!==generatedCompatibilityKey(latest.current))throw Error('STALE_PROJECT');
    if(dimensionReview&&!validAiDimensionReview(result.job.dimensionReview,job.dimensionDisplay!,job.artifactId!))throw Error('INVALID_ARTIFACT');
-   const composed=dimensionReview?{...reviewedAd.composed,generated:{...reviewedAd.composed.generated!,dimensionReview}}:reviewedAd.composed;
+   const reviewedComposed=dimensionReview?{...reviewedAd.composed,generated:{...reviewedAd.composed.generated!,dimensionReview}}:reviewedAd.composed;
+   const composed={...reviewedComposed,generated:{...reviewedComposed.generated!,acceptedAt:new Date().toISOString()}};
    // Keep the confirmed result durable before it can outlive the pending request.
    await saveProject({...composed,updatedAt:new Date().toISOString()});
    // Retain the in-memory review for reapply, but never recover a completed request as pending.

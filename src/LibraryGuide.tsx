@@ -2,7 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {ArrowUpRight,FolderOpen,Plus,Search} from 'lucide-react';
 import type {Project} from './model';
 import {render} from './render';
-import {hasUsableCreative} from './generated';
+import {hasUsableCreative,hasSavedAcceptedAd} from './generated';
 import {useUiLanguage} from './ui-language';
 function ProjectPreview({project}:{project:Project}){
  const canvas=useRef<HTMLCanvasElement>(null),[ready,setReady]=useState(false);
@@ -17,7 +17,7 @@ function ProjectPreview({project}:{project:Project}){
 }
 export function ProjectLibrary({items,error,onNew,onOpen}:{items:Project[];error:string;onNew:()=>void;onOpen:(p:Project)=>void}){
  const {language,t}=useUiLanguage(),[filter,setFilter]=useState('');
- const filtered=items.filter(p=>(p.name+' '+p.productName).toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
+ const filtered=items.filter(hasSavedAcceptedAd).filter(p=>(p.name+' '+p.productName).toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
  return <>
   <div className="projects-heading"><h1>{t('내 프로젝트','My projects')}</h1><button className="primary-action" onClick={onNew}><Plus size={18}/>{t('새 광고','New ad')}</button></div>
   <label className="project-search"><Search size={20}/><input aria-label={t('프로젝트 검색','Search projects')} placeholder={t('광고 이름 검색','Search ad names')} value={filter} onChange={e=>setFilter(e.target.value)}/></label>

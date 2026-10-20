@@ -27,7 +27,7 @@ async function setup(page:Page,kind:Case){
  });
  await page.goto('/#projects');
  await page.evaluate(async p=>new Promise<void>((resolve,reject)=>{const r=indexedDB.open('aiadcast-editor',1);r.onupgradeneeded=()=>r.result.createObjectStore('projects',{keyPath:'id'});r.onsuccess=()=>{const tx=r.result.transaction('projects','readwrite');tx.objectStore('projects').put(p);tx.oncomplete=()=>{r.result.close();resolve();};tx.onerror=()=>reject(tx.error);};}),p);
- await page.reload();await page.getByRole('button',{name:/저장한 모니터/}).click();
+ await page.evaluate(async p=>new Promise<void>(resolve=>{const r=indexedDB.open('aiadcast-workspace-drafts',1);r.onupgradeneeded=()=>r.result.createObjectStore('drafts');r.onsuccess=()=>{const tx=r.result.transaction('drafts','readwrite');tx.objectStore('drafts').put({editor:p,returnPage:'studio'},'guest');tx.oncomplete=()=>{r.result.close();resolve();};};}),p);await page.evaluate(()=>history.replaceState(null,'','/#studio'));await page.reload();
  return {p,writes:()=>writes,details:()=>details};
 }
 const region=(page:Page)=>page.getByRole('region',{name:'과거 완료 결과',exact:true});
@@ -45,4 +45,13 @@ for(const kind of ['missing','wrong-list','wrong-detail','denied','hash-mismatch
  await expect(region(page)).toContainText(kind==='denied'?'로그인 계정을 확인':kind==='missing'||kind==='wrong-list'?'완료 이미지를 찾지 못했습니다':'이미지를 불러오지 못했습니다');
  await region(page).getByRole('button',{name:'과거 결과 다시 확인'}).click();await expect(region(page).getByRole('button',{name:'과거 결과 다시 확인'})).toBeEnabled();await expect(region(page).getByRole('img')).toHaveCount(0);
  if(kind==='wrong-list')expect(state.details()).toBe(0);expect(state.writes()).toBe(0);
+});
+
+
+test('My Projects lists accepted records only and preserves hidden old drafts',async({page})=>{
+ const state=await setup(page,'local');
+ await expect(region(page).getByRole('img')).toBeVisible();
+ await page.evaluate(async p=>new Promise<void>(resolve=>{const r=indexedDB.open('aiadcast-editor',1);r.onsuccess=()=>{const tx=r.result.transaction('projects','readwrite');const draft={...p,id:'old-unaccepted-draft',name:'미확정 입력',generated:undefined};tx.objectStore('projects').put(draft);tx.objectStore('projects').put({...draft,id:'invalid-generation',name:'불완전 결과',generated:{asset:p.product}});tx.oncomplete=()=>{r.result.close();resolve();};};}),state.p);
+ await page.goto('/#projects');await expect(page.locator('.project-tile')).toHaveCount(1);await expect(page.locator('.project-tile')).toContainText('저장한 모니터');
+ const count=await page.evaluate(async()=>new Promise<number>(resolve=>{const r=indexedDB.open('aiadcast-editor',1);r.onsuccess=()=>{const q=r.result.transaction('projects').objectStore('projects').count();q.onsuccess=()=>{resolve(q.result);r.result.close();};};}));expect(count).toBe(3);expect(state.writes()).toBe(0);
 });

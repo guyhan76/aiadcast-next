@@ -13,6 +13,7 @@ import {industryDirections} from './industry.ts';
 import {completeAdKey} from './complete-ad.ts';
 
 export type GeneratedAsset = {
+ acceptedAt?:string;
  dimensionDisplay?:AiDimensionDisplay;dimensionReview?:AiDimensionReview;inputMode?:'text-example';jobId:string;mode:'original'|'creative';sourceHash:string|null;asset:Asset;
  role:'background'|'creative';model:string;createdAt:string;specificationKey:string;marketingPlan?:MarketingPlan;
  composition?:'complete-ad'|'photo-plate';compositionKey?:string;dimensionPlan?:DimensionPlan;planarReport?:PlanarReport;planarOriginal?:Asset;
@@ -113,6 +114,15 @@ export async function parseGenerated(value:unknown,readAsset:(value:unknown)=>Pr
  if(!asset)throw Error('생성 결과 이미지가 누락되었습니다.');
  if(r.dimensionReview&&(!dimensionDisplay||!validAiDimensionReview(r.dimensionReview,dimensionDisplay,asset.sha256)))throw Error('INVALID_AI_DIMENSION_REVIEW');
  if(planarReport?.outputRatio&&Math.abs(asset.width/asset.height-planarReport.outputRatio)>1e-9)throw Error('INVALID_PLANAR_REPORT');
- return {...(dimensionDisplay?{dimensionDisplay}:{}),...(r.dimensionReview?{dimensionReview:r.dimensionReview}:{}),...(r.inputMode?{inputMode:r.inputMode}:{}),...(dimensionPlan?{dimensionPlan}:{}),...(planarReport?{planarReport,planarOriginal:planarOriginal!}:{}),jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey,...(marketingPlan?{marketingPlan}:{}),...(r.composition?{composition:r.composition}:{}),...(compositionKey?{compositionKey}:{})};
+ if(r.acceptedAt!==undefined&&(!Number.isFinite(Date.parse(r.acceptedAt))||new Date(r.acceptedAt).toISOString()!==r.acceptedAt))throw Error('INVALID_ACCEPTANCE');
+ return {...(r.acceptedAt?{acceptedAt:r.acceptedAt}:{}),...(dimensionDisplay?{dimensionDisplay}:{}),...(r.dimensionReview?{dimensionReview:r.dimensionReview}:{}),...(r.inputMode?{inputMode:r.inputMode}:{}),...(dimensionPlan?{dimensionPlan}:{}),...(planarReport?{planarReport,planarOriginal:planarOriginal!}:{}),jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey,...(marketingPlan?{marketingPlan}:{}),...(r.composition?{composition:r.composition}:{}),...(compositionKey?{compositionKey}:{})};
 }
 
+
+// Legacy versions persisted generated metadata only after successful acceptance.
+// Keep those complete saved records visible without treating an input draft,
+// pending request ID or thumbnail as acceptance. Current acceptance is explicit.
+export function hasSavedAcceptedAd(p:Project):boolean {
+ const g=p.generated;
+ return !!g&&typeof g.jobId==='string'&&g.jobId.length>0&&typeof g.specificationKey==='string'&&g.specificationKey.length>0&&Number.isFinite(Date.parse(g.createdAt))&&!!g.asset&&/^[a-f0-9]{64}$/.test(g.asset.sha256)&&g.asset.width>0&&g.asset.height>0&&(g.mode==='creative'&&g.role==='creative'||g.mode==='original'&&g.role==='background')&&(g.acceptedAt===undefined||Number.isFinite(Date.parse(g.acceptedAt)));
+}

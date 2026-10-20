@@ -39,6 +39,7 @@ test('eight inputs submit actual generation request once and a complete accepted
  await result.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await result.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  await expect(result.locator('.marketing-summary')).toHaveCount(1);await expect(result.locator('.accepted-ad .marketing-summary')).toBeVisible();
  const save=result.getByRole('button',{name:'이미지 저장 · 공유',exact:true});await expect(save).toBeEnabled();await expect(result.getByText('앱에서는 파일 저장 또는 다른 앱 공유를 선택합니다.',{exact:false})).toHaveCount(0);const pending=page.waitForEvent('download');await save.click();expect((await pending).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
+ const stored=await page.evaluate(async id=>new Promise<any>(resolve=>{const r=indexedDB.open('aiadcast-editor',1);r.onsuccess=()=>{const q=r.result.transaction('projects').objectStore('projects').get(id);q.onsuccess=()=>{resolve(q.result);r.result.close();};};}),state.job.projectId);expect(stored.generated.jobId).toBe(state.job.id);expect(Number.isFinite(Date.parse(stored.generated.acceptedAt))).toBe(true);
  await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('textbox',{name:'광고 제목',exact:true})).toHaveValue('보내는 마음까지, 든든하게.');
 });
 test('photo-backed service AI copy requests no dimensions and generates automatically after submit',async({page})=>{
@@ -265,4 +266,15 @@ test('new credits require explicit ten-credit confirmation before auto creation 
  await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await panel.getByRole('button',{name:'사용 확정 · 추가 차감 없음'}).click();
  await expect.poll(()=>state.accepts).toBe(1);expect(state.posts).toBe(1);
  await expect(panel.getByText(/신규 크레딧 잔액: 20/)).toBeVisible();
+});
+
+for(const navigation of ['link','native-back','browser-back','edit'] as const)test(`unaccepted preview ${navigation} can stay or leave without billing actions`,async({page})=>{
+ const state=await mocks(page),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();
+ const leave=async()=>{if(navigation==='edit')await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();else if(navigation==='link')await page.locator('a[href="#projects"]:visible').first().click();else if(navigation==='native-back')await page.evaluate(()=>window.dispatchEvent(new Event('aiadcast-native-back',{cancelable:true})));else await page.evaluate(()=>history.back());};
+ await leave();const dialog=page.getByRole('dialog',{name:'미확정 시안 나가기'});await expect(dialog).toBeVisible();await expect(dialog).toContainText('사용 확정 전입니다. 나가면 이 시안은 내 프로젝트에 저장되지 않습니다.');await dialog.getByRole('button',{name:'계속 보기',exact:true}).click();await expect(dialog).not.toBeVisible();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(state.posts).toBe(1);expect(state.accepts).toBe(0);
+ // Browser-back cancellation already consumed one history entry; test a direct
+ // destination for the second attempt rather than requiring a fake entry.
+ if(navigation==='browser-back')await page.locator('a[href="#projects"]:visible').first().click();else await leave();
+ await expect(dialog).toBeVisible();await dialog.getByRole('button',{name:'저장하지 않고 나가기',exact:true}).click();await expect(dialog).not.toBeVisible();await expect(page).toHaveURL(navigation==='edit'?/#create$/:/#projects$/);await expect(page.locator('.project-tile')).toHaveCount(0);expect(state.posts).toBe(1);expect(state.accepts).toBe(0);
+ const saved=await page.evaluate(async()=>new Promise<any[]>(resolve=>{const r=indexedDB.open('aiadcast-editor',1);r.onsuccess=()=>{const q=r.result.transaction('projects').objectStore('projects').getAll();q.onsuccess=()=>{resolve(q.result);r.result.close();};};}));expect(saved.some(p=>p.id===state.job.projectId)).toBe(true);
 });
