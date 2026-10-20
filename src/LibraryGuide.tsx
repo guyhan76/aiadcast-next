@@ -13,7 +13,7 @@ function ProjectPreview({project}:{project:Project}){
   void render(scratch,project).then(()=>{if(!active||!canvas.current)return;canvas.current.width=scratch.width;canvas.current.height=scratch.height;canvas.current.getContext('2d')?.drawImage(scratch,0,0);setReady(true);}).catch(()=>{});
   return()=>{active=false;};
  },[project]);
- return <div className="project-thumb"><canvas ref={canvas} hidden={!ready} aria-label={t('저장한 광고 미리보기','Saved ad preview')}/>{!ready&&(project.product?<img src={project.product.data} alt={t('참조사진 · 제작 중','Reference photo · in progress')}/>:<strong>{project.productName||project.copy[project.locale].title}</strong>)}<span>{project.format}</span></div>;
+ return <div className="project-thumb"><canvas ref={canvas} hidden={!ready} aria-label={t('저장한 광고 미리보기','Saved ad preview')}/>{!ready&&(project.generated?.composition==='complete-ad'&&project.generated.asset?.data?<img src={project.generated.asset.data} alt={t('과거 광고 원본','Previous ad original')}/>:project.product?<img src={project.product.data} alt={t('참조사진 · 제작 중','Reference photo · in progress')}/>:<strong>{project.productName||project.copy[project.locale].title}</strong>)}<span>{project.format}</span></div>;
 }
 export function ProjectLibrary({items,error,onNew,onOpen}:{items:Project[];error:string;onNew:()=>void;onOpen:(p:Project)=>void}){
  const {language,t}=useUiLanguage(),[filter,setFilter]=useState('');

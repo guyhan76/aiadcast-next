@@ -21,8 +21,8 @@ android {
         applicationId 'com.selluplabs.aiadcast.next'
         minSdk 29
         targetSdk 36
-        versionCode 52
-        versionName '0.2.50'
+        versionCode 53
+        versionName '0.2.51'
         buildConfigField 'String', 'API_ORIGIN', '"' + publicApiOrigin + '"'
         buildConfigField 'boolean', 'ALLOW_TEST_CONFIG', 'false'
         resValue 'string', 'app_name', 'aiadcast'

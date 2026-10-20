@@ -29,7 +29,7 @@ export async function apiRequest<T>(path:string,body?:unknown,signal?:AbortSigna
  if(path==='/api/status'&&data.generation.creditQuote){const q=data.generation.creditQuote,c=data.wallet.credits;if(!['legacy-ticket','credit-v2'].includes(q.unit)||!c||![c.available,c.reserved].every(v=>Number.isSafeInteger(v)&&v>=0)||q.unit==='credit-v2'&&(q.amount!==10||q.policy!=='delivered-2026-10-18'))throw Error('API_UNAVAILABLE');}
  return data as T;
 }
-export async function verifiedArtifact(job:GenerationJob):Promise<Asset>{
+export async function verifiedArtifact(job:Pick<GenerationJob,'artifact'|'artifactId'|'id'>):Promise<Asset>{
  const artifact=job.artifact;if(!artifact||!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(artifact.dataUrl)||artifact.dataUrl.length>14_000_000)throw Error('INVALID_ARTIFACT');
  const response=await fetch(artifact.dataUrl);const blob=await response.blob();const asset=await imageFile(new File([blob],`aiadcast-${job.id}.png`,{type:blob.type}));
  if(asset.sha256!==artifact.sha256||asset.sha256!==artifact.id||asset.sha256!==job.artifactId||asset.width!==artifact.width||asset.height!==artifact.height)throw Error('ARTIFACT_MISMATCH');
