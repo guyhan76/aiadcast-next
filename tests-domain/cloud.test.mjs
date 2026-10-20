@@ -342,3 +342,17 @@ test('v2 delivery, concurrent retries, restart, and human defect review preserve
  for(let i=0;i<2;i++){const r=await s.call('/api/admin/defect-review',{token:owner.token,body:review});assert.equal(r.status,200,JSON.stringify(r.data));}
  const final=(await s.call('/api/status',{token:a.token})).data;assert.equal(final.wallet.available,0);assert.deepEqual(final.wallet.credits,{available:30,reserved:0});assert.equal(final.budget.spentMicros,imageUsageCost(usage).microUsd);await s.restart();assert.equal((await s.call('/api/status',{token:a.token})).data.wallet.credits.available,30);
 });
+
+test('admin overview is a read-only snapshot: no expired reservation release or unused member schema initialization',async t=>{
+ const s=await setup(t),admin=await s.member('Overview administrator',500000,2);
+ await s.app.store.db.prepare("UPDATE users SET role='admin' WHERE id=?").run(admin.user.id);
+ const generated=await s.call('/api/generations',{token:admin.token,body:generation()});assert.equal(generated.status,202);
+ const db=new PostgresDatabase(s.app.pool,cloudSchema(admin.user.id));
+ await db.prepare('UPDATE jobs SET expires_at=0 WHERE id=?').run(generated.data.job.id);
+ const untouched=await s.app.store.provision({label:'Never initialized',credits:3,budgetMicros:0});
+ const before={jobs:await db.prepare('SELECT * FROM jobs').all(),wallets:await db.prepare('SELECT * FROM wallets').all(),events:await db.prepare('SELECT * FROM credit_events').all(),budgets:await db.prepare('SELECT * FROM budgets').all()};
+ const response=await s.call('/api/admin/overview',{token:admin.token});assert.equal(response.status,200,JSON.stringify(response.data));assert.equal(response.data.users.length,2);assert.equal(response.data.jobs[0].state,'ready');assert.equal(response.data.users.find(u=>u.id===untouched.userId).ledgerInitialized,false);
+ const after={jobs:await db.prepare('SELECT * FROM jobs').all(),wallets:await db.prepare('SELECT * FROM wallets').all(),events:await db.prepare('SELECT * FROM credit_events').all(),budgets:await db.prepare('SELECT * FROM budgets').all()};assert.deepEqual(after,before);
+ assert.equal((await s.app.store.db.prepare('SELECT nspname FROM pg_namespace WHERE nspname=?').all(cloudSchema(untouched.userId))).length,0);
+ assert.equal(s.calls(),1);
+});
