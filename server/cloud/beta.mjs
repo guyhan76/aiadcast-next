@@ -1,3 +1,4 @@
+import {readAdminOverview} from './admin-overview.mjs';
 import {singleBoxService} from '../vision-evaluation/single-box-service.mjs';
 import {SingleBoxLedger,readSingleBoxEvaluation} from '../vision-evaluation/single-box-ledger.mjs';
 import {dimensionAnalysisService} from '../vision-evaluation/service.mjs';
@@ -89,7 +90,7 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
   const supabaseMail=env.AIADCAST_EMAIL_ENABLED==='true'&&env.AIADCAST_EMAIL_PROVIDER==='supabase';
   const accounts=injectedAccounts??accountConfiguration(env);
   if(!injectedAccounts&&supabaseMail)accounts.sendMail=options=>storage.sendAuthEmail(options);
-  app=await createBetaServer({store,publicUrl:config.publicUrl,singleBox:singleBoxService({apiKey:config.key,statusReader:(actor,id)=>readSingleBoxEvaluation(accountsDb,actor,id),ledgerFactory:()=>new SingleBoxLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),dimensionAnalysis:dimensionAnalysisService({evaluationEnabled:true,apiKey:config.key,statusReader:(actor,id)=>readCloudEvaluation(accountsDb,actor,id),ledgerFactory:()=>new CloudVisionLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),extraOrigins,staticDirectory,accounts,serviceFactory:async user=>{
+  app=await createBetaServer({store,overviewReader:(actor,admin)=>readAdminOverview({pool,guard,actor,admin,enabled:config.enabled,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter)}),publicUrl:config.publicUrl,singleBox:singleBoxService({apiKey:config.key,statusReader:(actor,id)=>readSingleBoxEvaluation(accountsDb,actor,id),ledgerFactory:()=>new SingleBoxLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),dimensionAnalysis:dimensionAnalysisService({evaluationEnabled:true,apiKey:config.key,statusReader:(actor,id)=>readCloudEvaluation(accountsDb,actor,id),ledgerFactory:()=>new CloudVisionLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),extraOrigins,staticDirectory,accounts,serviceFactory:async user=>{
    instance?.assert();const db=await new PostgresDatabase(pool,cloudSchema(user.id),{guard}).initialize();
    const s=new CloudGenerationService();s.storage=storage;s.cloudUser=user.id;
    await s.initialize({db,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:config.enabled,assistantEnabled:config.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter),adapter:{generate:options=>{instance?.assert();return gate(()=>adapter.generate(options));}},assistantAdapter:options=>{instance?.assert();return gate(()=>assistCopy({...options,apiKey:config.key}));}});

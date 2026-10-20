@@ -23,7 +23,7 @@ finally {
 } }; }
 export function publicOrigin(value) { const u = new URL(value); if (u.protocol !== 'https:' || !u.hostname || u.username || u.password || u.search || u.hash || u.pathname !== '/')
     throw Error('HTTPS_ORIGIN_REQUIRED'); return u.origin; }
-export async function createBetaServer({ store, publicUrl, serviceFactory, now = () => Date.now(), extraOrigins = [], staticDirectory, accounts = {}, dimensionAnalysis = dimensionAnalysisService(), singleBox = singleBoxService() }) {
+export async function createBetaServer({ store, publicUrl, serviceFactory, overviewReader, now = () => Date.now(), extraOrigins = [], staticDirectory, accounts = {}, dimensionAnalysis = dimensionAnalysisService(), singleBox = singleBoxService() }) {
     const assets = new Map();
     if (staticDirectory) {
         const scan = (folder, prefix = '') => { for (const item of readdirSync(folder, { withFileTypes: true })) {
@@ -52,7 +52,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, now =
     const checkout = await new TestCheckout().initialize(store, { ...accounts, publicOrigin: origin, now, readPurchase: async (id, purchase) => { const user = await store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id); if (!user)
             throw new ApiFailure('AUTH_REQUIRED', 401); return (await service(user)).testPurchaseReceipt(purchase); }, creditPurchase: async (id, purchase) => { const user = await store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id); if (!user)
             throw new ApiFailure('AUTH_REQUIRED', 401); return await (await service(user)).recordTestPurchase(purchase); } });
-    const admin = await new AdminApi().initialize(store, { service, accounts, checkout, ownerEmail: password.adminEmail, now });
+    const admin = await new AdminApi().initialize(store, { service, accounts, checkout, ownerEmail: password.adminEmail, overviewReader, now });
     const send = (res, status, value, cors) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', ...(cors ? { 'Access-Control-Allow-Origin': cors, 'Vary': 'Origin' } : {}) }); res.end(JSON.stringify(value)); };
     const read = async (req, max) => { if (!/^application\/json(?:;.*)?$/i.test(req.headers['content-type'] ?? ''))
         throw new ApiFailure('JSON_REQUIRED', 415); if (Number(req.headers['content-length'] ?? 0) > max)

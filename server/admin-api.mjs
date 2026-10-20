@@ -2,8 +2,8 @@ import {randomUUID} from 'node:crypto';
 import {ApiFailure} from './generation-service.mjs';
 const fail=(code,status=400)=>{throw new ApiFailure(code,status);};
 export class AdminApi {
- constructor(store,{service,accounts,checkout,ownerEmail,now=()=>Date.now()}){
-  Object.assign(this,{store,db:store.db,service,accounts,checkout,ownerEmail,now});
+ constructor(store,{service,accounts,checkout,ownerEmail,overviewReader,now=()=>Date.now()}){
+  Object.assign(this,{store,db:store.db,service,accounts,checkout,ownerEmail,overviewReader,now});
   this.db.exec(`CREATE TABLE IF NOT EXISTS admin_grants(id TEXT PRIMARY KEY,actor_id TEXT NOT NULL REFERENCES users(id),request_id TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id),credits INTEGER NOT NULL,state TEXT NOT NULL DEFAULT 'pending',created INTEGER NOT NULL,UNIQUE(actor_id,request_id));
    CREATE TABLE IF NOT EXISTS admin_audit(id TEXT PRIMARY KEY,actor_id TEXT NOT NULL REFERENCES users(id),action TEXT NOT NULL,target_id TEXT,details TEXT NOT NULL,created INTEGER NOT NULL);`);
  }
@@ -24,6 +24,7 @@ export class AdminApi {
  }
  overview(actor){
   this.require(actor);
+  if(this.overviewReader)return this.overviewReader(actor,this);
   const members=this.db.prepare('SELECT u.*,e.email,(SELECT COUNT(*) FROM projects p WHERE p.user_id=u.id) projects FROM users u LEFT JOIN email_identities e ON e.user_id=u.id ORDER BY u.rowid').all();
   const jobs=[],users=members.map(u=>{
    const s=this.service(u),status=s.status();
