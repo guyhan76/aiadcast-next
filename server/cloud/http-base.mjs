@@ -92,7 +92,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 res.end(bytes);
                 return;
             }
-            limit(['/api/auth/google/start', '/api/auth/google/finish', '/api/auth/login', '/api/auth/test/signup', '/api/auth/test/login', '/api/auth/email/request', '/api/auth/email/verify', '/api/checkout/confirm', '/api/checkout/launch'].includes(url.pathname));
+            limit(['/api/auth/google/start', '/api/auth/google/finish', '/api/auth/google/native-callback', '/api/auth/login', '/api/auth/test/signup', '/api/auth/test/login', '/api/auth/email/request', '/api/auth/email/verify', '/api/checkout/confirm', '/api/checkout/launch'].includes(url.pathname));
             if (req.headers.origin && !cors)
                 throw new ApiFailure('ORIGIN_NOT_ALLOWED', 403);
             if (req.method === 'OPTIONS') {
@@ -143,8 +143,18 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 return;
             }
             if (req.method === 'POST' && url.pathname === '/api/auth/google/start') {
-                await read(req, 1024);
-                send(res, 200, await google.startGoogle(req.headers.authorization), cors);
+                const b = await read(req, 1024);
+                send(res, 200, await google.startGoogle(req.headers.authorization, b?.packageId), cors);
+                return;
+            }
+            if (req.method === 'GET' && url.pathname === '/api/auth/google/native-callback') {
+                const target = await google.approveNativeGoogle(url.searchParams.get('state'), url.searchParams.get('code'));
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'; base-uri 'none'" });
+                res.end('<!doctype html><meta name=viewport content="width=device-width,initial-scale=1"><title>aiadcast</title><h1>aiadcast</h1><p>Google sign-in confirmed. Return to aiadcast to continue.</p><p><a href="' + target + '">Return to aiadcast</a></p>');
+                return;
+            }
+            if (req.method === 'POST' && url.pathname === '/api/auth/google/native-poll') {
+                send(res, 200, await google.pollNativeGoogle(await read(req, 2048), req.headers.authorization), cors);
                 return;
             }
             if (req.method === 'POST' && url.pathname === '/api/auth/google/finish') {

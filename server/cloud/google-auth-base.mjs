@@ -12,13 +12,16 @@ export class GoogleAuth {
         this.provider = provider;
         this.now = now;
         await this.db.exec(`CREATE TABLE IF NOT EXISTS google_identities(subject TEXT PRIMARY KEY,user_id TEXT UNIQUE NOT NULL REFERENCES users(id));
-   CREATE TABLE IF NOT EXISTS google_requests(state_hash TEXT PRIMARY KEY,proof_hash TEXT NOT NULL,nonce TEXT NOT NULL,verifier TEXT NOT NULL,session_hash TEXT NOT NULL,expires INTEGER NOT NULL,consumed INTEGER NOT NULL DEFAULT 0);`);
+   CREATE TABLE IF NOT EXISTS google_requests(state_hash TEXT PRIMARY KEY,proof_hash TEXT NOT NULL,nonce TEXT NOT NULL,verifier TEXT NOT NULL,session_hash TEXT NOT NULL,expires INTEGER NOT NULL,consumed INTEGER NOT NULL DEFAULT 0);
+   CREATE TABLE IF NOT EXISTS google_native_requests(state_hash TEXT PRIMARY KEY REFERENCES google_requests(state_hash) ON DELETE CASCADE,package_id TEXT NOT NULL,claims TEXT);`);
         return this;
     }
     available() { return !!this.provider; }
-    async startGoogle(authorization) {
+    async startGoogle(authorization, packageId) {
         if (!this.available())
             fail('GOOGLE_UNAVAILABLE', 503);
+        if (packageId !== undefined && !['com.selluplabs.aiadcast.next', 'com.selluplabs.aiadcast.next.demo', 'com.selluplabs.aiadcast.next.dev', 'com.selluplabs.aiadcast.next.preview'].includes(packageId))
+            fail('GOOGLE_NATIVE_INVALID');
         // A link flow is bound to this exact already-authenticated session, never an email string.
         if (authorization)
             await this.store.authenticate(authorization);
@@ -28,10 +31,12 @@ export class GoogleAuth {
             if ((await this.db.prepare('SELECT COUNT(*) n FROM google_requests').get()).n >= 1000)
                 fail('RATE_LIMITED', 429);
             await this.db.prepare('INSERT INTO google_requests(state_hash,proof_hash,nonce,verifier,session_hash,expires) VALUES(?,?,?,?,?,?)').run(hash(state), hash(proof), nonce, verifier, authorization ? hash(authorization) : '', expires);
+            if (packageId)
+                await this.db.prepare('INSERT INTO google_native_requests(state_hash,package_id) VALUES(?,?)').run(hash(state), packageId);
         });
         const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-        url.search = new URLSearchParams({ client_id: this.provider.clientId, redirect_uri: this.provider.redirectUri, response_type: 'code', scope: 'openid email', prompt: 'select_account', state, nonce, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' }).toString();
-        return { state, proof, expires, url: url.href };
+        url.search = new URLSearchParams({ client_id: this.provider.clientId, redirect_uri: packageId ? new URL('/api/auth/google/native-callback', this.provider.redirectUri).href : this.provider.redirectUri, response_type: 'code', scope: 'openid email', prompt: 'select_account', state, nonce, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' }).toString();
+        return { state, proof, expires, url: url.href, ...(packageId ? { native: true } : {}) };
     }
     async claimGoogle(body, authorization) {
         if (!this.available())
@@ -40,6 +45,8 @@ export class GoogleAuth {
             fail('GOOGLE_FLOW_INVALID');
         return await this.store.transaction(async () => {
             const row = await this.db.prepare('SELECT * FROM google_requests WHERE state_hash=? AND proof_hash=? AND expires>? AND consumed=0').get(hash(body.state), hash(body.proof), this.now());
+            if (await this.db.prepare('SELECT state_hash FROM google_native_requests WHERE state_hash=?').get(hash(body.state)))
+                fail('GOOGLE_FLOW_INVALID');
             if (!row || row.session_hash !== (authorization ? hash(authorization) : ''))
                 fail('GOOGLE_FLOW_INVALID');
             if (authorization)
@@ -84,6 +91,49 @@ export class GoogleAuth {
                 fail('AUTH_REQUIRED');
             return await this.store.createSession(user);
         });
+    }
+    async claimNativeGoogle(state) {
+        if (!this.available())
+            fail('GOOGLE_UNAVAILABLE', 503);
+        if (!valid(state))
+            fail('GOOGLE_FLOW_INVALID');
+        return await this.store.transaction(async () => { const row = await this.db.prepare('SELECT r.*,n.package_id FROM google_requests r JOIN google_native_requests n ON n.state_hash=r.state_hash WHERE r.state_hash=? AND r.expires>? AND r.consumed=0').get(hash(state), this.now()); if (!row)
+            fail('GOOGLE_FLOW_INVALID'); await this.db.prepare('UPDATE google_requests SET consumed=1 WHERE state_hash=?').run(row.state_hash); return row; });
+    }
+    async approveNativeGoogle(state, code) {
+        const row = await this.claimNativeGoogle(state);
+        let claims;
+        try {
+            claims = await this.provider.exchange(code, row.verifier, row.nonce, new URL('/api/auth/google/native-callback', this.provider.redirectUri).href);
+        }
+        catch {
+            await this.db.prepare('UPDATE google_requests SET consumed=3 WHERE state_hash=?').run(row.state_hash);
+            fail('GOOGLE_PROOF_INVALID');
+        }
+        if (row.expires <= this.now())
+            fail('GOOGLE_FLOW_INVALID');
+        await this.db.prepare('UPDATE google_native_requests SET claims=? WHERE state_hash=?').run(JSON.stringify(claims), row.state_hash);
+        return row.package_id + '://google/return'; // Wake-up only; never a token or authorization code.
+    }
+    async pollNativeGoogle(body, authorization) {
+        if (!this.available())
+            fail('GOOGLE_UNAVAILABLE', 503);
+        if (!valid(body?.state) || !valid(body?.proof))
+            fail('GOOGLE_FLOW_INVALID');
+        const row = await this.store.transaction(async () => {
+            const r = await this.db.prepare('SELECT r.*,n.claims FROM google_requests r JOIN google_native_requests n ON n.state_hash=r.state_hash WHERE r.state_hash=? AND r.proof_hash=? AND r.expires>? AND r.consumed<2').get(hash(body.state), hash(body.proof), this.now());
+            if (!r || r.session_hash !== (authorization ? hash(authorization) : ''))
+                fail('GOOGLE_FLOW_INVALID');
+            if (authorization)
+                await this.store.authenticate(authorization);
+            if (!r.claims)
+                return null;
+            await this.db.prepare('UPDATE google_requests SET consumed=2 WHERE state_hash=?').run(r.state_hash);
+            return r;
+        });
+        if (!row)
+            return { state: 'pending' };
+        return { state: 'verified', session: await this.completeGoogle(row, JSON.parse(row.claims), authorization) };
     }
     async finishGoogle(body, authorization) {
         const flow = await this.claimGoogle(body, authorization);

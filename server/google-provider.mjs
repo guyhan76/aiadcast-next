@@ -20,9 +20,9 @@ export function googleProvider({clientId,clientSecret,redirectUri,fetchImpl=fetc
   if(!['https://accounts.google.com','accounts.google.com'].includes(p.iss)||p.aud!==clientId||(p.azp!==undefined&&p.azp!==clientId)||!Number.isFinite(p.exp)||p.exp<=time||!Number.isFinite(p.iat)||p.iat>time+60||time-p.iat>600||(p.nbf!==undefined&&(!Number.isFinite(p.nbf)||p.nbf>time+60))||p.nonce!==nonce||typeof p.sub!=='string'||!p.sub.length||p.sub.length>255||p.email_verified!==true||typeof p.email!=='string'||p.email.length>254||!/^\S+@\S+\.\S+$/.test(p.email))fail();
   return {subject:p.sub,email:p.email.toLowerCase()};
  }
- return {clientId,redirectUri,async exchange(code,verifier,nonce){
+ return {clientId,redirectUri,async exchange(code,verifier,nonce,callbackUri=redirectUri){
   if(typeof code!=='string'||!code.length||code.length>4096)fail();
-  const r=await fetchImpl('https://oauth2.googleapis.com/token',{method:'POST',redirect:'error',signal:AbortSignal.timeout(10000),headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'authorization_code',code,client_id:clientId,client_secret:clientSecret,redirect_uri:redirectUri,code_verifier:verifier}).toString()});
+  const r=await fetchImpl('https://oauth2.googleapis.com/token',{method:'POST',redirect:'error',signal:AbortSignal.timeout(10000),headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'authorization_code',code,client_id:clientId,client_secret:clientSecret,redirect_uri:callbackUri,code_verifier:verifier}).toString()});
   if(!r.ok)fail();const result=await r.json();return verifyToken(result.id_token,nonce);
  }};
 }

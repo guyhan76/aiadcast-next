@@ -51,3 +51,23 @@ test('HTTP Google endpoints enforce CSRF and server identity, ignore forged cred
  const r=await fetch(base+'/api/auth/session',{headers:{Authorization:'Bearer '+result.body.token}});assert.equal((await r.json()).user.id,result.body.user.id);
  assert.equal((await fetch(base+'/api/auth/session',{headers:{Authorization:'Bearer '+'x'.repeat(43)}})).status,401);
 });
+test('native browser callback never returns credentials; only initiating app proof obtains the same account once',async t=>{
+ const f=fixture(t),flow=f.auth.startGoogle(undefined,'com.selluplabs.aiadcast.next.demo'),url=new URL(flow.url);assert.equal(url.searchParams.get('redirect_uri'),origin+'/api/auth/google/native-callback');assert.equal(flow.native,true);
+ await assert.rejects(f.auth.finishGoogle({...flow,code:'x'}),/GOOGLE_FLOW_INVALID/);assert.deepEqual(f.auth.pollNativeGoogle(flow),{state:'pending'});
+ const wake=await f.auth.approveNativeGoogle(flow.state,'browser-code');assert.equal(wake,'com.selluplabs.aiadcast.next.demo://google/return');assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM sessions').get().n,0);
+ assert.throws(()=>f.auth.pollNativeGoogle({...flow,proof:'x'.repeat(43)}),/GOOGLE_FLOW_INVALID/);
+ const result=f.auth.pollNativeGoogle(flow);assert.equal(result.state,'verified');assert.equal(result.session.user.role,'member');assert.throws(()=>f.auth.pollNativeGoogle(flow),/GOOGLE_FLOW_INVALID/);await assert.rejects(f.auth.approveNativeGoogle(flow.state,'replay'),/GOOGLE_FLOW_INVALID/);
+ f.store.db.prepare('UPDATE users SET credits=41 WHERE id=?').run(result.session.user.id);const next=f.auth.startGoogle(undefined,'com.selluplabs.aiadcast.next.demo');await f.auth.approveNativeGoogle(next.state,'fresh');const again=f.auth.pollNativeGoogle(next);assert.equal(again.session.user.id,result.session.user.id);assert.equal(f.store.authenticate('Bearer '+again.session.token).credits,41);
+});
+test('native linking requires the original active session; wrong package, expired flow and failed Google proof cannot authenticate',async t=>{
+ const f=fixture(t);assert.throws(()=>f.auth.startGoogle(undefined,'com.evil.app'),/GOOGLE_NATIVE_INVALID/);const old=f.store.provision({label:'Existing',credits:4}),s=f.store.login(old.invite),header='Bearer '+s.token;
+ const flow=f.auth.startGoogle(header,'com.selluplabs.aiadcast.next.demo');await f.auth.approveNativeGoogle(flow.state,'browser-code');assert.throws(()=>f.auth.pollNativeGoogle(flow),/GOOGLE_FLOW_INVALID/);f.store.logout(header);assert.throws(()=>f.auth.pollNativeGoogle(flow,header),/AUTH_REQUIRED/);assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM google_identities').get().n,0);
+ const stale=f.auth.startGoogle(undefined,'com.selluplabs.aiadcast.next');f.advance();await assert.rejects(f.auth.approveNativeGoogle(stale.state,'x'),/GOOGLE_FLOW_INVALID/);
+ const failed=f.auth.startGoogle(undefined,'com.selluplabs.aiadcast.next');f.auth.provider.exchange=async()=>{throw Error('mock failure');};await assert.rejects(f.auth.approveNativeGoogle(failed.state,'x'),/GOOGLE_PROOF_INVALID/);assert.throws(()=>f.auth.pollNativeGoogle(failed),/GOOGLE_FLOW_INVALID/);
+});
+test('HTTP native callback returns only a fixed app link; app polling still requires origin and private proof',async t=>{
+ const f=fixture(t),app=createBetaServer({store:f.store,publicUrl:origin,accounts:{google:f.auth.provider},serviceFactory:()=>{throw Error('NO_GENERATION');}});await new Promise(r=>app.server.listen(0,'127.0.0.1',r));t.after(()=>app.close());const base='http://127.0.0.1:'+app.server.address().port;
+ const post=async(path,body)=>{const r=await fetch(base+path,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Aiadcast-Client':'local-studio'},body:JSON.stringify(body)});return {status:r.status,data:await r.json()};};
+ const start=await post('/api/auth/google/start',{packageId:'com.selluplabs.aiadcast.next.demo'});const flow=start.data;const callback=await fetch(base+'/api/auth/google/native-callback?state='+flow.state+'&code=fixture-code');assert.equal(callback.status,200);const html=await callback.text();assert.ok(html.includes('com.selluplabs.aiadcast.next.demo://google/return'));assert.ok(!html.includes(flow.proof)&&!html.includes(flow.state)&&!html.includes('fixture-code'));
+ assert.equal((await post('/api/auth/google/native-poll',{...flow,proof:'x'.repeat(43)})).status,401);const result=await post('/api/auth/google/native-poll',flow);assert.equal(result.status,200);assert.equal(result.data.state,'verified');assert.equal(result.data.session.user.role,'member');
+});

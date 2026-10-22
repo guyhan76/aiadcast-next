@@ -42,3 +42,5 @@ Existing full legacy CI remains unresolved and was not rerun. Focused mock verif
 - Built browser UI: 12 passed across desktop/mobile, then 2 additional delayed-session boundary cases passed. No full legacy suite rerun.
 - Typecheck, web build and cloud-generated-code check passed. Existing large-chunk warning remains.
 - Google consent/button branding review, native integration, real callbacks, production migration and owner recovery smoke remain pre-deployment checks.
+
+Follow-up: Android system-browser source and safe app-return implementation are recorded in [google-android-return-local-20261022.md](google-android-return-local-20261022.md). The earlier WebView limitation describes 849f835; real APK/device validation remains pending.
