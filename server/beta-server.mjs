@@ -9,6 +9,7 @@ import {BetaStore} from './beta-store.mjs';
 import {GenerationService,ApiFailure} from './generation-service.mjs';
 import {OpenAIImageAdapter,ProviderFailure} from './openai-image-adapter.mjs';
 import {assistCopy} from './text-assistant.mjs';
+import {GoogleAuth} from './google-auth.mjs';
 import {EmailAuth} from './email-auth.mjs';
 import {PasswordAuth} from './password-auth.mjs';
 import {TestCheckout} from './test-checkout.mjs';
@@ -27,6 +28,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
  const limit=isLogin=>{if(now()-windowStart>=60_000){windowStart=now();requests=0;logins=0;}if(++requests>600||(isLogin&&++logins>20))throw new ApiFailure('RATE_LIMITED',429);};
  const service=user=>{if(!services.has(user.id))services.set(user.id,serviceFactory(user));const instance=services.get(user.id);instance.adminTestUnlimited=user.role==='admin';return instance;};
  const email=new EmailAuth(store,{sendMail:accounts.sendMail,publicOrigin:origin,now});
+ const google=new GoogleAuth(store,{provider:accounts.google,now});
  const password=new PasswordAuth(store,accounts.password,now);password.bootstrapOwner();
  const checkout=new TestCheckout(store,{...accounts,publicOrigin:origin,now,readPurchase:async(id,purchase)=>{const user=store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id);if(!user)throw new ApiFailure('AUTH_REQUIRED',401);return service(user).testPurchaseReceipt(purchase);},creditPurchase:async(id,purchase)=>{const user=store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id);if(!user)throw new ApiFailure('AUTH_REQUIRED',401);return service(user).recordTestPurchase(purchase);}});
  const admin=new AdminApi(store,{service,accounts,checkout,ownerEmail:password.adminEmail,overviewReader,now});
@@ -37,7 +39,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
   try {
    const url=new URL(req.url,origin);
    if(req.method==='GET'&&!url.pathname.startsWith('/api/')){const path=url.pathname==='/'?'/index.html':url.pathname;const bytes=assets.get(path);if(!bytes)throw new ApiFailure('NOT_FOUND',404);const ext=path.split('.').pop();res.writeHead(200,{'Content-Type':({html:'text/html; charset=utf-8',js:'text/javascript',css:'text/css',woff2:'font/woff2',png:'image/png',webp:'image/webp',svg:'image/svg+xml'})[ext]??'application/octet-stream','X-Content-Type-Options':'nosniff','Cache-Control':ext==='html'?'no-store':'public, max-age=31536000, immutable','Content-Security-Policy':"default-src 'self'; script-src 'self' https://js.tosspayments.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' data: blob: https://*.tosspayments.com; frame-src https://*.tosspayments.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",'Referrer-Policy':'no-referrer'});res.end(bytes);return;}
-   limit(['/api/auth/login','/api/auth/test/signup','/api/auth/test/login','/api/auth/email/request','/api/auth/email/verify','/api/checkout/confirm','/api/checkout/launch'].includes(url.pathname));
+   limit(['/api/auth/google/start','/api/auth/google/finish','/api/auth/login','/api/auth/test/signup','/api/auth/test/login','/api/auth/email/request','/api/auth/email/verify','/api/checkout/confirm','/api/checkout/launch'].includes(url.pathname));
    if(req.headers.origin&&!cors)throw new ApiFailure('ORIGIN_NOT_ALLOWED',403);
    if(req.method==='OPTIONS'){if(!cors)throw new ApiFailure('ORIGIN_NOT_ALLOWED',403);res.writeHead(204,{'Access-Control-Allow-Origin':cors,'Access-Control-Allow-Methods':'GET,POST,OPTIONS','Access-Control-Allow-Headers':'Authorization,Content-Type,X-Aiadcast-Client','Vary':'Origin'});res.end();return;}
    if(req.method==='GET'&&url.pathname==='/api/version'){send(res,200,serverBuild,cors);return;}
@@ -45,7 +47,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
    if(req.method==='POST'&&!cors)throw new ApiFailure('ORIGIN_REQUIRED',403);
    if(req.method==='POST'&&req.headers['x-aiadcast-client']!=='local-studio')throw new ApiFailure('CLIENT_HEADER_REQUIRED',403);
    if(req.method==='POST'&&url.pathname==='/api/auth/login'){const b=await read(req,1024);send(res,200,store.login(b?.invite),cors);return;}
-   if(req.method==='GET'&&url.pathname==='/api/account/capabilities'){send(res,200,{email:{enabled:Boolean(accounts.sendMail)},...(password.available()?{password:{enabled:true,test:true,adminReady:password.ownerReady(),adminEmail:password.adminEmail}}:{}),checkout:{enabled:checkout.available(),test:true,currency:'KRW'}},cors);return;}
+   if(req.method==='GET'&&url.pathname==='/api/account/capabilities'){send(res,200,{email:{enabled:Boolean(accounts.sendMail)},...(google.available()?{google:{enabled:true}}:{}),...(password.available()?{password:{enabled:true,test:true,adminReady:password.ownerReady(),adminEmail:password.adminEmail}}:{}),checkout:{enabled:checkout.available(),test:true,currency:'KRW'}},cors);return;}
    if(req.method==='POST'&&['/api/auth/test/signup','/api/auth/test/login'].includes(url.pathname)){
     const b=await read(req,2048);send(res,200,url.pathname.endsWith('/signup')?password.signup(b):password.signIn(b),cors);return;
    }
@@ -55,9 +57,12 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
     else if(url.pathname==='/api/auth/email/exchange')result=email.exchange(b?.requestId,b?.pollToken);
     else throw new ApiFailure('NOT_FOUND',404);
     send(res,200,result,cors);return;}
+   if(req.method==='POST'&&url.pathname==='/api/auth/google/start'){await read(req,1024);send(res,200,google.startGoogle(req.headers.authorization),cors);return;}
+   if(req.method==='POST'&&url.pathname==='/api/auth/google/finish'){send(res,200,await google.finishGoogle(await read(req,8192),req.headers.authorization),cors);return;}
    if(req.method==='POST'&&url.pathname==='/api/checkout/receipt'){send(res,200,await checkout.receipt(await read(req,2048)),cors);return;}
    if(req.method==='POST'&&['/api/checkout/launch','/api/checkout/confirm'].includes(url.pathname)){const b=await read(req,2048);send(res,200,await (url.pathname.endsWith('/launch')?checkout.launch(b):checkout.confirm(b)),cors);return;}
    const user=store.authenticate(req.headers.authorization);
+   if(req.method==='GET'&&url.pathname==='/api/auth/session'){send(res,200,{user:{id:user.id,label:user.label,role:user.role}},cors);return;}
    if(req.method==='GET'&&url.pathname==='/api/dimension-analysis'){send(res,200,dimensionAnalysis.capability(user),cors);return;}
    if(req.method==='POST'&&url.pathname==='/api/dimension-analysis'){throw new ApiFailure('REFERENCE_EVALUATION_ONLY',403);}
    if(url.pathname.startsWith('/api/admin/')){
