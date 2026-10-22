@@ -1,14 +1,26 @@
-import {useState,type ReactNode,useEffect} from 'react';
+import {useState,type ReactNode,useLayoutEffect} from 'react';
 import {apiRequest,ApiRequestFailure} from './generation-client';
-import {betaSession,setBetaSession,storageNamespace,type BetaSession} from './beta-session';
+import {betaSession,setBetaSession,storageNamespace,watchSessionExpiry,type BetaSession} from './beta-session';
 import {useUiLanguage} from './ui-language';
 import {importProject,type Project} from './model';
 import {saveProject} from './storage';
 import './beta-account.css';
 import {signOut} from './sign-out';
 export function SessionBoundary({children}:{children:ReactNode}){
- const [scope,setScope]=useState(storageNamespace);
- useEffect(()=>{const update=(event:Event)=>{const route=(event as CustomEvent).detail?.returnPage;location.hash=['home','create','studio','editor','credits','checkout','checkout-return','login','signup'].includes(route)?route:'home';setScope(storageNamespace());};window.addEventListener('aiadcast-session-change',update);return()=>window.removeEventListener('aiadcast-session-change',update);},[]);
+ const identity=()=>JSON.stringify([storageNamespace(),betaSession()?.token??null]);
+ const [scope,setScope]=useState(identity);
+ useLayoutEffect(()=>{
+  let stop=()=>{};
+  const arm=()=>{stop();stop=watchSessionExpiry(()=>{
+   // Do not erase another account's replacement session.
+   if(!betaSession()&&scope!==JSON.stringify(['guest',null])){
+    location.hash='login';setScope(identity());
+   }
+  });};
+  const update=(event:Event)=>{const route=(event as CustomEvent).detail?.returnPage;location.hash=['home','create','studio','editor','credits','checkout','checkout-return','login','signup'].includes(route)?route:'home';setScope(identity());if(betaSession())arm();else stop();};
+  window.addEventListener('aiadcast-session-change',update);arm();
+  return()=>{stop();window.removeEventListener('aiadcast-session-change',update);};
+ },[scope]);
  return <div key={scope}>{children}</div>;
 }
 function revisionKey(id:string){return `aiadcast.cloud-revision:${storageNamespace()}:${id}`;}

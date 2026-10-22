@@ -36,8 +36,8 @@ export async function loadWorkspace(scope=storageNamespace()):Promise<WorkspaceD
 }
 // Only the guest's current work can cross into the newly authenticated account.
 // Work belonging to another signed-in account stays in its own namespace.
-export async function carryGuestWorkspace(userId:string){if(storageNamespace()!=='guest')return;const draft=await loadWorkspace('guest');
+export async function carryGuestWorkspace(userId:string,assertCurrent=()=>{}){assertCurrent();if(storageNamespace()!=='guest')return;const draft=await loadWorkspace('guest');assertCurrent();
  if(!draft||draft.returnPage==='home')return;
- const previous=await loadWorkspace(userId);
+ const previous=await loadWorkspace(userId);assertCurrent();
  if(previous){const project=previous.returnPage==='create'?previous.wizard?.project:(previous.returnPage==='studio'||previous.returnPage==='editor')?previous.editor:undefined;if(project)await saveProject({...project,id:crypto.randomUUID(),name:project.name||project.productName||'이전 작업'},userId);}
- await saveWorkspace(draft,userId);}
+ assertCurrent();await saveWorkspace(draft,userId);assertCurrent();}

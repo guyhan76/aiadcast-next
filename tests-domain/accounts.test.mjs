@@ -41,3 +41,30 @@ test('HTTP email signup through paid test receipt updates only the authenticated
  assert.equal((await call('/api/checkout/orders',undefined,session.token)).body.orders.length,1);
  assert.equal((await call('/api/checkout/orders/'+order.id)).status,401);
 });
+
+test('email resend keeps proofs request-bound and distinct accounts cannot exchange each others tokens',async t=>{
+ const {store,email,mail,advance}=setup(t),a=await email.request('a@example.com'),b=await email.request('b@example.com');
+ assert.throws(()=>email.exchange(a.requestId,b.pollToken),/EMAIL_REQUEST_INVALID/);
+ assert.equal(email.exchange(a.requestId,a.pollToken).state,'pending');assert.equal(store.db.prepare('SELECT COUNT(*) n FROM sessions').get().n,0);
+ email.verify(secret(mail[1]));assert.equal(email.exchange(a.requestId,a.pollToken).state,'pending');
+ const bs=email.exchange(b.requestId,b.pollToken).session;assert.equal(bs.user.role,'member');
+ advance(60_000);const resend=await email.request(' A@EXAMPLE.COM ');
+ assert.notEqual(resend.requestId,a.requestId);assert.notEqual(resend.pollToken,a.pollToken);
+ email.verify(secret(mail[2]));assert.equal(email.exchange(a.requestId,a.pollToken).state,'pending');
+ const as=email.exchange(resend.requestId,resend.pollToken).session;assert.notEqual(as.user.id,bs.user.id);
+ // Resend does not silently cancel a different device's still-valid request.
+ email.verify(secret(mail[0]));assert.equal(email.exchange(a.requestId,a.pollToken).session.user.id,as.user.id);
+ assert.throws(()=>email.exchange(resend.requestId,resend.pollToken),/EMAIL_REQUEST_INVALID/);
+});
+test('email approval cannot cross exact expiry or issue a session when delivery is disabled',async t=>{
+ const {store,email,mail,advance}=setup(t),a=await email.request('a@example.com');email.verify(secret(mail[0]));advance(600_000);
+ assert.throws(()=>email.exchange(a.requestId,a.pollToken),/EMAIL_REQUEST_INVALID/);assert.throws(()=>email.verify(secret(mail[0])),/EMAIL_LINK_INVALID/);
+ const disabled=new EmailAuth(store);assert.throws(()=>disabled.exchange(a.requestId,a.pollToken),/EMAIL_UNAVAILABLE/);assert.throws(()=>disabled.verify(secret(mail[0])),/EMAIL_UNAVAILABLE/);
+ assert.equal(store.db.prepare('SELECT COUNT(*) n FROM sessions').get().n,0);assert.equal(store.db.prepare('SELECT COUNT(*) n FROM users').get().n,0);
+});
+test('email failed delivery can retry without leaving usable proof or allocating a user',async t=>{
+ const {store,email,mail}=setup(t);const original=email.sendMail;email.sendMail=async message=>{mail.push(message);throw Error('mock delivery failure');};
+ await assert.rejects(email.request('a@example.com'),/EMAIL_SEND_FAILED/);assert.throws(()=>email.verify(secret(mail[0])),/EMAIL_LINK_INVALID/);
+ email.sendMail=original;const next=await email.request('a@example.com');assert.equal(email.exchange(next.requestId,next.pollToken).state,'pending');
+ assert.equal(store.db.prepare('SELECT COUNT(*) n FROM users').get().n,0);
+});

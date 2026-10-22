@@ -141,8 +141,10 @@ test('cloud HTTP signup, role checks, project revisions and private storage surv
  const mails=[],s=await setup(t,{accounts:{sendMail:async mail=>mails.push(mail)}});
  const auth=await s.call('/api/auth/email/request',{body:{email:'tester@example.com'}});assert.equal(auth.status,200,JSON.stringify(auth.data));assert.equal(mails.length,1);
  const token=new URL(mails[0].url).hash.match(/token=([^&]+)/)?.[1];assert.ok(token);
+ const pending=await s.call('/api/auth/email/exchange',{body:auth.data});assert.deepEqual(pending.data,{state:'pending'});assert.equal((await s.call('/api/projects')).status,401);assert.equal((await s.call('/api/auth/test/signup',{body:{email:'unverified@example.com',password:'Fixture-password!'}})).status,503);
  const verified=await s.call('/api/auth/email/verify',{body:{token}});assert.equal(verified.status,200,JSON.stringify(verified.data));
  const signed=await s.call('/api/auth/email/exchange',{body:{requestId:auth.data.requestId,pollToken:auth.data.pollToken}});assert.equal(signed.status,200,JSON.stringify(signed.data));const a=signed.data.session;
+ assert.equal((await s.call('/api/auth/email/exchange',{body:auth.data})).status,401);assert.equal((await s.call('/api/auth/email/verify',{body:{token}})).status,401);
  assert.equal((await s.call('/api/admin/overview',{token:a.token})).status,403);
  const b=await s.member('Other');const project={version:1,id:'project-private-001',name:'셀업랩스 광고',source};
  assert.equal((await s.call('/api/projects/'+project.id,{token:a.token,body:{project,revision:0}})).data.revision,1);
