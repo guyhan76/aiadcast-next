@@ -12,7 +12,7 @@ import {AdminPage} from './AdminPage';
 import {BrandLogo as Brand} from './BrandLogo';
 import {offlineDemo} from './demo-mode';
 import {loadWorkspace,saveWorkspace,type WorkspaceDraft,type WizardDraft} from './workspace-draft';
-import {betaSession} from './beta-session';
+import {betaSession,storageNamespace} from './beta-session';
 import {EmailAccountPage,CheckoutPage,VerifyEmailPage,PaymentBrowserPage} from './AccountPages';
 import {ProjectLibrary,UsageGuide} from './LibraryGuide';
 import './simple-pages.css';
@@ -53,6 +53,7 @@ function WorkspaceLoader(){
  return <>{error&&<p role="alert">이 기기의 임시 작업을 읽지 못했습니다. / Could not restore the local draft.</p>}<StudioWorkspace restored={loaded.draft}/></>;
 }
 function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
+ const [workspaceScope]=useState(storageNamespace);
  const {language,text}=useUiLanguage();
  const priorPage=useRef<Page>(currentPage()),adminBack=useRef('#home'),creditsBack=useRef<Page>('home');
  const [page,setPage]=useState<Page>(currentPage),[seed,setSeed]=useState<Project>(()=>restored?.editor??({...newProject(),locale:language})),[current,setCurrent]=useState<Project>(seed),[editorKey,setEditorKey]=useState(0);
@@ -71,9 +72,9 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  const [returnPage,setReturnPage]=useState<WorkspaceDraft['returnPage']>(restored?.returnPage??'home');
  useEffect(()=>{if(page==='create'||page==='studio'||page==='editor')setReturnPage(page);},[page]);
  const snapshot:WorkspaceDraft={wizard,editor:current,returnPage};
- async function preserve(){await saveWorkspace(snapshot);}
+ async function preserve(){await saveWorkspace(snapshot,workspaceScope);}
  // Persist every committed edit immediately: a debounce discarded photos on quick reloads.
- useLayoutEffect(()=>{let active=true;setDraftSaving(true);void saveWorkspace({wizard,editor:current,returnPage}).then(()=>{if(active){setDraftSaving(false);setDraftError(false);}}).catch(()=>{if(active){setDraftSaving(false);setDraftError(true);}});return()=>{active=false;};},[wizard,current,returnPage]);
+ useLayoutEffect(()=>{let active=true;setDraftSaving(true);void saveWorkspace({wizard,editor:current,returnPage},workspaceScope).then(()=>{if(active){setDraftSaving(false);setDraftError(false);}}).catch(()=>{if(active){setDraftSaving(false);setDraftError(true);}});return()=>{active=false;};},[wizard,current,returnPage,workspaceScope]);
  useEffect(()=>{const onHash=()=>{const next=currentPage();if(next==='credits'&&priorPage.current!=='credits')creditsBack.current=priorPage.current;if(next==='admin'&&priorPage.current!=='admin')adminBack.current='#'+priorPage.current;priorPage.current=next;setPage(next);window.scrollTo(0,0);};window.addEventListener('hashchange',onHash);return()=>window.removeEventListener('hashchange',onHash);},[]);
  useEffect(()=>{if(page!=='projects')return;let alive=true;projects().then(p=>{if(alive){setItems(p);setLibraryError('');}}).catch(()=>{if(alive)setLibraryError(text('이 기기의 저장된 작업을 읽지 못했습니다.'));});return()=>{alive=false};},[page]);
  function go(next:Page){location.hash=next;setPage(next);window.scrollTo(0,0);}

@@ -1,3 +1,4 @@
+import {signInBoundary} from './sign-in-boundary';
 import {consumeLoginDestination,rememberLoginDestination} from './login-navigation';
 import {rememberCheckout} from './checkout-return';
 import {offlineDemo} from './demo-mode';
@@ -44,11 +45,11 @@ function PasswordAccountPage({mode,preserve,returnPage,cap}:Context&{mode:'signu
  async function submit(){
   if(locked.current)return;
   if(signup&&password!==confirm){setMessage(t('비밀번호가 일치하지 않습니다.','Passwords do not match.'));return;}
-  locked.current=true;setBusy(true);setMessage('');
+  locked.current=true;setBusy(true);setMessage('');const assertCurrent=signInBoundary();
   try{
-   await preserve();
+   await preserve();assertCurrent();
    const session=await apiRequest<BetaSession>(signup?'/api/auth/test/signup':'/api/auth/test/login',{email,password,...(signup?{name}:{})});
-   await carryGuestWorkspace(accountNamespace(session.user.id));setPassword('');setConfirm('');
+   assertCurrent();await carryGuestWorkspace(accountNamespace(session.user.id),assertCurrent);assertCurrent();setPassword('');setConfirm('');
    setBetaSession(session,consumeLoginDestination());
   }catch(e){setMessage(accountError(e,language==='ko'));}finally{locked.current=false;setBusy(false);}
  }
@@ -76,33 +77,38 @@ function InviteAccountPage({preserve,returnPage}:Context){
 }
 export function EmailAccountPage({mode,preserve,returnPage}:Context&{mode:'signup'|'login'}){
  const {t,language}=useUiLanguage(),ko=language==='ko',capability=useCapabilities(true),cap=capability.value,key='aiadcast.email-request:'+storageNamespace();
+ const [passwordMode,setPasswordMode]=useState(false);
+ const alive=useRef(true),attempt=useRef(0);useEffect(()=>{alive.current=true;return()=>{alive.current=false;attempt.current++;};},[]);
  const [email,setEmail]=useState(''),[request,setRequest]=useState<EmailRequest|undefined>(()=>readSession(key));
  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[expired,setExpired]=useState(false),locked=useRef(false);
  const latest=useRef({preserve,returnPage});latest.current={preserve,returnPage};
  const signup=mode==='signup',demo=offlineDemo();
+ function resetRequest(){attempt.current++;setRequest(undefined);sessionStorage.removeItem(key);setExpired(false);setMessage('');}
+ function boundary(){const guard=signInBoundary(),version=attempt.current;return()=>{guard();if(!alive.current||version!==attempt.current)throw Error('SESSION_CHANGED');};}
  async function demoVerify(){if(!request)return;setBusy(true);try{await apiRequest('/api/demo/auth/verify',request);await check();}catch(e){setMessage(accountError(e,ko));}finally{setBusy(false);}}
- async function check(){if(!request||locked.current)return;locked.current=true;try{
+ async function check(){if(!request||locked.current)return;const assertCurrent=boundary();locked.current=true;setBusy(true);try{
   if(Date.now()>=request.expires){setExpired(true);return;}
-  const result=await exchangeEmail(request);if(result.session){await latest.current.preserve();await carryGuestWorkspace(accountNamespace(result.session.user.id));sessionStorage.removeItem(key);setBetaSession(result.session,consumeLoginDestination());}
- }catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;}}
- useEffect(()=>{if(!cap?.email.enabled||cap.password?.enabled&&!demo||!request||expired)return;const timer=setInterval(()=>{if(document.visibilityState==='visible')void check();},3000);return()=>clearInterval(timer);},[request,expired,ko,cap,demo]);
- async function submit(){if(locked.current)return;locked.current=true;setBusy(true);setMessage('');try{await preserve();const result=await apiRequest<EmailRequest>('/api/auth/email/request',{email});sessionStorage.setItem(key,JSON.stringify(result));setRequest(result);setExpired(false);}catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;setBusy(false);}}
+  const result=await exchangeEmail(request);assertCurrent();if(result.session){await latest.current.preserve();assertCurrent();await carryGuestWorkspace(accountNamespace(result.session.user.id),assertCurrent);assertCurrent();sessionStorage.removeItem(key);setBetaSession(result.session,consumeLoginDestination());}
+ }catch(e){if(alive.current){if(e instanceof ApiRequestFailure&&e.code==='EMAIL_REQUEST_INVALID'){setExpired(true);sessionStorage.removeItem(key);setMessage('');}else setMessage(accountError(e,ko));}}finally{locked.current=false;if(alive.current)setBusy(false);}}
+ useEffect(()=>{if(!cap?.email.enabled||passwordMode||!request||expired)return;const resume=()=>{if(document.visibilityState==='visible')void check();};const timer=setInterval(resume,3000);window.addEventListener('focus',resume);window.addEventListener('pageshow',resume);document.addEventListener('visibilitychange',resume);return()=>{clearInterval(timer);window.removeEventListener('focus',resume);window.removeEventListener('pageshow',resume);document.removeEventListener('visibilitychange',resume);};},[request,expired,ko,cap,passwordMode]);
+ async function submit(){if(locked.current)return;const assertCurrent=boundary();locked.current=true;setBusy(true);setMessage('');try{await preserve();assertCurrent();const result=await apiRequest<EmailRequest>('/api/auth/email/request',{email});assertCurrent();sessionStorage.setItem(key,JSON.stringify(result));setRequest(result);setExpired(false);}catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;setBusy(false);}}
  if(!betaSession()&&!cap)return <section className="account-page"><a className="page-back" href={'#'+returnPage}><ArrowLeft size={18}/>{t('돌아가기','Back')}</a><h1>{signup?t('회원가입','Sign up'):t('로그인','Sign in')}</h1>
   {capability.failed?<><p role="alert">{t('로그인 방식을 확인하지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해주세요. 계속되면 관리자에게 문의해주세요.','Could not check the sign-in method. Check your connection and retry. If this continues, contact your administrator.')}</p><button className="primary-action" onClick={capability.retry}>{t('로그인 방식 다시 확인','Retry sign-in setup')}</button></>:<p role="status" aria-live="polite">{capability.reconnecting?t('서버 연결을 다시 확인하고 있습니다. 잠시만 기다려주세요…','Checking the server connection again. Please wait…'):t('로그인 방식을 확인하고 있습니다…','Checking how to sign in…')}</p>}
   <a className="guest-link" href="#create">{t('광고 편집 계속하기','Continue editing your ad')}</a></section>;
- if(!betaSession()&&cap?.password?.enabled&&!demo)return <PasswordAccountPage mode={mode} preserve={preserve} returnPage={returnPage} cap={cap.password}/>;
+ if(!betaSession()&&cap?.password?.enabled&&!demo&&(!cap.email.enabled||passwordMode))return <><PasswordAccountPage mode={mode} preserve={preserve} returnPage={returnPage} cap={cap.password}/>{cap.email.enabled&&<button className="guest-link" onClick={()=>{resetRequest();setPasswordMode(false);}}>{t('이메일로 로그인','Sign in with email')}</button>}</>;
  if(!betaSession()&&cap&&!cap.email.enabled&&!demo)return <InviteAccountPage preserve={preserve} returnPage={returnPage}/>;
  if(betaSession())return <section className="account-page"><h1>{t('로그인되었습니다','You are signed in')}</h1><a className="primary-action" href={'#'+returnPage}>{t('광고 이어 만들기','Continue your ad')}</a><a href="#credits">{t('내 이용권','My credits')}</a></section>;
  return <section className="account-page"><a href={'#'+returnPage} className="page-back"><ArrowLeft size={18}/>{t('돌아가기','Back')}</a><h1>{signup?t('회원가입','Sign up'):t('로그인','Sign in')}</h1><p className="page-intro">{demo?t('기기 내 체험 계정을 만듭니다. 실제 이메일을 보내지 않습니다.','Create a local demo account. No email is sent.'):t('이메일 하나로 시작하세요.','Start with just your email.')}</p>
  {!cap?.email.enabled&&<div className="connection-notice" id="email-availability">{t('이메일 인증 연결 준비 중입니다.','Email verification is not connected yet.')}</div>}
- {request&&!expired?<div className="email-sent"><Mail size={32}/><h2>{demo?t('체험 가입 확인','Confirm demo signup'):t('메일함을 확인해주세요','Check your inbox')}</h2><p>{demo?t('아래 버튼으로 인증 성공 상황을 시험합니다. 실제 이메일 소유 확인은 하지 않습니다.','Use the button to simulate verification. Email ownership is not verified.'):t('메일의 인증 버튼을 누르면 이 화면에서 자동으로 로그인됩니다.','Confirm the link in your email. This screen will sign you in automatically.')}</p><p className="account-help">{t('10분 안에 인증해주세요. 스팸함도 확인해주세요.','Verify within 10 minutes. Check your spam folder too.')}</p><button className="primary-action" disabled={busy} onClick={()=>void (demo?demoVerify():check())}>{demo?t('체험 인증 완료하기','Complete demo verification'):t('인증 상태 확인','Check verification')}</button><button className="guest-link" onClick={()=>{setRequest(undefined);sessionStorage.removeItem(key);setMessage('');}}>{t('이메일 다시 입력','Enter email again')}</button></div>:<form onSubmit={e=>{e.preventDefault();void submit();}}><label className="field" htmlFor="account-email">{t('이메일','Email')}<input required id="account-email" type="email" inputMode="email" autoComplete="email" maxLength={254} placeholder="you@example.com" value={email} onChange={e=>setEmail(e.target.value)}/></label><p className="account-help">{expired?t('인증 시간이 지났습니다. 다시 요청해주세요.','Verification expired. Request a new email.'):demo?t('이메일은 이 기기의 체험 계정을 구분하는 이름입니다. 비밀번호·메일 인증은 시험하지 않습니다.','Email identifies the local demo account. Passwords and email delivery are not tested.'):t('비밀번호 없이 인증메일로 로그인합니다.','Sign in with a verification email, without a password.')}</p><button className="primary-action" type="submit" disabled={busy||!cap?.email.enabled}><Mail size={18}/>{busy?t('보내는 중…','Sending…'):demo?t('체험 계정 만들기','Create demo account'):t('인증메일 받기','Send verification email')}</button></form>}
+ {request&&!expired?<div className="email-sent"><Mail size={32}/><h2>{demo?t('체험 가입 확인','Confirm demo signup'):t('메일함을 확인해주세요','Check your inbox')}</h2><p>{demo?t('아래 버튼으로 인증 성공 상황을 시험합니다. 실제 이메일 소유 확인은 하지 않습니다.','Use the button to simulate verification. Email ownership is not verified.'):t('메일의 인증 버튼을 누르면 이 화면에서 자동으로 로그인됩니다.','Confirm the link in your email. This screen will sign you in automatically.')}</p><p className="account-help">{t('10분 안에 인증해주세요. 스팸함도 확인해주세요.','Verify within 10 minutes. Check your spam folder too.')}</p><button className="primary-action" disabled={busy} onClick={()=>void (demo?demoVerify():check())}>{demo?t('체험 인증 완료하기','Complete demo verification'):t('인증 상태 확인','Check verification')}</button><button className="guest-link" disabled={busy} onClick={resetRequest}>{t('이메일 다시 입력','Enter email again')}</button></div>:<form onSubmit={e=>{e.preventDefault();void submit();}}><label className="field" htmlFor="account-email">{t('이메일','Email')}<input required id="account-email" type="email" inputMode="email" autoComplete="email" maxLength={254} placeholder="you@example.com" value={email} onChange={e=>setEmail(e.target.value)}/></label><p className="account-help">{expired?t('인증 시간이 지났습니다. 다시 요청해주세요.','Verification expired. Request a new email.'):demo?t('이메일은 이 기기의 체험 계정을 구분하는 이름입니다. 비밀번호·메일 인증은 시험하지 않습니다.','Email identifies the local demo account. Passwords and email delivery are not tested.'):t('비밀번호 없이 인증메일로 로그인합니다.','Sign in with a verification email, without a password.')}</p><button className="primary-action" type="submit" disabled={busy||!cap?.email.enabled}><Mail size={18}/>{busy?t('보내는 중…','Sending…'):demo?t('체험 계정 만들기','Create demo account'):t('인증메일 받기','Send verification email')}</button></form>}
  <p className="account-switch">{signup?t('이미 가입하셨나요?','Already have an account?'):t('처음 이용하시나요?','New here?')} <a href={signup?'#login':'#signup'}>{signup?t('로그인','Sign in'):t('회원가입','Sign up')}</a></p>
+ {cap?.password?.enabled&&!demo&&<button className="guest-link" disabled={busy} onClick={()=>{resetRequest();setPasswordMode(true);}}>{t('기존 비밀번호로 로그인','Sign in with existing password')}</button>}
  {message&&<p role="alert">{message}</p>}<a className="guest-link" href="#create">{t('광고 편집 계속하기','Continue editing your ad')}</a></section>;
 }
 export function VerifyEmailPage(){
  const {t,language}=useUiLanguage();const [token]=useState(()=>new URLSearchParams(location.hash.split('?')[1]).get('token'));
- const [done,setDone]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
- async function verify(){setBusy(true);try{await apiRequest('/api/auth/email/verify',{token});setDone(true);history.replaceState(null,'',location.pathname+'#verify');}catch(e){setError(accountError(e,language==='ko'));}finally{setBusy(false);}}
+ const [done,setDone]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),locked=useRef(false);
+ async function verify(){if(locked.current)return;locked.current=true;setBusy(true);try{await apiRequest('/api/auth/email/verify',{token});setDone(true);history.replaceState(null,'',location.pathname+'#verify');}catch(e){setError(accountError(e,language==='ko'));}finally{locked.current=false;setBusy(false);}}
  return <section className="account-page"><h1>{done?t('인증 완료','Email verified'):t('이메일 인증','Verify your email')}</h1><p>{done?t('가입을 시작한 앱으로 돌아가세요. 자동으로 로그인됩니다.','Return to the app where you started. You will be signed in automatically.'):t('직접 로그인을 요청하셨나요? 인증하면 요청한 기기에 로그인됩니다.','Did you request this sign-in? Confirming signs in the device that requested it.')}</p>{!done&&<button className="primary-action" disabled={busy||!token} onClick={()=>void verify()}>{t('이메일 인증하기','Verify email')}</button>}{error&&<p role="alert">{error}</p>}</section>;
 }
 export function CheckoutPage({preserve,returnPage}:Context){

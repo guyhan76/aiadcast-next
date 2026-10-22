@@ -1,12 +1,15 @@
+import {apiIdentity} from './api-origin';
 import {apiRequest,ApiRequestFailure} from './generation-client';
-import type {BetaSession} from './beta-session';
+import {betaSession,type BetaSession} from './beta-session';
 export type Capabilities={email:{enabled:boolean};password?:{enabled:boolean;test:true;adminReady:boolean;adminEmail:string};checkout:{enabled:boolean;test:true;currency:'KRW'}};
 export type EmailRequest={requestId:string;pollToken:string;expires:number};
 export type TestOrder={unit?:'legacy-ticket'|'credit-v2';policy?:string;id:string;pack:string;credits:number;amount:number;currency:'KRW';state:'pending'|'verified'|'paid'|'canceled';created:number;test:true;checkoutUrl?:string;receipt?:{verified:true;grantedCredits:number;balance:number}};
 const exchanges=new Map<string,Promise<{state:'pending'|'verified';session?:BetaSession}>>();
+window.addEventListener('aiadcast-session-change',()=>{exchanges.clear();for(const key of Object.keys(sessionStorage))if(key.startsWith('aiadcast.email-request:'))sessionStorage.removeItem(key);});
 export function exchangeEmail(request:EmailRequest){
- let p=exchanges.get(request.requestId);
- if(!p){p=apiRequest<{state:'pending'|'verified';session?:BetaSession}>('/api/auth/email/exchange',request);exchanges.set(request.requestId,p);void p.then(result=>{if(result.state==='pending')exchanges.delete(request.requestId);},()=>exchanges.delete(request.requestId));}
+ const key=JSON.stringify([apiIdentity(),betaSession()?.token,request.requestId,request.pollToken]);
+ let p=exchanges.get(key);
+ if(!p){p=apiRequest<{state:'pending'|'verified';session?:BetaSession}>('/api/auth/email/exchange',request);exchanges.set(key,p);const clear=()=>{if(exchanges.get(key)===p)exchanges.delete(key);};void p.then(result=>{if(result.state==='pending')clear();},clear);}
  return p;
 }
 export function accountError(error:unknown,ko:boolean){
