@@ -44,3 +44,9 @@ test('logout/session boundary during a pending Google exchange cannot install it
  await page.goto('/?google=1&state='+ 's'.repeat(43)+'&code=mock');await expect.poll(()=>started).toBe(true);
  await page.evaluate(()=>{sessionStorage.removeItem('aiadcast.beta-session');window.dispatchEvent(new CustomEvent('aiadcast-session-change',{detail:{returnPage:'login'}}));});release();await expect(page.getByRole('button',{name:'Google로 계속하기',exact:true})).toBeVisible();expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();await expect(page.locator('.home-page')).toHaveCount(0);
 });
+test('checkout return never opens the creator without an authenticated account',async({page})=>{
+ await setup(page);let receipts=0;await page.route('**/api/checkout/receipt',r=>{receipts++;return r.fulfill({status:401,json:{error:{code:'CHECKOUT_TICKET_INVALID'}}});});
+ await page.addInitScript(()=>sessionStorage.setItem('aiadcast.browser-checkout',JSON.stringify({orderId:'invalid-order',ticket:'invalid-ticket'})));
+ await page.goto('/?checkout=return&orderId=invalid-order');await expect(page.getByRole('alert')).toBeVisible();expect(receipts).toBe(1);expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();
+ await page.goto('/#create');await expect(page.getByRole('button',{name:'Google로 계속하기',exact:true})).toBeVisible();await expect(page.locator('.create-page')).toHaveCount(0);
+});
