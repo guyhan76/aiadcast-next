@@ -39,7 +39,7 @@ test('eight inputs submit actual generation request once and a complete accepted
  await expect(result.locator('.automatic-proportion')).toHaveCount(0);await expect(result.locator('.editor-details')).toHaveCount(0);
  await result.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await result.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  await expect(result.locator('.marketing-summary')).toHaveCount(1);await expect(result.locator('.accepted-ad .marketing-summary')).toBeVisible();
- const save=result.getByRole('button',{name:'이미지 저장',exact:true});await expect(save).toBeEnabled();const pending=page.waitForEvent('download');await save.click();expect((await pending).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
+ const save=result.getByRole('button',{name:'이미지 저장 · 공유',exact:true});await expect(save).toBeEnabled();const pending=page.waitForEvent('download');await save.click();expect((await pending).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
  await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('textbox',{name:'광고 제목',exact:true})).toHaveValue('보내는 마음까지, 든든하게.');
 });
 test('photo-free service AI copy requests no dimensions and generates automatically after submit',async({page})=>{
@@ -50,7 +50,7 @@ test('unauthenticated creation requires Google sign-in and never dispatches gene
  await expect(page.getByRole('textbox')).toHaveCount(0);await page.reload();await expect(page.locator('.consumer-create')).toHaveCount(0);expect(state.posts).toBe(0);
 });
 test('budget blockage gives a clear reason and never dispatches a provider request',async({page})=>{
- const state=await mocks(page,{enabled:false}),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByText('이용권과 별도로 이미지 생성용 예산의 사용·보류액 또는 생성 전 예약금 때문에 지금 생성할 수 없습니다. 관리자에게 남은 예산을 확인해주세요.')).toBeVisible();expect(state.posts).toBe(0);
+ const state=await mocks(page,{enabled:false}),form=await details(page);await form.getByLabel('참조사진 추가').setInputFiles({name:'space.png',mimeType:'image/png',buffer:first});await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByText('이용권과 별도로 이미지 생성용 예산의 사용·보류액 또는 생성 전 예약금 때문에 지금 생성할 수 없습니다. 관리자에게 남은 예산을 확인해주세요.')).toBeVisible();expect(state.posts).toBe(0);
 });
 
 test('photo purpose survives draft reload and travels with the correct uploaded image',async({page},info)=>{
@@ -78,7 +78,7 @@ test('original photo choice reaches review acceptance and download without openi
  await expect(result.locator('.generation-ad-preview')).toBeVisible();expect(state.body.request.mode).toBe('original');
  await expect(page.locator('.editor-container')).toHaveCount(0);
  await result.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await result.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
- const save=result.getByRole('button',{name:'이미지 저장',exact:true});await expect(save).toBeEnabled();
+ const save=result.getByRole('button',{name:'이미지 저장 · 공유',exact:true});await expect(save).toBeEnabled();
  const download=page.waitForEvent('download');await save.click();expect((await download).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.posts).toBe(1);
  await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('button',{name:'실사 그대로 사용',exact:true})).toHaveAttribute('aria-pressed','true');await expect(form.getByRole('textbox',{name:'광고 설명',exact:true})).toHaveValue('');
 });
@@ -144,13 +144,13 @@ test('draft storage failure stays visible and protects unsaved input until a suc
 });
 
 test('server-confirmed administrator at zero credits can review and save without a credit charge',async({page})=>{
- const state=await mocks(page,{admin:true}),form=await details(page);
+ const state=await mocks(page,{admin:true}),form=await details(page);await form.getByLabel('참조사진 추가').setInputFiles({name:'space.png',mimeType:'image/png',buffer:first});
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();
  await expect(page.getByText('관리자 테스트 · 이용권 차감 없음',{exact:true})).toBeVisible();
  await expect(page.locator('.generation-ad-preview')).toBeVisible();
  await page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
  await page.getByRole('button',{name:'사용 확정 · 이용권 차감 없음',exact:true}).click();
- await expect(page.getByRole('button',{name:'이미지 저장',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'이미지 저장 · 공유',exact:true})).toBeEnabled();
  expect(state.posts).toBe(1);expect(state.accepts).toBe(1);expect(state.job.creditCost).toBe(0);
  await expect(page.getByRole('button',{name:'다른 시안 생성 · 관리자 테스트',exact:true})).toBeEnabled();
  await expect(page.locator('.admin-test-mode')).toContainText('실제 API 사용 비용과 서버 예산 한도는 적용됩니다.');
@@ -209,7 +209,7 @@ test('budget-blocked administrator sees own allocation and holds without generat
  await page.addInitScript(()=>sessionStorage.setItem('aiadcast.beta-session',JSON.stringify({token:'a'.repeat(43),expires:Date.now()+3600000,user:{id:'admin-budget-test',label:'Operator',role:'admin'}})));
  await page.route('**/api/status',route=>route.fulfill({json:{mode:'invite-beta',commercialReady:false,generation:{enabled:false,reason:'BUDGET_NOT_AVAILABLE',model:'fixture',perRequestReservationUsd:.5},wallet:{available:0,reserved:0,unlimited:true,kind:'admin-test-unlimited'},budget:{limitMicros:500000,spentMicros:50000,heldMicros:200000}}}));
  page.on('request',r=>{if(r.method()==='POST'&&new URL(r.url()).pathname.startsWith('/api/'))writes++;});
- const form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();
+ const form=await details(page);await form.getByLabel('참조사진 추가').setInputFiles({name:'space.png',mimeType:'image/png',buffer:first});await form.getByRole('button',{name:'광고 생성',exact:true}).click();
  const panel=page.locator('.generation-panel');await expect(panel).toContainText('관리자 이용권은 차감되지 않지만 이미지 생성용 예산이 부족합니다.');
  const budget=panel.getByRole('note',{name:'이 계정의 생성 예산'});await expect(budget).toContainText('월 배정 $0.5000 · 사용 $0.0500 · 보류 $0.2000 · 남은 예산 $0.2500');await expect(budget).toContainText('생성 전 예약금 $0.5000');await expect(budget).toContainText('실제 1회 요금과는 다릅니다.');
  await expect(panel).not.toContainText('관리자에게 한도 확인을 요청해주세요.');await expect(panel.getByRole('link',{name:'관리자 설정 확인'})).toHaveAttribute('href','#admin');
@@ -219,7 +219,7 @@ test('budget-blocked administrator sees own allocation and holds without generat
  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 test('new credits require explicit ten-credit confirmation before auto creation and accepting never charges again',async({page})=>{
- const state=await mocks(page,{v2:true}),form=await details(page);
+ const state=await mocks(page,{v2:true}),form=await details(page);await form.getByLabel('참조사진 추가').setInputFiles({name:'space.png',mimeType:'image/png',buffer:first});
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();
  const panel=page.getByRole('region',{name:'AI 광고 제작',exact:true});
  await expect(panel.getByText(/신규 크레딧 잔액: 30/)).toBeVisible();
