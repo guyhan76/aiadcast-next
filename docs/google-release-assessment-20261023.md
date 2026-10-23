@@ -18,10 +18,10 @@ The accompanying CSV retains the original classification and adds current status
 
 - **252** now have targeted passing evidence (242 same-title, 10 explicit replacement flows). Replacement flows preserve the relevant ownership, original asset, export and checkout assertions while exercising intended Google recovery, accepted-ad versus draft storage, supplied SVG branding and restored historical jobs.
 - **42** reuse the previous scoped passing evidence; not rerun unnecessarily.
-- **24** still conflict with the existing new-generation policy (12 tests on both viewports). They remain in the suite, unchanged in substantive expectations and not skipped.
+- **24** are now reconciled with the approved photo-required release policy (12 tests on both viewports): rejection/no-write checks and historical-result recovery preserve request/source/dimension/export intent. No tests were deleted or skipped.
 - **2** reproduced a Google integration regression in offline-demo signup, now repaired and passing in the 58-case authentication regression group.
 
-Thus 296 old failure identities have scoped evidence, **24 remain unresolved**. This is not a claim of 296 passes from one exact-SHA full CI run. Previously passing cases and interactions still require consolidated CI after the blockers are settled.
+Thus all 320 old failure identities have scoped evidence; **none remain unresolved in the targeted groups**. This is not a claim of 320 passes from one exact-SHA full CI run. Previously passing cases and interactions still require consolidated CI after the blockers are settled.
 
 ## Actual local changes and checks
 
@@ -48,9 +48,9 @@ Completed targeted groups, desktop/mobile unless noted:
 
 Before the final offline-auth follow-up, these groups contain 264 distinct passing test identities, including cases already green in CI. Failed diagnostic attempts are disclosed above; they are not additional successful runs. Existing skips were not introduced or increased. Final follow-up: **58 browser checks passed (47.0s)** covering Google web/native, checkout return, explicit fixture isolation and offline demo on desktop/mobile (`/tmp/offline-auth-regression.log`). This includes two new forged/revoked demo-session cases; do not add overlapping runs as distinct coverage. Google mock domain checks: **9 passed** (`/tmp/offline-auth-domain.log`). Local `npm run build`, `npm run typecheck` and `git diff --check` passed after the product fix. No lint script exists. Whole-domain evidence remains the earlier remote pass, not a new full-domain run. No full browser suite rerun undertaken.
 
-## Exact remaining conflicts
+## Resolved product-contract boundary
 
-### Existing photo-only new generation (24 cases)
+### Approved photo-only new generation (24 cases reconciled)
 
 Ancestor `1b60bc0` added `photoGenerationDraft` / `newGenerationIssues` in `src/generation.ts:37–45`: new requests require a photo, force creative mode, strip text-example and dimension reshape flags. Current CreateCampaign does not expose old original/text-example/planar controls. These policies predate the Google integration.
 
@@ -62,7 +62,9 @@ Affected contracts:
 - text-product-example: text-only creation, unsupported-server blocking, lost response, annotation conflict (8).
 - planar-control: opt-in planar generation, capability blocking, named measured variants (6).
 
-Do not silently restore removed new-generation behavior or replace these tests with unrelated assertions. Decision needed: confirm the photo-only policy and migrate these contracts to explicit rejection/historical-result coverage while retaining source/request/dimension/save checks, OR authorize restoring the removed new-generation features as separate product work. Other legacy dimension/annotation/accepted-result tests already pass through real owner-scoped historical fixtures.
+Parent relayed the user-delegated product decision: retain photo-required creation for this release. Description-only concept creation is roadmap-only. The 24 tests now cover photo rejection with no generation/acceptance/credit write, retained input/dimensions, photo-backed creation where appropriate, and historical text/planar result recovery with source hashes, raw result, labeled pixels, acceptance, download and no duplicate provider calls. Existing AI numeric annotations remain available but cannot cause generation without a photo.
+
+Bounded results: 10 passed (`/tmp/policy-first.log`); 12 passed and 2 incorrect annotation-UI assumptions failed initially (`/tmp/policy-historical.log`); the 2 were corrected against current AI-label controls and passed (`/tmp/policy-annotation-confirmed.log`). All 24 now have passing evidence. Related domain tests: 18 passed (`/tmp/policy-domain.log`); typecheck and diff check passed. No product code changed in this policy reconciliation.
 
 ### Repaired: Google integration broke existing offline demo (2 original cases)
 
@@ -74,8 +76,8 @@ The simulated end-to-end test verifies failed/cancelled purchases add nothing, s
 
 ## Release position
 
-Do not deploy yet or launch another knowingly failing full CI. All independent targeted groups have been handled; resolve the above 24-case product contract boundary before one consolidated normal push and exact-SHA CI. Do not skip failing tests or change required gates.
+Targeted groups are now settled. Proceed with one consolidated normal push and track exact-SHA CI through completion. This document does not assert full CI success. Do not deploy before reviewing that outcome or skip tests/change required gates. Artifact quota remains an independent prior CI failure; no artifact/billing settings have been changed.
 
 Prepared APK remains source `9e11ae54`, stale relative to checkout/auth repairs, not deliverable as this release. Rebuild only from the selected verified candidate using existing approved signing. No Render deploy called. Exact-SHA Dashboard deployment remains required because available generic tool cannot pin commit. Keep auto-deploy off and rollback reference `040e261511b1af59fcb1849b1c50ca6deeae54fd`.
 
-No production data, credentials, permissions, service settings, real login/email/payment/generation, or outsourced app changed. There is no connection/approval-tool denial; remaining blockers are the 24 explicit product/test contract conflicts. The recoverable offline regression has been repaired locally.
+No production data, credentials, permissions, service settings, real login/email/payment/generation, or outsourced app changed. There is no connection/approval-tool denial; the prior 24 product/test conflicts and recoverable offline regression have been addressed locally. Whole-CI and real Google/Android verification remain separate release requirements.

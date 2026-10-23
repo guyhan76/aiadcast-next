@@ -42,8 +42,9 @@ test('eight inputs submit actual generation request once and a complete accepted
  const save=result.getByRole('button',{name:'이미지 저장 · 공유',exact:true});await expect(save).toBeEnabled();const pending=page.waitForEvent('download');await save.click();expect((await pending).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
  await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('textbox',{name:'광고 제목',exact:true})).toHaveValue('보내는 마음까지, 든든하게.');
 });
-test('photo-free service AI copy requests no dimensions and generates automatically after submit',async({page})=>{
- const state=await mocks(page),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(state.posts).toBe(1);expect(state.body.source).toBeNull();expect(state.body.request.specifications).toEqual([]);expect(state.body.request.output.showDimensions).toBe(false);expect(state.body.request.creativeDirection.copyMode).toBe('ai');
+test('photo-free service submission rejects without generation or charge, then preserves a photo-backed dimension-free brief',async({page})=>{
+ const state=await mocks(page),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(form.getByRole('alert')).toContainText('사진');await expect(page).toHaveURL(/#create$/);expect(state.posts).toBe(0);expect(state.accepts).toBe(0);expect(state.job).toBeNull();
+ await form.getByLabel('참조사진 추가').setInputFiles({name:'space.png',mimeType:'image/png',buffer:first});await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(state.posts).toBe(1);expect(state.body.source.sha256).toBe(createHash('sha256').update(first).digest('hex'));expect(state.body.request.specifications).toEqual([]);expect(state.body.request.output.showDimensions).toBe(false);expect(state.body.request.creativeDirection.copyMode).toBe('ai');
 });
 test('unauthenticated creation requires Google sign-in and never dispatches generation',async({page})=>{
  const state=await mocks(page,{auth:true});await page.goto('/#create');await expect(page.getByRole('button',{name:'Google로 계속하기',exact:true})).toBeVisible();await expect(page.locator('.consumer-create')).toHaveCount(0);expect(state.posts).toBe(0);
@@ -68,19 +69,19 @@ test('photo purpose survives draft reload and travels with the correct uploaded 
  expect(state.body.references[0].sha256).toBe(createHash('sha256').update(second).digest('hex'));
 });
 
-test('original photo choice reaches review acceptance and download without opening the advanced editor',async({page})=>{
+test('photo-backed creative request preserves source and reaches review and download without the retired original selector',async({page})=>{
  const state=await mocks(page),form=await details(page,false);
  await form.getByLabel('참조사진 추가').setInputFiles({name:'actual.png',mimeType:'image/png',buffer:first});
  await expect(form.locator('.reference-item')).toHaveCount(1);
- await form.getByRole('button',{name:'실사 그대로 사용',exact:true}).click();
+ await expect(form.getByRole('button',{name:'실사 그대로 사용',exact:true})).toHaveCount(0);
  await form.getByRole('button',{name:'직접 입력',exact:true}).click();await form.getByRole('textbox',{name:'광고 제목',exact:true}).fill('확정 문구');
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();const result=page.locator('.simple-ad-result');
- await expect(result.locator('.generation-ad-preview')).toBeVisible();expect(state.body.request.mode).toBe('original');
+ await expect(result.locator('.generation-ad-preview')).toBeVisible();expect(state.body.request.mode).toBe('creative');expect(state.body.source.sha256).toBe(createHash('sha256').update(first).digest('hex'));expect(state.body.request.copy.title).toBe('확정 문구');
  await expect(page.locator('.editor-container')).toHaveCount(0);
  await result.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await result.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  const save=result.getByRole('button',{name:'이미지 저장 · 공유',exact:true});await expect(save).toBeEnabled();
  const download=page.waitForEvent('download');await save.click();expect((await download).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.posts).toBe(1);
- await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('button',{name:'실사 그대로 사용',exact:true})).toHaveAttribute('aria-pressed','true');await expect(form.getByRole('textbox',{name:'광고 설명',exact:true})).toHaveValue('');
+ await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('button',{name:'실사 그대로 사용',exact:true})).toHaveCount(0);await expect(form.locator('.reference-item')).toHaveCount(1);await expect(form.getByRole('textbox',{name:'광고 설명',exact:true})).toHaveValue('');
 });
 
 test('photo size overflow shows a prominent red notice, retains valid previews and sends the attached original bytes',async({page})=>{
