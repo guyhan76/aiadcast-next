@@ -1,3 +1,4 @@
+import {offlineDemo} from './demo-mode';
 import {consumeLoginDestination} from './login-navigation';
 import {nativeGooglePackage,nativeGoogleRestore,nativeGoogleOpen,nativeGoogleClear,type NativeGoogleFlow} from './google-native';
 import {useEffect,useRef,useState,type ReactNode} from 'react';
@@ -19,11 +20,11 @@ export function GoogleGate({children}:{children:ReactNode}){
  const nativeUnsupported=(!!(window as Window&{AiadcastNative?:unknown}).AiadcastNative||!!configuredApiOrigin()&&configuredApiOrigin()!==location.origin)&&!nativeGooglePackage();
  // Hosted checkout uses its existing server-validated ticket, not an app login.
  const payment=['#pay','#payment-return','#checkout-return'].includes(location.hash.split('?')[0])||new URLSearchParams(location.search).get('checkout')==='return';
- const signed=!!betaSession(),recovery=route==='#account-recovery',link=signed&&(route==='#google-link'||sessionStorage.getItem('aiadcast.google-recover')==='1');
+ const signed=!!betaSession(),demoAuth=offlineDemo()&&!betaSession()&&['#login','#signup'].includes(route),recovery=route==='#account-recovery',link=signed&&(route==='#google-link'||sessionStorage.getItem('aiadcast.google-recover')==='1');
  useEffect(()=>{const update=()=>setRoute(location.hash);window.addEventListener('hashchange',update);return()=>window.removeEventListener('hashchange',update);},[]);
  useEffect(()=>{let alive=true;const guard=signInBoundary();
   if(signed){void apiRequest<{user:BetaSession['user']}>('/api/auth/session').then(r=>{guard();if(r.user.id!==betaSession()?.user.id)throw Error('SESSION_CHANGED');if(alive){setChecked(true);if(!location.hash||['#login','#signup'].includes(location.hash))location.hash='home';}}).catch(()=>{if(alive)setError(t('로그인을 확인하지 못했습니다. 다시 시도해주세요.','Could not confirm sign-in. Please retry.'));});}
-  else {setChecked(true);if(!reply&&!recovery&&!payment&&!location.hash.startsWith('#verify'))location.hash='login';}
+  else {setChecked(true);if(!reply&&!recovery&&!payment&&!demoAuth&&!location.hash.startsWith('#verify'))location.hash='login';}
   void apiRequest<{google?:{enabled:boolean}}>('/api/account/capabilities').then(r=>{if(alive)setAvailable(r.google?.enabled===true);}).catch(()=>{if(alive)setError(t('연결을 확인한 뒤 다시 시도해주세요.','Check your connection and retry.'));});return()=>{alive=false;};
  },[]);
  useEffect(()=>{if(!reply)return;let alive=true;const guard=signInBoundary();history.replaceState(null,'',location.pathname+'#login');
@@ -47,6 +48,9 @@ export function GoogleGate({children}:{children:ReactNode}){
   const flow=await apiRequest<Flow>('/api/auth/google/start',nativeGooglePackage()?{packageId:nativeGooglePackage()}:{});guard();const url=new URL(flow.url);if(url.origin!=='https://accounts.google.com'||url.pathname!=='/o/oauth2/v2/auth')throw Error('INVALID_AUTH_URL');if(nativeGooglePackage()){setNativeFlow(nativeGoogleOpen(flow));locked.current=false;setBusy(false);}else{sessionStorage.setItem(key,JSON.stringify(flow));location.assign(url.href);}
  }catch{locked.current=false;setBusy(false);setError(t('로그인을 시작하지 못했습니다. 다시 시도해주세요.','Could not start sign-in. Please retry.'));}}
  if(payment)return <>{children}</>;
+ // Deliberate device-only simulation uses its own adapter and account namespace.
+ // Signed demo sessions still pass the same session check above.
+ if(demoAuth)return <EmailAccountPage mode={route==='#signup'?'signup':'login'} preserve={async()=>{}} returnPage="home"/>;
  if(route.startsWith('#verify'))return <VerifyEmailPage/>;
  // Existing ownership verification is a recovery route, never the default signup path.
  if(recovery&&!signed)return <div className="google-recovery"><EmailAccountPage mode="login" preserve={async()=>{}} returnPage="home"/></div>;

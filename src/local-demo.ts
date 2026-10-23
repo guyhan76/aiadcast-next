@@ -4,7 +4,7 @@ import {pricingCatalog} from './pricing';
 import type {GenerationJob} from './generation-client';
 type Order={unit?:'legacy-ticket'|'credit-v2';id:string;pack:string;credits:number;amount:number;currency:'KRW';state:'pending'|'paid'|'canceled';created:number;test:true};
 type Account={newCredits?:number;credits:number;orders:Record<string,Order>;orderRequests:Record<string,string>;jobs:Record<string,GenerationJob>};
-type Store={version:1;users:Record<string,Account>;emails:Record<string,string>;requests:Record<string,{email:string;token:string;expires:number;verified:boolean}>};
+type Store={version:1;sessions?:Record<string,{userId:string;expires:number}>;users:Record<string,Account>;emails:Record<string,string>;requests:Record<string,{email:string;token:string;expires:number;verified:boolean}>};
 const key='aiadcast.local-demo-data.v1';
 const fresh=():Store=>({version:1,users:{},emails:{},requests:{}});
 async function database(){return new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('aiadcast-offline-demo',1);r.onupgradeneeded=()=>r.result.createObjectStore('data');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
@@ -30,7 +30,8 @@ async function composition(source:Asset|null,category:string,preparedBackground:
 }
 // No network, provider keys, card details, email delivery or real AI calls in this adapter.
 async function handle(path:string,body:any,session:ReturnType<typeof betaSession>){
- const store=await read();const user=session&&session.expires>Date.now()?session.user.id:undefined;const account=user?store.users[user]:undefined;
+ const store=await read(),issued=session?store.sessions?.[session.token]:undefined;
+ const user=session&&issued&&issued.expires>Date.now()&&session.expires>Date.now()&&issued.userId===session.user.id?issued.userId:undefined;const account=user?store.users[user]:undefined;
  if(path==='/api/account/capabilities')return {email:{enabled:true},checkout:{enabled:true,test:true,currency:'KRW'},demo:true};
  if(path==='/api/health')return {mode:'offline-demo',commercialReady:false};
  if(path==='/api/auth/email/request'){
@@ -41,10 +42,12 @@ async function handle(path:string,body:any,session:ReturnType<typeof betaSession
   const r=store.requests[body?.requestId];if(!r||r.token!==body?.pollToken||r.expires<Date.now())failure('EMAIL_REQUEST_INVALID');
   if(path==='/api/demo/auth/verify'){r.verified=true;await save(store);return {verified:true};}
   if(!r.verified)return {state:'pending'};
-  const id=store.emails[r.email]??('demo-'+secret().slice(0,20));store.emails[r.email]=id;store.users[id]??={credits:0,orders:{},orderRequests:{},jobs:{}};await save(store);
-  return {state:'verified',session:{token:secret(),expires:Date.now()+86400000,user:{id,label:r.email}}};
+  const id=store.emails[r.email]??('demo-'+secret().slice(0,20));store.emails[r.email]=id;store.users[id]??={credits:0,orders:{},orderRequests:{},jobs:{}};
+  const access=secret(),expires=Date.now()+86400000;store.sessions??={};store.sessions[access]={userId:id,expires};await save(store);
+  return {state:'verified',session:{token:access,expires,user:{id,label:r.email}}};
  }
- if(path==='/api/auth/logout')return {ok:true};
+ if(path==='/api/auth/logout'){if(session&&store.sessions?.[session.token]){delete store.sessions[session.token];await save(store);}return {ok:true};}
+ if(path==='/api/auth/session'){if(!account)failure('AUTH_REQUIRED',401);return {user:{id:user!,label:Object.keys(store.emails).find(email=>store.emails[email]===user)??user!,role:'member'}};}
  if(path==='/api/status')return {mode:'offline-demo',commercialReady:false,generation:{...(account?{creditQuote:quote(account)}:{}),enabled:!!account,model:'local-demo.composition',reason:account?null:'AUTH_REQUIRED'},wallet:account?wallet(account):{available:0,reserved:0,kind:'local-simulation'},budget:{limitMicros:0,spentMicros:0,heldMicros:0},assistant:{available:false}};
  if(!account)failure('AUTH_REQUIRED',401);
  if(path==='/api/account/credits')return {wallet:wallet(account!),orders:Object.values(account!.orders).sort((a,b)=>b.created-a.created).slice(0,30),grants:[]};
