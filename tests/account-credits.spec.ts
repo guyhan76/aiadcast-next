@@ -1,3 +1,5 @@
+// Korean UI scenarios explicitly select Korean; English cases override this choice.
+test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));});
 import {test,expect,type Page} from '@playwright/test';
 import sharp from 'sharp';
 const spacePhoto=await sharp({create:{width:80,height:60,channels:4,background:'#bca987'}}).png().toBuffer();

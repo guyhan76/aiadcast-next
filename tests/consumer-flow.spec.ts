@@ -1,3 +1,5 @@
+// Korean UI scenarios explicitly select Korean; English cases override this choice.
+test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));});
 import {authenticatedSession,mockSession} from './helpers/authenticated-session';
 import {test,expect,type Page} from '@playwright/test';
 import sharp from 'sharp';
@@ -203,6 +205,11 @@ test('result guidance stays readable before and after acceptance without alterin
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Save / share image',exact:true}).click();
  expect(await sharp((await(await download).path())!).metadata()).toMatchObject({width:1080,height:1920});
  expect(state.posts).toBe(1);expect(state.accepts).toBe(1);
+ const savedPreview=await page.locator('.accepted-ad > canvas').evaluate((c:HTMLCanvasElement)=>c.toDataURL());
+ if(await page.locator('.new-ad-options').getAttribute('open')===null)await page.locator('.new-ad-options > summary').click();
+ await expect(page.locator('.new-ad-options .generate-button')).toBeVisible();
+ expect(await page.locator('.accepted-ad > canvas').evaluate((c:HTMLCanvasElement)=>c.toDataURL())).toBe(savedPreview);
+ expect(state.posts).toBe(1);expect(state.accepts).toBe(1);
 });
 
 test('budget-blocked administrator sees own allocation and holds without generating or changing budget',async({page},info)=>{
@@ -232,4 +239,10 @@ test('new credits require explicit ten-credit confirmation before auto creation 
  await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await panel.getByRole('button',{name:'사용 확정 · 추가 차감 없음'}).click();
  await expect.poll(()=>state.accepts).toBe(1);expect(state.posts).toBe(1);
  await expect(panel.getByText(/신규 크레딧 잔액: 20/)).toBeVisible();
+});
+test('English photo creation reviews and saves a complete ad without duplicate requests',async({page})=>{
+ const state=await mocks(page);await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','en'));await page.goto('/#create');const form=page.locator('.consumer-create');
+ await form.getByLabel('Choose an industry').selectOption('lodging');await form.getByRole('textbox',{name:'Service name',exact:true}).fill('Forest stay');await form.getByRole('textbox',{name:'Description',exact:true}).fill('Quiet rooms surrounded by trees');await form.locator('input[type=file]').first().setInputFiles({name:'room.png',mimeType:'image/png',buffer:first});await expect(form.locator('.reference-item img')).toBeVisible();await form.getByRole('button',{name:'Generate ad',exact:true}).click();
+ const result=page.locator('.simple-ad-result');await expect(result.locator('.generation-ad-preview')).toBeVisible();expect(state.posts).toBe(1);expect(state.body.request.output.locale).toBe('en');expect(state.body.request.output.showDimensions).toBe(false);
+ await result.getByRole('checkbox',{name:'I reviewed the product, material structure, dimensions, price and copy.',exact:true}).check();await result.getByRole('button',{name:'Accept · use 1 credit',exact:true}).click();await expect(result.locator('.accepted-ad')).toBeVisible();const pending=page.waitForEvent('download');await result.getByRole('button',{name:'Save / share image',exact:true}).click();expect(await sharp((await(await pending).path())!).metadata()).toMatchObject({format:'png',width:1080,height:1920});expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
 });

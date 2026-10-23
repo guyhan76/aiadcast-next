@@ -1,3 +1,5 @@
+// Korean UI scenarios explicitly select Korean; English cases override this choice.
+test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));});
 import {test,expect,type Page} from '@playwright/test';
 import {protectedScreen,mockSession} from './helpers/authenticated-session';
 // This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
