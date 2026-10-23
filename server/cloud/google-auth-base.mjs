@@ -14,11 +14,12 @@ export class GoogleAuth {
         await this.db.exec(`CREATE TABLE IF NOT EXISTS google_identities(subject TEXT PRIMARY KEY,user_id TEXT UNIQUE NOT NULL REFERENCES users(id));
    CREATE TABLE IF NOT EXISTS google_requests(state_hash TEXT PRIMARY KEY,proof_hash TEXT NOT NULL,nonce TEXT NOT NULL,verifier TEXT NOT NULL,session_hash TEXT NOT NULL,expires INTEGER NOT NULL,consumed INTEGER NOT NULL DEFAULT 0);
    CREATE TABLE IF NOT EXISTS google_native_requests(state_hash TEXT PRIMARY KEY REFERENCES google_requests(state_hash) ON DELETE CASCADE,package_id TEXT NOT NULL,claims TEXT);
-   CREATE TABLE IF NOT EXISTS google_request_languages(state_hash TEXT PRIMARY KEY REFERENCES google_requests(state_hash) ON DELETE CASCADE,language TEXT NOT NULL CHECK(language IN ('ko','en')));`);
+   CREATE TABLE IF NOT EXISTS google_request_languages(state_hash TEXT PRIMARY KEY REFERENCES google_requests(state_hash) ON DELETE CASCADE,language TEXT NOT NULL CHECK(language IN ('ko','en')));
+   CREATE TABLE IF NOT EXISTS google_link_requests(state_hash TEXT PRIMARY KEY REFERENCES google_requests(state_hash) ON DELETE CASCADE,user_id TEXT REFERENCES users(id),subject TEXT,email_request_id TEXT,expires INTEGER NOT NULL,consumed INTEGER NOT NULL DEFAULT 0);`);
         return this;
     }
     available() { return !!this.provider; }
-    async startGoogle(authorization, packageId, language = 'en') {
+    async startGoogle(authorization, packageId, language = 'en', linkRecovery = false) {
         if (!this.available())
             fail('GOOGLE_UNAVAILABLE', 503);
         if (packageId !== undefined && !['com.selluplabs.aiadcast.next', 'com.selluplabs.aiadcast.next.demo', 'com.selluplabs.aiadcast.next.dev', 'com.selluplabs.aiadcast.next.preview'].includes(packageId))
@@ -32,6 +33,8 @@ export class GoogleAuth {
             if ((await this.db.prepare('SELECT COUNT(*) n FROM google_requests').get()).n >= 1000)
                 fail('RATE_LIMITED', 429);
             await this.db.prepare('INSERT INTO google_requests(state_hash,proof_hash,nonce,verifier,session_hash,expires) VALUES(?,?,?,?,?,?)').run(hash(state), hash(proof), nonce, verifier, authorization ? hash(authorization) : '', expires);
+            if (linkRecovery === true && !authorization)
+                await this.db.prepare('INSERT INTO google_link_requests(state_hash,expires) VALUES(?,?)').run(hash(state), expires);
             if (packageId) {
                 await this.db.prepare('INSERT INTO google_native_requests(state_hash,package_id) VALUES(?,?)').run(hash(state), packageId);
                 await this.db.prepare('INSERT INTO google_request_languages(state_hash,language) VALUES(?,?)').run(hash(state), language === 'ko' ? 'ko' : 'en');
@@ -84,8 +87,14 @@ export class GoogleAuth {
                 identity = { user_id: owner.id };
             }
             if (!identity) {
-                if (await this.db.prepare('SELECT user_id FROM email_identities WHERE email=?').get(claims.email))
-                    fail('GOOGLE_ACCOUNT_LINK_REQUIRED', 409);
+                const existingEmail = await this.db.prepare('SELECT user_id FROM email_identities WHERE email=?').get(claims.email);
+                if (existingEmail) {
+                    const pending = await this.db.prepare('SELECT * FROM google_link_requests WHERE state_hash=? AND consumed=0 AND expires>?').get(flow.state_hash, this.now());
+                    if (!pending)
+                        fail('GOOGLE_ACCOUNT_LINK_REQUIRED', 409);
+                    await this.db.prepare('UPDATE google_link_requests SET user_id=?,subject=? WHERE state_hash=?').run(existingEmail.user_id, claims.subject, flow.state_hash);
+                    return { linkRequired: true, expires: pending.expires };
+                }
                 if ((await this.db.prepare('SELECT COUNT(*) n FROM users').get()).n >= 20)
                     fail('BETA_ALLOCATION_EXCEEDED', 409);
                 const id = randomUUID();
@@ -128,6 +137,9 @@ export class GoogleAuth {
             fail('GOOGLE_UNAVAILABLE', 503);
         if (!valid(body?.state) || !valid(body?.proof))
             fail('GOOGLE_FLOW_INVALID');
+        const pending = await this.linkStatusIfPresent(body, authorization);
+        if (pending)
+            return { state: 'link-required', expires: pending.expires };
         const row = await this.store.transaction(async () => {
             const r = await this.db.prepare('SELECT r.*,n.claims FROM google_requests r JOIN google_native_requests n ON n.state_hash=r.state_hash WHERE r.state_hash=? AND r.proof_hash=? AND r.expires>? AND r.consumed<2').get(hash(body.state), hash(body.proof), this.now());
             if (!r || r.session_hash !== (authorization ? hash(authorization) : ''))
@@ -141,7 +153,96 @@ export class GoogleAuth {
         });
         if (!row)
             return { state: 'pending' };
-        return { state: 'verified', session: await this.completeGoogle(row, JSON.parse(row.claims), authorization) };
+        const session = await this.completeGoogle(row, JSON.parse(row.claims), authorization);
+        return session.linkRequired ? { state: 'link-required', expires: session.expires } : { state: 'verified', session };
+    }
+    // Recovery requires both the original device proof and an email request created
+    // for this exact verified subject/account. Generic email sessions cannot substitute.
+    async linkRow(body, authorization) {
+        if (authorization || !valid(body?.state) || !valid(body?.proof))
+            fail('GOOGLE_LINK_INVALID');
+        const row = await this.db.prepare(`SELECT l.*,r.proof_hash,r.session_hash FROM google_link_requests l JOIN google_requests r ON r.state_hash=l.state_hash
+   WHERE l.state_hash=? AND r.proof_hash=? AND l.expires>? AND l.consumed=0`).get(hash(body.state), hash(body.proof), this.now());
+        if (!row || row.session_hash || !row.user_id || !row.subject)
+            fail('GOOGLE_LINK_INVALID');
+        const user = await this.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(row.user_id);
+        if (!user)
+            fail('AUTH_REQUIRED');
+        return row;
+    }
+    async linkStatusIfPresent(body, authorization) {
+        if (!valid(body?.state) || !valid(body?.proof))
+            return null;
+        const row = await this.db.prepare('SELECT subject FROM google_link_requests WHERE state_hash=?').get(hash(body.state));
+        return row?.subject ? await this.linkStatus(body, authorization) : null;
+    }
+    async linkStatus(body, authorization) {
+        const row = await this.linkRow(body, authorization);
+        return { state: row.email_request_id ? 'waiting' : 'confirmation', expires: row.expires };
+    }
+    async requestLinkEmail(body, authorization, email) {
+        if (body?.consent !== true)
+            fail('GOOGLE_LINK_CONSENT_REQUIRED', 400);
+        const row = await this.store.transaction(async () => {
+            const r = await this.linkRow(body, authorization);
+            if (r.email_request_id)
+                return { ...r, existing: true };
+            await this.db.prepare("UPDATE google_link_requests SET email_request_id='sending' WHERE state_hash=?").run(r.state_hash);
+            return r;
+        });
+        if (row.existing)
+            return await this.linkStatus(body, authorization);
+        let request;
+        try {
+            const identity = await this.db.prepare('SELECT email FROM email_identities WHERE user_id=?').get(row.user_id);
+            if (!identity)
+                fail('GOOGLE_LINK_INVALID');
+            request = await email.request(identity.email);
+            await this.store.transaction(async () => { await this.linkRow(body, authorization); await this.db.prepare('UPDATE google_link_requests SET email_request_id=? WHERE state_hash=?').run(request.requestId, row.state_hash); });
+        }
+        catch (error) {
+            if (request)
+                await this.db.prepare('UPDATE email_requests SET consumed=1 WHERE id=?').run(request.requestId);
+            await this.db.prepare("UPDATE google_link_requests SET email_request_id=NULL WHERE state_hash=? AND email_request_id='sending'").run(row.state_hash);
+            throw error;
+        }
+        // Poll secret stays server-side; neither browser receives a session from verify.
+        return await this.linkStatus(body, authorization);
+    }
+    async completeLink(body, authorization) {
+        return await this.store.transaction(async () => {
+            const row = await this.linkRow(body, authorization);
+            if (!row.email_request_id || row.email_request_id === 'sending')
+                return { state: 'pending' };
+            const email = await this.db.prepare(`SELECT e.* FROM email_requests e JOIN email_identities i ON i.email=e.email
+    WHERE e.id=? AND i.user_id=? AND e.expires>? AND e.consumed=0`).get(row.email_request_id, row.user_id, this.now());
+            if (!email)
+                fail('GOOGLE_LINK_INVALID');
+            if (!email.approved)
+                return { state: 'pending' };
+            const bySubject = await this.db.prepare('SELECT user_id FROM google_identities WHERE subject=?').get(row.subject);
+            const byUser = await this.db.prepare('SELECT subject FROM google_identities WHERE user_id=?').get(row.user_id);
+            if (bySubject && bySubject.user_id !== row.user_id || byUser && byUser.subject !== row.subject)
+                fail('GOOGLE_LINK_CONFLICT', 409);
+            if (!bySubject)
+                await this.db.prepare('INSERT INTO google_identities VALUES(?,?)').run(row.subject, row.user_id);
+            await this.db.prepare('UPDATE google_link_requests SET consumed=1 WHERE state_hash=?').run(row.state_hash);
+            await this.db.prepare('UPDATE email_requests SET consumed=1 WHERE id=?').run(email.id);
+            const user = await this.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(row.user_id);
+            if (!user)
+                fail('AUTH_REQUIRED');
+            return { state: 'verified', session: await this.store.createSession(user) };
+        });
+    }
+    async cancelLink(body, authorization) {
+        // Cancellation only invalidates this device-proven request; a replacement session cannot authorize linking.
+        return await this.store.transaction(async () => {
+            const row = await this.linkRow(body, undefined);
+            await this.db.prepare('UPDATE google_link_requests SET consumed=1 WHERE state_hash=?').run(row.state_hash);
+            if (row.email_request_id)
+                await this.db.prepare('UPDATE email_requests SET consumed=1 WHERE id=?').run(row.email_request_id);
+            return { canceled: true };
+        });
     }
     async finishGoogle(body, authorization) {
         const flow = await this.claimGoogle(body, authorization);

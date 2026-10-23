@@ -1,3 +1,4 @@
+import {GoogleAccountRecovery,rememberGoogleLink,readGoogleLink,type GoogleLinkFlow} from './GoogleAccountRecovery';
 import {BrandLogo} from './BrandLogo';
 import {offlineDemo} from './demo-mode';
 import {consumeLoginDestination} from './login-navigation';
@@ -12,11 +13,18 @@ import {useUiLanguage,LanguageSwitcher} from './ui-language';
 import './google-signin.css';
 const key='aiadcast.google-flow';
 type Flow={state:string;proof:string;expires:number;url:string};
-const exchanges=new Map<string,Promise<BetaSession>>();
+const exchanges=new Map<string,Promise<BetaSession|{linkRequired:true;expires:number}>>();
 window.addEventListener('aiadcast-session-change',()=>{try{nativeGoogleClear(JSON.parse(sessionStorage.getItem(key)??'null')?.state);}catch{}sessionStorage.removeItem(key);exchanges.clear();});
 function callback(){try{const p=new URLSearchParams(location.search),flow=JSON.parse(sessionStorage.getItem(key)??'null') as Flow|null;return p.get('google')==='1'?{state:p.get('state'),code:p.get('code'),error:p.get('error'),flow}:null;}catch{return null;}}
+async function restoreLink(flow:{state:string;proof:string;expires:number}){
+ const status=await apiRequest<{state:string;expires:number}>('/api/auth/google/link/status',{state:flow.state,proof:flow.proof});
+ if(!['confirmation','waiting'].includes(status.state)||!Number.isFinite(status.expires)||status.expires<=Date.now())return;
+ // Storage is written only after the caller revalidates its session boundary.
+ return {state:flow.state,proof:flow.proof,expires:Math.min(status.expires,flow.expires)};
+}
 export function GoogleGate({children}:{children:ReactNode}){
  const {t,language}=useUiLanguage();const [route,setRoute]=useState(location.hash),[reply]=useState(callback),[checked,setChecked]=useState(false),[available,setAvailable]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[linkNeeded,setLinkNeeded]=useState(false);const locked=useRef(false);
+ const [linkFlow,setLinkFlow]=useState<GoogleLinkFlow|undefined>(readGoogleLink);
  const [nativeFlow,setNativeFlow]=useState<NativeGoogleFlow|undefined>(nativeGoogleRestore);
  const nativeUnsupported=(!!(window as Window&{AiadcastNative?:unknown}).AiadcastNative||!!configuredApiOrigin()&&configuredApiOrigin()!==location.origin)&&!nativeGooglePackage();
  // Hosted checkout uses its existing server-validated ticket, not an app login.
@@ -32,22 +40,23 @@ export function GoogleGate({children}:{children:ReactNode}){
   const {flow,state,code}=reply;
   if(reply.error||!flow||flow.expires<=Date.now()||flow.state!==state||!code){sessionStorage.removeItem(key);setError(t('로그인을 다시 시작해주세요.','Please start sign-in again.'));return;}
   setBusy(true);locked.current=true;
-  let result=exchanges.get(flow.state);if(!result){result=apiRequest<BetaSession>('/api/auth/google/finish',{state,proof:flow.proof,code});exchanges.set(flow.state,result);}
-  void result.then(session=>{guard();if(!alive)return;sessionStorage.removeItem(key);sessionStorage.removeItem('aiadcast.google-recover');setBetaSession(session,consumeLoginDestination());}).catch(e=>{if(!alive)return;sessionStorage.removeItem(key);const need=e instanceof ApiRequestFailure&&e.code==='GOOGLE_ACCOUNT_LINK_REQUIRED';setLinkNeeded(need);setError(need?t('기존 계정을 확인한 뒤 Google을 연결해주세요.','Verify your existing account to connect Google.'):t('로그인을 완료하지 못했습니다. 다시 시도해주세요.','Could not finish sign-in. Please retry.'));}).finally(()=>{if(alive){locked.current=false;setBusy(false);}});return()=>{alive=false;};
+  let result=exchanges.get(flow.state);if(!result){result=apiRequest<BetaSession|{linkRequired:true;expires:number}>('/api/auth/google/finish',{state,proof:flow.proof,code});exchanges.set(flow.state,result);}
+  void result.then(session=>{guard();if(!alive)return;if('linkRequired' in session){setLinkFlow(rememberGoogleLink({...flow,expires:session.expires}));return;}sessionStorage.removeItem(key);sessionStorage.removeItem('aiadcast.google-recover');setBetaSession(session,consumeLoginDestination());}).catch(async e=>{if(!alive)return;try{guard();const restored=await restoreLink(flow);guard();if(alive&&restored){setLinkFlow(rememberGoogleLink(restored));return;}}catch{}if(!alive)return;sessionStorage.removeItem(key);const need=e instanceof ApiRequestFailure&&e.code==='GOOGLE_ACCOUNT_LINK_REQUIRED';setLinkNeeded(need);setError(need?t('기존 계정을 확인한 뒤 Google을 연결해주세요.','Verify your existing account to connect Google.'):t('로그인을 완료하지 못했습니다. 다시 시도해주세요.','Could not finish sign-in. Please retry.'));}).finally(()=>{if(alive){locked.current=false;setBusy(false);}});return()=>{alive=false;};
  },[reply]);
  function clearNative(){nativeGoogleClear(nativeFlow?.state);sessionStorage.removeItem(key);setNativeFlow(undefined);}
- useEffect(()=>{if(!nativeFlow)return;let alive=true;const guard=signInBoundary();
+ useEffect(()=>{if(!nativeFlow||linkFlow)return;let alive=true;const guard=signInBoundary();
   const fail=(error?:unknown)=>{if(!alive)return;nativeGoogleClear(nativeFlow.state);sessionStorage.removeItem(key);setNativeFlow(undefined);const need=error instanceof ApiRequestFailure&&error.code==='GOOGLE_ACCOUNT_LINK_REQUIRED';setLinkNeeded(need);setError(need?t('기존 계정을 확인한 뒤 Google을 연결해주세요.','Verify your existing account to connect Google.'):t('로그인을 다시 시작해주세요.','Please start sign-in again.'));};
   const poll=async()=>{if(!alive||locked.current||document.visibilityState!=='visible')return;if(nativeFlow.expires<=Date.now()){fail();return;}locked.current=true;
-   try{const r=await apiRequest<{state:'pending'|'verified';session?:BetaSession}>('/api/auth/google/native-poll',{state:nativeFlow.state,proof:nativeFlow.proof});guard();if(!alive)return;if(r.state==='verified'&&r.session){nativeGoogleClear(nativeFlow.state);sessionStorage.removeItem(key);sessionStorage.removeItem('aiadcast.google-recover');setBetaSession(r.session,consumeLoginDestination());}}
-   catch(e){fail(e);}finally{locked.current=false;}
+   try{const r=await apiRequest<{state:'pending'|'verified'|'link-required';expires?:number;session?:BetaSession}>('/api/auth/google/native-poll',{state:nativeFlow.state,proof:nativeFlow.proof});guard();if(!alive)return;if(r.state==='link-required'){setLinkFlow(rememberGoogleLink({...nativeFlow,expires:r.expires??nativeFlow.expires}));return;}if(r.state==='verified'&&r.session){nativeGoogleClear(nativeFlow.state);sessionStorage.removeItem(key);sessionStorage.removeItem('aiadcast.google-recover');setBetaSession(r.session,consumeLoginDestination());}}
+   catch(e){if(alive){try{guard();const restored=await restoreLink(nativeFlow);guard();if(alive&&restored){setLinkFlow(rememberGoogleLink(restored));return;}}catch{}fail(e);}}finally{locked.current=false;}
   };
   const resume=()=>void poll();window.addEventListener('aiadcast-google-return',resume);window.addEventListener('aiadcast-google-open-failed',fail);window.addEventListener('focus',resume);document.addEventListener('visibilitychange',resume);const timer=setInterval(resume,3000);resume();
   return()=>{alive=false;clearInterval(timer);window.removeEventListener('aiadcast-google-return',resume);window.removeEventListener('aiadcast-google-open-failed',fail);window.removeEventListener('focus',resume);document.removeEventListener('visibilitychange',resume);};
- },[nativeFlow]);
+ },[nativeFlow,linkFlow]);
  async function start(){if(locked.current||nativeUnsupported)return;locked.current=true;setBusy(true);setError('');const guard=signInBoundary();try{
-  const flow=await apiRequest<Flow>('/api/auth/google/start',{language,...(nativeGooglePackage()?{packageId:nativeGooglePackage()}:{})});guard();const url=new URL(flow.url);if(url.origin!=='https://accounts.google.com'||url.pathname!=='/o/oauth2/v2/auth')throw Error('INVALID_AUTH_URL');if(nativeGooglePackage()){setNativeFlow(nativeGoogleOpen(flow));locked.current=false;setBusy(false);}else{sessionStorage.setItem(key,JSON.stringify(flow));location.assign(url.href);}
+  const flow=await apiRequest<Flow>('/api/auth/google/start',{language,linkRecovery:true,...(nativeGooglePackage()?{packageId:nativeGooglePackage()}:{})});guard();const url=new URL(flow.url);if(url.origin!=='https://accounts.google.com'||url.pathname!=='/o/oauth2/v2/auth')throw Error('INVALID_AUTH_URL');if(nativeGooglePackage()){setNativeFlow(nativeGoogleOpen(flow));locked.current=false;setBusy(false);}else{sessionStorage.setItem(key,JSON.stringify(flow));location.assign(url.href);}
  }catch{locked.current=false;setBusy(false);setError(t('로그인을 시작하지 못했습니다. 다시 시도해주세요.','Could not start sign-in. Please retry.'));}}
+ if(linkFlow&&!signed)return <GoogleAccountRecovery flow={linkFlow} onCancel={()=>{setLinkFlow(undefined);clearNative();location.assign(location.pathname+'#login');}}/>;
  if(payment)return <>{children}</>;
  // Deliberate device-only simulation uses its own adapter and account namespace.
  // Signed demo sessions still pass the same session check above.

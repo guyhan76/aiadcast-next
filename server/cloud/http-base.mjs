@@ -93,7 +93,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 res.end(bytes);
                 return;
             }
-            limit(['/api/auth/google/start', '/api/auth/google/finish', '/api/auth/google/native-callback', '/api/auth/login', '/api/auth/test/signup', '/api/auth/test/login', '/api/auth/email/request', '/api/auth/email/verify', '/api/checkout/confirm', '/api/checkout/launch'].includes(url.pathname));
+            limit(['/api/auth/google/start', '/api/auth/google/finish', '/api/auth/google/native-callback', '/api/auth/google/link/request', '/api/auth/login', '/api/auth/test/signup', '/api/auth/test/login', '/api/auth/email/request', '/api/auth/email/verify', '/api/checkout/confirm', '/api/checkout/launch'].includes(url.pathname));
             if (req.headers.origin && !cors)
                 throw new ApiFailure('ORIGIN_NOT_ALLOWED', 403);
             if (req.method === 'OPTIONS') {
@@ -143,9 +143,25 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 send(res, 200, result, cors);
                 return;
             }
+            if (req.method === 'POST' && url.pathname.startsWith('/api/auth/google/link/')) {
+                const b = await read(req, 2048);
+                let result;
+                if (url.pathname.endsWith('/status'))
+                    result = await google.linkStatus(b, req.headers.authorization);
+                else if (url.pathname.endsWith('/request'))
+                    result = await google.requestLinkEmail(b, req.headers.authorization, email);
+                else if (url.pathname.endsWith('/complete'))
+                    result = await google.completeLink(b, req.headers.authorization);
+                else if (url.pathname.endsWith('/cancel'))
+                    result = await google.cancelLink(b, req.headers.authorization);
+                else
+                    throw new ApiFailure('NOT_FOUND', 404);
+                send(res, 200, result, cors);
+                return;
+            }
             if (req.method === 'POST' && url.pathname === '/api/auth/google/start') {
                 const b = await read(req, 1024);
-                send(res, 200, await google.startGoogle(req.headers.authorization, b?.packageId, googleUiLanguage(b?.language, req.headers['accept-language'])), cors);
+                send(res, 200, await google.startGoogle(req.headers.authorization, b?.packageId, googleUiLanguage(b?.language, req.headers['accept-language']), b?.linkRecovery), cors);
                 return;
             }
             if (req.method === 'GET' && url.pathname === '/api/auth/google/native-callback') {

@@ -1,6 +1,8 @@
 import {test,expect,type Page} from '@playwright/test';
 import {authenticatedSession} from './helpers/authenticated-session';
 import sharp from 'sharp';
+// These existing assertions exercise the explicitly selected Korean UI.
+test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));});
 const photo=await sharp({create:{width:200,height:300,channels:4,background:'#abcdef'}}).png().toBuffer();
 const session={token:'a'.repeat(43),expires:Date.now()+86400000,user:{id:'email-user-123',label:'test@example.com'}};
 async function setup(page:Page){const state={approved:false,requests:[] as string[],order:undefined as any,paid:false};await page.route('**/api/**',async route=>{
