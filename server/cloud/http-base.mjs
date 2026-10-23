@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { ApiFailure } from '../generation-service.mjs';
 import { ProviderFailure } from '../openai-image-adapter.mjs';
 import { GoogleAuth } from './google-auth-base.mjs';
+import { googleReturnPage, googleUiLanguage } from '../google-return-page.mjs';
 import { EmailAuth } from './email-auth-base.mjs';
 import { PasswordAuth } from './password-auth-base.mjs';
 import { TestCheckout } from './test-checkout-base.mjs';
@@ -144,13 +145,13 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
             }
             if (req.method === 'POST' && url.pathname === '/api/auth/google/start') {
                 const b = await read(req, 1024);
-                send(res, 200, await google.startGoogle(req.headers.authorization, b?.packageId), cors);
+                send(res, 200, await google.startGoogle(req.headers.authorization, b?.packageId, googleUiLanguage(b?.language, req.headers['accept-language'])), cors);
                 return;
             }
             if (req.method === 'GET' && url.pathname === '/api/auth/google/native-callback') {
-                const target = await google.approveNativeGoogle(url.searchParams.get('state'), url.searchParams.get('code'));
-                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'; base-uri 'none'" });
-                res.end('<!doctype html><meta name=viewport content="width=device-width,initial-scale=1"><title>aiadcast</title><h1>aiadcast</h1><p>Google sign-in confirmed. Return to aiadcast to continue.</p><p><a href="' + target + '">Return to aiadcast</a></p>');
+                const state = url.searchParams.get('state'), target = await google.approveNativeGoogle(state, url.searchParams.get('code')), language = await google.nativeGoogleLanguage(state) ?? googleUiLanguage(undefined, req.headers['accept-language']);
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" });
+                res.end(googleReturnPage(target, language));
                 return;
             }
             if (req.method === 'POST' && url.pathname === '/api/auth/google/native-poll') {

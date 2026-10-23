@@ -16,7 +16,7 @@ const exchanges=new Map<string,Promise<BetaSession>>();
 window.addEventListener('aiadcast-session-change',()=>{try{nativeGoogleClear(JSON.parse(sessionStorage.getItem(key)??'null')?.state);}catch{}sessionStorage.removeItem(key);exchanges.clear();});
 function callback(){try{const p=new URLSearchParams(location.search),flow=JSON.parse(sessionStorage.getItem(key)??'null') as Flow|null;return p.get('google')==='1'?{state:p.get('state'),code:p.get('code'),error:p.get('error'),flow}:null;}catch{return null;}}
 export function GoogleGate({children}:{children:ReactNode}){
- const {t}=useUiLanguage();const [route,setRoute]=useState(location.hash),[reply]=useState(callback),[checked,setChecked]=useState(false),[available,setAvailable]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[linkNeeded,setLinkNeeded]=useState(false);const locked=useRef(false);
+ const {t,language}=useUiLanguage();const [route,setRoute]=useState(location.hash),[reply]=useState(callback),[checked,setChecked]=useState(false),[available,setAvailable]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[linkNeeded,setLinkNeeded]=useState(false);const locked=useRef(false);
  const [nativeFlow,setNativeFlow]=useState<NativeGoogleFlow|undefined>(nativeGoogleRestore);
  const nativeUnsupported=(!!(window as Window&{AiadcastNative?:unknown}).AiadcastNative||!!configuredApiOrigin()&&configuredApiOrigin()!==location.origin)&&!nativeGooglePackage();
  // Hosted checkout uses its existing server-validated ticket, not an app login.
@@ -46,7 +46,7 @@ export function GoogleGate({children}:{children:ReactNode}){
   return()=>{alive=false;clearInterval(timer);window.removeEventListener('aiadcast-google-return',resume);window.removeEventListener('aiadcast-google-open-failed',fail);window.removeEventListener('focus',resume);document.removeEventListener('visibilitychange',resume);};
  },[nativeFlow]);
  async function start(){if(locked.current||nativeUnsupported)return;locked.current=true;setBusy(true);setError('');const guard=signInBoundary();try{
-  const flow=await apiRequest<Flow>('/api/auth/google/start',nativeGooglePackage()?{packageId:nativeGooglePackage()}:{});guard();const url=new URL(flow.url);if(url.origin!=='https://accounts.google.com'||url.pathname!=='/o/oauth2/v2/auth')throw Error('INVALID_AUTH_URL');if(nativeGooglePackage()){setNativeFlow(nativeGoogleOpen(flow));locked.current=false;setBusy(false);}else{sessionStorage.setItem(key,JSON.stringify(flow));location.assign(url.href);}
+  const flow=await apiRequest<Flow>('/api/auth/google/start',{language,...(nativeGooglePackage()?{packageId:nativeGooglePackage()}:{})});guard();const url=new URL(flow.url);if(url.origin!=='https://accounts.google.com'||url.pathname!=='/o/oauth2/v2/auth')throw Error('INVALID_AUTH_URL');if(nativeGooglePackage()){setNativeFlow(nativeGoogleOpen(flow));locked.current=false;setBusy(false);}else{sessionStorage.setItem(key,JSON.stringify(flow));location.assign(url.href);}
  }catch{locked.current=false;setBusy(false);setError(t('로그인을 시작하지 못했습니다. 다시 시도해주세요.','Could not start sign-in. Please retry.'));}}
  if(payment)return <>{children}</>;
  // Deliberate device-only simulation uses its own adapter and account namespace.
