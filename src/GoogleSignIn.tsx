@@ -44,11 +44,22 @@ export function GoogleGate({children}:{children:ReactNode}){
   void result.then(session=>{guard();if(!alive)return;if('linkRequired' in session){setLinkFlow(rememberGoogleLink({...flow,expires:session.expires}));return;}sessionStorage.removeItem(key);sessionStorage.removeItem('aiadcast.google-recover');setBetaSession(session,consumeLoginDestination());}).catch(async e=>{if(!alive)return;try{guard();const restored=await restoreLink(flow);guard();if(alive&&restored){setLinkFlow(rememberGoogleLink(restored));return;}}catch{}if(!alive)return;sessionStorage.removeItem(key);const need=e instanceof ApiRequestFailure&&e.code==='GOOGLE_ACCOUNT_LINK_REQUIRED';setLinkNeeded(need);setError(need?t('기존 계정을 확인한 뒤 Google을 연결해주세요.','Verify your existing account to connect Google.'):t('로그인을 완료하지 못했습니다. 다시 시도해주세요.','Could not finish sign-in. Please retry.'));}).finally(()=>{if(alive){locked.current=false;setBusy(false);}});return()=>{alive=false;};
  },[reply]);
  function clearNative(){nativeGoogleClear(nativeFlow?.state);sessionStorage.removeItem(key);setNativeFlow(undefined);}
- useEffect(()=>{if(!nativeFlow||linkFlow)return;let alive=true;const guard=signInBoundary();
-  const fail=(error?:unknown)=>{if(!alive)return;nativeGoogleClear(nativeFlow.state);sessionStorage.removeItem(key);setNativeFlow(undefined);const need=error instanceof ApiRequestFailure&&error.code==='GOOGLE_ACCOUNT_LINK_REQUIRED';setLinkNeeded(need);setError(need?t('기존 계정을 확인한 뒤 Google을 연결해주세요.','Verify your existing account to connect Google.'):t('로그인을 다시 시작해주세요.','Please start sign-in again.'));};
-  const poll=async()=>{if(!alive||locked.current||document.visibilityState!=='visible')return;if(nativeFlow.expires<=Date.now()){fail();return;}locked.current=true;
+ useEffect(()=>{if(!nativeFlow||linkFlow)return;let alive=true,polling=false;const guard=signInBoundary();
+  const fail=(error?:unknown)=>{
+   if(!alive)return;
+   alive=false;
+   nativeGoogleClear(nativeFlow.state);sessionStorage.removeItem(key);setNativeFlow(undefined);
+   const need=error instanceof ApiRequestFailure&&error.code==='GOOGLE_ACCOUNT_LINK_REQUIRED';
+   const chromeUnavailable=error instanceof CustomEvent&&error.detail?.code==='CHROME_UNAVAILABLE';
+   setLinkNeeded(need);
+   setError(chromeUnavailable
+    ?t('Chrome을 열 수 없습니다. Chrome을 설치하거나 사용 설정한 뒤 다시 시도해주세요.','Cannot open Chrome. Install or enable Chrome, then try again.')
+    :need?t('기존 계정을 확인한 뒤 Google을 연결해주세요.','Verify your existing account to connect Google.')
+    :t('로그인을 다시 시작해주세요.','Please start sign-in again.'));
+  };
+  const poll=async()=>{if(!alive||locked.current||polling||document.visibilityState!=='visible')return;if(nativeFlow.expires<=Date.now()){fail();return;}polling=true;
    try{const r=await apiRequest<{state:'pending'|'verified'|'link-required';expires?:number;session?:BetaSession}>('/api/auth/google/native-poll',{state:nativeFlow.state,proof:nativeFlow.proof});guard();if(!alive)return;if(r.state==='link-required'){setLinkFlow(rememberGoogleLink({...nativeFlow,expires:r.expires??nativeFlow.expires}));return;}if(r.state==='verified'&&r.session){nativeGoogleClear(nativeFlow.state);sessionStorage.removeItem(key);sessionStorage.removeItem('aiadcast.google-recover');setBetaSession(r.session,consumeLoginDestination());}}
-   catch(e){if(alive){try{guard();const restored=await restoreLink(nativeFlow);guard();if(alive&&restored){setLinkFlow(rememberGoogleLink(restored));return;}}catch{}fail(e);}}finally{locked.current=false;}
+   catch(e){if(alive){try{guard();const restored=await restoreLink(nativeFlow);guard();if(alive&&restored){setLinkFlow(rememberGoogleLink(restored));return;}}catch{}fail(e);}}finally{polling=false;}
   };
   const resume=()=>void poll();window.addEventListener('aiadcast-google-return',resume);window.addEventListener('aiadcast-google-open-failed',fail);window.addEventListener('focus',resume);document.addEventListener('visibilitychange',resume);const timer=setInterval(resume,3000);resume();
   return()=>{alive=false;clearInterval(timer);window.removeEventListener('aiadcast-google-return',resume);window.removeEventListener('aiadcast-google-open-failed',fail);window.removeEventListener('focus',resume);document.removeEventListener('visibilitychange',resume);};

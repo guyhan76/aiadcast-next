@@ -39,3 +39,18 @@ for(const otherOwner of [false,true])test(`Android Google return ${otherOwner?'d
  if(otherOwner){await expect(page.getByText('결제를 시작한 계정으로 로그인해주세요.',{exact:false})).toBeVisible();expect(orders).toBe(0);await expect(page.locator('.consumer-create')).toHaveCount(0);}
  else{await expect(page).toHaveURL(/#create$/);await expect(page.locator('.consumer-create')).toBeVisible();expect(orders).toBe(1);}
 });
+
+for(const language of ['en','ko'])test(`Chrome launch failure clears pending proof and permits retry in ${language}`,async({page})=>{
+ const mock=await setup(page);await page.addInitScript(language=>localStorage.setItem('aiadcast.ui-language',language),language);
+ let release!:()=>void;mock.hold=new Promise(r=>release=r);await page.goto('/');
+ const button=page.getByRole('button',{name:language==='en'?'Continue with Google':'Google로 계속하기',exact:true});
+ await button.click();await expect.poll(()=>mock.polls).toBe(1);
+ await page.evaluate(()=>window.dispatchEvent(new CustomEvent('aiadcast-google-open-failed',{detail:{code:'CHROME_UNAVAILABLE'}})));
+ await expect(page.getByText(language==='en'?'Cannot open Chrome. Install or enable Chrome, then try again.':'Chrome을 열 수 없습니다. Chrome을 설치하거나 사용 설정한 뒤 다시 시도해주세요.',{exact:true})).toBeVisible();
+ await expect(button).toBeEnabled();
+ expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.google-flow'))).toBeNull();
+ expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();
+ expect(await page.evaluate(()=>(window as any).nativeMessages.some((m:any)=>m.type==='google-sign-in-clear'&&m.state==='s'.repeat(43)))).toBe(true);
+ mock.hold=Promise.resolve();await button.click();await expect.poll(()=>mock.starts).toBe(2);
+ release();await expect(page.locator('.home-page')).toHaveCount(0);
+});

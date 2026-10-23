@@ -282,8 +282,12 @@ public final class MainActivity extends ComponentActivity {
             JSONObject flow=new JSONObject().put("state",state).put("proof",proof).put("expires",expires).put("native",true).put("origin",apiOrigin).put("owner",request.getString("owner"));
             if (!getPreferences(MODE_PRIVATE).edit().putString("google-flow",flow.toString()).commit()) throw new IllegalStateException();
             refreshGoogleBridge();
-            // ACTION_VIEW leaves WebView. The Google page never receives the app proof.
-            startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE));
+            // Explicit Chrome only: no package query or default-browser fallback.
+            // The validated Google URL never contains the original-app proof.
+            startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE).setPackage("com.android.chrome"));
+        } catch (ActivityNotFoundException | SecurityException unavailable) {
+            clearGoogle(request.optString("state"));
+            webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('aiadcast-google-open-failed',{detail:{code:'CHROME_UNAVAILABLE'}}));",null);
         } catch (Exception error) {
             clearGoogle(request.optString("state"));
             webView.evaluateJavascript("window.dispatchEvent(new Event('aiadcast-google-open-failed'));",null);
