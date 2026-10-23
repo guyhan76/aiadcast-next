@@ -17,3 +17,18 @@ export async function authenticatedSession(page:Page,session:MockSession,{seed=t
   }
  },session);
 }
+// Opt-in baseline for visual/editor specs with no live backend. Specific scenario routes
+// registered later override these responses; writes never reach a real provider.
+export async function protectedScreen(page:Page,session:MockSession){
+ await page.route('**/api/**',r=>{
+  const path=new URL(r.request().url()).pathname;
+  if(r.request().method()==='GET'){
+   if(path==='/api/account/capabilities')return r.fulfill({json:{google:{enabled:false},email:{enabled:false},checkout:{enabled:false,test:true,currency:'KRW'}}});
+   if(path==='/api/status')return r.fulfill({json:{generation:{enabled:false,reason:'GENERATION_DISABLED'},wallet:{available:0,reserved:0},budget:{limitMicros:0},assistant:{available:false}}});
+   if(path==='/api/generations')return r.fulfill({json:{jobs:[]}});
+   if(path==='/api/projects')return r.fulfill({json:{projects:[]}});
+  }
+  return r.fulfill({status:503,json:{error:{code:'UNMOCKED_TEST_REQUEST'}}});
+ });
+ await authenticatedSession(page,session);
+}

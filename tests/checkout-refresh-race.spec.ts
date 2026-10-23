@@ -1,3 +1,4 @@
+import {authenticatedSession} from './helpers/authenticated-session';
 import {test,expect} from '@playwright/test';
 
 test('manual payment refresh during the initial read is retained; balance alone never proves the order paid',async({page})=>{
@@ -15,15 +16,15 @@ test('manual payment refresh during the initial read is retained; balance alone 
   if(path==='/api/status')return route.fulfill({json:{mode:'invite-beta',commercialReady:false,generation:{enabled:false,reason:'GENERATION_DISABLED'},wallet:{available:30,reserved:0},budget:{limitMicros:0}}});
   if(path==='/api/projects')return route.fulfill({json:{projects:[]}});
   return route.fulfill({json:{}});
- });
+ });await authenticatedSession(page,session,{seed:false});
  await page.goto('/#checkout');await expect.poll(()=>reads).toBe(1);
  const check=page.getByRole('button',{name:'결제 상태 확인',exact:true});
  await check.evaluate(button=>{button.click();button.click();button.click();});
  releaseInitial();await expect(page.locator('.credit-balance')).toContainText('30개');
  await expect.poll(()=>reads).toBe(2);
- await expect(page.getByRole('heading',{name:'테스트 이용권이 추가되었습니다'})).toHaveCount(0);
+ await expect(page.getByRole('heading',{name:'이용권이 추가되었습니다'})).toHaveCount(0);
  expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('aiadcast.checkout-order:checkout-race-user')!).state)).toBe('pending');
- releasePaid();await expect(page.getByRole('heading',{name:'테스트 이용권이 추가되었습니다'})).toBeVisible();
+ releasePaid();await expect(page.getByRole('heading',{name:'이용권이 추가되었습니다'})).toBeVisible();
  expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('aiadcast.checkout-order:checkout-race-user')!).state)).toBe('paid');
  expect(posts).toBe(0);
 });

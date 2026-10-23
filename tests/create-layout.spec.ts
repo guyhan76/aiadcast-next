@@ -1,4 +1,7 @@
 import {test,expect} from '@playwright/test';
+import {protectedScreen,mockSession} from './helpers/authenticated-session';
+// This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
+test.beforeEach(async({page})=>{await protectedScreen(page,mockSession('protected-create-layout'));});
 test('consumer sees the eight inputs in order with compact optional fields on all widths',async({page})=>{
  await page.goto('/#create');const form=page.locator('.consumer-create');
  await expect(form.getByRole('heading',{level:1,name:'광고 만들기',exact:true})).toBeVisible();

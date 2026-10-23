@@ -1,3 +1,4 @@
+import {authenticatedSession,mockSession} from './helpers/authenticated-session';
 import {test,expect} from '@playwright/test';
 async function setup(page:any,previewDelay=0){
  await page.addInitScript(()=>{sessionStorage.setItem('aiadcast.beta-session',JSON.stringify({token:'a'.repeat(43),expires:Date.now()+86400000,user:{id:'owner-fixture',label:'Owner',role:'admin'}}));localStorage.setItem('aiadcast.ui-language','ko');});
@@ -8,7 +9,7 @@ async function setup(page:any,previewDelay=0){
   if(path==='/api/admin/demo-support-preview'){if(state.previews===1&&previewDelay)await new Promise(resolve=>setTimeout(resolve,previewDelay));state.previews++;return route.fulfill({json:quote});}
   if(path==='/api/admin/demo-support'){state.applies++;const body=route.request().postDataJSON();expect(body.email).toBe('guyhan76@gmail.com');expect(body.quoteToken).toBe('fixture-quote');expect(body.requestId).toBeTruthy();if(state.conflict)return route.fulfill({status:409,json:{error:{code:'DEMO_SUPPORT_QUOTE_CHANGED'}}});state.applied=true;return route.fulfill({json:{...quote,applied:true,wallet:{available:3,reserved:0}}});}
   return route.fulfill({status:403,json:{error:{code:'NOT_AVAILABLE'}}});
- });await page.goto('/#admin');return state;
+ });await authenticatedSession(page,{...mockSession('owner-fixture','admin'),user:{id:'owner-fixture',label:'Owner',role:'admin'}},{seed:false});await page.goto('/#admin');return state;
 }
 test('review shows exact member and existing five-dollar redistribution; cancel and double click do not duplicate',async({page})=>{
  const state=await setup(page),panel=page.getByRole('region',{name:'10월 회원 시연 지원'});

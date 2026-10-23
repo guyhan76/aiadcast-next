@@ -1,3 +1,4 @@
+import {authenticatedSession,mockSession} from './helpers/authenticated-session';
 import {test,expect} from '@playwright/test';
 import sharp from 'sharp';
 import {readFile} from 'node:fs/promises';
@@ -15,7 +16,7 @@ test('single box UI is explicit, preserves original, recovers lost response by G
    if(route.request().method()==='POST'){posts++;const body=route.request().postDataJSON();expect(body.source.sha256).toBe(hash);expect(Buffer.from(body.source.data.split(',')[1],'base64')).toEqual(bytes);result={requestId:body.requestId,sourceHash:hash,state:'ready',verified:false,proposal};return route.abort();}
    return send({available:!result,providerConfigured:true,generalAnalysisEnabled:false,limitCalls:1,limitMicros:30000,perCallHoldMicros:30000,references:[{name:'22986.png',bytes:bytes.length,sha256:hash,label:'모의 박스',basis:'outer-body',dimensions:{width:'450',depth:'300',height:'400'}}],budget:{ledgerExists:!!result,usedCalls:result?1:null,allowanceUsedMicros:result?30000:null,knownCostMicros:result?1000:null,unresolvedCalls:0,remainingCalls:result?0:1,request:result}});
   }return send({available:false,references:[]});
- });
+ });await authenticatedSession(page,{...mockSession('admin-fixture','admin'),user:{id:'admin-fixture',label:'Operator',role:'admin'}},{seed:false});
  await page.goto('/#admin');expect(posts).toBe(0);await page.getByRole('button',{name:'최신 박스 광고 1회 분석 열기',exact:true}).click();
  const panel=page.getByRole('region',{name:'최신 박스 단일 승인 분석'}),select=()=>panel.getByLabel('승인 박스 원본 PNG 선택').setInputFiles({name:'22986.png',mimeType:'image/png',buffer:bytes});
  await expect(panel).toContainText('최대 1회·US$0.03');await select();const original=page.waitForEvent('download');await panel.getByRole('button',{name:'원본 파일 그대로 저장'}).click();expect(await readFile((await(await original).path())!)).toEqual(bytes);
