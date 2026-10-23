@@ -1,3 +1,4 @@
+import {supportsImageMedia,imageMediaType} from '../src/image-media.ts';
 import {aiDimensionInputKey,validAiDimensionReview} from '../src/ai-dimension-display.ts';
 import {makeDimensionPlan} from '../src/dimension-generation.ts';
 import {preparePlanarSource,requestPlanarRatio} from './planar-proportion.mjs';
@@ -34,6 +35,7 @@ function boundedObject(value, depth = 0) {
   fail('INVALID_REQUEST');
 }
 export function normalizeGenerationRequest(value) {
+  if(!supportsImageMedia(value?.mediaType)||!supportsImageMedia(value?.output?.mediaType))fail('UNSUPPORTED_MEDIA');
   if (!value || typeof value !== 'object' || JSON.stringify(value).length > 50_000) fail('INVALID_REQUEST');
   if (value.version !== 1 || !['original','creative'].includes(value.mode) || !['physical-product','service'].includes(value.subjectType) || typeof value.productName !== 'string' || value.productName.length > 100 || !GENERATION_SIZES[value.output?.format]) fail('INVALID_REQUEST');
   if (value.operation === 'image-region' || value.requestedEditOperation === 'masked-product-appearance-edit') fail('REGION_EDIT_NOT_AVAILABLE');
@@ -233,6 +235,7 @@ export class GenerationService {
     return { jobs: rows.map(row => this.job(row.id, { includeArtifact: false })), wallet: this.wallet() };
   }
   async create(body) {
+    if(!supportsImageMedia(body?.mediaType))fail('UNSUPPORTED_MEDIA');
     if (!body || !identifier(body.requestId) || !identifier(body.projectId)) fail('INVALID_REQUEST');
     const request = normalizeGenerationRequest(body.request);
     if(request.inputMode==='text-example'&&(body.source!=null||(body.references??[]).length))fail('TEXT_EXAMPLE_PHOTOS_NOT_ALLOWED');
@@ -275,7 +278,7 @@ export class GenerationService {
     try {
       this.ledger.transaction(() => {
         const currentQuote=this.creditQuote();if(currentQuote.unit!==quote.unit||currentQuote.amount!==quote.amount)fail('CREDIT_QUOTE_CHANGED',409);
-        this.ledger.reserve({ jobId: id, userId: LOCAL_USER, credits: quote.amount||1, unit:quote.unit, creditExempt: quote.amount===0, requestHash: fingerprint, modelRevision: IMAGE_REVISION, expiresAt: createdAt + 24 * 60 * 60 * 1000 });
+        this.ledger.reserve({ kind:imageMediaType, jobId: id, userId: LOCAL_USER, credits: quote.amount||1, unit:quote.unit, creditExempt: quote.amount===0, requestHash: fingerprint, modelRevision: IMAGE_REVISION, expiresAt: createdAt + 24 * 60 * 60 * 1000 });
         this.db.prepare('INSERT INTO generation_records(id,project_id,fingerprint,request_json,source_hash,created_at) VALUES (?,?,?,?,?,?)').run(id, body.projectId, fingerprint, JSON.stringify(request), source?.sha256 ?? null, createdAt);
         this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(body.requestId, fingerprint, id);
       });
@@ -294,6 +297,7 @@ export class GenerationService {
       if (!attempt.shouldDispatch) return;
       began = true;
       const result = await this.adapter.generate({ request, source: request.mode === 'creative' ? source : null, references:request.mode==='creative'?references:[], attemptId });
+      if(!supportsImageMedia(result.mediaType))throw new ProviderFailure('UNSUPPORTED_PROVIDER_MEDIA');
       // Persist provider metadata before any customer capture. Pixel validity is not semantic quality approval.
       if(result.planarOriginal)this.storeAsset(result.planarOriginal);
       this.storeAsset(result);

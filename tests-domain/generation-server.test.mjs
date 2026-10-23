@@ -241,3 +241,17 @@ test('multi-image adapter serializes every input and premium direction as image 
  for(const image of sent.body.getAll('image[]'))assert.deepEqual(Buffer.from(await image.arrayBuffer()),bytes);
 });
 
+
+test('unsupported media is rejected before reservations, idempotency records or provider dispatch',async t=>{
+ const {service,calls}=setup(t);const wallet=service.wallet(),budget=service.ledger.budget(service.period());
+ for(const mediaType of ['video','audio','',null,{},1])for(const location of ['body','request','output']){
+  const input=body();if(location==='body')input.mediaType=mediaType;else if(location==='request')input.request.mediaType=mediaType;else input.request.output.mediaType=mediaType;
+  await assert.rejects(service.create(input),e=>e.code==='UNSUPPORTED_MEDIA');
+ }
+ assert.equal(calls.length,0);assert.deepEqual(service.wallet(),wallet);assert.deepEqual(service.ledger.budget(service.period()),budget);
+ for(const table of ['jobs','generation_keys','attempts','credit_events'])assert.equal(service.db.prepare(`SELECT COUNT(*) n FROM ${table}`).get().n,0);
+ const input=body();const made=await service.create(input);await service.waitForIdle();const replay=await service.create({...input,mediaType:'image',request:{...input.request,mediaType:'image',output:{...input.request.output,mediaType:'image'}}});assert.equal(replay.job.id,made.job.id);assert.equal(calls.length,1);assert.equal(service.ledger.job(made.job.id).kind,'image');
+});
+test('unexpected provider media cannot become a delivered image or capture credits',async t=>{
+ const {service}=setup(t,{adapter:{generate:async()=>({...result(),mediaType:'video'})}});const made=await service.create(body());await service.waitForIdle();const job=service.job(made.job.id);assert.equal(job.state,'uncertain');assert.equal(job.artifact,null);assert.equal(job.creditCaptured,false);
+});
