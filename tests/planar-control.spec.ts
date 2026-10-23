@@ -1,4 +1,7 @@
 import {test,expect,type Page} from '@playwright/test';
+import {protectedScreen,mockSession} from './helpers/authenticated-session';
+// This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
+test.beforeEach(async({page})=>{await protectedScreen(page,mockSession('protected-planar-control'));});
 import sharp from 'sharp';import {createHash} from 'node:crypto';
 import {GenerationService} from '../server/generation-service.mjs';
 import {OpenAIImageAdapter} from '../server/openai-image-adapter.mjs';
@@ -10,7 +13,7 @@ test('opt-in planar generation preserves drafts, separate source and raw result 
  let calls=0;const requests:any[]=[];
  const adapter=new OpenAIImageAdapter({apiKey:'local-fixture-only',fetchImpl:async()=>{calls++;return new Response(JSON.stringify({data:[{b64_json:raw.toString('base64')}],usage:{input_tokens:3,input_tokens_details:{text_tokens:1,image_tokens:2},output_tokens:2}}));}});
  const service=new GenerationService({adapter,enabled:true,providerConfigured:true,budgetMicros:1000000,testCredits:0});service.adminTestUnlimited=true;
- await page.route('**/api/**',async route=>{const r=route.request(),path=new URL(r.url()).pathname;let response:any={};
+ await page.route('**/api/**',async route=>{if(new URL(route.request().url()).pathname==='/api/auth/session')return route.fallback();const r=route.request(),path=new URL(r.url()).pathname;let response:any={};
   if(path==='/api/status')response=service.status();
   else if(path==='/api/account/capabilities')response={email:{enabled:false},checkout:{enabled:false}};
   else if(path==='/api/generations'&&r.method()==='POST'){const body=r.postDataJSON();requests.push(body);response=await service.create(body);await service.waitForIdle();response={job:service.job(response.job.id),wallet:service.wallet()};}
@@ -36,7 +39,7 @@ test('opt-in planar generation preserves drafts, separate source and raw result 
  }finally{await service.close();}
 });
 test('unsupported server blocks opt-in dispatch and unsupported dimensions never enable it',async({page})=>{
- let posts=0;await page.route('**/api/**',r=>{if(r.request().method()==='POST')posts++;return r.fulfill({json:new URL(r.request().url()).pathname==='/api/status'?{generation:{enabled:true,photoPurposes:true},wallet:{available:3,reserved:0},budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}}:{email:{enabled:false},checkout:{enabled:false}}});});
+ let posts=0;await page.route('**/api/**',r=>{if(new URL(r.request().url()).pathname==='/api/auth/session')return r.fallback();if(r.request().method()==='POST')posts++;return r.fulfill({json:new URL(r.request().url()).pathname==='/api/status'?{generation:{enabled:true,photoPurposes:true},wallet:{available:3,reserved:0},budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}}:{email:{enabled:false},checkout:{enabled:false}}});});
  const f=await form(page),toggle=f.getByRole('checkbox',{name:/규격을 AI 참고로 전달/});await f.getByLabel('규격 형식').selectOption('cylindrical');await expect(toggle).toBeEnabled();await toggle.check();await expect(f.getByRole('checkbox',{name:'정면 평면 자동 보정',exact:true})).toBeDisabled();await toggle.uncheck();await f.getByLabel('규격 형식').selectOption('flat');await toggle.check();await f.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByRole('alert')).toContainText('서버가 규격 기반 생성을 지원하지 않습니다');expect(posts).toBe(0);
 });
 test('measured garment and container variants are optional and retain numeric measurements on reload',async({page})=>{

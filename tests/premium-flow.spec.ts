@@ -1,4 +1,7 @@
 import {test,expect} from '@playwright/test';
+import {protectedScreen,mockSession} from './helpers/authenticated-session';
+// This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
+test.beforeEach(async({page})=>{await protectedScreen(page,mockSession('protected-premium-flow'));});
 import sharp from 'sharp';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
@@ -9,7 +12,7 @@ async function backup(page:import('@playwright/test').Page){const d=page.waitFor
 test('simple campaign supports 10 references, individual footer choices, reviewed generation and full-frame export',async({page})=>{
  let sent:any,job:any,accepts=0;
  await page.addInitScript(()=>{const w=window as any;w.drawn=[];const original=CanvasRenderingContext2D.prototype.fillText;CanvasRenderingContext2D.prototype.fillText=function(value,x,y,max){w.drawn.push(value);return max===undefined?original.call(this,value,x,y):original.call(this,value,x,y,max);};});
- await page.route('**/api/**',route=>{const req=route.request(),url=new URL(req.url());const respond=(b:any)=>route.fulfill({contentType:'application/json',body:JSON.stringify(b)});const wallet={available:3,reserved:0};
+ await page.route('**/api/**',route=>{if(new URL(route.request().url()).pathname==='/api/auth/session')return route.fallback();const req=route.request(),url=new URL(req.url());const respond=(b:any)=>route.fulfill({contentType:'application/json',body:JSON.stringify(b)});const wallet={available:3,reserved:0};
  if(url.pathname==='/api/status')return respond({mode:'local-development',commercialReady:false,generation:{enabled:true,photoPurposes:true},assistant:{available:false},wallet,budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}});
  if(url.pathname==='/api/generations'&&req.method()==='POST'){sent=req.postDataJSON();job={id:'premium_job_001',projectId:sent.projectId,requestIds:[sent.requestId],composition:'complete-ad',compositionKey:sent.request.output.compositionKey,state:'ready',mode:'creative',sourceHash:sent.source.sha256,createdAt:new Date().toISOString(),model:'gpt-image-2.5-sunburst',artifactId:hash(result),artifact:{id:hash(result),sha256:hash(result),dataUrl:'data:image/png;base64,'+result.toString('base64'),width:1024,height:1280,role:'creative'}};return respond({job,wallet});}
  if(url.pathname==='/api/generations/premium_job_001')return respond({job,wallet});
@@ -26,7 +29,7 @@ test('simple campaign supports 10 references, individual footer choices, reviewe
  await wizard.getByRole('button',{name:'4:5 SNS 피드',exact:true}).click();await wizard.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.locator('.simple-ad-result')).toBeVisible();await expect(page.locator('.editor-details')).toHaveCount(0);
  const panel=page.getByRole('region',{name:'AI 광고 제작',exact:true});await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();
  expect(sent.request.creativeDirection.visual.id).toBe('auto');expect(sent.request.creativeDirection.additionalInstructions).toBe('박스의 접힘선을 보여주세요.');expect(sent.request.output.format).toBe('4:5');expect(sent.references).toHaveLength(9);expect(sent.source.sha256).toBe(hash(photos[1].buffer));expect(sent.request.references.map((a:any)=>a.sha256)).toEqual(sent.references.map((a:any)=>a.sha256));expect(sent.request.productProfile.material.length).toBeGreaterThan(160);
- await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();await expect(page.getByRole('button',{name:'이미지 저장',exact:true})).toBeEnabled();await page.goto('/#editor');
+ await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();await expect(page.getByRole('button',{name:'이미지 저장 · 공유',exact:true})).toBeEnabled();await page.goto('/#editor');
  const saved=await backup(page);expect(saved.references).toHaveLength(9);expect(saved.footer.email).toBe(false);expect(saved.copy.ko.email).toBe('hidden@example.com');
  await page.evaluate(()=>(window as any).drawn=[]);const d=page.waitForEvent('download');await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();const png=await readFile((await(await d).path())!);const meta=await sharp(png).metadata();expect([meta.width,meta.height]).toEqual([1080,1350]);const pixel=await sharp(png).extract({left:50,top:600,width:1,height:1}).removeAlpha().raw().toBuffer();expect([...pixel]).toEqual([36,89,170]);
  expect(sent.request.copy.contact).toBe('1644-1410');expect(sent.request.copy.website).toBe('www.boxboy.co.kr');expect(sent.request.copy.email).toBe('');
@@ -36,7 +39,7 @@ test('simple campaign supports 10 references, individual footer choices, reviewe
  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
 });
 test('English service can start without photo, and offline generation is honest',async({page})=>{
- await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','en'));await page.route('**/api/**',r=>r.fulfill({status:503,body:'{}'}));await page.goto('/');await page.getByRole('button',{name:'Create an ad',exact:true}).click();const form=page.locator('.create-page');await form.getByLabel('Choose an industry').selectOption('yoga');await form.getByLabel('Service name',{exact:true}).fill('Studio Bloom');await form.getByRole('textbox',{name:'Description',exact:true}).fill('Private yoga classes');await form.getByRole('button',{name:'Generate ad',exact:true}).click();await expect(page.locator('.simple-ad-result')).toBeVisible();await expect(page.locator('.simple-generation-block')).toBeVisible();await expect(page.getByRole('button',{name:'Save image',exact:true})).toHaveCount(0);await expect(page.locator('.generation-ad-preview')).toHaveCount(0);
+ await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','en'));await page.route('**/api/**',r=>new URL(r.request().url()).pathname==='/api/auth/session'?r.fallback():r.fulfill({status:503,body:'{}'}));await page.goto('/');await page.getByRole('button',{name:'Create an ad',exact:true}).click();const form=page.locator('.create-page');await form.getByLabel('Choose an industry').selectOption('yoga');await form.getByLabel('Service name',{exact:true}).fill('Studio Bloom');await form.getByRole('textbox',{name:'Description',exact:true}).fill('Private yoga classes');await form.getByRole('button',{name:'Generate ad',exact:true}).click();await expect(page.locator('.simple-ad-result')).toBeVisible();await expect(page.locator('.simple-generation-block')).toBeVisible();await expect(page.getByRole('button',{name:'Save image',exact:true})).toHaveCount(0);await expect(page.locator('.generation-ad-preview')).toHaveCount(0);
 
 });
 

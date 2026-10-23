@@ -180,7 +180,7 @@ test('result guidance stays readable before and after acceptance without alterin
   await expect(summary.locator('.marketing-audience')).not.toContainText('450');
   expect((await summary.locator('.marketing-intent').innerText()).length).toBeLessThan(100);
   await expect(summary.locator('.marketing-keywords li')).toHaveText(originalPlan.keywords);
-  await expect(summary.locator('.marketing-channels li')).toHaveCount(originalPlan.channels.length);
+  await expect(summary.locator('.marketing-channels li')).toHaveText(['인스타그램','유튜브','홈페이지','블로그','포스터','광고브로셔']);
   for(const width of [320,360,390,412,1440]){
    await page.setViewportSize({width,height:900});
    const layout=await summary.evaluate(el=>{
@@ -199,7 +199,7 @@ test('result guidance stays readable before and after acceptance without alterin
  await page.getByLabel('앱 언어',{exact:true}).selectOption('en');await expect(summary.getByRole('heading',{name:'Suggested channels',exact:true})).toBeVisible();
  await expect(summary.locator('.marketing-keywords li')).toHaveText(originalPlan.keywords);
  expect(state.body.request.marketingPlan).toEqual(originalPlan);expect(state.posts).toBe(1);expect(state.accepts).toBe(1);
- const download=page.waitForEvent('download');await page.getByRole('button',{name:'Save image',exact:true}).click();
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'Save / share image',exact:true}).click();
  expect(await sharp((await(await download).path())!).metadata()).toMatchObject({width:1080,height:1920});
  expect(state.posts).toBe(1);expect(state.accepts).toBe(1);
 });
