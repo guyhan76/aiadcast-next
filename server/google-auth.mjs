@@ -9,10 +9,11 @@ export class GoogleAuth {
   this.store=store;this.db=store.db;this.provider=provider;this.now=now;
   this.db.exec(`CREATE TABLE IF NOT EXISTS google_identities(subject TEXT PRIMARY KEY,user_id TEXT UNIQUE NOT NULL REFERENCES users(id));
    CREATE TABLE IF NOT EXISTS google_requests(state_hash TEXT PRIMARY KEY,proof_hash TEXT NOT NULL,nonce TEXT NOT NULL,verifier TEXT NOT NULL,session_hash TEXT NOT NULL,expires INTEGER NOT NULL,consumed INTEGER NOT NULL DEFAULT 0);
-   CREATE TABLE IF NOT EXISTS google_native_requests(state_hash TEXT PRIMARY KEY REFERENCES google_requests(state_hash) ON DELETE CASCADE,package_id TEXT NOT NULL,claims TEXT);`);
+   CREATE TABLE IF NOT EXISTS google_native_requests(state_hash TEXT PRIMARY KEY REFERENCES google_requests(state_hash) ON DELETE CASCADE,package_id TEXT NOT NULL,claims TEXT);
+   CREATE TABLE IF NOT EXISTS google_request_languages(state_hash TEXT PRIMARY KEY REFERENCES google_requests(state_hash) ON DELETE CASCADE,language TEXT NOT NULL CHECK(language IN ('ko','en')));`);
  }
  available(){return !!this.provider;}
- startGoogle(authorization,packageId){
+ startGoogle(authorization,packageId,language='en'){
   if(!this.available())fail('GOOGLE_UNAVAILABLE',503);
   if(packageId!==undefined&&!['com.selluplabs.aiadcast.next','com.selluplabs.aiadcast.next.demo','com.selluplabs.aiadcast.next.dev','com.selluplabs.aiadcast.next.preview'].includes(packageId))fail('GOOGLE_NATIVE_INVALID');
   // A link flow is bound to this exact already-authenticated session, never an email string.
@@ -20,10 +21,14 @@ export class GoogleAuth {
   const state=secret(),proof=secret(),nonce=secret(),verifier=secret(),expires=this.now()+600000;
   this.store.transaction(()=>{this.db.prepare('DELETE FROM google_requests WHERE expires<=?').run(this.now());if(this.db.prepare('SELECT COUNT(*) n FROM google_requests').get().n>=1000)fail('RATE_LIMITED',429);
    this.db.prepare('INSERT INTO google_requests(state_hash,proof_hash,nonce,verifier,session_hash,expires) VALUES(?,?,?,?,?,?)').run(hash(state),hash(proof),nonce,verifier,authorization?hash(authorization):'',expires);
-   if(packageId)this.db.prepare('INSERT INTO google_native_requests(state_hash,package_id) VALUES(?,?)').run(hash(state),packageId);
+   if(packageId){this.db.prepare('INSERT INTO google_native_requests(state_hash,package_id) VALUES(?,?)').run(hash(state),packageId);this.db.prepare('INSERT INTO google_request_languages(state_hash,language) VALUES(?,?)').run(hash(state),language==='ko'?'ko':'en');}
   });
   const url=new URL('https://accounts.google.com/o/oauth2/v2/auth');url.search=new URLSearchParams({client_id:this.provider.clientId,redirect_uri:packageId?new URL('/api/auth/google/native-callback',this.provider.redirectUri).href:this.provider.redirectUri,response_type:'code',scope:'openid email',prompt:'select_account',state,nonce,code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256'}).toString();
   return {state,proof,expires,url:url.href,...(packageId?{native:true}:{})};
+ }
+ nativeGoogleLanguage(state){
+  if(!valid(state))fail('GOOGLE_FLOW_INVALID');
+  return this.db.prepare('SELECT language FROM google_request_languages WHERE state_hash=?').get(hash(state))?.language;
  }
  claimGoogle(body,authorization){
   if(!this.available())fail('GOOGLE_UNAVAILABLE',503);

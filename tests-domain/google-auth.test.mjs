@@ -9,6 +9,7 @@ import {EmailAuth} from '../server/email-auth.mjs';
 import {GoogleAuth} from '../server/google-auth.mjs';
 import {googleProvider} from '../server/google-provider.mjs';
 import {createBetaServer} from '../server/beta-server.mjs';
+import {googleUiLanguage,googleReturnPage} from '../server/google-return-page.mjs';
 const origin='https://beta.example.com';
 function fixture(t){const dir=mkdtempSync(join(tmpdir(),'google-local-'));let clock=Date.now();const store=new BetaStore(dir,{now:()=>clock});new EmailAuth(store);t.after(()=>{store.close();rmSync(dir,{recursive:true,force:true});});let subject='google-subject-A',email='a@example.com',calls=0,gate=Promise.resolve();const provider={clientId:'fixture-client',redirectUri:origin+'/?google=1',async exchange(){calls++;await gate;return {subject,email};}};const auth=new GoogleAuth(store,{provider,now:()=>clock});return {store,auth,calls:()=>calls,set:(s,e)=>{subject=s;email=e;},hold:g=>gate=g,advance:()=>clock+=600001};}
 const complete=(auth,authorization)=>{const flow=auth.startGoogle(authorization);return auth.finishGoogle({...flow,code:'mock-code'},authorization);};
@@ -70,4 +71,30 @@ test('HTTP native callback returns only a fixed app link; app polling still requ
  const post=async(path,body)=>{const r=await fetch(base+path,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Aiadcast-Client':'local-studio'},body:JSON.stringify(body)});return {status:r.status,data:await r.json()};};
  const start=await post('/api/auth/google/start',{packageId:'com.selluplabs.aiadcast.next.demo'});const flow=start.data;const callback=await fetch(base+'/api/auth/google/native-callback?state='+flow.state+'&code=fixture-code');assert.equal(callback.status,200);const html=await callback.text();assert.ok(html.includes('com.selluplabs.aiadcast.next.demo://google/return'));assert.ok(!html.includes(flow.proof)&&!html.includes(flow.state)&&!html.includes('fixture-code'));
  assert.equal((await post('/api/auth/google/native-poll',{...flow,proof:'x'.repeat(43)})).status,401);const result=await post('/api/auth/google/native-poll',flow);assert.equal(result.status,200);assert.equal(result.data.state,'verified');assert.equal(result.data.session.user.role,'member');
+});
+
+test('native return language follows the initiating app across browser locale changes and legacy apps',async t=>{
+ const f=fixture(t),app=createBetaServer({store:f.store,publicUrl:origin,accounts:{google:f.auth.provider},serviceFactory:()=>{throw Error('NO_GENERATION');}});
+ await new Promise(r=>app.server.listen(0,'127.0.0.1',r));t.after(()=>app.close());const base='http://127.0.0.1:'+app.server.address().port;
+ for(const [language,header,expected] of [['ko','en-US','ko'],['en','ko-KR','en'],[undefined,'ko-KR,ko;q=0.9,en;q=0.8','ko']]){
+  const response=await fetch(base+'/api/auth/google/start',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Aiadcast-Client':'local-studio','Accept-Language':header},body:JSON.stringify({packageId:'com.selluplabs.aiadcast.next.demo',language})});
+  assert.equal(response.status,200);const flow=await response.json();
+  const callback=await fetch(base+'/api/auth/google/native-callback?state='+flow.state+'&code=fixture-code&language=untrusted',{headers:{'Accept-Language':expected==='ko'?'en-US':'ko-KR'}});
+  assert.equal(callback.status,200);const html=await callback.text();
+  assert.ok(html.includes('<html lang="'+expected+'">'));
+  assert.ok(html.includes(expected==='ko'?'aiadcast로 돌아가기':'Return to aiadcast'));
+  assert.ok(html.includes(expected==='ko'?'Google 로그인이 확인되었습니다.':'Google sign-in confirmed.'));
+  assert.ok(html.includes('fill="#E8722A"')&&html.includes('fill="#1F1F1D"'));
+  assert.ok(!html.includes(flow.state)&&!html.includes(flow.proof)&&!html.includes('fixture-code')&&!html.includes('<script'));
+  assert.ok(callback.headers.get('content-security-policy').includes("style-src 'unsafe-inline'"));
+  assert.equal(callback.headers.get('cache-control'),'no-store');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM sessions').get().n,0);
+  assert.equal((await fetch(base+'/api/auth/google/native-callback?state='+flow.state+'&code=fixture-code')).status,401);
+ }
+});
+
+test('return page accepts only a fixed app wake-up link and supported locale preferences',()=>{
+ assert.equal(googleUiLanguage('en','ko-KR'),'en');assert.equal(googleUiLanguage(undefined,'en;q=0,ko-KR;q=0.9'),'ko');assert.equal(googleUiLanguage(undefined,'fr-FR,en;q=0.8,ko;q=0.9'),'ko');
+ assert.throws(()=>googleReturnPage('javascript:alert(1)','ko'),/GOOGLE_NATIVE_INVALID/);
+ assert.throws(()=>googleReturnPage('com.selluplabs.aiadcast.next://google/return?token=secret','ko'),/GOOGLE_NATIVE_INVALID/);
 });
