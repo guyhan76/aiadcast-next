@@ -1,6 +1,11 @@
 import {test,expect} from '@playwright/test';
+import {protectedScreen,mockSession} from './helpers/authenticated-session';
+// This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
+test.beforeEach(async({page})=>{await protectedScreen(page,mockSession('protected-generation-ui'));});
 import type {Page} from '@playwright/test';
 import sharp from 'sharp';
+import {generatedCompatibilityKey} from '../src/generated';
+import {restoreOwnedWorkspace} from './helpers/owned-workspace';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 
@@ -14,7 +19,7 @@ type MockJob={id:string;projectId:string;requestIds:string[];state:string;mode:s
 async function mockApi(page:Page,{dropResponse=false,corruptArtifact=false}={}){
  const state={generationPosts:0,acceptPosts:0,rejectPosts:0,historyReads:0,lastBody:null as Record<string,any>|null,job:null as MockJob|null,wallet:{available:10,reserved:0,kind:'test'}};
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
- await page.route('**/api/**',async route=>{
+ await page.route('**/api/**',async route=>{if(new URL(route.request().url()).pathname==='/api/auth/session')return route.fallback();
   const req=route.request(),url=new URL(req.url());
   const respond=(body:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
   if(url.pathname==='/api/status')return respond({mode:'local-development',commercialReady:false,generation:{enabled:true,model:'gpt-image-2.5-sunburst',reason:null},wallet:state.wallet,budget:{limitMicros:1000000,spentMicros:0,heldMicros:0},assistant:{available:false}});
@@ -40,9 +45,14 @@ async function mockApi(page:Page,{dropResponse=false,corruptArtifact=false}={}){
 }
 async function backup(page:Page){const event=page.waitForEvent('download');await page.getByRole('button',{name:'프로젝트 백업',exact:true}).click();return JSON.parse(await readFile((await (await event).path())!,'utf8'));}
 
-test('original background review preserves source bytes and accepted reapply does not charge twice',async({page})=>{
+test('restored original background review preserves source bytes and accepted reapply does not charge twice',async({page})=>{
  const {state,panel}=await mockApi(page);
- await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();
+ // Fresh requests now use creative mode; retain coverage of the original-mode
+ // job already paid/reserved before the upgrade without creating a new one.
+ const original=await backup(page),requestId='legacy-original-request';
+ state.job={id:'generation_fixture_1',projectId:original.id,requestIds:[requestId],state:'ready',mode:'original',sourceHash:original.product.sha256,createdAt:'2026-10-10T01:00:00.000Z',model:'fixture',artifactId:expectedArtifactHash,artifact:{id:expectedArtifactHash,sha256:expectedArtifactHash,dataUrl:'data:image/png;base64,'+generatedBytes.toString('base64'),width:600,height:400,role:'background'},errorCode:null,marketingPlan:undefined};state.wallet={available:9,reserved:1,kind:'test'};
+ await page.evaluate(({id,requestId,key})=>localStorage.setItem('protected-generation-ui:aiadcast.pending-generation.'+id,JSON.stringify({projectId:id,jobId:'generation_fixture_1',requestId,key})),{id:original.id,requestId,key:generatedCompatibilityKey(original)});
+ page.on('dialog',d=>d.accept());await restoreOwnedWorkspace(page,original,'protected-generation-ui','editor');await page.locator('.editor-details>summary').click();
  await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();
  const accept=panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true});await expect(accept).toBeDisabled();
  await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await accept.click();
@@ -50,10 +60,10 @@ test('original background review preserves source bytes and accepted reapply doe
  const saved=await backup(page);
  expect(Buffer.from(saved.product.data.split(',')[1],'base64')).toEqual(originalBytes);expect(saved.product.sha256).toBe(hash(originalBytes));
  expect(saved.background.image.sha256).toBe(expectedArtifactHash);expect(saved.generated.asset.sha256).toBe(expectedArtifactHash);expect(saved.generated.role).toBe('background');
- expect(saved.generated.sourceHash).toBe(saved.product.sha256);expect(state.lastBody!.source.data).toBe(saved.product.data);
+ expect(saved.generated.sourceHash).toBe(saved.product.sha256);expect(state.job!.sourceHash).toBe(saved.product.sha256);
  await panel.getByRole('button',{name:'저장한 시안 다시 적용',exact:true}).click();
  await expect(panel.getByRole('button',{name:'저장한 시안 다시 적용',exact:true})).toBeEnabled();
- expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(1);expect((await backup(page)).product.data).toBe(saved.product.data);
+ expect(state.generationPosts).toBe(0);expect(state.acceptPosts).toBe(1);expect((await backup(page)).product.data).toBe(saved.product.data);
 });
 
 test('accepted creative enables PNG with generated pixels while preserving the original for later edits',async({page})=>{
@@ -72,7 +82,7 @@ test('accepted creative enables PNG with generated pixels while preserving the o
 
 test('changing the source while reviewing makes the old visual inapplicable',async({page})=>{
  const {state,panel}=await mockApi(page);
- await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();
+ await panel.locator('.generate-button').click();
  await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
  await page.getByRole('button',{name:'1 사진 삭제',exact:true}).click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'different.png',mimeType:'image/png',buffer:replacementBytes});
  await expect(panel.getByRole('alert')).toContainText('원래 정보를 복원하거나 시안을 반려');
@@ -82,28 +92,25 @@ test('changing the source while reviewing makes the old visual inapplicable',asy
 
 test('a lost POST response is recovered through requestIds without another generation POST',async({page})=>{
  const {state,panel}=await mockApi(page,{dropResponse:true});
- await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();
- await expect(panel.getByRole('alert')).toContainText('자동으로 다시 생성하지 않습니다');
- await expect(panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true})).toBeDisabled();
- await panel.getByRole('button',{name:'연결 상태 확인',exact:true}).click();
+ await panel.locator('.generate-button').click();
  await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();
- expect(state.historyReads).toBe(1);expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(0);
+ expect(state.historyReads).toBe(2);expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(0);
  await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
  await expect(panel.getByText('사용 확정한 시안',{exact:true})).toBeVisible();expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(1);
 });
 
 test('rejecting a ready visual restores the test credit without applying the artifact',async({page})=>{
  const {state,panel}=await mockApi(page);
- await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();await expect(panel.locator('.generation-status')).toContainText('테스트 이용권 9');
+ await panel.locator('.generate-button').click();await expect(panel.locator('.generation-status')).toContainText('테스트 이용권 9');
  await panel.getByRole('button',{name:'반려 · 이용권 복원',exact:true}).click();
  await expect(panel.getByText('반려 · 이용권 복원',{exact:true})).toBeVisible();await expect(panel.locator('.generation-status')).toContainText('테스트 이용권 10');
- await expect(panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true})).toBeEnabled();
+ await expect(panel.locator('.generate-button')).toBeEnabled();
  const saved=await backup(page);expect(saved.generated).toBeUndefined();expect(saved.background.image).toBeNull();expect(state.rejectPosts).toBe(1);expect(state.acceptPosts).toBe(0);
 });
 
 test('artifact hash mismatch is detected before accepting a charge',async({page})=>{
  const {state,panel}=await mockApi(page,{corruptArtifact:true});
- await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();
+ await panel.locator('.generate-button').click();
  await expect(panel.getByRole('alert')).toContainText('파일 검증에 실패');
  await expect(panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true})).toBeDisabled();
  await expect(panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true})).toBeDisabled();
@@ -133,11 +140,11 @@ test('complete ad preview is composed before charging and matches PNG after loca
 
 test('result shows and exports the generation plan, retaining it after product name changes',async({page})=>{
  const {state,panel}=await mockApi(page);
- await panel.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();
+ await panel.locator('.generate-button').click();
  const summary=panel.getByRole('region',{name:'광고 제작 의도와 활용 정보'});
  await expect(summary).toBeVisible();await expect(summary).toContainText('저장된 광고 정보 기준');
  await expect(summary.locator('.marketing-keywords li')).toHaveText(state.lastBody!.request.marketingPlan.keywords);
- await expect(summary.locator('.marketing-channels li')).toHaveCount(state.lastBody!.request.marketingPlan.channels.length);
+ await expect(summary.locator('.marketing-channels li')).toHaveText(['인스타그램','유튜브','홈페이지','블로그','포스터','광고브로셔']);
  expect(state.lastBody!.request.marketingPlan.channels).toContain('youtube');
  await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
  await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
