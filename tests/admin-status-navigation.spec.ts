@@ -1,3 +1,4 @@
+import {authenticatedSession,mockSession} from './helpers/authenticated-session';
 import {test,expect,type Page,type Route} from '@playwright/test';
 const referenceStatus={available:true,providerConfigured:true,generalAnalysisEnabled:false,limitCalls:10,limitMicros:300000,perCallHoldMicros:30000,references:[],budget:{ledgerExists:false,usedCalls:null,allowanceUsedMicros:null,knownCostMicros:null,unresolvedCalls:null,remainingCalls:10,request:null}};
 const overview={readiness:{imageProviderConfigured:true,generationSwitch:true},budget:{limitMicros:5000000,allocatedMicros:5000000,spentMicros:527300,heldMicros:0},users:[],jobs:[],orders:[],audit:[]};
@@ -18,6 +19,7 @@ async function setup(page:Page){
   }
   return route.fulfill({status:404,json:{error:{code:'FIXTURE_ROUTE_NOT_FOUND'}}});
  });
+ await authenticatedSession(page,{...mockSession('admin-fixture','admin'),user:{id:'admin-fixture',label:'Operator',role:'admin'}},{seed:false});
  return {setStatus:(m:Mode)=>{statusMode=m;},setOverview:(m:Mode)=>{overviewMode=m;},gets:()=>gets,overviewGets:()=>overviewGets,posts:()=>posts,aborted:()=>aborted,async release(stale=false){for(const h of held.splice(0)){await h.route.fulfill({json:stale?{...referenceStatus,providerConfigured:false}:h.body}).catch(()=>{});h.done();}}};
 }
 const panel=(page:Page)=>page.getByRole('region',{name:'승인 원본 사진 분석'});

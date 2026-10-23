@@ -1,3 +1,4 @@
+import {authenticatedSession,mockSession} from './helpers/authenticated-session';
 import {test,expect,type Page} from '@playwright/test';
 import sharp from 'sharp';
 import {createHash} from 'node:crypto';
@@ -19,7 +20,7 @@ async function mocks(page:Page,{auth=false,enabled=true,admin=false,v2=false}: {
  if(path==='/api/generations/consumer_fixture_1')return send({job:state.job,wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:1,kind:'test'}});
  if(path==='/api/generations')return send({jobs:state.job?[state.job]:[]});
  return send({error:{code:'TEST_ROUTE_UNAVAILABLE'}},404);
- });return state;
+ });await authenticatedSession(page,mockSession(admin?'admin-budget-test':'consumer-user-123',admin?'admin':'member'),{seed:!auth});return state;
 }
 async function details(page:Page,service=true){await page.goto('/#create');const form=page.locator('.consumer-create');await form.getByLabel('산업 선택').selectOption(service?'lodging':'boxes');await form.getByLabel(service?'서비스명':'상품명',{exact:true}).fill(service?'숲속 숙소':'우체국3호박스');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill(service?'숲 전망의 객실, 1박 120,000원':'B골, 크라프트재질, 튼튼하고 습기에 강하다. 빠른배송. 10개 19,800원');return form;}
 
@@ -44,9 +45,9 @@ test('eight inputs submit actual generation request once and a complete accepted
 test('photo-free service AI copy requests no dimensions and generates automatically after submit',async({page})=>{
  const state=await mocks(page),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(state.posts).toBe(1);expect(state.body.source).toBeNull();expect(state.body.request.specifications).toEqual([]);expect(state.body.request.output.showDimensions).toBe(false);expect(state.body.request.creativeDirection.copyMode).toBe('ai');
 });
-test('unauthenticated creation keeps details and offers visible login rather than a disabled unexplained generator',async({page})=>{
- const state=await mocks(page,{auth:true}),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByRole('link',{name:'로그인하고 생성하기',exact:true})).toBeVisible();expect(state.posts).toBe(0);
- await page.getByRole('link',{name:'로그인하고 생성하기',exact:true}).click();await expect(page.getByRole('heading',{name:'테스트 로그인',exact:true})).toBeVisible();await expect(page.getByLabel('초대코드')).toBeVisible();await page.getByRole('link',{name:'돌아가기',exact:true}).click();await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByLabel('서비스명',{exact:true})).toHaveValue('숲속 숙소');
+test('unauthenticated creation requires Google sign-in and never dispatches generation',async({page})=>{
+ const state=await mocks(page,{auth:true});await page.goto('/#create');await expect(page.getByRole('button',{name:'Google로 계속하기',exact:true})).toBeVisible();await expect(page.locator('.consumer-create')).toHaveCount(0);expect(state.posts).toBe(0);
+ await expect(page.getByRole('textbox')).toHaveCount(0);await page.reload();await expect(page.locator('.consumer-create')).toHaveCount(0);expect(state.posts).toBe(0);
 });
 test('budget blockage gives a clear reason and never dispatches a provider request',async({page})=>{
  const state=await mocks(page,{enabled:false}),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByText('이용권과 별도로 이미지 생성용 예산의 사용·보류액 또는 생성 전 예약금 때문에 지금 생성할 수 없습니다. 관리자에게 남은 예산을 확인해주세요.')).toBeVisible();expect(state.posts).toBe(0);

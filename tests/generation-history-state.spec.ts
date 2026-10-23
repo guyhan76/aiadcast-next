@@ -1,3 +1,4 @@
+import {authenticatedSession,mockSession} from './helpers/authenticated-session';
 import {test,expect,type Page} from '@playwright/test';
 import sharp from 'sharp';
 import {createHash} from 'node:crypto';
@@ -28,8 +29,9 @@ async function setup(page:Page){
   }
   return send({email:{enabled:false},checkout:{enabled:false}});
  });
+ await authenticatedSession(page,mockSession('history-user-123'));
  await page.goto('/#home');await expect(page.locator('.app-header')).toBeVisible();
- await page.evaluate(async p=>new Promise<void>((resolve,reject)=>{const r=indexedDB.open('aiadcast-workspace-drafts',1);r.onupgradeneeded=()=>r.result.createObjectStore('drafts');r.onsuccess=()=>{const tx=r.result.transaction('drafts','readwrite');tx.objectStore('drafts').put({editor:p,returnPage:'studio'},'guest');tx.oncomplete=()=>{r.result.close();resolve();};tx.onerror=()=>reject(tx.error);};}),p);
+ await page.evaluate(async p=>new Promise<void>((resolve,reject)=>{const r=indexedDB.open('aiadcast-workspace-drafts',1);r.onupgradeneeded=()=>r.result.createObjectStore('drafts');r.onsuccess=()=>{const tx=r.result.transaction('drafts','readwrite');tx.objectStore('drafts').put({editor:p,returnPage:'studio'},'history-user-123');tx.oncomplete=()=>{r.result.close();resolve();};tx.onerror=()=>reject(tx.error);};}),p);
  await page.evaluate(()=>history.replaceState(null,'','/#studio'));await page.reload();
  await expect(page.getByText(missing,{exact:true})).toBeVisible();
  await page.locator('.new-ad-options > summary').click();

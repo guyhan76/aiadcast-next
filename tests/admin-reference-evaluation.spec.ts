@@ -1,3 +1,4 @@
+import {authenticatedSession,mockSession} from './helpers/authenticated-session';
 import {test,expect,type Page} from '@playwright/test';
 import sharp from 'sharp';
 import {readFile} from 'node:fs/promises';
@@ -17,6 +18,7 @@ async function setup(page:Page,{lost=false}={}){
   }
   return route.fulfill({status:404,json:{error:{code:'FIXTURE_ROUTE_NOT_FOUND'}}});
  });
+ await authenticatedSession(page,{...mockSession('admin-fixture','admin'),user:{id:'admin-fixture',label:'Operator',role:'admin'}},{seed:false});
  await page.goto('/#admin');await expect(page.getByRole('heading',{name:'승인 원본 사진 분석',exact:true})).toBeVisible();
  return {posts:()=>posts,select:()=>page.getByLabel('승인 원본 JPG 선택').setInputFiles({name:'22932.jpg',mimeType:'image/jpeg',buffer:bytes})};
 }
