@@ -7,10 +7,10 @@ async function start(page:Page){await page.goto('/?support=1#guide');await page.
 test('without a server: signup, failed/canceled/successful checkout, review, rejection, PNG export and re-login',async({page})=>{
  test.setTimeout(90000);const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await start(page);
  const calls:string[]=[];page.on('request',r=>{if(new URL(r.url()).pathname.startsWith('/api/'))calls.push(r.url());});
- await page.getByRole('radio',{name:/기본형/}).check();await page.getByRole('checkbox',{name:/이용권 수량/}).check();await page.getByRole('button',{name:'테스트 결제 준비',exact:true}).click();
+ await page.getByRole('radio',{name:/기본형/}).check();await page.getByRole('checkbox',{name:/이용권 수량/}).check();await page.getByRole('button',{name:'결제',exact:true}).click();
  await page.getByRole('button',{name:'결제 실패 시험',exact:true}).click();await expect(page.getByRole('alert')).toContainText('이용권은 추가되지 않았습니다');await expect(page.locator('.credit-balance')).toContainText('0개');
  await page.getByRole('button',{name:'결제 취소 시험',exact:true}).click();await expect(page.locator('.credit-balance')).toContainText('0개');await page.getByRole('button',{name:'이용권 다시 선택',exact:true}).first().click();
- await page.getByRole('checkbox',{name:/이용권 수량/}).check();await page.getByRole('button',{name:'테스트 결제 준비',exact:true}).click();await page.getByRole('button',{name:'결제 성공 시험',exact:true}).dblclick();await expect(page.getByRole('heading',{name:'체험 이용권이 추가되었습니다'})).toBeVisible();await expect(page.locator('.account-page')).toContainText('보유 100개');
+ await page.getByRole('checkbox',{name:/이용권 수량/}).check();await page.getByRole('button',{name:'결제',exact:true}).click();await page.getByRole('button',{name:'결제 성공 시험',exact:true}).dblclick();await expect(page.getByRole('heading',{name:'체험 이용권이 추가되었습니다'})).toBeVisible();await expect(page.locator('.account-page')).toContainText('보유 100개');
  await page.locator('.account-page').getByRole('link',{name:'광고 만들기',exact:true}).click();await expect(page.locator('.consumer-create')).toBeVisible();
  // The advanced manual-composition route must not auto-request a second visual.
  await page.goto('/#editor');await page.locator('.editor-details>summary').click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'product.png',mimeType:'image/png',buffer:photo});await page.getByRole('textbox',{name:'상품·서비스명',exact:true}).fill('시험 상품');await page.getByRole('combobox',{name:'출력 비율',exact:true}).selectOption('4:5');
@@ -31,4 +31,21 @@ test('automatic outline check records only the chosen view and does not certify 
  const downloaded=page.waitForEvent('download');await panel.getByRole('button',{name:'자동 검사 기록 저장'}).click();const file=await (await downloaded).path();const report=JSON.parse(await fs.readFile(file!,'utf8'));expect(report.geometryVerified).toBe(false);expect(report.status).toBe('partially-checked');expect(report.missingPairs).toEqual(['depth:height','width:depth']);expect(report.sourceViews[0].assessment.error).toBeLessThan(.02);
  await panel.getByRole('combobox',{name:'사진 1 촬영면',exact:true}).selectOption('perspective');await expect(panel).toContainText('원근 사진은 비례 판정 보류');
  await panel.getByRole('combobox',{name:'사진 1 촬영면',exact:true}).selectOption('front');await page.getByRole('region',{name:'규격 적용 확인',exact:true}).getByRole('button',{name:'규격 수정',exact:true}).click();await page.locator('.editor-container').getByLabel('높이 mm',{exact:true}).fill('60');await expect(panel).toContainText('규격 대비 비례 차이 감지');const generation=page.getByRole('region',{name:'AI 광고 제작',exact:true});await generation.getByRole('button',{name:'AI 배경 요청 · 1개',exact:true}).click();await expect(generation.getByRole('alert')).toContainText('새 시안은 요청하지 않았습니다');expect(generationPosts).toBe(0);
+});
+
+test('offline demo validates issued sessions and cannot use a forged token for an existing account',async({page})=>{
+ await start(page);
+ const calls:string[]=[];page.on('request',request=>{if(new URL(request.url()).pathname.startsWith('/api/'))calls.push(request.url());});
+ const original=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('aiadcast.beta-session')!));
+ await page.evaluate(()=>{const s=JSON.parse(sessionStorage.getItem('aiadcast.beta-session')!);s.token='z'.repeat(43);sessionStorage.setItem('aiadcast.beta-session',JSON.stringify(s));});
+ await page.reload();await expect(page.locator('#account-email')).toBeVisible();
+ expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();
+ await page.locator('#account-email').fill('demo@example.com');await page.getByRole('button',{name:'체험 계정 만들기',exact:true}).click();await page.getByRole('button',{name:'체험 인증 완료하기',exact:true}).click();
+ await expect(page.locator('.app-header')).toBeVisible();
+ const restored=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('aiadcast.beta-session')!));
+ expect(restored.user.id).toBe(original.user.id);expect(restored.origin).toBe('local-demo://device');
+ await page.goto('/?support=1#guide');await page.locator('.account-drawer>summary').click();await page.getByRole('button',{name:'체험 계정 로그아웃',exact:true}).click();await expect(page.locator('#account-email')).toBeVisible();
+ await page.evaluate(value=>sessionStorage.setItem('aiadcast.beta-session',JSON.stringify(value)),restored);
+ await page.reload();await expect(page.locator('#account-email')).toBeVisible();expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();
+ expect(calls).toEqual([]);
 });
