@@ -19,13 +19,13 @@ The accompanying CSV retains the original classification and adds current status
 - **252** now have targeted passing evidence (242 same-title, 10 explicit replacement flows). Replacement flows preserve the relevant ownership, original asset, export and checkout assertions while exercising intended Google recovery, accepted-ad versus draft storage, supplied SVG branding and restored historical jobs.
 - **42** reuse the previous scoped passing evidence; not rerun unnecessarily.
 - **24** still conflict with the existing new-generation policy (12 tests on both viewports). They remain in the suite, unchanged in substantive expectations and not skipped.
-- **2** reproduce a Google integration regression in offline-demo signup. Not fixed or waived.
+- **2** reproduced a Google integration regression in offline-demo signup, now repaired and passing in the 58-case authentication regression group.
 
-Thus 294 old failure identities have scoped evidence, **26 remain unresolved**. This is not a claim of 294 passes from one exact-SHA full CI run. Previously passing cases and interactions still require consolidated CI after the blockers are settled.
+Thus 296 old failure identities have scoped evidence, **24 remain unresolved**. This is not a claim of 296 passes from one exact-SHA full CI run. Previously passing cases and interactions still require consolidated CI after the blockers are settled.
 
 ## Actual local changes and checks
 
-Only product change in this follow-up remains commit `4c98ab496b7d1a811e51090f7cf49e52ee62b06f`: cold web/native Google completion consumes the existing validated checkout destination instead of forcing home. Existing account ownership/ticket validation remains unchanged. All subsequent changes are tests and review documents.
+First product change in this follow-up is commit `4c98ab496b7d1a811e51090f7cf49e52ee62b06f`: cold web/native Google completion consumes the existing validated checkout destination instead of forcing home. Existing account ownership/ticket validation remains unchanged. A second product fix, `0e14451`, restores isolated offline demo authentication as detailed below. Other changes are tests and review documents.
 
 Explicit per-spec authenticated fixtures validate known bearer token, expiry and account; they do not auto-authenticate every test or resurrect a logged-out session. Historical drafts/jobs are seeded under their owner. Protected UI tests use current selectors and valid required photos where the test concerns a different feature. Tests specifically promising photo-free creation were not converted into photo tests.
 
@@ -46,7 +46,7 @@ Completed targeted groups, desktop/mobile unless noted:
 | Repaired mobile cases, outline metadata; offline signup and guidance diagnosis | 6 passed; 4 failed (guidance 2 repaired below, offline 2 remain) | `/tmp/protected-mobile-offline.log` |
 | Result guidance/PNG, draft recovery/save without duplicate entries, same-tick create | 6 passed | `/tmp/protected-last-independent-final.log` |
 
-These groups contain 264 distinct passing test identities, including cases already green in CI. Failed diagnostic attempts are disclosed above; they are not additional successful runs. Existing skips were not introduced or increased. Earlier 48 Google/native/checkout checks and previous fixture checks are reused. Final local `npm run typecheck` and `git diff --check` passed. No lint script exists. Build last passed after the product change; source has not changed since. Domain evidence is the earlier remote pass, not a new run on this test-only revision. No full suite rerun undertaken.
+Before the final offline-auth follow-up, these groups contain 264 distinct passing test identities, including cases already green in CI. Failed diagnostic attempts are disclosed above; they are not additional successful runs. Existing skips were not introduced or increased. Final follow-up: **58 browser checks passed (47.0s)** covering Google web/native, checkout return, explicit fixture isolation and offline demo on desktop/mobile (`/tmp/offline-auth-regression.log`). This includes two new forged/revoked demo-session cases; do not add overlapping runs as distinct coverage. Google mock domain checks: **9 passed** (`/tmp/offline-auth-domain.log`). Local `npm run build`, `npm run typecheck` and `git diff --check` passed after the product fix. No lint script exists. Whole-domain evidence remains the earlier remote pass, not a new full-domain run. No full browser suite rerun undertaken.
 
 ## Exact remaining conflicts
 
@@ -64,16 +64,18 @@ Affected contracts:
 
 Do not silently restore removed new-generation behavior or replace these tests with unrelated assertions. Decision needed: confirm the photo-only policy and migrate these contracts to explicit rejection/historical-result coverage while retaining source/request/dimension/save checks, OR authorize restoring the removed new-generation features as separate product work. Other legacy dimension/annotation/accepted-result tests already pass through real owner-scoped historical fixtures.
 
-### Google integration breaks existing offline demo (2 cases)
+### Repaired: Google integration broke existing offline demo (2 original cases)
 
-Reproduced with valid auth prerequisite: authenticated support page → “Start offline demo” → mode change clears server session → reload shows disabled Google button instead of local demo signup. `GoogleGate` intercepts unsigned demo signup; `src/local-demo.ts` also lacks `/api/auth/session` required by the new gate. The diagnostic screenshot/log confirms the failure is not just a selector. Offline generation, simulated checkout and re-login cannot be certified end to end.
+Reproduced with valid auth prerequisite: authenticated support page → “Start offline demo” → mode change clears server session → reload shows disabled Google button instead of local demo signup. `GoogleGate` intercepts unsigned demo signup; `src/local-demo.ts` also lacks `/api/auth/session` required by the new gate. The diagnostic screenshot/log confirms the failure is not just a selector. The failure was reproduced before the fix; the complete simulated flow now passes on both viewports.
 
-Small repair boundary: preserve the deliberate support-only, network-free demo flow; add a narrowly scoped local demo authentication/session contract rather than bypassing server session validation. Local demo accounts/credits must remain separate and survive re-login. A blanket `offlineDemo => children` authentication bypass is not an acceptable fix. This has not been implemented; disclose it separately from the photo-policy decision.
+Implemented in `0e14451`: only the explicitly selected offline mode can use local signup/login. Signed demo accounts still require `/api/auth/session` validation. The local adapter records issued tokens with account and expiry, rejects forged/revoked tokens and revokes them on logout; 401 invalidation cannot erase a replacement session. Existing user/order/job/credit records are preserved. Optional session records require no IndexedDB schema version change; old demo sessions without issuance records must reauthenticate to the same local account. No server authentication/permissions changed.
+
+The simulated end-to-end test verifies failed/cancelled purchases add nothing, successful purchase grants 100 once, two generations leave 80, acceptance/reapplication do not charge again, and re-login retains 80. A separate case verifies forged and logged-out token rejection plus same-account recovery, with zero network API requests. Public real-mode Google-only login and account-isolated checkout/Android return tests remain passing. No blanket offline child-render bypass was added.
 
 ## Release position
 
-Do not deploy yet or launch another knowingly failing full CI. All independent targeted groups have been handled; resolve the above product contract boundary and offline regression before one consolidated normal push and exact-SHA CI. Do not skip failing tests or change required gates.
+Do not deploy yet or launch another knowingly failing full CI. All independent targeted groups have been handled; resolve the above 24-case product contract boundary before one consolidated normal push and exact-SHA CI. Do not skip failing tests or change required gates.
 
 Prepared APK remains source `9e11ae54`, stale relative to checkout/auth repairs, not deliverable as this release. Rebuild only from the selected verified candidate using existing approved signing. No Render deploy called. Exact-SHA Dashboard deployment remains required because available generic tool cannot pin commit. Keep auto-deploy off and rollback reference `040e261511b1af59fcb1849b1c50ca6deeae54fd`.
 
-No production data, credentials, permissions, service settings, real login/email/payment/generation, or outsourced app changed. There is no connection/approval-tool denial; remaining blockers are explicit product/test contracts and a reproduced local demo regression.
+No production data, credentials, permissions, service settings, real login/email/payment/generation, or outsourced app changed. There is no connection/approval-tool denial; remaining blockers are the 24 explicit product/test contract conflicts. The recoverable offline regression has been repaired locally.
