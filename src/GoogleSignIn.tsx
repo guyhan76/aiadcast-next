@@ -1,3 +1,4 @@
+import {consumeLoginDestination} from './login-navigation';
 import {nativeGooglePackage,nativeGoogleRestore,nativeGoogleOpen,nativeGoogleClear,type NativeGoogleFlow} from './google-native';
 import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {apiRequest,ApiRequestFailure} from './generation-client';
@@ -30,13 +31,13 @@ export function GoogleGate({children}:{children:ReactNode}){
   if(reply.error||!flow||flow.expires<=Date.now()||flow.state!==state||!code){sessionStorage.removeItem(key);setError(t('로그인을 다시 시작해주세요.','Please start sign-in again.'));return;}
   setBusy(true);locked.current=true;
   let result=exchanges.get(flow.state);if(!result){result=apiRequest<BetaSession>('/api/auth/google/finish',{state,proof:flow.proof,code});exchanges.set(flow.state,result);}
-  void result.then(session=>{guard();if(!alive)return;sessionStorage.removeItem(key);sessionStorage.removeItem('aiadcast.google-recover');setBetaSession(session,'home');}).catch(e=>{if(!alive)return;sessionStorage.removeItem(key);const need=e instanceof ApiRequestFailure&&e.code==='GOOGLE_ACCOUNT_LINK_REQUIRED';setLinkNeeded(need);setError(need?t('기존 계정을 확인한 뒤 Google을 연결해주세요.','Verify your existing account to connect Google.'):t('로그인을 완료하지 못했습니다. 다시 시도해주세요.','Could not finish sign-in. Please retry.'));}).finally(()=>{if(alive){locked.current=false;setBusy(false);}});return()=>{alive=false;};
+  void result.then(session=>{guard();if(!alive)return;sessionStorage.removeItem(key);sessionStorage.removeItem('aiadcast.google-recover');setBetaSession(session,consumeLoginDestination());}).catch(e=>{if(!alive)return;sessionStorage.removeItem(key);const need=e instanceof ApiRequestFailure&&e.code==='GOOGLE_ACCOUNT_LINK_REQUIRED';setLinkNeeded(need);setError(need?t('기존 계정을 확인한 뒤 Google을 연결해주세요.','Verify your existing account to connect Google.'):t('로그인을 완료하지 못했습니다. 다시 시도해주세요.','Could not finish sign-in. Please retry.'));}).finally(()=>{if(alive){locked.current=false;setBusy(false);}});return()=>{alive=false;};
  },[reply]);
  function clearNative(){nativeGoogleClear(nativeFlow?.state);sessionStorage.removeItem(key);setNativeFlow(undefined);}
  useEffect(()=>{if(!nativeFlow)return;let alive=true;const guard=signInBoundary();
   const fail=(error?:unknown)=>{if(!alive)return;nativeGoogleClear(nativeFlow.state);sessionStorage.removeItem(key);setNativeFlow(undefined);const need=error instanceof ApiRequestFailure&&error.code==='GOOGLE_ACCOUNT_LINK_REQUIRED';setLinkNeeded(need);setError(need?t('기존 계정을 확인한 뒤 Google을 연결해주세요.','Verify your existing account to connect Google.'):t('로그인을 다시 시작해주세요.','Please start sign-in again.'));};
   const poll=async()=>{if(!alive||locked.current||document.visibilityState!=='visible')return;if(nativeFlow.expires<=Date.now()){fail();return;}locked.current=true;
-   try{const r=await apiRequest<{state:'pending'|'verified';session?:BetaSession}>('/api/auth/google/native-poll',{state:nativeFlow.state,proof:nativeFlow.proof});guard();if(!alive)return;if(r.state==='verified'&&r.session){nativeGoogleClear(nativeFlow.state);sessionStorage.removeItem(key);sessionStorage.removeItem('aiadcast.google-recover');setBetaSession(r.session,'home');}}
+   try{const r=await apiRequest<{state:'pending'|'verified';session?:BetaSession}>('/api/auth/google/native-poll',{state:nativeFlow.state,proof:nativeFlow.proof});guard();if(!alive)return;if(r.state==='verified'&&r.session){nativeGoogleClear(nativeFlow.state);sessionStorage.removeItem(key);sessionStorage.removeItem('aiadcast.google-recover');setBetaSession(r.session,consumeLoginDestination());}}
    catch(e){fail(e);}finally{locked.current=false;}
   };
   const resume=()=>void poll();window.addEventListener('aiadcast-google-return',resume);window.addEventListener('aiadcast-google-open-failed',fail);window.addEventListener('focus',resume);document.addEventListener('visibilitychange',resume);const timer=setInterval(resume,3000);resume();

@@ -31,3 +31,11 @@ for(const mismatch of ['owner','origin','expiry'])test('Android restart rejects 
 test('Android existing-account collision offers ownership recovery instead of an endless Google retry',async({page})=>{
  await setup(page);await page.route('**/api/auth/google/native-poll',r=>r.fulfill({status:409,json:{error:{code:'GOOGLE_ACCOUNT_LINK_REQUIRED'}}}));await page.goto('/');await page.getByRole('button',{name:'Google로 계속하기'}).click();await expect(page.getByRole('link',{name:'기존 계정 확인'})).toBeVisible();expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();
 });
+for(const otherOwner of [false,true])test(`Android Google return ${otherOwner?'does not read another owner order':'continues the original verified checkout'}`,async({page})=>{
+ const mock=await setup(page);let orders=0;
+ await page.addInitScript(({origin,otherOwner})=>{const orderId='native-return-order';localStorage.setItem('aiadcast.checkout-continuation',JSON.stringify({orderId,userId:otherOwner?'different-user-456':'native-google-user',origin,route:'create',created:Date.now()}));sessionStorage.setItem('aiadcast.login-destination',JSON.stringify({target:'checkout-return',origin,created:Date.now()}));},{origin,otherOwner});
+ await page.route('**/api/checkout/orders/native-return-order',r=>{orders++;return r.fulfill({json:{id:'native-return-order',state:'paid',credits:3,amount:6900,currency:'KRW',receipt:{verified:true,grantedCredits:3,balance:5}}});});
+ await page.goto('/');await page.getByRole('button',{name:'Google로 계속하기',exact:true}).click();await expect(page.getByRole('button',{name:'취소',exact:true})).toBeVisible();mock.approved=true;await page.evaluate(()=>window.dispatchEvent(new Event('aiadcast-google-return')));
+ if(otherOwner){await expect(page.getByText('결제를 시작한 계정으로 로그인해주세요.',{exact:false})).toBeVisible();expect(orders).toBe(0);await expect(page.locator('.consumer-create')).toHaveCount(0);}
+ else{await expect(page).toHaveURL(/#create$/);await expect(page.locator('.consumer-create')).toBeVisible();expect(orders).toBe(1);}
+});
