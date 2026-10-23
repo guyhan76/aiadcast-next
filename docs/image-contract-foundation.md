@@ -30,3 +30,17 @@ Future video work requires its own versioned artifact and execution contract,
 durable provider status/cancellation reconciliation, private video storage and
 playback, timed text/audio rendering and separately approved pricing. None is
 exposed or enabled here. The current 20-project limit is unchanged.
+
+## Future creation UI principles
+
+Keep creation fast with minimal choices. Reveal advanced controls only when
+needed; avoid small-print instructions and repeated explanations. Show costs,
+progress and actionable errors clearly at the moment they matter. These facts
+must remain visible even when advanced controls are collapsed.
+
+Future channel presets may map to aspect ratio and output settings behind the
+simple flow (Instagram, YouTube, TikTok, websites, product pages and company ads).
+Do not add unsupported media choices or imply direct publishing/integration.
+Image and video should share product understanding where appropriate, while
+retaining separate validated output contracts. This is a design direction only:
+no video UI, Higgsfield integration, new presets or login redesign is included.
