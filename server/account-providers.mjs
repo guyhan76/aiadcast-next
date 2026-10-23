@@ -5,7 +5,7 @@ const fail=(code,status=503)=>{throw new ApiFailure(code,status);};
 export function resendMailer({apiKey,from,fetchImpl=fetch}){
  if(!apiKey||typeof from!=='string'||!from.includes('@')||/[\r\n]/.test(from))return undefined;
  return async({email,url,id})=>{
-  const response=await fetchImpl('https://api.resend.com/emails',{method:'POST',redirect:'error',signal:AbortSignal.timeout(15_000),headers:{Authorization:'Bearer '+apiKey,'Content-Type':'application/json','Idempotency-Key':'email-'+id},body:JSON.stringify({from,to:[email],subject:'aiadcast 이메일 인증',text:`aiadcast 로그인을 요청하셨나요?\n\n아래 링크에서 인증을 확인하면 요청한 기기에 로그인됩니다. 링크는 10분 동안 유효합니다.\n${url}\n\n직접 요청하지 않았다면 이 메일을 무시하세요.`})});
+  const response=await fetchImpl('https://api.resend.com/emails',{method:'POST',redirect:'error',signal:AbortSignal.timeout(15_000),headers:{Authorization:'Bearer '+apiKey,'Content-Type':'application/json','Idempotency-Key':'email-'+id},body:JSON.stringify({from,to:[email],subject:'Verify your email for aiadcast',text:`Did you request to sign in to aiadcast?\n\nOpen the link below to verify your email, then return to the app or tab where you requested it to finish signing in. This link expires in 10 minutes.\n${url}\n\nIf you did not request this, ignore this email.`})});
   if(!response.ok)fail('EMAIL_SEND_FAILED');
   const result=await response.json();if(typeof result.id!=='string')fail('EMAIL_SEND_FAILED');
  };

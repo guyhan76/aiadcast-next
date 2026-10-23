@@ -8,7 +8,7 @@ import {betaSession,setBetaSession,type BetaSession} from './beta-session';
 import {configuredApiOrigin} from './api-origin';
 import {signInBoundary} from './sign-in-boundary';
 import {EmailAccountPage,VerifyEmailPage} from './AccountPages';
-import {useUiLanguage} from './ui-language';
+import {useUiLanguage,LanguageSwitcher} from './ui-language';
 import './google-signin.css';
 const key='aiadcast.google-flow';
 type Flow={state:string;proof:string;expires:number;url:string};
@@ -52,9 +52,9 @@ export function GoogleGate({children}:{children:ReactNode}){
  // Deliberate device-only simulation uses its own adapter and account namespace.
  // Signed demo sessions still pass the same session check above.
  if(demoAuth)return <EmailAccountPage mode={route==='#signup'?'signup':'login'} preserve={async()=>{}} returnPage="home"/>;
- if(route.startsWith('#verify'))return <VerifyEmailPage/>;
+ if(route.startsWith('#verify'))return <><div className="auth-language"><LanguageSwitcher/></div><VerifyEmailPage/></>;
  // Existing ownership verification is a recovery route, never the default signup path.
- if(recovery&&!signed)return <div className="google-recovery"><EmailAccountPage mode="login" preserve={async()=>{}} returnPage="home"/></div>;
+ if(recovery&&!signed)return <div className="google-recovery"><div className="auth-language"><LanguageSwitcher/></div><EmailAccountPage mode="login" preserve={async()=>{}} returnPage="home"/></div>;
  if(signed&&checked&&!reply&&!link)return <>{children}</>;
- return <main className="google-signin"><div className="google-signin-card"><h1><BrandLogo/></h1><p>{t('쉽고 빠르게, 나만의 광고 이미지','Your ad image. Easy and fast.')}</p><button className="google-continue" disabled={!!nativeFlow||nativeUnsupported||!available||busy||signed&&!checked} onClick={()=>void start()}>{busy?t('로그인 중…','Signing in…'):link?t('이 계정에 Google 연결','Connect Google to this account'):t('Google로 계속하기','Continue with Google')}</button>{nativeFlow&&<><p role="status">{t('Google 인증 후 앱으로 돌아오면 로그인됩니다.','Return after Google verification to finish sign-in.')}</p><button onClick={clearNative}>{t('취소','Cancel')}</button></>}{nativeUnsupported&&<p role="status">{t('이 앱의 Google 로그인 연결을 준비 중입니다.','Google sign-in for this app is not connected yet.')}</p>}{!nativeUnsupported&&!available&&!error&&<p role="status">{t('Google 로그인 연결 준비 중입니다.','Google sign-in is not connected yet.')}</p>}{error&&<p role="alert">{error}</p>}{linkNeeded&&<a href="#account-recovery" onClick={()=>sessionStorage.setItem('aiadcast.google-recover','1')}>{t('기존 계정 확인','Verify existing account')}</a>}</div></main>;
+ return <main className="google-signin"><div className="google-signin-card"><h1><BrandLogo/></h1><p>{t('쉽고 빠르게, 나만의 광고 이미지','Your ad image. Easy and fast.')}</p><button className="google-continue" disabled={!!nativeFlow||nativeUnsupported||!available||busy||signed&&!checked} onClick={()=>void start()}>{busy?t('로그인 중…','Signing in…'):link?t('이 계정에 Google 연결','Connect Google to this account'):t('Google로 계속하기','Continue with Google')}</button>{nativeFlow&&<><p role="status">{t('Google 인증 후 앱으로 돌아오면 로그인됩니다.','Return after Google verification to finish sign-in.')}</p><button onClick={clearNative}>{t('취소','Cancel')}</button></>}{nativeUnsupported&&<p role="status">{t('이 앱의 Google 로그인 연결을 준비 중입니다.','Google sign-in for this app is not connected yet.')}</p>}{!nativeUnsupported&&!available&&!error&&<p role="status">{t('Google 로그인 연결 준비 중입니다.','Google sign-in is not connected yet.')}</p>}{error&&<p role="alert">{error}</p>}{linkNeeded&&<a href="#account-recovery" onClick={()=>sessionStorage.setItem('aiadcast.google-recover','1')}>{t('기존 계정 확인','Verify existing account')}</a>}<div className="auth-language"><LanguageSwitcher/></div></div></main>;
 }
