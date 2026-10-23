@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { ApiFailure } from '../generation-service.mjs';
 import { ProviderFailure } from '../openai-image-adapter.mjs';
 import { GoogleAuth } from './google-auth-base.mjs';
-import { googleReturnPage, googleUiLanguage } from '../google-return-page.mjs';
+import { googleReturnPage, googleUiLanguage, googleReturnCsp } from '../google-return-page.mjs';
 import { EmailAuth } from './email-auth-base.mjs';
 import { PasswordAuth } from './password-auth-base.mjs';
 import { TestCheckout } from './test-checkout-base.mjs';
@@ -150,7 +150,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
             }
             if (req.method === 'GET' && url.pathname === '/api/auth/google/native-callback') {
                 const state = url.searchParams.get('state'), target = await google.approveNativeGoogle(state, url.searchParams.get('code')), language = await google.nativeGoogleLanguage(state) ?? googleUiLanguage(undefined, req.headers['accept-language']);
-                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" });
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': googleReturnCsp });
                 res.end(googleReturnPage(target, language));
                 return;
             }

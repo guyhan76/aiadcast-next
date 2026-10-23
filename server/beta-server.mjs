@@ -10,7 +10,7 @@ import {GenerationService,ApiFailure} from './generation-service.mjs';
 import {OpenAIImageAdapter,ProviderFailure} from './openai-image-adapter.mjs';
 import {assistCopy} from './text-assistant.mjs';
 import {GoogleAuth} from './google-auth.mjs';
-import {googleReturnPage,googleUiLanguage} from './google-return-page.mjs';
+import {googleReturnPage,googleUiLanguage,googleReturnCsp} from './google-return-page.mjs';
 import {EmailAuth} from './email-auth.mjs';
 import {PasswordAuth} from './password-auth.mjs';
 import {TestCheckout} from './test-checkout.mjs';
@@ -59,7 +59,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
     else throw new ApiFailure('NOT_FOUND',404);
     send(res,200,result,cors);return;}
    if(req.method==='POST'&&url.pathname==='/api/auth/google/start'){const b=await read(req,1024);send(res,200,google.startGoogle(req.headers.authorization,b?.packageId,googleUiLanguage(b?.language,req.headers['accept-language'])),cors);return;}
-   if(req.method==='GET'&&url.pathname==='/api/auth/google/native-callback'){const state=url.searchParams.get('state'),target=await google.approveNativeGoogle(state,url.searchParams.get('code')),language=await google.nativeGoogleLanguage(state)??googleUiLanguage(undefined,req.headers['accept-language']);res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});res.end(googleReturnPage(target,language));return;}
+   if(req.method==='GET'&&url.pathname==='/api/auth/google/native-callback'){const state=url.searchParams.get('state'),target=await google.approveNativeGoogle(state,url.searchParams.get('code')),language=await google.nativeGoogleLanguage(state)??googleUiLanguage(undefined,req.headers['accept-language']);res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':googleReturnCsp});res.end(googleReturnPage(target,language));return;}
    if(req.method==='POST'&&url.pathname==='/api/auth/google/native-poll'){send(res,200,google.pollNativeGoogle(await read(req,2048),req.headers.authorization),cors);return;}
    if(req.method==='POST'&&url.pathname==='/api/auth/google/finish'){send(res,200,await google.finishGoogle(await read(req,8192),req.headers.authorization),cors);return;}
    if(req.method==='POST'&&url.pathname==='/api/checkout/receipt'){send(res,200,await checkout.receipt(await read(req,2048)),cors);return;}

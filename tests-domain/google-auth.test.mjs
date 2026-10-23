@@ -83,9 +83,9 @@ test('native return language follows the initiating app across browser locale ch
   assert.equal(callback.status,200);const html=await callback.text();
   assert.ok(html.includes('<html lang="'+expected+'">'));
   assert.ok(html.includes(expected==='ko'?'aiadcast로 돌아가기':'Return to aiadcast'));
-  assert.ok(html.includes(expected==='ko'?'Google 로그인이 확인되었습니다.':'Google sign-in confirmed.'));
+  assert.ok(html.includes(expected==='ko'?'aiadcast를 여는 중…':'Opening aiadcast…'));
   assert.ok(html.includes('fill="#E8722A"')&&html.includes('fill="#1F1F1D"'));
-  assert.ok(!html.includes(flow.state)&&!html.includes(flow.proof)&&!html.includes('fixture-code')&&!html.includes('<script'));
+  assert.ok(!html.includes(flow.state)&&!html.includes(flow.proof)&&!html.includes('fixture-code'));
   assert.ok(callback.headers.get('content-security-policy').includes("style-src 'unsafe-inline'"));
   assert.equal(callback.headers.get('cache-control'),'no-store');
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM sessions').get().n,0);

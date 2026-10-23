@@ -1,10 +1,16 @@
+import {createHash} from 'node:crypto';
 import {test,expect} from '@playwright/test';
-import {googleReturnPage} from '../server/google-return-page.mjs';
+import {googleReturnPage,googleReturnCsp} from '../server/google-return-page.mjs';
 const pkg='com.selluplabs.aiadcast.next.demo';
 for(const language of ['en','ko'] as const){
  test(`native return uses original wordmark and ${language} copy`,async({page},info)=>{
-  await page.route('**/*',r=>r.request().url().endsWith('/mock-native-return')?r.fulfill({contentType:'text/html',body:googleReturnPage(pkg+'://google/return',language)}):r.abort());
-  await page.goto('/mock-native-return');await expect(page.locator('html')).toHaveAttribute('lang',language);await expect(page.getByRole('link',{name:language==='ko'?'aiadcast로 돌아가기':'Return to aiadcast'})).toHaveAttribute('href',pkg+'://google/return');await expect(page.locator('h1 svg')).toBeVisible();expect(await page.locator('h1 svg g[fill="#E8722A"]').count()).toBe(1);expect(await page.locator('h1 svg g[fill="#1F1F1D"]').count()).toBe(1);expect(await page.locator('h1 polygon').getAttribute('fill')).toBe('#E8722A');expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);await page.screenshot({path:info.outputPath('native-return-'+language+'.png')});
+  // This executor blocks OS scheme navigation. Mock only the OS handoff, not the timing/UI.
+  const html=googleReturnPage(pkg+'://google/return',language).replace('window.location.assign(link.href)','window.__mockWake.push(link.href)');
+  const script=html.match(/<script>([\s\S]*?)<\/script>/)![1];
+  const csp=googleReturnCsp.replace(/sha256-[^']+/, 'sha256-'+createHash('sha256').update(script).digest('base64'));
+  await page.addInitScript(()=>{(window as any).__mockWake=[];});
+  await page.route('**/*',r=>r.request().url().endsWith('/mock-native-return')?r.fulfill({contentType:'text/html',headers:{'Content-Security-Policy':csp},body:html}):r.abort());
+  await page.clock.install();await page.goto('/mock-native-return');await expect(page.locator('.return')).toBeHidden();await expect(page.getByRole('status')).toHaveText(language==='ko'?'aiadcast를 여는 중…':'Opening aiadcast…');expect(await page.evaluate(()=>(window as any).__mockWake)).toEqual([pkg+'://google/return']);await page.clock.fastForward(1500);await expect(page.locator('.return')).toBeVisible();await expect(page.locator('html')).toHaveAttribute('lang',language);await expect(page.getByRole('link',{name:language==='ko'?'aiadcast로 돌아가기':'Return to aiadcast'})).toHaveAttribute('href',pkg+'://google/return');await expect(page.locator('h1 svg')).toBeVisible();expect(await page.locator('h1 svg g[fill="#E8722A"]').count()).toBe(1);expect(await page.locator('h1 svg g[fill="#1F1F1D"]').count()).toBe(1);expect(await page.locator('h1 polygon').getAttribute('fill')).toBe('#E8722A');expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);await page.screenshot({path:info.outputPath('native-return-'+language+'.png')});
  });
  for(const native of [false,true])test(`${native?'Android':'web'} sends explicitly selected ${language} without changing auth proof`,async({page})=>{
   let sent:any;
@@ -13,3 +19,8 @@ for(const language of ['en','ko'] as const){
   await page.goto('/');await page.getByRole('button',{name:language==='ko'?'Google로 계속하기':'Continue with Google',exact:true}).click();await expect.poll(()=>sent).toEqual({language,...(native?{packageId:pkg}:{})});
  });
 }
+
+test('JavaScript-disabled browser retains a manual recovery link without misleading progress',async({browser})=>{
+ const context=await browser.newContext({javaScriptEnabled:false});const page=await context.newPage();
+ try{await page.route('**/*',r=>r.fulfill({contentType:'text/html',headers:{'Content-Security-Policy':googleReturnCsp},body:googleReturnPage(pkg+'://google/return','en')}));await page.goto('http://127.0.0.1:4180/mock-native-return');await expect(page.getByRole('link',{name:'Return to aiadcast'})).toBeVisible();await expect(page.locator('[role=status]')).toBeHidden();}finally{await context.close();}
+});
