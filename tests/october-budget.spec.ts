@@ -18,7 +18,7 @@ test('owner applies the fixed October cap once through real HTTP and it expires 
  let activations=0;
  await page.route('**/api/**',async route=>{const req=route.request(),url=new URL(req.url());if(url.pathname==='/api/admin/october-budget'){activations++;expect(req.postDataJSON()).toEqual({});}const response=await route.fetch({url:'http://127.0.0.1:'+port+url.pathname+url.search,headers:{...req.headers(),origin}});await route.fulfill({response});});
  try{
-  await page.goto('/#guide');await page.locator('.account-drawer>summary').click();await page.getByRole('button',{name:'테스트 로그인',exact:true}).click();await page.getByLabel('초대코드',{exact:true}).fill(invite.invite);await page.locator('.beta-account-panel').getByRole('button',{name:'로그인',exact:true}).click();
+  await page.clock.install({time:new Date(time)});await page.addInitScript(s=>sessionStorage.setItem('aiadcast.beta-session',JSON.stringify(s)),store.login(invite.invite));await page.goto('/#home');
   await page.locator('.app-header').getByRole('link',{name:'관리자',exact:true}).click();
   await expect.poll(()=>services.has(owner)).toBe(true);const service=services.get(owner)!;
   service.db.prepare('INSERT INTO budgets VALUES(?,?,?,?)').run('2026-10',1000000,527300,100000);
