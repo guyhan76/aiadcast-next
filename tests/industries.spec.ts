@@ -10,6 +10,9 @@ async function backup(page:Page){const d=page.waitForEvent('download');await pag
 test('all industries remain available in a grouped list without a duplicate subject selection',async({page})=>{
  await page.goto('/#create');const wizard=page.locator('.create-page'),select=wizard.getByLabel('산업 선택');
  await expect(wizard.locator('.ad-subject-kind')).toHaveCount(0);
+ // Session validation can still be mounting the protected form after navigation.
+ // Wait for the complete option set before reading its exact ordered values.
+ await expect(select.locator('optgroup option')).toHaveCount(industryGroups.flatMap(g=>g.categoryIds).length);
  expect(await select.locator('optgroup option').evaluateAll(options=>options.map(option=>(option as HTMLOptionElement).value))).toEqual(industryGroups.flatMap(g=>g.categoryIds));
  for(const group of industryGroups)for(const category of group.categoryIds){await select.selectOption(category);await expect(select).toHaveValue(category);if(group.kind==='service')await expect(wizard.getByLabel('규격 형식')).toHaveCount(0);}
  for(const width of [320,390,768]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
