@@ -44,3 +44,14 @@ Do not add unsupported media choices or imply direct publishing/integration.
 Image and video should share product understanding where appropriate, while
 retaining separate validated output contracts. This is a design direction only:
 no video UI, Higgsfield integration, new presets or login redesign is included.
+
+## Release preservation gate
+
+Before the next release, read the actual immediately previous Render Live SHA
+and current remote branch heads. Compare their ancestry AND product diffs with
+the candidate; a different branch may contain deployed fixes. Record how every
+previously live product change is preserved. Passing tests against an older
+baseline alone does not establish release safety. Stop before upload/deployment
+if a live change is missing. APK source and server return-page behavior must be
+reviewed together. The f27265b native-return fix is restored on top of 2e6931b;
+its patch-id is identical, while the image-contract foundation is retained.
