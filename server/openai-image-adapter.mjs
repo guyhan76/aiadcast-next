@@ -187,7 +187,12 @@ export class OpenAIImageAdapter {
   constructor({ apiKey, fetchImpl = globalThis.fetch, timeoutMs = 180_000 } = {}) {
     this.apiKey = apiKey; this.fetchImpl = fetchImpl; this.timeoutMs = timeoutMs;
   }
-  async generate({ request, source, references = [], attemptId }) {
+  async generate(options) {
+    const started=Date.now(),diagnostic={timeoutMs:this.timeoutMs,endpoint:options.request.mode==='creative'&&options.source?'edits':'generations'};
+    try { return await this.generateResponse({...options,diagnostic}); }
+    catch(error) { if(error instanceof Error)error.transportDiagnostic={...diagnostic,elapsedMs:Date.now()-started};throw error; }
+  }
+  async generateResponse({ request, source, references = [], attemptId, diagnostic }) {
     if(request.inputMode==='text-example'&&(source||references.length||request.mode!=='creative'||request.subjectType!=='physical-product'||!completeAdRequest(request)))throw new ProviderFailure('INVALID_TEXT_EXAMPLE',{uncertain:false});
     if (!this.apiKey) throw new ProviderFailure('PROVIDER_NOT_CONFIGURED', { uncertain: false });
     const size = photographSize(request);
@@ -210,9 +215,12 @@ export class OpenAIImageAdapter {
     try {
       response = await this.fetchImpl(`https://api.openai.com/v1/images/${reference ? 'edits' : 'generations'}`, { method: 'POST', headers, body, redirect: 'error', signal: AbortSignal.timeout(this.timeoutMs) });
     } catch (error) { throw new ProviderFailure('PROVIDER_UNCERTAIN',{diagnosticCode:error?.name==='TimeoutError'?'PROVIDER_TIMEOUT':'PROVIDER_NETWORK'}); }
+    diagnostic.httpStatus=response.status;
+    const requestId=response.headers.get('x-request-id');
+    diagnostic.providerRequestId=typeof requestId==='string'&&/^req_[A-Za-z0-9_-]{1,160}$/.test(requestId)?requestId:null;
     if (!response.ok) {
       // Do not forward/log provider error bodies, prompts, keys or signed URLs.
-      await response.body?.cancel();
+      try { await response.body?.cancel(); } catch { /* Preserve the known HTTP classification if cleanup fails. */ }
       throw new ProviderFailure(response.status === 429 ? 'PROVIDER_RATE_LIMITED' : 'PROVIDER_REQUEST_FAILED', { uncertain: ![400,401,403,404,413,422,429].includes(response.status), providerStatus: response.status, diagnosticCode:'PROVIDER_HTTP' });
     }
     let result;
@@ -268,6 +276,8 @@ export function promptFor(request){
 export function generationFailureDiagnostic({jobId,stage,error}) {
  const stages=['reserve','provider','persist-image','persist-metadata','usage','settle','ready'];
  const codes=['PROVIDER_TIMEOUT','PROVIDER_NETWORK','PROVIDER_BODY_TIMEOUT','PROVIDER_BODY_NETWORK','PROVIDER_HTTP','PROVIDER_INVALID_RESPONSE','PROVIDER_INVALID_IMAGE','PROVIDER_USAGE_UNCERTAIN','UNSUPPORTED_PROVIDER_MEDIA','STORAGE_LIMIT','SUPABASE_CONNECTION_FAILED','SUPABASE_UPLOAD_FAILED','STORAGE_CONTENT_CONFLICT'];
+ const d=error?.transportDiagnostic??{},safeNumber=n=>Number.isSafeInteger(n)&&n>=0&&n<=3600000?n:null;
+ const transport={elapsedMs:safeNumber(d.elapsedMs),timeoutMs:safeNumber(d.timeoutMs),endpoint:['edits','generations'].includes(d.endpoint)?d.endpoint:null,providerRequestId:typeof d.providerRequestId==='string'&&/^req_[A-Za-z0-9_-]{1,160}$/.test(d.providerRequestId)?d.providerRequestId:null};
  const proposed=error instanceof ProviderFailure?(error.diagnosticCode??error.code):error?.code;
- return {event:'generation_failure',jobId:typeof jobId==='string'&&/^[a-f0-9-]{36}$/.test(jobId)?jobId:null,stage:stages.includes(stage)?stage:'unknown',code:codes.includes(proposed)?proposed:'UNCLASSIFIED',httpStatus:error instanceof ProviderFailure&&Number.isInteger(error.providerStatus)&&error.providerStatus>=400&&error.providerStatus<=599?error.providerStatus:null};
+ return {event:'generation_failure',jobId:typeof jobId==='string'&&/^[a-f0-9-]{36}$/.test(jobId)?jobId:null,stage:stages.includes(stage)?stage:'unknown',code:codes.includes(proposed)?proposed:'UNCLASSIFIED',...transport,httpStatus:Number.isInteger(d.httpStatus)&&d.httpStatus>=100&&d.httpStatus<=599?d.httpStatus:error instanceof ProviderFailure&&Number.isInteger(error.providerStatus)&&error.providerStatus>=400&&error.providerStatus<=599?error.providerStatus:null};
 }
