@@ -24,6 +24,6 @@ for(const language of ['ko','en'])for(const width of [390,768,1440])test(`admin 
  await section.evaluate(el=>{(window as any).scrollMutations=0;new MutationObserver(records=>(window as any).scrollMutations+=records.length).observe(el,{childList:true,subtree:true});});
  expect(await section.evaluate(el=>el.querySelectorAll('script').length)).toBe(0);
  for(let i=0;i<3;i++)await page.mouse.wheel(0,500);expect(reads).toBe(1);expect(writes).toBe(0);expect(await page.evaluate(()=>(window as any).scrollMutations)).toBe(0);
- await page.goto('/#home');await page.goto('/#admin');await expect.poll(()=>reads).toBe(2);expect(writes).toBe(0);
+ await page.goto('/#home');await expect(page.locator('.admin-page')).toHaveCount(0);await page.goto('/#admin');await expect.poll(()=>reads).toBe(2);expect(writes).toBe(0);
  await client.send('Emulation.setCPUThrottlingRate',{rate:1});
 });
