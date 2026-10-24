@@ -91,7 +91,11 @@
 .input-example-guide{margin:8px 0 18px;border:1px solid #dedede;border-radius:10px;background:#fafafa;color:#333;min-width:0}
 .input-example-guide>summary{padding:12px 14px;cursor:pointer;font-size:14px;font-weight:600;line-height:1.6;overflow-wrap:anywhere}
 .input-example-guide>summary:focus-visible{outline:3px solid #ed6a2c;outline-offset:3px;border-radius:8px}
-.input-example-content{padding:0 14px 14px;font-size:14px;line-height:1.75;overflow-wrap:anywhere}
+.input-example-content{padding:0 14px 14px;font-size:14px;line-height:1.75;text-align:left;word-break:keep-all;overflow-wrap:anywhere}
 .input-example-content p{margin:12px 0}
 .input-example-content blockquote{margin:10px 0;padding:10px 12px;border-left:3px solid #ed6a2c;background:#fff}
 .input-example-content .input-example-note{color:#555;font-size:13px;margin-bottom:0}
+
+.input-example-content .input-example-sentence{margin:0 0 10px}
+.input-example-content .input-example-sentence:last-child{margin-bottom:0}
+.input-example-price{white-space:nowrap}
