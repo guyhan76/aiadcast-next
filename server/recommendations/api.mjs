@@ -11,7 +11,7 @@ export function recommendationApi({authenticate,service,origin,enabled=false}){
    if(request.method==='GET'&&get)return send(200,await service.read(context,get[1]));
    const post=/^\/api\/generations\/([A-Za-z0-9_-]{1,100})\/recommendations$/.exec(url.pathname);
    if(request.method!=='POST'||!post)return send(404,{error:'NOT_FOUND'});
-   if(request.headers.get('origin')!==origin||request.headers.get('x-aiadcast-client')!=='app')return send(403,{error:'ORIGIN_NOT_ALLOWED'});
+   if(request.headers.get('origin')!==origin||request.headers.get('x-aiadcast-client')!=='local-studio')return send(403,{error:'ORIGIN_NOT_ALLOWED'});
    if(request.headers.get('content-type')?.split(';')[0]!=='application/json')return send(415,{error:'JSON_REQUIRED'});
    const reader=request.body?.getReader();if(!reader)return send(400,{error:'INVALID_REQUEST'});
    let bytes=0,parts=[];for(;;){const {done,value}=await reader.read();if(done)break;bytes+=value.byteLength;if(bytes>2048){await reader.cancel();return send(413,{error:'REQUEST_TOO_LARGE'});}parts.push(Buffer.from(value));}
