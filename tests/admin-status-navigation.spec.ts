@@ -4,6 +4,7 @@ const referenceStatus={available:true,providerConfigured:true,generalAnalysisEna
 const overview={readiness:{imageProviderConfigured:true,generationSwitch:true},budget:{limitMicros:5000000,allocatedMicros:5000000,spentMicros:527300,heldMicros:0},users:[],jobs:[],orders:[],audit:[]};
 type Mode='ok'|'hold'|'fail'|'invalid'|'auth';
 async function setup(page:Page){
+ await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
  let statusMode:Mode='ok',overviewMode:Mode='ok',gets=0,overviewGets=0,posts=0,aborted=0;
  const held:{route:Route;done:()=>void;body:unknown}[]=[];
  await page.addInitScript(()=>sessionStorage.setItem('aiadcast.beta-session',JSON.stringify({token:'a'.repeat(43),expires:Date.now()+3600000,user:{id:'admin-fixture',label:'Operator',role:'admin'}})));
