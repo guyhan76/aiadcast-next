@@ -8,11 +8,13 @@ export function InputExampleGuide({kind,service}:{kind:'facts'|'headline'|'copy'
   <summary aria-label={`${label}: ${title}`}>{title}</summary>
   <div className="input-example-content">
    {kind==='facts'?<>
-    <p><strong>{t('상세설명','Description')}</strong>{t(': 소재·특징·가격 등 확인된 상품·서비스 정보.', ': Confirmed product or service facts, such as materials, features and price.')}</p>
-    <blockquote>{service?t('2인 숙소 · 우드 가구 · 큰 창과 테이블', 'A stay for two · Wooden furniture · Large window and table'):t('450mL 스테인리스 텀블러 · 뚜껑 포함 · 아이보리·검정', '450 mL stainless-steel tumbler · Lid included · Ivory or black')}</blockquote>
-    <p><strong>{t('추가 요청','Additional requests')}</strong>{t(': 원하는 배경·분위기·강조점.', ': Your preferred background, mood and emphasis.')}</p>
-    <blockquote>{t('밝은 야외 배경, 가격 강조, 문구는 짧게.', 'Bright outdoor background, highlight the price, keep the copy short.')}</blockquote>
-    <p>{t('실제 사진을 첨부하고, 생성 후 상품과 문구를 확인해주세요.', 'Attach actual photos, then check the product and copy after generation.')}</p>
+    <p>{t('상품 정보는 정확하게, 원하는 연출은 구체적으로.', 'Keep product facts accurate and creative directions specific.')}</p>
+    <p><strong>{service?t('여행상품 예시','Travel package example'):t('화장품 예시','Cosmetics example')}</strong></p>
+    <p><strong>{t('상세설명','Description')}</strong></p>
+    <blockquote>{service?t('제주 2박 3일, 호텔·조식 포함, 1인 39만원부터.', '3 days, 2 nights in Jeju, hotel and breakfast included, from KRW 390,000 per person.'):t('보습 크림 50ml, 가벼운 사용감, 29,000원.', '50 ml moisturizing cream, lightweight feel, KRW 29,000.')}</blockquote>
+    <p><strong>{t('추가 요청','Additional requests')}</strong></p>
+    <blockquote>{service?t('푸른 바다 배경, 여유로운 분위기, 일정·가격 강조.', 'Blue ocean background, relaxed mood, highlight the itinerary and price.'):t('밝은 베이지 배경, 촉촉한 분위기, 제품을 크게.', 'Light beige background, fresh, dewy mood, make the product prominent.')}</blockquote>
+    <p>{t('정보·가격·포함 사항은 실제 상품에 맞게 바꿔주세요.', 'Replace the facts, prices and inclusions with your actual offer.')}</p>
    </>:<>
     <p>{kind==='headline'?t('이미지에 실제로 보일 짧은 제목을 적어주세요. 한 가지 메시지에 집중하고, 배경이나 촬영 지시는 ‘추가 요청’에 적어주세요.','Write the short headline that should appear on the image. Focus on one message; put background or photography directions in “Additional requests”.'):t('제목 아래에 실제로 보일 설명을 적어주세요. 특징·구성·가격 중 필요한 정보만 간결하게 쓰고, 가격이나 혜택에는 적용 조건도 함께 적어주세요.','Write the supporting copy that should appear below the headline. Keep features, contents or prices concise and include any conditions for prices or offers.')}</p>
     <p><strong>{service?t('숙소 광고 문구 예시','Stay ad copy example'):t('텀블러 광고 문구 예시','Tumbler ad copy example')}</strong></p>
