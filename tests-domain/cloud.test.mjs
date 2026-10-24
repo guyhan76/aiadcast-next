@@ -388,3 +388,42 @@ test('cloud result upload failure remains uncertain through status, retry and re
  assert.equal((await s.call('/api/generations',{token:a.token,body:{...body,requestId:randomUUID()}})).data.job.id,job.id);assert.equal(s.calls(),1);
  const status=(await s.call('/api/status',{token:a.token})).data;assert.equal(status.wallet.available,3);assert.equal(status.budget.heldMicros,500000);
 });
+
+// Exercise the real HTTP server, image adapter, PostgreSQL transactions and restart.
+// Only the provider transport/storage are local fixtures; no external requests occur.
+for(const failure of ['response-timeout','body-timeout','missing-usage'])test(`cloud transport diagnosis: ${failure} persists uncertain without redispatch`,async t=>{
+ const {OpenAIImageAdapter}=await import('../server/openai-image-adapter.mjs');
+ const png=await sharp({create:{width:1024,height:1024,channels:3,background:'#aaa'}}).png().toBuffer();
+ let calls=0,release;const gate=new Promise(r=>release=r);
+ const adapter=new OpenAIImageAdapter({apiKey:'local-fixture-only',timeoutMs:1000,fetchImpl:async(_url,{signal})=>{
+  calls++;await gate;
+  if(failure==='missing-usage')return Response.json({data:[{b64_json:png.toString('base64')}]});
+  if(failure==='body-timeout')return new Response(new ReadableStream({start(controller){signal.addEventListener('abort',()=>controller.error(signal.reason),{once:true});}}));
+  return new Promise((_,reject)=>{signal.addEventListener('abort',()=>reject(signal.reason),{once:true});});
+ }});
+ const s=await setup(t,{adapter}),a=await s.member('Transport fixture',1_000_000,3),body=generation();
+ const made=await s.call('/api/generations',{token:a.token,body});assert.equal(made.status,202);const id=made.data.job.id;
+ assert.equal((await s.call('/api/generations/'+id,{token:a.token})).data.job.state,'running');release();
+ let job;for(let i=0;i<200;i++){job=(await s.call('/api/generations/'+id,{token:a.token})).data.job;if(job.state!=='running')break;await new Promise(r=>setTimeout(r,10));}
+ assert.equal(job.state,'uncertain');assert.equal(job.errorCode,'PROVIDER_UNCERTAIN');assert.equal(job.artifact,null);assert.equal(calls,1);
+ const db=await new PostgresDatabase(s.app.pool,cloudSchema(a.user.id)).initialize();
+ const record=await db.prepare('SELECT artifact_hash,metadata_json FROM generation_records WHERE id=?').get(id);
+ assert.equal(Boolean(record.artifact_hash),failure==='missing-usage');
+ if(failure==='missing-usage')assert.equal(JSON.parse(record.metadata_json).cost,null);
+ await s.restart();assert.equal((await s.call('/api/generations/'+id,{token:a.token})).data.job.state,'uncertain');
+ const retry=await s.call('/api/generations',{token:a.token,body:{...body,requestId:randomUUID()}});assert.equal(retry.data.job.id,id);assert.equal(calls,1);
+ const status=(await s.call('/api/status',{token:a.token})).data;assert.equal(status.wallet.available,3);assert.equal(status.budget.heldMicros,500000);
+});
+
+test('cloud transport diagnosis: client abort during source persistence does not cancel or duplicate provider work',async t=>{
+ const s=await setup(t),a=await s.member('Client disconnect',1_000_000,3),body=generation();
+ let entered,release,first=true;const waiting=new Promise(r=>entered=r),gate=new Promise(r=>release=r),put=s.app.storage.put.bind(s.app.storage);
+ s.app.storage.put=async(...args)=>{if(first){first=false;entered();await gate;}return put(...args);};
+ const controller=new AbortController();
+ const pending=fetch('http://127.0.0.1:'+s.app.server.address().port+'/api/generations',{method:'POST',signal:controller.signal,headers:{Origin:origin,Authorization:'Bearer '+a.token,'Content-Type':'application/json','X-Aiadcast-Client':'local-studio'},body:JSON.stringify(body)});
+ await waiting;controller.abort();await assert.rejects(pending,e=>e.name==='AbortError');release();
+ let job;for(let i=0;i<100;i++){job=(await s.call('/api/generations?projectId='+body.projectId,{token:a.token})).data.jobs[0];if(job?.state==='ready')break;await new Promise(r=>setTimeout(r,10));}
+ assert.equal(job.state,'ready');assert.ok(job.artifactId);assert.equal(s.calls(),1);
+ const retry=await s.call('/api/generations',{token:a.token,body});assert.equal(retry.data.job.id,job.id);assert.equal(s.calls(),1);
+ await s.restart();assert.equal((await s.call('/api/generations/'+job.id,{token:a.token})).data.job.state,'ready');
+});
