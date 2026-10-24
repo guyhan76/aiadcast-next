@@ -433,8 +433,8 @@ test('cloud transport diagnosis: client abort during source persistence does not
 for(const admin of [false,true])test(`cloud storage preflight refuses full account before provider or credit reservation (${admin?'admin':'member'})`,async t=>{
  const s=await setup(t),a=await s.member('Storage admission',1_000_000,admin?0:3);let token=a.token;
  if(admin){await s.app.store.setRole(a.user.id,'admin');token=(await s.call('/api/auth/login',{body:{invite:(await s.app.store.issueInvite(a.user.id)).invite}})).data.token;}
- await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(a.user.id+'/existing-fixture',a.user.id,99_000_000);
- const before=(await s.call('/api/status',{token})).data,body=generation();body.request.output.format='9:16';
+ await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(a.user.id+'/existing-fixture',a.user.id,admin?299_000_000:99_000_000);
+ const before=(await s.call('/api/status',{token})).data,body=generation();body.request.output.format='9:16';body.role='admin';body.storageLimit=900000000;
  const uploads=s.bucket.calls.length;
  const result=await s.call('/api/generations',{token,body});assert.equal(result.status,413);assert.equal(result.data.error.code,'STORAGE_CAPACITY_UNAVAILABLE');
  assert.equal(s.calls(),0);assert.equal(s.bucket.calls.length,uploads);
@@ -472,3 +472,26 @@ test('cloud quota filled after admission reproduces persist-image STORAGE_LIMIT 
  assert.equal((await s.call('/api/generations',{token:a.token,body:{...body,requestId:randomUUID()}})).data.job.id,job.id);
  const status=(await s.call('/api/status',{token:a.token})).data;assert.equal(status.wallet.available,3);assert.equal(status.budget.heldMicros,500000);assert.equal(calls,1);
 });
+
+ test('cloud admin storage allowance is finite, server-owned and never bypasses global capacity',async t=>{
+ const s=await setup(t),a=await s.member('Storage policy'),storage=s.app.storage;
+ assert.equal(await storage.accountLimit(a.user.id),100_000_000);
+ await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(a.user.id+'/fixture',a.user.id,98_707_402);
+ await assert.rejects(storage.assertGenerationCapacity(a.user.id,[],16_000_000),/STORAGE_CAPACITY_UNAVAILABLE/);
+ await s.app.store.setRole(a.user.id,'admin');assert.equal(await storage.accountLimit(a.user.id),300_000_000);
+ await storage.assertGenerationCapacity(a.user.id,[],16_000_000);
+ const data=Buffer.alloc(2_000_000,1);await storage.put(a.user.id,hashBytes(data)+'.png',data,'image/png');
+ await s.app.store.setRole(a.user.id,'member');assert.equal(await storage.accountLimit(a.user.id),100_000_000);
+ await assert.rejects(storage.put(a.user.id,hashBytes(Buffer.from('new'))+'.png',Buffer.from('new'),'image/png'),/STORAGE_LIMIT/);
+ await s.app.store.setRole(a.user.id,'admin');
+ await s.app.store.db.prepare('UPDATE storage_objects SET bytes=? WHERE path=?').run(299_000_000,a.user.id+'/fixture');
+ await assert.rejects(storage.assertGenerationCapacity(a.user.id,[],1),/STORAGE_CAPACITY_UNAVAILABLE/);
+ await assert.rejects(storage.put(a.user.id,hashBytes(Buffer.from('new'))+'.png',Buffer.from('new'),'image/png'),/STORAGE_LIMIT/);
+ await s.app.store.db.prepare('UPDATE storage_objects SET bytes=? WHERE path=?').run(98_707_402,a.user.id+'/fixture');
+ const b=await s.member('Other storage');await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(b.user.id+'/fixture',b.user.id,799_292_598);
+ await assert.rejects(storage.assertGenerationCapacity(a.user.id,[],1),/STORAGE_CAPACITY_UNAVAILABLE/);
+ await assert.rejects(storage.put(a.user.id,hashBytes(Buffer.from('new'))+'.png',Buffer.from('new'),'image/png'),/STORAGE_LIMIT/);
+ assert.equal((await s.app.store.db.prepare('SELECT SUM(bytes) n FROM storage_objects').get()).n,900_000_000);
+ await s.app.store.db.prepare('UPDATE users SET disabled=1 WHERE id=?').run(a.user.id);
+ assert.equal(await storage.accountLimit(a.user.id),100_000_000);
+ });
