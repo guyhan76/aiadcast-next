@@ -24,3 +24,13 @@ test('empty members return truthful empty snapshot without generation query',asy
 test('partial schema and query failures fail the whole snapshot instead of inventing balances',async()=>{for(const options of [{partial:true},{failRead:true}]){const f=fixture(2,options);await assert.rejects(readAdminOverview(f.args),e=>e.status===503);assert.equal(f.statements.at(-1),'ROLLBACK');assert.equal(f.counts().releases,1);}});
 test('uninitialized accounts use recorded initial grants without creating a ledger',async()=>{const f=fixture(2,{missing:true}),r=await readAdminOverview(f.args);assert.equal(r.users[1].wallet.available,3);assert.equal(r.users[1].ledgerInitialized,false);assert.equal(f.statements.length,5);});
 test('member cap rejects rather than returning incomplete totals',async()=>{const f=fixture(201);await assert.rejects(readAdminOverview(f.args),e=>e.status===503&&e.code==='ADMIN_OVERVIEW_MEMBER_LIMIT');assert.equal(f.statements.length,4);});
+
+test('October read-only overview matches corrected owner five plus existing member ten and November reset',async()=>{
+ const owner=id(0),member='a3c39e4d-8621-4f0d-9021-2621a8cecdee';let now=Date.UTC(2026,9,31,23,59,59);
+ const members=[{id:owner,email:'selluplabs@gmail.com',role:'admin',disabled:0,budget:1000000,credits:0},{id:member,email:'guyhan76@gmail.com',role:'member',disabled:0,budget:0,credits:3}];
+ const approval={period:'2026-10',user_id:owner,total_micros:5000000,allocation_micros:5000000,created:Date.UTC(2026,9,18)},support={period:'2026-10',owner_id:owner,user_id:member,micros:1000000,created:Date.UTC(2026,9,18)};
+ const pool={async connect(){return {release(){},async query(sql){assert.doesNotMatch(sql,/\b(?:INSERT|UPDATE|DELETE|CREATE|ALTER)\b/);if(sql.includes('aiadcast_accounts.users'))return {rows:[{members,approval:now<Date.UTC(2026,10,1)?approval:null,support:now<Date.UTC(2026,10,1)?support:null,orders:[],audit:[]}]};return {rows:[]};}};}};
+ const args={pool,actor:{id:owner,role:'admin'},admin:{store:{cap:1000000},ownerEmail:'selluplabs@gmail.com',accounts:{},checkout:{available:()=>false}},enabled:true,providerConfigured:true,now:()=>now};
+ const r=await readAdminOverview(args);assert.equal(r.users[0].budget.limitMicros,5000000);assert.equal(r.users[1].budget.limitMicros,10000000);assert.equal(r.budget.limitMicros,15000000);assert.equal(r.budget.allocatedMicros,15000000);
+ now=Date.UTC(2026,10,1);const next=await readAdminOverview(args);assert.equal(next.users[0].budget.limitMicros,1000000);assert.equal(next.users[1].budget.limitMicros,0);assert.equal(next.budget.limitMicros,1000000);
+});

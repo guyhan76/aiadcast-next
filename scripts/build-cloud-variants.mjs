@@ -49,7 +49,7 @@ let ctor=s.slice(s.indexOf('  this.db.exec('),s.indexOf('\n transaction(fn)'));
 ctor=ctor.replace(/\n }\s*$/,'').replace(/this\.db\.close\(\)/g,'this.db.close()');
 s=constructorToInitialize(s,`async initialize(db,{monthlyBudgetMicros=0,now=()=>Date.now()}={}){ if(!Number.isSafeInteger(monthlyBudgetMicros)||monthlyBudgetMicros<0||monthlyBudgetMicros>100000000)throw Error('INVALID_BETA_BUDGET');this.db=db;this.now=now;${ctor};return this;}`);
 s=s.replace(/transaction\(fn\)\{[^\n]+\}/,'transaction(fn){return this.db.transaction(fn);}');
-const helpers=`import {randomBytes,randomUUID,createHash} from 'node:crypto';import {ApiFailure} from '../generation-service.mjs';const digest=v=>createHash('sha256').update(v).digest('hex');const code=()=>randomBytes(32).toString('base64url');const validId=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{8,100}$/.test(id);const fail=(c,s=400)=>{throw new ApiFailure(c,s)};`;
+const helpers=`import {correctedOctoberOwnerLimit} from '../october-admin-budget.mjs';import {randomBytes,randomUUID,createHash} from 'node:crypto';import {ApiFailure} from '../generation-service.mjs';const digest=v=>createHash('sha256').update(v).digest('hex');const code=()=>randomBytes(32).toString('base64url');const validId=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{8,100}$/.test(id);const fail=(c,s=400)=>{throw new ApiFailure(c,s)};`;
 writeFileSync(new URL('beta-store-base.mjs',out),transform(helpers+s));
 s=classText('generation-service','GenerationService');
 const source=read('generation-service'),f=ts.createSourceFile('gen',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS),c=f.statements.find(n=>ts.isClassDeclaration(n)&&n.name.text==='GenerationService').members.find(ts.isConstructorDeclaration);

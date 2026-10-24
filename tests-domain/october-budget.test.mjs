@@ -36,7 +36,7 @@ async function setup(t,cloud,{ownerBudget=1000000}={}){
  const objects=new Map();
  const openService=async()=>{
   const options={databasePath:join(dir,'generation.sqlite'),db:generationDb,budgetMicros:ownerBudget,managedBudgetIncrease:true,testCredits:0,enabled:true,providerConfigured:true,budgetForPeriod:p=>store.effectiveBudget(id,p),now};
-  if(cloud){service=new CloudGeneration();service.cloudUser=id;service.storage={put:async(user,key,bytes)=>objects.set(user+'/'+key,Buffer.from(bytes)),get:async(user,key)=>objects.get(key)};await service.initialize(options);}else service=new GenerationService(options);service.adminTestUnlimited=true;
+  if(cloud){service=new CloudGeneration();service.cloudUser=id;service.storage={assertGenerationCapacity:async(user,originals,outputBytes)=>{assert.equal(user,id);assert.equal(outputBytes,16000000);assert.ok(Array.isArray(originals));},put:async(user,key,bytes)=>objects.set(user+'/'+key,Buffer.from(bytes)),get:async(user,key)=>objects.get(key)};await service.initialize(options);}else service=new GenerationService(options);service.adminTestUnlimited=true;
   const config={ownerEmail:'owner@example.com',service:()=>service,accounts:{},checkout:{available:()=>false},now};
   admin=cloud?await new CloudAdmin().initialize(store,config):new AdminApi(store,config);
  };
