@@ -31,3 +31,15 @@ Request newest admin card around 20:39 KST: timestamp, error, estimated cost. If
 - Uncertain with no stored artifact: cannot distinguish provider timeout from upload loss from current error alone. Provider response/request evidence or sanitized stage diagnostics are needed before any retry policy change.
 
 A prospective allowlisted diagnostic stage/code could be stored separately from the existing public error/state, without prompts/tokens or billing changes. This would aid future failures, not reconstruct the lost cause for existing jobs. Not implemented without production evidence; no timeout increase or speculative retry fix.
+
+## Follow-up after admin card supplied
+
+Parent directly inspected latest card: 2026-10-24 20:39:10 KST, uncertain, 9:16, gpt-image-2.5-sunburst, cost em dash, PROVIDER_UNCERTAIN. This is not evidence of invalid model or exhausted quota. Do not request that same card again.
+
+Tool discovery found no Supabase connector, authorized SQL connection or authenticated diagnostic session. Render's read-only SQL tool supports Render-hosted PostgreSQL, not this Supabase database. No credentials were inspected to fabricate another connection. No operational query has executed; access is unavailable, not an auto-review denial.
+
+Smallest next action: in the existing Supabase project's SQL Editor, run `docs/read-only-generation-203910.sql` and share only the nonempty diagnostic XML row. It uses a read-only transaction and exact one-second timestamp filter, with account-scoped storage reservation checks. It returns job/status/presence/amount fields only, no email, prompt, image, token or raw metadata. The SQL has not been executed against production. A storage record is not proof of blob availability. If no match, report no match rather than widening to a database dump.
+
+Local prospective improvement: structured `generation_failure` log includes only validated job ID, fixed stage/code and HTTP status. Stages separate reserve/provider/image persistence/metadata persistence/usage/settlement/ready. Provider timeout, network, body timeout/network, HTTP rejection, invalid JSON/image and missing usage can be distinguished. Raw exception strings/stacks and provider bodies are never logged. Unknown errors keep UNCLASSIFIED plus the stage. Logging failures cannot change recovery. No database schema, state, charge or retry behavior changed, and no automatic retry was added. This cannot reconstruct earlier discarded exception details; it is not deployed.
+
+Verification: 9 focused HTTP/PostgreSQL/diagnostic tests pass; 4 generation/diagnostic unit tests pass (one diagnostic test overlaps). Type/build, generated-cloud parity and isolation pass. Physical device and actual provider not tested. No push/deploy/operational mutation.

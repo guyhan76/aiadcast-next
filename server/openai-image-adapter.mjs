@@ -108,9 +108,9 @@ ${JSON.stringify({inputMode:request.inputMode,subjectType:request.subjectType,pr
 Return the completed advertisement with all its approved copy and facts included. ${english?languageRule:''}`;
 }
 export class ProviderFailure extends Error {
-  constructor(code, { uncertain = true, providerStatus = null } = {}) {
+  constructor(code, { uncertain = true, providerStatus = null, diagnosticCode = null } = {}) {
     super(code); this.name = 'ProviderFailure'; this.code = code;
-    this.uncertain = uncertain; this.providerStatus = providerStatus;
+    this.uncertain = uncertain; this.providerStatus = providerStatus; this.diagnosticCode = diagnosticCode;
   }
 }
 export async function validateImage(bytes, mime, { maximumPixels = 30_000_000, maximumBytes = 10 * 1024 * 1024 } = {}) {
@@ -209,15 +209,15 @@ export class OpenAIImageAdapter {
     let response;
     try {
       response = await this.fetchImpl(`https://api.openai.com/v1/images/${reference ? 'edits' : 'generations'}`, { method: 'POST', headers, body, redirect: 'error', signal: AbortSignal.timeout(this.timeoutMs) });
-    } catch { throw new ProviderFailure('PROVIDER_UNCERTAIN'); }
+    } catch (error) { throw new ProviderFailure('PROVIDER_UNCERTAIN',{diagnosticCode:error?.name==='TimeoutError'?'PROVIDER_TIMEOUT':'PROVIDER_NETWORK'}); }
     if (!response.ok) {
       // Do not forward/log provider error bodies, prompts, keys or signed URLs.
       await response.body?.cancel();
-      throw new ProviderFailure(response.status === 429 ? 'PROVIDER_RATE_LIMITED' : 'PROVIDER_REQUEST_FAILED', { uncertain: ![400,401,403,404,413,422,429].includes(response.status), providerStatus: response.status });
+      throw new ProviderFailure(response.status === 429 ? 'PROVIDER_RATE_LIMITED' : 'PROVIDER_REQUEST_FAILED', { uncertain: ![400,401,403,404,413,422,429].includes(response.status), providerStatus: response.status, diagnosticCode:'PROVIDER_HTTP' });
     }
     let result;
     try { result = await responseJsonLimited(response); }
-    catch (error) { throw error instanceof ProviderFailure ? error : new ProviderFailure('PROVIDER_UNCERTAIN'); }
+    catch (error) { throw error instanceof ProviderFailure ? error : new ProviderFailure('PROVIDER_UNCERTAIN',{diagnosticCode:error?.name==='TimeoutError'?'PROVIDER_BODY_TIMEOUT':'PROVIDER_BODY_NETWORK'}); }
     const raw = result?.data?.[0]?.b64_json;
     if (result.data?.length !== 1 || typeof raw !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(raw)) throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
     let bytes = Buffer.from(raw, 'base64');
@@ -262,4 +262,12 @@ export function promptFor(request){
   ? 'NO DIMENSION ARROWS: Do not draw measurement arrows, dimension lines or a measured product inset anywhere. Numeric specification text is allowed only when showDimensions is true.'
   : '';
  return rule?prompt+'\nCUSTOMER DIMENSION PLACEMENT — HIGHEST LAYOUT PRIORITY: '+rule+' This explicit selection overrides any conflicting style reference, recipe, brief or generic composition suggestion. Keep the other advertising style and supplied facts unchanged. Placement instructions do not certify physical proportions or measurement accuracy.':prompt;
+}
+
+// Only fixed enums and bounded identifiers enter operational diagnostics. Never error messages/bodies.
+export function generationFailureDiagnostic({jobId,stage,error}) {
+ const stages=['reserve','provider','persist-image','persist-metadata','usage','settle','ready'];
+ const codes=['PROVIDER_TIMEOUT','PROVIDER_NETWORK','PROVIDER_BODY_TIMEOUT','PROVIDER_BODY_NETWORK','PROVIDER_HTTP','PROVIDER_INVALID_RESPONSE','PROVIDER_INVALID_IMAGE','PROVIDER_USAGE_UNCERTAIN','UNSUPPORTED_PROVIDER_MEDIA','STORAGE_LIMIT','SUPABASE_CONNECTION_FAILED','SUPABASE_UPLOAD_FAILED','STORAGE_CONTENT_CONFLICT'];
+ const proposed=error instanceof ProviderFailure?(error.diagnosticCode??error.code):error?.code;
+ return {event:'generation_failure',jobId:typeof jobId==='string'&&/^[a-f0-9-]{36}$/.test(jobId)?jobId:null,stage:stages.includes(stage)?stage:'unknown',code:codes.includes(proposed)?proposed:'UNCLASSIFIED',httpStatus:error instanceof ProviderFailure&&Number.isInteger(error.providerStatus)&&error.providerStatus>=400&&error.providerStatus<=599?error.providerStatus:null};
 }

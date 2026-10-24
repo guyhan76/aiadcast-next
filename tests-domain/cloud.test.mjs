@@ -392,6 +392,7 @@ test('cloud result upload failure remains uncertain through status, retry and re
 // Exercise the real HTTP server, image adapter, PostgreSQL transactions and restart.
 // Only the provider transport/storage are local fixtures; no external requests occur.
 for(const failure of ['response-timeout','body-timeout','missing-usage'])test(`cloud transport diagnosis: ${failure} persists uncertain without redispatch`,async t=>{
+ const logs=[];t.mock.method(console,'warn',message=>logs.push(JSON.parse(message)));
  const {OpenAIImageAdapter}=await import('../server/openai-image-adapter.mjs');
  const png=await sharp({create:{width:1024,height:1024,channels:3,background:'#aaa'}}).png().toBuffer();
  let calls=0,release;const gate=new Promise(r=>release=r);
@@ -406,6 +407,7 @@ for(const failure of ['response-timeout','body-timeout','missing-usage'])test(`c
  assert.equal((await s.call('/api/generations/'+id,{token:a.token})).data.job.state,'running');release();
  let job;for(let i=0;i<200;i++){job=(await s.call('/api/generations/'+id,{token:a.token})).data.job;if(job.state!=='running')break;await new Promise(r=>setTimeout(r,10));}
  assert.equal(job.state,'uncertain');assert.equal(job.errorCode,'PROVIDER_UNCERTAIN');assert.equal(job.artifact,null);assert.equal(calls,1);
+ const diagnostic=logs.find(x=>x.jobId===id);assert.equal(diagnostic.code,{'response-timeout':'PROVIDER_TIMEOUT','body-timeout':'PROVIDER_BODY_TIMEOUT','missing-usage':'PROVIDER_USAGE_UNCERTAIN'}[failure]);assert.equal(diagnostic.stage,failure==='missing-usage'?'usage':'provider');
  const db=await new PostgresDatabase(s.app.pool,cloudSchema(a.user.id)).initialize();
  const record=await db.prepare('SELECT artifact_hash,metadata_json FROM generation_records WHERE id=?').get(id);
  assert.equal(Boolean(record.artifact_hash),failure==='missing-usage');

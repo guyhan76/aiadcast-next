@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, openSync, closeSync, writeFileSync, readFileSync, unlinkSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { BillingLedger } from './billing.mjs';
-import { GENERATION_SIZES, IMAGE_MODEL, IMAGE_REVISION, hashBytes, parseSourceAsset, ProviderFailure } from './openai-image-adapter.mjs';
+import { GENERATION_SIZES, IMAGE_MODEL, IMAGE_REVISION, hashBytes, parseSourceAsset, ProviderFailure, generationFailureDiagnostic } from './openai-image-adapter.mjs';
 import { normalizeAssistantRequest, TEXT_MODEL, TEXT_MAX_HOLD_MICROS } from './text-assistant.mjs';
 import {createMarketingPlan} from '../src/marketing-plan.ts';
 import {parseCampaign} from '../src/campaign.ts';
@@ -288,7 +288,7 @@ export class GenerationService {
     return { job: this.job(id), wallet: this.wallet(), reused: false };
   }
   async dispatch(id, request, source, references = []) {
-    const attemptId = randomUUID(); let began = false;
+    const attemptId = randomUUID(); let began = false, stage='reserve';
     try {
       const attempt = this.ledger.transaction(() => {
         const period=this.period(),limit=this.budgetLimit(period);
@@ -296,19 +296,26 @@ export class GenerationService {
       });
       if (!attempt.shouldDispatch) return;
       began = true;
+      stage='provider';
       const result = await this.adapter.generate({ request, source: request.mode === 'creative' ? source : null, references:request.mode==='creative'?references:[], attemptId });
       if(!supportsImageMedia(result.mediaType))throw new ProviderFailure('UNSUPPORTED_PROVIDER_MEDIA');
       // Persist provider metadata before any customer capture. Pixel validity is not semantic quality approval.
+      stage='persist-image';
       if(result.planarOriginal)this.storeAsset(result.planarOriginal);
       this.storeAsset(result);
+      stage='persist-metadata';
       this.db.prepare('UPDATE generation_records SET artifact_hash=?,artifact_role=?,metadata_json=? WHERE id=?').run(result.sha256, result.role, JSON.stringify({ model: result.model, revision: result.revision, ...(result.composition?{composition:result.composition}:{}), ...(result.planarReport?{planarReport:result.planarReport}:{}), usage: result.usage, cost: result.cost, providerRequestId: result.providerRequestId }), id);
+      stage='usage';
       if (!result.cost) throw new ProviderFailure('PROVIDER_USAGE_UNCERTAIN');
+      stage='settle';
       this.ledger.settleAttempt(attemptId, result.cost.microUsd, 'completed');
+      stage='ready';
       this.ledger.markReady(id, result.sha256);
     } catch (error) {
       // A delivery commit may succeed even when its response is lost. Preserve the
       // durable delivered result and charge instead of relabeling it as a failed/refunded job.
       try { const delivered=this.ledger.job(id);if(delivered.artifact_id&&(delivered.captured||['ready','accepted'].includes(delivered.status)))return; } catch { /* Reconciliation remains necessary if storage is unavailable. */ }
+      try { console.warn(JSON.stringify(generationFailureDiagnostic({jobId:id,stage,error}))); } catch { /* Diagnostics must never alter recovery. */ }
       // No automatic retries. Unknown execution/usage preserves the supplier-cost hold.
       const knownFailure = error instanceof ProviderFailure && !error.uncertain;
       let code = !began ? 'BUDGET_NOT_AVAILABLE' : knownFailure ? error.code : 'PROVIDER_UNCERTAIN';
