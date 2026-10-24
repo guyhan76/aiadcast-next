@@ -22,3 +22,6 @@
 .marketing-analysis{margin:16px 0;text-align:left}
 .marketing-analysis>summary{min-height:44px;align-content:center;cursor:pointer;font-size:16px;font-weight:650}
 .marketing-analysis>summary:focus-visible{outline:2px solid currentColor;outline-offset:3px}
+
+.marketing-summary>.marketing-section:first-child{margin-top:0;padding-top:0;border-top:0}
+.dimension-guide-disclosure>summary{min-height:44px;align-content:center;cursor:pointer;font-size:16px}

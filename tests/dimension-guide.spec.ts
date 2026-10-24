@@ -1,7 +1,7 @@
 import {test,expect,type Page} from '@playwright/test';
 import {protectedScreen,mockSession} from './helpers/authenticated-session';
 // This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
-test.beforeEach(async({page})=>{await protectedScreen(page,mockSession('protected-dimension-guide'));});import sharp from 'sharp';import {readFile,writeFile} from 'node:fs/promises';import {createHash} from 'node:crypto';
+test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));await protectedScreen(page,mockSession('protected-dimension-guide'));});import sharp from 'sharp';import {readFile,writeFile} from 'node:fs/promises';import {createHash} from 'node:crypto';
 import {starterProject,prepareCampaign} from '../src/consumer-campaign';
 import {buildGenerationRequest} from '../src/generation';
 import {generatedCompatibilityKey} from '../src/generated';
@@ -25,7 +25,7 @@ async function generate(page:Page,{shape='rectangular',basis='inner-body',catego
   return route.fallback();
  });
  await restoreOwnedWorkspace(page,draft,'protected-dimension-guide','studio',{jobId:job.id,requestId:request.requestId,key:generatedCompatibilityKey(draft)});
- await page.locator('.new-ad-options>summary').click();await page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await page.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();await expect(page.locator('.accepted-ad')).toBeVisible();return {calls:()=>calls,request:()=>request};
+ if(!await page.locator('.new-ad-options').evaluate(el=>(el as HTMLDetailsElement).open))await page.locator('.new-ad-options>summary').click();await page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await page.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();await expect(page.locator('.accepted-ad')).toBeVisible();const disclosure=page.locator('.dimension-guide-disclosure');if(await disclosure.count()){await expect(disclosure).not.toHaveAttribute('open','');await disclosure.locator(':scope > summary').click();}return {calls:()=>calls,request:()=>request};
 }
 async function download(page:Page,name:string){const event=page.waitForEvent('download');await page.getByRole('button',{name,exact:true}).click();const file=await event;return {name:file.suggestedFilename(),bytes:await readFile((await file.path())!)};}
 test('separate cuboid guide exports exact saved labels and pixels without changing ad or calling provider again',async({page},info)=>{
@@ -36,7 +36,7 @@ test('separate cuboid guide exports exact saved labels and pixels without changi
  const after=await download(page,'이미지 저장 · 공유');expect(after.bytes.equals(before.bytes)).toBe(true);expect(state.calls()).toBe(0);expect(state.request().request.dimensionPlan.basis).toBe('inner-body');
 });
 for(const shape of ['flat','cylindrical'])test(`${shape} guide preserves two axes and scoped drawing`,async({page})=>{const state=await generate(page,{shape,basis:'outer-body',category:'other'}),guide=page.getByRole('region',{name:'규격 안내 이미지',exact:true});await guide.locator('summary').click();await expect(guide.locator('.dimension-guide-values')).toContainText(shape==='flat'?'W · 가로 450 mm':'Ø · 지름 65 mm');await expect(guide.locator('.dimension-guide-values')).toContainText(shape==='flat'?'L · 세로 300 mm':'H · 높이 170 mm');const file=await download(page,'규격 안내 이미지 저장');expect(file.name).toBe(`aiadcast-dimensions-${shape}.png`);expect(await sharp(file.bytes).metadata()).toMatchObject({width:1920,height:2080});expect(state.calls()).toBe(0);});
-test('apparel has an honest unavailable explanation and no box download',async({page})=>{const state=await generate(page,{shape:'flat',basis:'garment-flat',category:'fashion'}),guide=page.getByRole('region',{name:'규격 안내 이미지',exact:true});await expect(guide).toContainText('지원하지 않습니다');await expect(guide.getByRole('button')).toHaveCount(0);expect(state.calls()).toBe(0);});
+test('apparel hides inapplicable dimension guide without changing the accepted ad',async({page})=>{const state=await generate(page,{shape:'flat',basis:'garment-flat',category:'fashion'}),guide=page.getByRole('region',{name:'규격 안내 이미지',exact:true});await expect(guide).toHaveCount(0);await expect(page.locator('.accepted-ad canvas')).toBeVisible();expect(state.calls()).toBe(0);});
 
 for(const values of [['0.000001','0.000002','0.000003'],['99999.99999999','70000','80000']])test(`dimension labels remain exact and unclipped at ${values[0]} mm`,async({page})=>{
  await generate(page,{values,basis:'body'});const guide=page.getByRole('region',{name:'규격 안내 이미지',exact:true});await guide.locator('summary').click();const svg=guide.getByRole('img');for(const value of values)await expect(svg).toContainText(value+' mm');await expect(svg).toContainText('내부/외부 미지정');expect(await svg.locator('text').evaluateAll(nodes=>nodes.every(n=>{const b=(n as SVGGraphicsElement).getBBox();return b.x>=0&&b.y>=0&&b.x+b.width<=960&&b.y+b.height<=1040;}))).toBe(true);const file=await download(page,'규격 안내 이미지 저장');expect(await sharp(file.bytes).metadata()).toMatchObject({width:1920,height:2080});

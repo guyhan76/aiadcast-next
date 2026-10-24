@@ -36,7 +36,7 @@ test('eight inputs submit actual generation request once and a complete accepted
  await form.getByRole('button',{name:'직접 입력',exact:true}).click();await form.getByRole('textbox',{name:'광고 제목',exact:true}).fill('보내는 마음까지, 든든하게.');await form.getByRole('textbox',{name:'광고 설명',exact:true}).fill('10개 19,800원 · 빠른배송');
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();
  const result=page.locator('.simple-ad-result');await expect(result.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();await expect(result.locator('.generation-ad-preview')).toBeVisible();
- await result.locator('.marketing-analysis > summary').click();await expect(result.getByRole('heading',{name:'이 광고의 제작 의도',exact:true})).toBeVisible();await expect(result.getByRole('heading',{name:'추천 채널',exact:true})).toBeVisible();await expect(result.locator('.marketing-keywords li')).toHaveCount(state.body.request.marketingPlan.keywordCount);
+ await result.locator('.marketing-analysis > summary').click();await expect(result.locator('.marketing-intent')).toHaveCount(0);await expect(result.getByRole('heading',{name:'추천 채널',exact:true})).toBeVisible();await expect(result.locator('.marketing-keywords li')).toHaveCount(state.body.request.marketingPlan.keywordCount);
  expect(state.posts).toBe(1);expect(state.body.references).toHaveLength(1);expect(state.body.request.copy.title).toBe('보내는 마음까지, 든든하게.');expect(state.body.request.creativeDirection.copyMode).toBe('manual');expect(state.body.request.output.format).toBe('9:16');expect(state.body.request.output.showDimensions).toBe(true);expect(state.body.request.specifications.map((s:any)=>s.value)).toEqual(['340','250','210']);
  await expect(result.locator('.automatic-proportion')).toHaveCount(0);await expect(result.locator('.editor-details')).toHaveCount(0);
  await result.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await result.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
@@ -166,7 +166,7 @@ test('result guidance stays readable before and after acceptance without alterin
  await form.getByRole('button',{name:'규격 넣기',exact:true}).click();await form.getByLabel('규격 단위').selectOption('mm');
  for(const [axis,value] of [['가로','450'],['세로','350'],['높이','400']])await form.getByLabel(axis+' mm',{exact:true}).fill(value);
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();
- const summary=page.locator('.marketing-summary'),evidence=summary.locator('details');
+ const summary=page.locator('.marketing-summary');
  await page.locator('.marketing-analysis > summary').click();
  await expect(summary).toBeVisible();
  const originalPlan=structuredClone(state.body.request.marketingPlan);
@@ -179,25 +179,21 @@ test('result guidance stays readable before and after acceptance without alterin
    await page.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
    await page.locator('.accepted-ad .marketing-analysis > summary').click();await expect(page.locator('.accepted-ad .marketing-summary')).toBeVisible();
   }
-  await expect(evidence).not.toHaveAttribute('open','');
-  await expect(summary.locator('.marketing-intent')).not.toContainText('450');
-  await expect(summary.locator('.marketing-audience')).not.toContainText('450');
-  expect((await summary.locator('.marketing-intent').innerText()).length).toBeLessThan(100);
+  await expect(summary.locator('.marketing-intent,.marketing-audience,details')).toHaveCount(0);
   await expect(summary.locator('.marketing-keywords li')).toHaveText(originalPlan.keywords);
-  await expect(summary.locator('.marketing-channels li')).toHaveText(['인스타그램','유튜브','홈페이지','블로그','포스터','광고브로셔']);
+  await expect(summary.locator('.marketing-channels li strong')).toHaveText(['홈페이지·상품 상세페이지','블로그','인스타그램']);
   for(const width of [320,360,390,412,768,1440]){
    await page.setViewportSize({width,height:900});
    const layout=await summary.evaluate(el=>{
     const rect=(node:Element)=>{const r=node.getBoundingClientRect();return {x:r.x,right:r.right,top:r.top,bottom:r.bottom};};
-    return {width:document.documentElement.scrollWidth,box:rect(el),paragraphs:[...el.querySelectorAll(':scope > p,.marketing-section p')].map(p=>getComputedStyle(p).textAlign),title:rect(el.querySelector('h3')!),meta:rect(el.querySelector('small')!),channels:[...el.querySelectorAll('.marketing-channels li')].map(rect),keywords:[...el.querySelectorAll('.marketing-keywords li')].map(rect)};
+    return {width:document.documentElement.scrollWidth,box:rect(el),paragraphs:[...el.querySelectorAll(':scope > p,.marketing-section p')].map(p=>getComputedStyle(p).textAlign),channels:[...el.querySelectorAll('.marketing-channels li')].map(rect),keywords:[...el.querySelectorAll('.marketing-keywords li')].map(rect)};
    });
    expect(layout.width).toBeLessThanOrEqual(width);expect(layout.paragraphs.every(v=>v==='left')).toBe(true);
-   expect(layout.meta.top).toBeGreaterThanOrEqual(layout.title.bottom);
    for(const row of [...layout.channels,...layout.keywords]){expect(row.x).toBeGreaterThanOrEqual(layout.box.x);expect(row.right).toBeLessThanOrEqual(layout.box.right);}
    if(width<600)for(let i=1;i<layout.channels.length;i++){expect(layout.channels[i].x).toBe(layout.channels[0].x);expect(layout.channels[i].top).toBeGreaterThanOrEqual(layout.channels[i-1].bottom);}
    expect(layout.keywords[0].top).toBe(layout.keywords[1].top);
   }
-  await evidence.locator('summary').click();await expect(evidence).toContainText(originalPlan.intent);await expect(evidence).toContainText(originalPlan.target.reason);await evidence.locator('summary').click();
+  await expect(summary).toContainText('입력 정보 기반 제안');
  }
  await page.setViewportSize({width:360,height:900});await summary.screenshot({path:info.outputPath('result-guidance-360.png')});
  await page.getByLabel('앱 언어',{exact:true}).selectOption('en');await expect(summary.getByRole('heading',{name:'Suggested channels',exact:true})).toBeVisible();
@@ -300,11 +296,11 @@ for(const adLocale of ['ko','en'])for(const ui of ['ko','en'])test(`result analy
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();const result=page.locator('.simple-ad-result');await expect(result.locator('.generation-ad-preview')).toBeVisible();
  const stored=JSON.stringify(state.job.marketingPlan);
  await page.getByRole('combobox',{name:'앱 언어',exact:true}).selectOption(ui);
- const analysis=result.locator('.marketing-analysis');await expect(analysis).not.toHaveAttribute('open','');await expect(analysis.locator('.marketing-intent')).toBeHidden();
+ const analysis=result.locator('.marketing-analysis');await expect(analysis).not.toHaveAttribute('open','');await expect(analysis.locator('.marketing-summary')).toBeHidden();
  if(adLocale===ui){for(const width of [320,768]){await page.setViewportSize({width,height:900});await result.scrollIntoViewIfNeeded();await page.screenshot({path:test.info().outputPath(`result-${ui}-${width}.png`),fullPage:true});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);}}
- await analysis.locator(':scope > summary').click();await expect(analysis.locator('.marketing-intent')).toContainText(ui==='ko'?'광고입니다':'an ad highlighting');
- await analysis.locator('.marketing-evidence > summary').click();await expect(analysis.locator('.marketing-evidence')).toContainText(ui==='ko'?'규격이 없어':'No dimensions supplied');
- await expect(analysis.locator('.marketing-keywords li')).toHaveCount(6);await expect(analysis.locator('.marketing-keywords')).toContainText(adLocale==='ko'?'의류':'clothing');
+ await analysis.locator(':scope > summary').click();await expect(analysis.locator('.marketing-channels li')).toHaveCount(3);
+ await expect(analysis.locator('.marketing-evidence')).toHaveCount(0);await expect(analysis).toContainText(ui==='ko'?'AI 이미지 분석이나 검색량 검증 결과는 아닙니다':'not AI image analysis or verified search volumes');
+ await expect(analysis.locator('.marketing-keywords li')).toHaveCount(4);await expect(analysis.locator('.marketing-keywords')).toContainText(adLocale==='ko'?'의류':'clothing');
  expect(state.posts).toBe(1);expect(JSON.stringify(state.job.marketingPlan)).toBe(stored);expect(state.accepts).toBe(0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });

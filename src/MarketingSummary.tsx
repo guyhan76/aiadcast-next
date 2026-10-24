@@ -1,38 +1,25 @@
 import {marketingPresentation} from './marketing-presentation';
-import type {MarketingPlan} from './marketing-plan';
+import type {MarketingPlan,MarketingChannel} from './marketing-plan';
 import {parseMarketingPlan} from './marketing-plan';
 import {useUiLanguage} from './ui-language';
 import './marketing-summary.css';
 
-export function MarketingSummary({plan:storedPlan,saved=false}:{plan:MarketingPlan;saved?:boolean}){
- const {t,language}=useUiLanguage();
- // Refresh derived recommendations from the saved input; no image request or credit is needed.
- let plan:MarketingPlan|undefined;
+export function MarketingSummary({plan:storedPlan,format}:{plan:MarketingPlan;saved?:boolean;format?:string}){
+ const {t,language}=useUiLanguage();let plan:MarketingPlan|undefined;
  try{plan=parseMarketingPlan(storedPlan);}catch{return null;}
- if(!plan)return null;
- plan=marketingPresentation(plan,language);
- // Presentation only: retain the complete plan and generation input unchanged.
- const ko=plan.input.locale==='ko',name=plan.input.name||(ko?'상품·서비스':'Your offer');
- const purpose=plan.input.goal==='inquiry'?(ko?'문의·상담에 필요한 정보를 전하는':'presenting the information needed for an inquiry'):plan.input.goal==='launch'?(ko?'새로운 상품·서비스를 소개하는':'introducing a new offer'):(ko?'상품·브랜드의 특징을 알리는':'highlighting product and brand details');
- const intent=ko?`${name}: ${purpose} 광고입니다.`:`${name}: an ad ${purpose}.`;
- // The rules append physical dimensions after this separator; keep those in evidence.
- const audience=plan.target.segment==='spec-fit'?plan.target.label.split(' — ')[0]:plan.target.label;
- return <details className="marketing-analysis"><summary>{t('광고 분석','Ad analysis')}</summary><section className="marketing-summary" aria-label={t('광고 제작 의도와 활용 정보','Creative intent and publishing suggestions')}>
-  <div className="marketing-summary-title"><h3>{t('이 광고의 제작 의도','The intent behind this ad')}</h3><small>{saved?t('저장된 광고 정보 기준','Based on saved ad details'):t('현재 입력 기준 기획','Plan from current details')}</small></div>
-  <p className="marketing-intent">{intent}</p>
-  <div className="marketing-section marketing-audience"><h4>{t('타깃 고객','Audience')}</h4><p>{audience}</p></div>
-  <div className="marketing-section"><h4>{t('추천 채널','Suggested channels')}</h4>
-   <ul className="marketing-channels">{[t('인스타그램','Instagram'),t('유튜브','YouTube'),t('홈페이지','Website'),t('블로그','Blog'),t('포스터','Poster'),t('광고브로셔','Advertising brochure')].map(name=><li key={name}>{name}</li>)}</ul>
-   <p className="marketing-help">{t('릴스·쇼츠에 쓰려면 이미지를 영상으로 변환하세요.','Convert the image to video for Reels or Shorts.')}</p>
-  </div>
-  <div className="marketing-section"><h4>{t('추천 SEO 검색어','Recommended SEO keywords')}</h4>
-   <ul className="marketing-keywords">{plan.keywords.map(word=><li key={word}>{word}</li>)}</ul>
-   <p className="marketing-help">{t('관련 검색어를 제목과 본문에 자연스럽게 활용하세요.','Use relevant phrases naturally in titles and body text.')}</p>
-  </div>
-  <details className="marketing-evidence"><summary>{t('추천 근거와 상세 기획','Recommendation basis and full brief')}</summary>
-   <h4>{t('상세 제작 의도','Full creative intent')}</h4><p>{plan.intent}</p>
-   <h4>{t('타깃 추천 근거','Audience rationale')}</h4><p>{plan.target.reason}</p>
-   <p>{t('입력 정보에 따른 규칙 기반 제안입니다. 상품 일치·실측 정확도·광고 성과나 실제 검색량을 검증한 결과는 아닙니다.','These rule-based suggestions use supplied details. They do not verify product fidelity, measurement accuracy, ad performance or actual search volume.')}</p>
-  </details>
+ if(!plan)return null;plan=marketingPresentation(plan,language);
+ // Existing input-based rules, not a new provider call or image analysis.
+ const usage:Partial<Record<MarketingChannel,[string,string]>>={
+  instagram:[t('인스타그램','Instagram'),format==='9:16'?t('스토리 이미지로 사용하세요.','Use as a Story image.'):format==='1:1'||format==='4:5'?t('피드 이미지로 사용하세요.','Use as a feed image.'):t('피드 게시 전 비율과 잘림을 확인하세요.','Check cropping and ratio before posting to the feed.')],
+  website:[t('홈페이지·상품 상세페이지','Website / product page'),t('상품 정보와 구매·문의 링크 옆에 배치하세요.','Place beside product details and a purchase or inquiry link.')],
+  blog:[t('블로그','Blog'),t('상품·서비스 설명 글에 넣고 실제 특징을 함께 설명하세요.','Include in a product or service article with factual details.')],
+  lookbook:[t('룩북·상품 소개','Lookbook / product showcase'),t('같은 상품의 다른 사진과 함께 소개하세요.','Present alongside other photos of the same product.')],
+  brochure:[t('소개 자료','Sales material'),t('제안서에 활용하고 인쇄 전 해상도를 확인하세요.','Use in a proposal; check resolution before printing.')]
+ };
+ const channels=plan.channels.filter(c=>usage[c]).slice(0,3);
+ return <details className="marketing-analysis"><summary>{t('활용 가이드','Usage guide')}</summary><section className="marketing-summary" aria-label={t('광고 활용 가이드','Ad usage guide')}>
+  <div className="marketing-section"><h4>{t('추천 채널','Suggested channels')}</h4><ul className="marketing-channels">{channels.map(c=><li key={c}><strong>{usage[c]![0]}</strong><p>{usage[c]![1]}</p></li>)}</ul></div>
+  {plan.keywords.length>0&&<div className="marketing-section"><h4>{t('관련 검색어 후보','Related search phrases')}</h4><ul className="marketing-keywords">{plan.keywords.map(word=><li key={word}>{word}</li>)}</ul><p>{t('제목·설명에 맞는 표현만 골라 사용하세요.','Choose only phrases that fit your title and description.')}</p></div>}
+  <p>{t('입력 정보 기반 제안이며, AI 이미지 분석이나 검색량 검증 결과는 아닙니다.','Suggestions use your inputs, not AI image analysis or verified search volumes.')}</p>
  </section></details>;
 }
