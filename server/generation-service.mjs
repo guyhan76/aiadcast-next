@@ -234,6 +234,7 @@ export class GenerationService {
     const rows = projectId ? this.db.prepare('SELECT id FROM generation_records WHERE project_id=? ORDER BY created_at DESC LIMIT 30').all(projectId) : this.db.prepare('SELECT id FROM generation_records ORDER BY created_at DESC LIMIT 30').all();
     return { jobs: rows.map(row => this.job(row.id, { includeArtifact: false })), wallet: this.wallet() };
   }
+  async assertOutputCapacity(request, originals) { /* Local disk implementation has no cloud quota. */ }
   async create(body) {
     if(!supportsImageMedia(body?.mediaType))fail('UNSUPPORTED_MEDIA');
     if (!body || !identifier(body.requestId) || !identifier(body.projectId)) fail('INVALID_REQUEST');
@@ -270,6 +271,7 @@ export class GenerationService {
     if (this.tasks.size) fail('GENERATION_ALREADY_RUNNING', 409);
     const quote=this.creditQuote();
     if((quote.unit==='credit-v2'||body.creditQuote)&&(!body.creditQuote||body.creditQuote.unit!==quote.unit||body.creditQuote.amount!==quote.amount||body.creditQuote.policy!==quote.policy))fail('CREDIT_QUOTE_CHANGED',409);
+    await this.assertOutputCapacity(request, all);
     const id = randomUUID();
     const createdAt = this.now();
     if (source) this.storeAsset(source); // Content-addressed, immutable original bytes.

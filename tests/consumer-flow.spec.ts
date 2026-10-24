@@ -333,3 +333,18 @@ for(const admin of [false,true])test(`persisted uncertain result never redispatc
  await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('Changed product facts');await form.getByRole('button',{name:'광고 생성',exact:true}).click();
  await expect(page.getByText(admin?'결과 미확인 · 이용권 변동 없음':'결과 미확인 · 이용권 복원',{exact:true})).toBeVisible();expect(state.posts).toBe(1);expect(state.accepts).toBe(0);
 });
+
+for(const language of ['ko','en'] as const)test(`storage preflight rejection is explicit and does not leave an uncertain request (${language})`,async({page})=>{
+ await mocks(page);await page.addInitScript(language=>localStorage.setItem('aiadcast.ui-language',language),language);
+ let posts=0;await page.route('**/api/generations',route=>{if(route.request().method()!=='POST')return route.fallback();posts++;return route.fulfill({status:413,contentType:'application/json',body:JSON.stringify({error:{code:'STORAGE_CAPACITY_UNAVAILABLE'}})});});
+ await page.goto('/#create');const ko=language==='ko',form=page.locator('.consumer-create');
+ await form.getByLabel(ko?'산업 선택':'Choose an industry').selectOption('boxes');await form.getByLabel(ko?'상품명':'Product name',{exact:true}).fill('Hoodie');
+ await form.getByRole('textbox',{name:ko?'상세설명':'Description',exact:true}).fill('Cotton hoodie');
+ await form.getByLabel(ko?'참조사진 추가':'Add reference photos').setInputFiles({name:'product.png',mimeType:'image/png',buffer:first});
+ await form.getByRole('button',{name:ko?'광고 생성':'Generate ad',exact:true}).click();
+ await expect(page.getByText(ko?'저장 공간이 부족해 생성을 시작하지 않았습니다. 관리자에게 문의해주세요. 입력 내용은 보관했습니다.':'Generation did not start because storage is full. Contact the administrator. Your inputs are preserved.',{exact:true})).toBeVisible();
+ expect(posts).toBe(1);expect(await page.evaluate(()=>Object.keys(localStorage).filter(k=>k.includes('pending-generation.')))).toEqual([]);
+ await expect(page.locator('.generation-ad-preview')).toHaveCount(0);
+ await page.getByRole('button',{name:ko?'입력 내용 수정':'Edit details',exact:true}).click();
+ await expect(form.getByRole('textbox',{name:ko?'상세설명':'Description',exact:true})).toHaveValue('Cotton hoodie');await expect(form.locator('.reference-item')).toHaveCount(1);expect(posts).toBe(1);
+});

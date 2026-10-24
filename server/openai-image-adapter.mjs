@@ -113,6 +113,8 @@ export class ProviderFailure extends Error {
     this.uncertain = uncertain; this.providerStatus = providerStatus; this.diagnosticCode = diagnosticCode;
   }
 }
+export const MAX_GENERATED_IMAGE_BYTES = 16_000_000;
+
 export async function validateImage(bytes, mime, { maximumPixels = 30_000_000, maximumBytes = 10 * 1024 * 1024 } = {}) {
   if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > maximumBytes) throw Error('INVALID_IMAGE');
   const signatures = { 'image/png': b => b.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])), 'image/jpeg': b => b[0] === 255 && b[1] === 216 && b[2] === 255, 'image/webp': b => b.subarray(0,4).toString() === 'RIFF' && b.subarray(8,12).toString() === 'WEBP' };
@@ -231,12 +233,12 @@ export class OpenAIImageAdapter {
     let bytes = Buffer.from(raw, 'base64');
     let meta;
     try {
-      meta = await validateImage(bytes, 'image/png', { maximumPixels: 8_294_400, maximumBytes: 16_000_000 });
+      meta = await validateImage(bytes, 'image/png', { maximumPixels: 8_294_400, maximumBytes: MAX_GENERATED_IMAGE_BYTES });
       if (`${meta.width}x${meta.height}` !== size) throw Error();
     } catch { throw new ProviderFailure('PROVIDER_INVALID_IMAGE'); }
     const cost = imageUsageCost(result.usage);
     let planar={};
-    if(request.proportionControl){const original={...meta,bytes};const controlled=await controlPlanarResult(bytes,requestPlanarRatio(request));bytes=controlled.bytes;meta=await validateImage(bytes,'image/png',{maximumPixels:8_294_400,maximumBytes:16_000_000});planar={planarReport:{...controlled.report,variantLabel:request.proportionControl.variantLabel},planarOriginal:original};}
+    if(request.proportionControl){const original={...meta,bytes};const controlled=await controlPlanarResult(bytes,requestPlanarRatio(request));bytes=controlled.bytes;meta=await validateImage(bytes,'image/png',{maximumPixels:8_294_400,maximumBytes:MAX_GENERATED_IMAGE_BYTES});planar={planarReport:{...controlled.report,variantLabel:request.proportionControl.variantLabel},planarOriginal:original};}
     return { ...meta, bytes,...planar, usage: result.usage ?? null, cost, providerRequestId: response.headers.get('x-request-id')?.slice(0, 200) ?? null, model: IMAGE_MODEL, revision: IMAGE_REVISION, role: request.mode === 'original' ? 'background' : 'creative', composition: completeAdRequest(request)?'complete-ad':'photo-plate', size, quality: 'high' };
   }
 }

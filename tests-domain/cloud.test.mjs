@@ -429,3 +429,46 @@ test('cloud transport diagnosis: client abort during source persistence does not
  const retry=await s.call('/api/generations',{token:a.token,body});assert.equal(retry.data.job.id,job.id);assert.equal(s.calls(),1);
  await s.restart();assert.equal((await s.call('/api/generations/'+job.id,{token:a.token})).data.job.state,'ready');
 });
+
+for(const admin of [false,true])test(`cloud storage preflight refuses full account before provider or credit reservation (${admin?'admin':'member'})`,async t=>{
+ const s=await setup(t),a=await s.member('Storage admission',1_000_000,admin?0:3);let token=a.token;
+ if(admin){await s.app.store.setRole(a.user.id,'admin');token=(await s.call('/api/auth/login',{body:{invite:(await s.app.store.issueInvite(a.user.id)).invite}})).data.token;}
+ await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(a.user.id+'/existing-fixture',a.user.id,99_000_000);
+ const before=(await s.call('/api/status',{token})).data,body=generation();body.request.output.format='9:16';
+ const uploads=s.bucket.calls.length;
+ const result=await s.call('/api/generations',{token,body});assert.equal(result.status,413);assert.equal(result.data.error.code,'STORAGE_CAPACITY_UNAVAILABLE');
+ assert.equal(s.calls(),0);assert.equal(s.bucket.calls.length,uploads);
+ const after=(await s.call('/api/status',{token})).data;assert.deepEqual(after.wallet,before.wallet);assert.deepEqual(after.budget,before.budget);
+ assert.equal((await s.call('/api/generations',{token})).data.jobs.length,0);
+});
+test('cloud storage preflight accounts for global usage, deduplicated originals and two planar outputs without deleting data',async t=>{
+ const s=await setup(t),a=await s.member('A'),b=await s.member('B'),storage=s.app.storage;
+ const original={bytes,mime:'image/png',sha256:hash};
+ await storage.put(a.user.id,hash+'.png',bytes,'image/png');
+ await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(a.user.id+'/existing-fixture',a.user.id,84_000_000-bytes.length);
+ await storage.assertGenerationCapacity(a.user.id,[original],16_000_000);
+ await assert.rejects(storage.assertGenerationCapacity(a.user.id,[original],32_000_000),/STORAGE_CAPACITY_UNAVAILABLE/);
+ await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(b.user.id+'/global-fixture',b.user.id,801_000_001);
+ await assert.rejects(storage.assertGenerationCapacity(a.user.id,[original],16_000_000),/STORAGE_CAPACITY_UNAVAILABLE/);
+ assert.equal((await s.app.store.db.prepare('SELECT SUM(bytes) n FROM storage_objects').get()).n,885_000_001);
+ assert.deepEqual(await storage.get(a.user.id,a.user.id+'/'+hash+'.png'),bytes);
+});
+
+test('cloud quota filled after admission reproduces persist-image STORAGE_LIMIT and retains uncertain deduplication',async t=>{
+ const logs=[];t.mock.method(console,'warn',message=>logs.push(JSON.parse(message)));
+ const output=await sharp({create:{width:8,height:8,channels:3,background:'#123456'}}).png().toBuffer();
+ let calls=0,s,a;const adapter={generate:async()=>{
+  calls++;
+  // Another save fills the account after preflight; model bytes are valid but not stored.
+  await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(a.user.id+'/concurrent-save',a.user.id,100_000_000-bytes.length);
+  return {bytes:output,mime:'image/png',width:8,height:8,sha256:hashBytes(output),role:'background',usage,cost:imageUsageCost(usage),model:IMAGE_MODEL,revision:IMAGE_REVISION};
+ }};
+ s=await setup(t,{adapter});a=await s.member('Quota race',1_000_000,3);const body=generation();body.request.output.format='9:16';
+ const created=await s.call('/api/generations',{token:a.token,body});assert.equal(created.status,202);await s.restart();
+ assert.equal(logs[0].stage,'persist-image');assert.equal(logs[0].code,'STORAGE_LIMIT');
+ const job=(await s.call('/api/generations/'+created.data.job.id,{token:a.token})).data.job;
+ assert.equal(job.state,'uncertain');assert.equal(job.artifact,null);
+ assert.equal((await s.call('/api/generations',{token:a.token,body})).data.job.id,job.id);
+ assert.equal((await s.call('/api/generations',{token:a.token,body:{...body,requestId:randomUUID()}})).data.job.id,job.id);
+ const status=(await s.call('/api/status',{token:a.token})).data;assert.equal(status.wallet.available,3);assert.equal(status.budget.heldMicros,500000);assert.equal(calls,1);
+});

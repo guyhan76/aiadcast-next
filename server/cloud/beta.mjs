@@ -1,3 +1,4 @@
+import {MAX_GENERATED_IMAGE_BYTES} from '../openai-image-adapter.mjs';
 import {readAdminOverview} from './admin-overview.mjs';
 import {singleBoxService} from '../vision-evaluation/single-box-service.mjs';
 import {SingleBoxLedger,readSingleBoxEvaluation} from '../vision-evaluation/single-box-ledger.mjs';
@@ -62,6 +63,12 @@ export class CloudGenerationService extends GenerationService {
   const work=(this.admissionTail??Promise.resolve()).then(()=>super.create(body));
   this.admissionTail=work.catch(()=>{});
   try{return await work;}finally{this.admissions--;}
+ }
+ async assertOutputCapacity(request, originals){
+  // Admission check, not a durable reservation: concurrent saves may still consume
+  // space. Existing uncertain requests are resolved by deduplication before here.
+  await this.storage.assertGenerationCapacity(this.cloudUser,originals,
+   MAX_GENERATED_IMAGE_BYTES*(request.proportionControl?2:1));
  }
  async storeAsset(asset){
   if(hashBytes(asset.bytes)!==asset.sha256)fail('STORAGE_CONTENT_MISMATCH');

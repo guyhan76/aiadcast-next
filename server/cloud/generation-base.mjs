@@ -177,6 +177,7 @@ export class GenerationService {
         const rows = projectId ? await this.db.prepare('SELECT id FROM generation_records WHERE project_id=? ORDER BY created_at DESC LIMIT 30').all(projectId) : await this.db.prepare('SELECT id FROM generation_records ORDER BY created_at DESC LIMIT 30').all();
         return { jobs: await Promise.all(rows.map(async (row) => await this.job(row.id, { includeArtifact: false }))), wallet: await this.wallet() };
     }
+    async assertOutputCapacity(request, originals) { }
     async create(body) {
         if (!supportsImageMedia(body?.mediaType))
             fail('UNSUPPORTED_MEDIA');
@@ -247,6 +248,7 @@ export class GenerationService {
         const quote = await this.creditQuote();
         if ((quote.unit === 'credit-v2' || body.creditQuote) && (!body.creditQuote || body.creditQuote.unit !== quote.unit || body.creditQuote.amount !== quote.amount || body.creditQuote.policy !== quote.policy))
             fail('CREDIT_QUOTE_CHANGED', 409);
+        await this.assertOutputCapacity(request, all);
         const id = randomUUID();
         const createdAt = this.now();
         if (source)
