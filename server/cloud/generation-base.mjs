@@ -303,7 +303,7 @@ export class GenerationService {
             // durable delivered result and charge instead of relabeling it as a failed/refunded job.
             try {
                 const delivered = await this.ledger.job(id);
-                if (delivered.captured && delivered.artifact_id)
+                if (delivered.artifact_id && (delivered.captured || ['ready', 'accepted'].includes(delivered.status)))
                     return;
             }
             catch { /* Reconciliation remains necessary if storage is unavailable. */ }

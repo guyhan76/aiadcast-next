@@ -9,7 +9,7 @@ const first=await sharp({create:{width:340,height:250,channels:4,background:'#bc
 const second=await sharp({create:{width:250,height:210,channels:4,background:'#bd8653'}}).png().toBuffer();
 const ad=await sharp({create:{width:864,height:1536,channels:4,background:'#f2e6db'}}).png().toBuffer();
 const hash=createHash('sha256').update(ad).digest('hex');
-async function mocks(page:Page,{auth=false,enabled=true,admin=false,v2=false}: {auth?:boolean;enabled?:boolean;admin?:boolean;v2?:boolean}={}){
+async function mocks(page:Page,{auth=false,enabled=true,admin=false,v2=false,uncertain=false}: {auth?:boolean;enabled?:boolean;admin?:boolean;v2?:boolean;uncertain?:boolean}={}){
  const adminWallet={available:0,reserved:0,kind:'test',unlimited:true};
  const state={posts:0,accepts:0,body:null as any,job:null as any,jobs:[] as any[]};
  await page.route('**/api/**',async route=>{const request=route.request(),path=new URL(request.url()).pathname;
@@ -17,7 +17,7 @@ async function mocks(page:Page,{auth=false,enabled=true,admin=false,v2=false}: {
  if(path==='/api/account/capabilities')return send({email:{enabled:false},checkout:{enabled:false,test:true,currency:'KRW'}});
  if(path==='/api/status')return auth?send({error:{code:'AUTH_REQUIRED'}},401):send({mode:'local-development',commercialReady:false,generation:{...(v2?{creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}}:{}),enabled,photoPurposes:true,model:'gpt-image-2.5-sunburst',reason:enabled?null:'BUDGET_NOT_AVAILABLE'},wallet:v2?{available:0,reserved:0,credits:{available:state.posts?20:30,reserved:0},kind:'test'}:admin?adminWallet:{available:3,reserved:0,kind:'test'},budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}});
  if(path==='/api/generations'&&request.method()==='POST'){state.posts++;state.body=request.postDataJSON();const body=state.body;
- state.job={...(v2?{creditUnit:'credit-v2',creditPolicy:'delivered-2026-10-18',creditCaptured:true,creditCost:10}:{}),...(admin?{creditPolicy:'admin-unlimited',creditCost:0}:{}),id:`consumer_fixture_${state.posts}`,projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:body.request.mode,sourceHash:body.source?.sha256??null,createdAt:'2026-10-13T00:00:00.000Z',model:'verification.fixture',artifactId:hash,...(body.request.mode==='creative'?{composition:'complete-ad',compositionKey:body.request.output.compositionKey}:{}),artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+ad.toString('base64'),width:864,height:1536,role:body.request.mode==='original'?'background':'creative'},marketingPlan:body.request.marketingPlan,errorCode:null};state.jobs.push(state.job);return send({job:state.job,wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:1,kind:'test'}});}
+ state.job={...(v2?{creditUnit:'credit-v2',creditPolicy:'delivered-2026-10-18',creditCaptured:true,creditCost:10}:{}),...(admin?{creditPolicy:'admin-unlimited',creditCost:0}:{}),id:`consumer_fixture_${state.posts}`,projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:body.request.mode,sourceHash:body.source?.sha256??null,createdAt:'2026-10-13T00:00:00.000Z',model:'verification.fixture',artifactId:hash,...(body.request.mode==='creative'?{composition:'complete-ad',compositionKey:body.request.output.compositionKey}:{}),artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+ad.toString('base64'),width:864,height:1536,role:body.request.mode==='original'?'background':'creative'},marketingPlan:body.request.marketingPlan,errorCode:null};if(uncertain){state.job.state='uncertain';state.job.artifact=null;state.job.errorCode='PROVIDER_UNCERTAIN';}state.jobs.push(state.job);return send({job:state.job,wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:1,kind:'test'}});}
  if(path.endsWith('/accept')){state.accepts++;state.job.state='accepted';return send({job:state.job,wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:0,kind:'test'}});}
  if(/^\/api\/generations\/consumer_fixture_\d+$/.test(path))return send({job:state.jobs.find(j=>path.endsWith('/'+j.id)),wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:1,kind:'test'}});
  if(path==='/api/generations')return send({jobs:state.jobs.filter(j=>j.projectId===new URL(request.url()).searchParams.get('projectId'))});
@@ -273,7 +273,7 @@ for(const prior of ['ready','running','uncertain'])test(`edit resubmission does 
  await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await page.getByRole('button',{name:'저장하지 않고 나가기',exact:true}).click();
  state.job.state=prior;if(prior!=='ready')await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('수정한 요청');
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();
- if(prior==='ready')await expect(result.locator('.generate-button')).toHaveCount(0);else await expect(result.locator('.generate-button')).toBeDisabled();await expect(result.locator('.generation-result')).toBeVisible();
+ if(prior==='ready'||prior==='uncertain')await expect(result.locator('.generate-button')).toHaveCount(0);else await expect(result.locator('.generate-button')).toBeDisabled();await expect(result.locator('.generation-result')).toBeVisible();
  expect(state.posts).toBe(1);expect(state.accepts).toBe(0);
 });
 
@@ -307,4 +307,29 @@ for(const adLocale of ['ko','en'])for(const ui of ['ko','en'])test(`result analy
  await expect(analysis.locator('.marketing-keywords li')).toHaveCount(6);await expect(analysis.locator('.marketing-keywords')).toContainText(adLocale==='ko'?'의류':'clothing');
  expect(state.posts).toBe(1);expect(JSON.stringify(state.job.marketingPlan)).toBe(stored);expect(state.accepts).toBe(0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+for(const language of ['ko','en'] as const)test(`photo guidance and visible creative request preserve separate facts (${language})`,async({page})=>{
+ const state=await mocks(page);await page.addInitScript(language=>localStorage.setItem('aiadcast.ui-language',language),language);await page.goto('/#create');
+ const form=page.locator('.consumer-create'),ko=language==='ko';await form.getByLabel(ko?'산업 선택':'Choose an industry').selectOption('boxes');
+ const description=form.getByRole('textbox',{name:ko?'상세설명':'Description',exact:true}),note=form.getByRole('textbox',{name:ko?'추가 요청':'Additional requests',exact:true});
+ await expect(note).toBeVisible();await expect(note).toBeEditable();expect(await note.evaluate(el=>!!el.closest('details'))).toBe(false);
+ expect(await description.evaluate(el=>el.closest('label')?.nextElementSibling?.contains(document.querySelector('[data-order="5"] textarea[maxlength="600"]')))).toBe(true);
+ await description.fill('Cotton hoodie, navy');await note.fill('Warm studio lighting');
+ for(const width of [320,390,768]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
+ await page.setViewportSize({width:test.info().project.name==='mobile'?390:1440,height:900});await note.evaluate(el=>el.scrollIntoView({block:'center'}));await page.screenshot({path:`/tmp/uncertain-form-${language}-${test.info().project.name}.png`});
+ await expect(form.locator('.photo-usage')).toHaveText(ko?'상품·서비스 사진을 첨부해주세요.':'Attach photos of your product or service.');
+ await expect(form.locator('.reference-file-info')).toContainText('10MB');
+ await form.getByLabel(ko?'상품명':'Product name',{exact:true}).fill('Hoodie');await form.getByLabel(ko?'참조사진 추가':'Add reference photos').setInputFiles({name:'product.png',mimeType:'image/png',buffer:first});
+ await form.getByRole('button',{name:ko?'광고 생성':'Generate ad',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();
+ expect(state.body.request.creativeDirection.additionalInstructions).toBe('Warm studio lighting');expect(JSON.stringify(state.body.request.attributes)).toContain('Cotton hoodie, navy');
+ await page.getByRole('button',{name:ko?'입력 내용 수정':'Edit details',exact:true}).click();await page.getByRole('button',{name:ko?'저장하지 않고 나가기':'Leave without saving',exact:true}).click();await expect(description).toHaveValue('Cotton hoodie, navy');await expect(note).toHaveValue('Warm studio lighting');
+});
+for(const admin of [false,true])test(`persisted uncertain result never redispatches after edit or reload (${admin?'admin':'member'})`,async({page})=>{
+ const state=await mocks(page,{admin,uncertain:true}),form=await details(page,false);await form.getByLabel('참조사진 추가').setInputFiles({name:'product.png',mimeType:'image/png',buffer:first});
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByText(admin?'결과 미확인 · 이용권 변동 없음':'결과 미확인 · 이용권 복원',{exact:true})).toBeVisible();
+ await expect(page.locator('.generate-button')).toHaveCount(0);await expect(page.locator('.generation-ad-preview')).toHaveCount(0);expect(state.posts).toBe(1);
+ await reloadDraft(page);await expect(page.getByText(admin?'결과 미확인 · 이용권 변동 없음':'결과 미확인 · 이용권 복원',{exact:true})).toBeVisible();expect(state.posts).toBe(1);
+ await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('Changed product facts');await form.getByRole('button',{name:'광고 생성',exact:true}).click();
+ await expect(page.getByText(admin?'결과 미확인 · 이용권 변동 없음':'결과 미확인 · 이용권 복원',{exact:true})).toBeVisible();expect(state.posts).toBe(1);expect(state.accepts).toBe(0);
 });

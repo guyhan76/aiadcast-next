@@ -21,14 +21,16 @@ function generation(){return {requestId:randomUUID(),projectId:'project-cloud-te
 
 // PGlite runs the real PostgreSQL SQL/constraints/transactions. Its one connection
 // is leased through a mutex; this is not a mock SQL engine or a remote TLS test.
-async function pgPool(folder){
+async function pgPool(folder,fault={}){
  const engine=new PGlite(folder);await engine.waitReady;
  await engine.exec("DO $$ DECLARE r text;BEGIN FOREACH r IN ARRAY ARRAY['postgres','anon','authenticated','service_role'] LOOP IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname=r) THEN EXECUTE format('CREATE ROLE %I',r);END IF;END LOOP;END $$;");
  let tail=Promise.resolve(),closed=false;
  return {engine,async connect(){
   if(closed)throw Error('POOL_CLOSED');let unlock;const previous=tail;tail=new Promise(r=>unlock=r);await previous;
-  let released=false;return {on(){},async query(sql,args=[]){
+  let released=false,readyWrite=false;return {on(){},async query(sql,args=[]){
    const r=(!args.length&&sql.trim().split(';').filter(s=>s.trim()).length>1)?(await engine.exec(sql)).at(-1):await engine.query(sql,args);
+   if(sql.includes("UPDATE jobs SET status='ready'"))readyWrite=true;
+   if(sql==='COMMIT'&&readyWrite&&fault.loseReadyCommit){fault.loseReadyCommit=false;fault.lost=true;throw Error('fixture commit response lost');}
    // Match the production pg integer parsers for BIGINT/NUMERIC. PGlite
    // otherwise leaves SUM(bigint) as strings and concatenates allocations.
    const rows=r.rows.map(row=>Object.fromEntries(Object.entries(row).map(([name,value])=>{const field=r.fields.find(f=>f.name===name);return [name,value!==null&&[20,1700].includes(field?.dataTypeID)?pg.types.getTypeParser(field.dataTypeID)(String(value)):value];})));
@@ -57,11 +59,11 @@ function bucketFixture(){
  };
  return {objects,calls,fetchImpl};
 }
-async function setup(t,{adapter,accounts}={}){
+async function setup(t,{adapter,accounts,fault={}}={}){
  const folder=mkdtempSync(join(tmpdir(),'aiadcast-cloud-')),bucket=bucketFixture();let app,calls=0;
  const defaultAdapter={generate:async()=>{calls++;return {bytes,mime:'image/png',width:8,height:8,sha256:hash,role:'background',usage,cost:imageUsageCost(usage),model:IMAGE_MODEL,revision:IMAGE_REVISION,providerRequestId:'fixture-provider'};}};
  const start=async()=>{
-  app=await createCloudBackend(config,env,{pool:await pgPool(join(folder,'pg')),storageFetch:bucket.fetchImpl,adapter:adapter??defaultAdapter,accounts:accounts??{},staticDirectory:null,skipInstanceLock:true});
+  app=await createCloudBackend(config,env,{pool:await pgPool(join(folder,'pg'),fault),storageFetch:bucket.fetchImpl,adapter:adapter??defaultAdapter,accounts:accounts??{},staticDirectory:null,skipInstanceLock:true});
   await new Promise(r=>app.server.listen(0,'127.0.0.1',r));return app;
  };
  await start();t.after(async()=>{if(app)await app.close();rmSync(folder,{recursive:true,force:true});});
@@ -357,4 +359,32 @@ test('admin overview is a read-only snapshot: no expired reservation release or 
  const after={jobs:await db.prepare('SELECT * FROM jobs').all(),wallets:await db.prepare('SELECT * FROM wallets').all(),events:await db.prepare('SELECT * FROM credit_events').all(),budgets:await db.prepare('SELECT * FROM budgets').all()};assert.deepEqual(after,before);
  assert.equal((await s.app.store.db.prepare('SELECT nspname FROM pg_namespace WHERE nspname=?').all(cloudSchema(untouched.userId))).length,0);
  assert.equal(s.calls(),1);
+});
+
+for(const admin of [false,true])test(`pending cloud generation survives a lost delivery commit response and restart (${admin?'admin':'member'})`,async t=>{
+ let release,calls=0;const waiting=new Promise(r=>release=r),fault={loseReadyCommit:true};
+ const s=await setup(t,{fault,adapter:{generate:async()=>{calls++;await waiting;return {bytes,mime:'image/png',width:8,height:8,sha256:hash,role:'background',usage,cost:imageUsageCost(usage),model:IMAGE_MODEL,revision:IMAGE_REVISION};}}});
+ const a=await s.member('Recovery',1_000_000,admin?0:3);let token=a.token;
+ if(admin){await s.app.store.setRole(a.user.id,'admin');token=(await s.call('/api/auth/login',{body:{invite:(await s.app.store.issueInvite(a.user.id)).invite}})).data.token;}
+ const body=generation(),created=await s.call('/api/generations',{token,body}),id=created.data.job.id;
+ assert.equal(created.status,202);assert.equal((await s.call('/api/generations/'+id,{token})).data.job.state,'running');
+ const duplicate=await s.call('/api/generations',{token,body:{...body,requestId:randomUUID()}});assert.equal(duplicate.data.job.id,id);
+ release();let job;for(let i=0;i<100;i++){job=(await s.call('/api/generations/'+id,{token})).data.job;if(job.state!=='running')break;await new Promise(r=>setTimeout(r,5));}
+ assert.equal(fault.lost,true);assert.equal(job.state,'ready');assert.equal(job.artifact.dataUrl,source.data);assert.equal(calls,1);
+ await s.restart();job=(await s.call('/api/generations/'+id,{token})).data.job;assert.equal(job.state,'ready');assert.equal(job.artifact.dataUrl,source.data);
+ const status=(await s.call('/api/status',{token})).data;assert.equal(status.wallet.available,admin?0:2);assert.equal(status.wallet.reserved,admin?0:1);assert.equal(status.budget.spentMicros,imageUsageCost(usage).microUsd);
+ assert.equal((await s.call('/api/generations',{token,body})).data.job.id,id);assert.equal(calls,1);
+ const other=await s.member('Other');assert.equal((await s.call('/api/generations/'+id,{token:other.token})).status,404);
+});
+
+test('cloud result upload failure remains uncertain through status, retry and restart without another provider call',async t=>{
+ const s=await setup(t),a=await s.member('Storage failure',1_000_000,3),body=generation();
+ const put=s.app.storage.put.bind(s.app.storage);let uploads=0;
+ s.app.storage.put=async(...args)=>{if(++uploads===2)throw Error('fixture result upload lost');return put(...args);};
+ // Source is saved before dispatch; the second upload is the generated result.
+ const made=await s.call('/api/generations',{token:a.token,body});assert.equal(made.status,202);await s.restart();
+ const job=(await s.call('/api/generations/'+made.data.job.id,{token:a.token})).data.job;
+ assert.equal(job.state,'uncertain');assert.equal(job.artifact,null);assert.equal(s.calls(),1);
+ assert.equal((await s.call('/api/generations',{token:a.token,body:{...body,requestId:randomUUID()}})).data.job.id,job.id);assert.equal(s.calls(),1);
+ const status=(await s.call('/api/status',{token:a.token})).data;assert.equal(status.wallet.available,3);assert.equal(status.budget.heldMicros,500000);
 });

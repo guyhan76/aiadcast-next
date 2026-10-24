@@ -267,3 +267,12 @@ for(const admin of [false,true])test(`edited ready preview retains its original 
  service.accept(b.job.id,service.job(b.job.id).artifactId);service.accept(b.job.id,service.job(b.job.id).artifactId);
  assert.equal(calls.length,2);assert.equal(service.wallet().available,admin?3:1);assert.equal(service.wallet().reserved,admin?0:1);
 });
+
+test('lost ready response preserves a durable legacy preview without refund or provider retry',async t=>{
+ const {service,calls}=setup(t);const ready=service.ledger.markReady.bind(service.ledger);
+ service.ledger.markReady=(...args)=>{ready(...args);throw Error('fixture response lost after commit');};
+ const input=body(),made=await service.create(input);await service.waitForIdle();
+ const job=service.job(made.job.id);assert.equal(job.state,'ready');assert.ok(job.artifact);
+ assert.equal(service.wallet().reserved,1);assert.equal(service.wallet().available,2);
+ assert.equal((await service.create({...input,requestId:randomUUID()})).job.id,job.id);assert.equal(calls.length,1);
+});

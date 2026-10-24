@@ -308,7 +308,7 @@ export class GenerationService {
     } catch (error) {
       // A delivery commit may succeed even when its response is lost. Preserve the
       // durable delivered result and charge instead of relabeling it as a failed/refunded job.
-      try { const delivered=this.ledger.job(id);if(delivered.captured&&delivered.artifact_id)return; } catch { /* Reconciliation remains necessary if storage is unavailable. */ }
+      try { const delivered=this.ledger.job(id);if(delivered.artifact_id&&(delivered.captured||['ready','accepted'].includes(delivered.status)))return; } catch { /* Reconciliation remains necessary if storage is unavailable. */ }
       // No automatic retries. Unknown execution/usage preserves the supplier-cost hold.
       const knownFailure = error instanceof ProviderFailure && !error.uncertain;
       let code = !began ? 'BUDGET_NOT_AVAILABLE' : knownFailure ? error.code : 'PROVIDER_UNCERTAIN';

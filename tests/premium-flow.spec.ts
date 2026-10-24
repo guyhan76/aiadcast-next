@@ -25,7 +25,7 @@ test('simple campaign supports 10 references, individual footer choices, reviewe
  await expect(wizard.locator('.reference-item')).toHaveCount(10);await expect(wizard.getByLabel('참조사진 추가')).toHaveCount(0);
  await wizard.getByRole('button',{name:'2 대표 사진으로',exact:true}).click();
  await wizard.getByLabel(/^(상품명|서비스명)$/,{exact:true}).fill('리본 선물박스');await wizard.getByRole('textbox',{name:'상세설명',exact:true}).fill('검정색 자석 선물박스. '+ '소재 설명 '.repeat(40));
- await expect(wizard.locator('.creative-look-card')).toHaveCount(0);await wizard.locator('[data-order="7"] summary').click();await wizard.getByRole('textbox',{name:'요청사항',exact:true}).fill('박스의 접힘선을 보여주세요.');
+ await expect(wizard.locator('.creative-look-card')).toHaveCount(0);await wizard.getByRole('textbox',{name:'추가 요청',exact:true}).fill('박스의 접힘선을 보여주세요.');
  await wizard.locator('[data-order="2"] summary').click();await wizard.getByRole('textbox',{name:'회사명',exact:true}).fill('영화패키지');await wizard.getByRole('textbox',{name:'연락처',exact:true}).fill('1644-1410');await wizard.getByRole('textbox',{name:'이메일 주소',exact:true}).fill('hidden@example.com');await wizard.getByRole('textbox',{name:'홈페이지',exact:true}).fill('www.boxboy.co.kr');await wizard.getByRole('checkbox',{name:'이메일 주소 광고에 표시',exact:true}).uncheck();
  await page.goto('/#home');await page.goto('/#create');await expect(wizard.getByRole('textbox',{name:'회사명',exact:true})).toHaveValue('영화패키지');await expect(wizard.getByRole('checkbox',{name:'이메일 주소 광고에 표시',exact:true})).not.toBeChecked();
  await wizard.getByRole('button',{name:'4:5 SNS 피드',exact:true}).click();await wizard.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.locator('.simple-ad-result')).toBeVisible();await expect(page.locator('.editor-details')).toHaveCount(0);

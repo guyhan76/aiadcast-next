@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {protectedScreen,mockSession} from './helpers/authenticated-session';
 // This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
-test.beforeEach(async({page})=>{await protectedScreen(page,mockSession('protected-input-example-guides'));});
+test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));await protectedScreen(page,mockSession('protected-input-example-guides'));});
 import {reloadDraft} from './helpers/workspace';
 
 for(const service of [false,true])test(`example guides preserve ${service?'service':'product'} inputs through keyboard toggles, mode changes and reload`,async({page},info)=>{
@@ -16,7 +16,7 @@ for(const service of [false,true])test(`example guides preserve ${service?'servi
   for(let i=0;i<2;i++){await summary.focus();await page.keyboard.press('Enter');await expect(guide).toHaveAttribute('open','');await expect(guide.locator('blockquote')).toBeVisible();await expect(guide).toContainText(service?'숙소':'텀블러');await page.keyboard.press('Space');await expect(guide).not.toHaveAttribute('open','');}
   await expect(page).toHaveURL(/#create$/);await expect(facts).toHaveValue('고객이 입력한 실제 특징과 조건');await expect(headline).toHaveValue('내가 정한 제목');await expect(copy).toHaveValue('내가 확인한 구성과 조건');
  }
- const guide=form.locator('[data-guide="facts"]');await guide.locator('summary').click();await expect(guide).toContainText('추가 요청 → 요청사항');await expect(guide).toContainText('광고에 참고할 실제 상품·공간 사진을 첨부해주세요.');
+ const guide=form.locator('[data-guide="facts"]');await guide.locator('summary').click();await expect(guide).toContainText('추가 요청');await expect(guide).toContainText('광고에 참고할 실제 상품·공간 사진을 첨부해주세요.');
  await facts.fill('입력 도중 다시 수정한 내용');await form.getByRole('button',{name:'AI가 만들기',exact:true}).click();await form.getByRole('button',{name:'직접 입력',exact:true}).click();await expect(headline).toHaveValue('내가 정한 제목');await expect(copy).toHaveValue('내가 확인한 구성과 조건');
  await reloadDraft(page);await expect(facts).toHaveValue('입력 도중 다시 수정한 내용');await expect(headline).toHaveValue('내가 정한 제목');await expect(copy).toHaveValue('내가 확인한 구성과 조건');await expect(guide).not.toHaveAttribute('open','');
  for(const g of await form.locator('.input-example-guide').all())await g.locator('summary').click();

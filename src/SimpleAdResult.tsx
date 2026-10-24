@@ -27,7 +27,7 @@ function GeneratedSimpleAdResult({project,change,onEdit,onCreativeDraft,autoRequ
  // result view in generation mode until this project view is left. Unmounting
  // HistoricalAdResult clears its messages and aborts outstanding lookups.
  const [generationProject,setGenerationProject]=useState(autoRequest?project.id:'');
- const generationStarted=useCallback(()=>setGenerationProject(project.id),[project.id]);
+ const generationStarted=useCallback(()=>{setGenerationProject(project.id);setGenerationExpanded(true);},[project.id]);
  const showingGeneration=!!autoRequest||generationProject===project.id;
  useEffect(()=>{if(autoRequest)setGenerationExpanded(true);},[autoRequest]);
  const incomplete=annotationIncomplete(project);
