@@ -43,3 +43,12 @@ test('capture failure rolls back the entire delivery transition instead of leavi
 test('a lost delivery-commit response preserves the delivered result and single charge',async t=>{
  const {s,calls}=service(t);const ready=s.ledger.markReady.bind(s.ledger);s.ledger.markReady=(...args)=>{ready(...args);throw Error('LOST_DELIVERY_COMMIT_RESPONSE');};const b=input(s),created=await s.create(b);await s.waitForIdle();const recovered=await s.create(b);assert.equal(recovered.job.id,created.job.id);assert.equal(recovered.job.state,'ready');assert.equal(recovered.job.creditCaptured,true);assert.deepEqual(s.wallet().credits,{available:20,reserved:0});assert.equal(s.status().budget.spentMicros,100);assert.equal(calls(),1);
 });
+
+test('edited delivered image charges once per new result and preserves the earlier delivery',async t=>{
+ const {s,calls}=service(t);const a=input(s),first=await s.create(a);await s.waitForIdle();const original=s.job(first.job.id);
+ const b={...a,requestId:randomUUID(),request:{...a.request,brief:'Changed backdrop'}};const next=await s.create(b);await s.waitForIdle();
+ assert.notEqual(next.job.id,first.job.id);assert.deepEqual(s.job(first.job.id),original);
+ assert.equal((await s.create(b)).job.id,next.job.id);assert.equal((await s.create({...b,requestId:randomUUID()})).job.id,next.job.id);
+ s.accept(next.job.id,s.job(next.job.id).artifactId);s.accept(next.job.id,s.job(next.job.id).artifactId);
+ assert.equal(calls(),2);assert.deepEqual(s.wallet().credits,{available:10,reserved:0});
+});

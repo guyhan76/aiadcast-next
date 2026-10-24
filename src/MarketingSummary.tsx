@@ -1,21 +1,23 @@
+import {marketingPresentation} from './marketing-presentation';
 import type {MarketingPlan} from './marketing-plan';
 import {parseMarketingPlan} from './marketing-plan';
 import {useUiLanguage} from './ui-language';
 import './marketing-summary.css';
 
 export function MarketingSummary({plan:storedPlan,saved=false}:{plan:MarketingPlan;saved?:boolean}){
- const {t}=useUiLanguage();
+ const {t,language}=useUiLanguage();
  // Refresh derived recommendations from the saved input; no image request or credit is needed.
  let plan:MarketingPlan|undefined;
  try{plan=parseMarketingPlan(storedPlan);}catch{return null;}
  if(!plan)return null;
+ plan=marketingPresentation(plan,language);
  // Presentation only: retain the complete plan and generation input unchanged.
  const ko=plan.input.locale==='ko',name=plan.input.name||(ko?'상품·서비스':'Your offer');
  const purpose=plan.input.goal==='inquiry'?(ko?'문의·상담에 필요한 정보를 전하는':'presenting the information needed for an inquiry'):plan.input.goal==='launch'?(ko?'새로운 상품·서비스를 소개하는':'introducing a new offer'):(ko?'상품·브랜드의 특징을 알리는':'highlighting product and brand details');
  const intent=ko?`${name}: ${purpose} 광고입니다.`:`${name}: an ad ${purpose}.`;
  // The rules append physical dimensions after this separator; keep those in evidence.
  const audience=plan.target.segment==='spec-fit'?plan.target.label.split(' — ')[0]:plan.target.label;
- return <section className="marketing-summary" aria-label={t('광고 제작 의도와 활용 정보','Creative intent and publishing suggestions')}>
+ return <details className="marketing-analysis"><summary>{t('광고 분석','Ad analysis')}</summary><section className="marketing-summary" aria-label={t('광고 제작 의도와 활용 정보','Creative intent and publishing suggestions')}>
   <div className="marketing-summary-title"><h3>{t('이 광고의 제작 의도','The intent behind this ad')}</h3><small>{saved?t('저장된 광고 정보 기준','Based on saved ad details'):t('현재 입력 기준 기획','Plan from current details')}</small></div>
   <p className="marketing-intent">{intent}</p>
   <div className="marketing-section marketing-audience"><h4>{t('타깃 고객','Audience')}</h4><p>{audience}</p></div>
@@ -32,5 +34,5 @@ export function MarketingSummary({plan:storedPlan,saved=false}:{plan:MarketingPl
    <h4>{t('타깃 추천 근거','Audience rationale')}</h4><p>{plan.target.reason}</p>
    <p>{t('입력 정보에 따른 규칙 기반 제안입니다. 상품 일치·실측 정확도·광고 성과나 실제 검색량을 검증한 결과는 아닙니다.','These rule-based suggestions use supplied details. They do not verify product fidelity, measurement accuracy, ad performance or actual search volume.')}</p>
   </details>
- </section>;
+ </section></details>;
 }

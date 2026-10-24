@@ -11,16 +11,16 @@ const ad=await sharp({create:{width:864,height:1536,channels:4,background:'#f2e6
 const hash=createHash('sha256').update(ad).digest('hex');
 async function mocks(page:Page,{auth=false,enabled=true,admin=false,v2=false}: {auth?:boolean;enabled?:boolean;admin?:boolean;v2?:boolean}={}){
  const adminWallet={available:0,reserved:0,kind:'test',unlimited:true};
- const state={posts:0,accepts:0,body:null as any,job:null as any};
+ const state={posts:0,accepts:0,body:null as any,job:null as any,jobs:[] as any[]};
  await page.route('**/api/**',async route=>{const request=route.request(),path=new URL(request.url()).pathname;
  const send=(body:any,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
  if(path==='/api/account/capabilities')return send({email:{enabled:false},checkout:{enabled:false,test:true,currency:'KRW'}});
  if(path==='/api/status')return auth?send({error:{code:'AUTH_REQUIRED'}},401):send({mode:'local-development',commercialReady:false,generation:{...(v2?{creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}}:{}),enabled,photoPurposes:true,model:'gpt-image-2.5-sunburst',reason:enabled?null:'BUDGET_NOT_AVAILABLE'},wallet:v2?{available:0,reserved:0,credits:{available:state.posts?20:30,reserved:0},kind:'test'}:admin?adminWallet:{available:3,reserved:0,kind:'test'},budget:{limitMicros:1000000,spentMicros:0,heldMicros:0}});
  if(path==='/api/generations'&&request.method()==='POST'){state.posts++;state.body=request.postDataJSON();const body=state.body;
- state.job={...(v2?{creditUnit:'credit-v2',creditPolicy:'delivered-2026-10-18',creditCaptured:true,creditCost:10}:{}),...(admin?{creditPolicy:'admin-unlimited',creditCost:0}:{}),id:'consumer_fixture_1',projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:body.request.mode,sourceHash:body.source?.sha256??null,createdAt:'2026-10-13T00:00:00.000Z',model:'verification.fixture',artifactId:hash,...(body.request.mode==='creative'?{composition:'complete-ad',compositionKey:body.request.output.compositionKey}:{}),artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+ad.toString('base64'),width:864,height:1536,role:body.request.mode==='original'?'background':'creative'},marketingPlan:body.request.marketingPlan,errorCode:null};return send({job:state.job,wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:1,kind:'test'}});}
+ state.job={...(v2?{creditUnit:'credit-v2',creditPolicy:'delivered-2026-10-18',creditCaptured:true,creditCost:10}:{}),...(admin?{creditPolicy:'admin-unlimited',creditCost:0}:{}),id:`consumer_fixture_${state.posts}`,projectId:body.projectId,requestIds:[body.requestId],state:'ready',mode:body.request.mode,sourceHash:body.source?.sha256??null,createdAt:'2026-10-13T00:00:00.000Z',model:'verification.fixture',artifactId:hash,...(body.request.mode==='creative'?{composition:'complete-ad',compositionKey:body.request.output.compositionKey}:{}),artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+ad.toString('base64'),width:864,height:1536,role:body.request.mode==='original'?'background':'creative'},marketingPlan:body.request.marketingPlan,errorCode:null};state.jobs.push(state.job);return send({job:state.job,wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:1,kind:'test'}});}
  if(path.endsWith('/accept')){state.accepts++;state.job.state='accepted';return send({job:state.job,wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:0,kind:'test'}});}
- if(path==='/api/generations/consumer_fixture_1')return send({job:state.job,wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:1,kind:'test'}});
- if(path==='/api/generations')return send({jobs:state.job?[state.job]:[]});
+ if(/^\/api\/generations\/consumer_fixture_\d+$/.test(path))return send({job:state.jobs.find(j=>path.endsWith('/'+j.id)),wallet:v2?{available:0,reserved:0,credits:{available:20,reserved:0},kind:'test'}:admin?adminWallet:{available:2,reserved:1,kind:'test'}});
+ if(path==='/api/generations')return send({jobs:state.jobs.filter(j=>j.projectId===new URL(request.url()).searchParams.get('projectId'))});
  return send({error:{code:'TEST_ROUTE_UNAVAILABLE'}},404);
  });await authenticatedSession(page,mockSession(admin?'admin-budget-test':'consumer-user-123',admin?'admin':'member'),{seed:!auth});return state;
 }
@@ -36,11 +36,11 @@ test('eight inputs submit actual generation request once and a complete accepted
  await form.getByRole('button',{name:'직접 입력',exact:true}).click();await form.getByRole('textbox',{name:'광고 제목',exact:true}).fill('보내는 마음까지, 든든하게.');await form.getByRole('textbox',{name:'광고 설명',exact:true}).fill('10개 19,800원 · 빠른배송');
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();
  const result=page.locator('.simple-ad-result');await expect(result.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();await expect(result.locator('.generation-ad-preview')).toBeVisible();
- await expect(result.getByRole('heading',{name:'이 광고의 제작 의도',exact:true})).toBeVisible();await expect(result.getByRole('heading',{name:'추천 채널',exact:true})).toBeVisible();await expect(result.locator('.marketing-keywords li')).toHaveCount(state.body.request.marketingPlan.keywordCount);
+ await result.locator('.marketing-analysis > summary').click();await expect(result.getByRole('heading',{name:'이 광고의 제작 의도',exact:true})).toBeVisible();await expect(result.getByRole('heading',{name:'추천 채널',exact:true})).toBeVisible();await expect(result.locator('.marketing-keywords li')).toHaveCount(state.body.request.marketingPlan.keywordCount);
  expect(state.posts).toBe(1);expect(state.body.references).toHaveLength(1);expect(state.body.request.copy.title).toBe('보내는 마음까지, 든든하게.');expect(state.body.request.creativeDirection.copyMode).toBe('manual');expect(state.body.request.output.format).toBe('9:16');expect(state.body.request.output.showDimensions).toBe(true);expect(state.body.request.specifications.map((s:any)=>s.value)).toEqual(['340','250','210']);
  await expect(result.locator('.automatic-proportion')).toHaveCount(0);await expect(result.locator('.editor-details')).toHaveCount(0);
  await result.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await result.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
- await expect(result.locator('.marketing-summary')).toHaveCount(1);await expect(result.locator('.accepted-ad .marketing-summary')).toBeVisible();
+ await expect(result.locator('.marketing-summary')).toHaveCount(1);await result.locator('.accepted-ad .marketing-analysis > summary').click();await expect(result.locator('.accepted-ad .marketing-summary')).toBeVisible();
  const save=result.getByRole('button',{name:'이미지 저장 · 공유',exact:true});await expect(save).toBeEnabled();const pending=page.waitForEvent('download');await save.click();expect((await pending).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
  await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('textbox',{name:'광고 제목',exact:true})).toHaveValue('보내는 마음까지, 든든하게.');
 });
@@ -156,7 +156,7 @@ test('server-confirmed administrator at zero credits can review and save without
  await expect(page.getByRole('button',{name:'이미지 저장 · 공유',exact:true})).toBeEnabled();
  expect(state.posts).toBe(1);expect(state.accepts).toBe(1);expect(state.job.creditCost).toBe(0);
  await expect(page.getByRole('button',{name:'다른 시안 생성 · 관리자 테스트',exact:true})).toBeEnabled();
- await expect(page.locator('.admin-test-mode')).toContainText('실제 API 사용 비용과 서버 예산 한도는 적용됩니다.');
+ await expect(page.locator('.admin-test-mode')).toContainText('API 비용·예산 한도 적용');
 });
 
 test('result guidance stays readable before and after acceptance without altering the generation brief',async({page},info)=>{
@@ -167,6 +167,7 @@ test('result guidance stays readable before and after acceptance without alterin
  for(const [axis,value] of [['가로','450'],['세로','350'],['높이','400']])await form.getByLabel(axis+' mm',{exact:true}).fill(value);
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();
  const summary=page.locator('.marketing-summary'),evidence=summary.locator('details');
+ await page.locator('.marketing-analysis > summary').click();
  await expect(summary).toBeVisible();
  const originalPlan=structuredClone(state.body.request.marketingPlan);
  expect(originalPlan.geometryVerified).toBe(false);
@@ -176,7 +177,7 @@ test('result guidance stays readable before and after acceptance without alterin
   if(stage==='accepted'){
    await page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
    await page.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
-   await expect(page.locator('.accepted-ad .marketing-summary')).toBeVisible();
+   await page.locator('.accepted-ad .marketing-analysis > summary').click();await expect(page.locator('.accepted-ad .marketing-summary')).toBeVisible();
   }
   await expect(evidence).not.toHaveAttribute('open','');
   await expect(summary.locator('.marketing-intent')).not.toContainText('450');
@@ -184,7 +185,7 @@ test('result guidance stays readable before and after acceptance without alterin
   expect((await summary.locator('.marketing-intent').innerText()).length).toBeLessThan(100);
   await expect(summary.locator('.marketing-keywords li')).toHaveText(originalPlan.keywords);
   await expect(summary.locator('.marketing-channels li')).toHaveText(['인스타그램','유튜브','홈페이지','블로그','포스터','광고브로셔']);
-  for(const width of [320,360,390,412,1440]){
+  for(const width of [320,360,390,412,768,1440]){
    await page.setViewportSize({width,height:900});
    const layout=await summary.evaluate(el=>{
     const rect=(node:Element)=>{const r=node.getBoundingClientRect();return {x:r.x,right:r.right,top:r.top,bottom:r.bottom};};
@@ -245,4 +246,65 @@ test('English photo creation reviews and saves a complete ad without duplicate r
  await form.getByLabel('Choose an industry').selectOption('lodging');await form.getByRole('textbox',{name:'Service name',exact:true}).fill('Forest stay');await form.getByRole('textbox',{name:'Description',exact:true}).fill('Quiet rooms surrounded by trees');await form.locator('input[type=file]').first().setInputFiles({name:'room.png',mimeType:'image/png',buffer:first});await expect(form.locator('.reference-item img')).toBeVisible();await form.getByRole('button',{name:'Generate ad',exact:true}).click();
  const result=page.locator('.simple-ad-result');await expect(result.locator('.generation-ad-preview')).toBeVisible();expect(state.posts).toBe(1);expect(state.body.request.output.locale).toBe('en');expect(state.body.request.output.showDimensions).toBe(false);
  await result.getByRole('checkbox',{name:'I reviewed the product, material structure, dimensions, price and copy.',exact:true}).check();await result.getByRole('button',{name:'Accept · use 1 credit',exact:true}).click();await expect(result.locator('.accepted-ad')).toBeVisible();const pending=page.waitForEvent('download');await result.getByRole('button',{name:'Save / share image',exact:true}).click();expect(await sharp((await(await pending).path())!).metadata()).toMatchObject({format:'png',width:1080,height:1920});expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
+});
+
+for(const admin of [true,false])test(`edited unaccepted result generates a fresh request for ${admin?'admin':'member'}`,async({page})=>{
+ const state=await mocks(page,{admin}),form=await details(page,false);
+ await form.getByLabel('참조사진 추가').setInputFiles({name:'actual.png',mimeType:'image/png',buffer:first});
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();
+ const result=page.locator('.simple-ad-result');await expect(result.locator('.generation-ad-preview')).toBeVisible();
+ const firstBody=structuredClone(state.body),firstJob=structuredClone(state.job);
+ await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();
+ await page.getByRole('button',{name:'저장하지 않고 나가기',exact:true}).click();
+ await expect(form.locator('.reference-item')).toHaveCount(1);
+ await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('수정한 상품 정보, 20개 29,800원');
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();
+ await expect.poll(()=>state.posts,{timeout:5000}).toBe(2);
+ await expect(result.locator('.generation-ad-preview')).toBeVisible();
+ expect(state.body.requestId).not.toBe(firstBody.requestId);expect(state.body.source).toEqual(firstBody.source);
+ expect(state.body.request.output.compositionKey).not.toBe(firstBody.request.output.compositionKey);
+ expect(state.jobs).toHaveLength(2);expect(state.jobs[0]).toEqual(firstJob);expect(state.jobs[1].id).not.toBe(firstJob.id);expect(state.accepts).toBe(0);
+});
+
+for(const prior of ['ready','running','uncertain'])test(`edit resubmission does not duplicate ${prior==='ready'?'unchanged ready':prior} work`,async({page})=>{
+ const state=await mocks(page,{admin:true}),form=await details(page,false);
+ await form.getByLabel('참조사진 추가').setInputFiles({name:'actual.png',mimeType:'image/png',buffer:first});
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();const result=page.locator('.simple-ad-result');await expect(result.locator('.generation-ad-preview')).toBeVisible();
+ await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await page.getByRole('button',{name:'저장하지 않고 나가기',exact:true}).click();
+ state.job.state=prior;if(prior!=='ready')await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('수정한 요청');
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();
+ if(prior==='ready')await expect(result.locator('.generate-button')).toHaveCount(0);else await expect(result.locator('.generate-button')).toBeDisabled();await expect(result.locator('.generation-result')).toBeVisible();
+ expect(state.posts).toBe(1);expect(state.accepts).toBe(0);
+});
+
+test('edited delivered credit result requires new charge consent and coalesces duplicate clicks',async({page})=>{
+ const state=await mocks(page,{v2:true}),form=await details(page,false);
+ await form.getByLabel('참조사진 추가').setInputFiles({name:'actual.png',mimeType:'image/png',buffer:first});
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();const result=page.locator('.simple-ad-result');
+ const consent=result.getByRole('checkbox',{name:'이번 생성 10크레딧 차감을 확인했습니다.',exact:true});
+ await consent.check();await result.locator('.generate-button').click();await expect(result.locator('.generation-ad-preview')).toBeVisible();
+ const original=structuredClone(state.job);
+ await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await page.getByRole('button',{name:'저장하지 않고 나가기',exact:true}).click();
+ await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('수정한 광고 내용');await form.getByRole('button',{name:'광고 생성',exact:true}).click();
+ await expect(consent).not.toBeChecked();await expect(result.locator('.generate-button')).toBeDisabled();expect(state.posts).toBe(1);
+ await consent.check();await result.locator('.generate-button').evaluate((b:HTMLButtonElement)=>{b.click();b.click();});
+ await expect.poll(()=>state.posts).toBe(2);await expect(result.locator('.generation-ad-preview')).toBeVisible();
+ expect(state.jobs[0]).toEqual(original);expect(state.accepts).toBe(0);expect(state.body.creditQuote.amount).toBe(10);
+});
+
+for(const adLocale of ['ko','en'])for(const ui of ['ko','en'])test(`result analysis UI ${ui} with ad ${adLocale} is collapsed, localized and read-only`,async({page})=>{
+ const state=await mocks(page),form=await details(page,false);
+ await form.getByLabel('산업 선택').selectOption('fashion');await form.getByLabel('상품명',{exact:true}).fill('ACME');
+ await form.getByLabel('참조사진 추가').setInputFiles({name:'shirt.png',mimeType:'image/png',buffer:first});
+ await form.getByText('다른 비율·문구 언어',{exact:true}).click();await form.getByRole('combobox',{name:/^광고 문구 언어/}).selectOption(adLocale);
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();const result=page.locator('.simple-ad-result');await expect(result.locator('.generation-ad-preview')).toBeVisible();
+ const stored=JSON.stringify(state.job.marketingPlan);
+ await page.getByRole('combobox',{name:'앱 언어',exact:true}).selectOption(ui);
+ const analysis=result.locator('.marketing-analysis');await expect(analysis).not.toHaveAttribute('open','');await expect(analysis.locator('.marketing-intent')).toBeHidden();
+ if(adLocale===ui){for(const width of [320,768]){await page.setViewportSize({width,height:900});await result.scrollIntoViewIfNeeded();await page.screenshot({path:test.info().outputPath(`result-${ui}-${width}.png`),fullPage:true});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);}}
+ await analysis.locator(':scope > summary').click();await expect(analysis.locator('.marketing-intent')).toContainText(ui==='ko'?'광고입니다':'an ad highlighting');
+ await analysis.locator('.marketing-evidence > summary').click();await expect(analysis.locator('.marketing-evidence')).toContainText(ui==='ko'?'규격이 없어':'No dimensions supplied');
+ await expect(analysis.locator('.marketing-keywords li')).toHaveCount(6);await expect(analysis.locator('.marketing-keywords')).toContainText(adLocale==='ko'?'의류':'clothing');
+ expect(state.posts).toBe(1);expect(JSON.stringify(state.job.marketingPlan)).toBe(stored);expect(state.accepts).toBe(0);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });

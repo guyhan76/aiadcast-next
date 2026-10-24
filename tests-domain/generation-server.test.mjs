@@ -255,3 +255,15 @@ test('unsupported media is rejected before reservations, idempotency records or 
 test('unexpected provider media cannot become a delivered image or capture credits',async t=>{
  const {service}=setup(t,{adapter:{generate:async()=>({...result(),mediaType:'video'})}});const made=await service.create(body());await service.waitForIdle();const job=service.job(made.job.id);assert.equal(job.state,'uncertain');assert.equal(job.artifact,null);assert.equal(job.creditCaptured,false);
 });
+
+for(const admin of [false,true])test(`edited ready preview retains its original and deduplicates the new request (${admin?'admin':'member'})`,async t=>{
+ const {service,calls}=setup(t,{testCredits:3});service.adminTestUnlimited=admin;
+ const first=body('creative'),a=await service.create(first);await service.waitForIdle();const original=service.job(a.job.id);
+ const next={...first,requestId:randomUUID(),request:{...first.request,brief:'Revised lighting and product arrangement'}};
+ const b=await service.create(next);await service.waitForIdle();
+ const replay=await service.create(next),sameInput=await service.create({...next,requestId:randomUUID()});
+ assert.notEqual(a.job.id,b.job.id);assert.equal(replay.job.id,b.job.id);assert.equal(sameInput.job.id,b.job.id);assert.equal(calls.length,2);
+ assert.deepEqual(service.job(a.job.id),original);assert.equal(original.state,'ready');
+ service.accept(b.job.id,service.job(b.job.id).artifactId);service.accept(b.job.id,service.job(b.job.id).artifactId);
+ assert.equal(calls.length,2);assert.equal(service.wallet().available,admin?3:1);assert.equal(service.wallet().reserved,admin?0:1);
+});

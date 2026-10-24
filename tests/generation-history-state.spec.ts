@@ -8,6 +8,7 @@ const hash=createHash('sha256').update(bytes).digest('hex'),data='data:image/png
 const missing='이 프로젝트에서 저장된 완료 이미지를 찾지 못했습니다.';
 const progress='광고 시안을 제작하고 있습니다. 잠시만 기다려 주세요.';
 async function setup(page:Page){
+ await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
  const p=newProject();p.presentation='campaign';p.generation.mode='creative';p.dimensions.visible=false;p.dimensions.lines=false;p.productName='상자';
  p.product={name:'reference.png',data,width:480,height:640,sha256:hash};
  const state={posts:0,otherWrites:0,fail:false,providerFailed:false,finish:false,holdHistory:false,held:0,job:null as any,releaseHistory:()=>{}};
