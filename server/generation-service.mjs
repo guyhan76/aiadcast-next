@@ -283,15 +283,29 @@ export class GenerationService {
     const createdAt = this.now();
     if (source) this.storeAsset(source); // Content-addressed, immutable original bytes.
     for(const ref of references)this.storeAsset(ref);
-    // Reserve credits and persist the request in one transaction, including the existing ledger methods.
+    // Preflight/storage can yield. Repeat admission under the ledger transaction so
+    // concurrent retries reuse the committed job instead of reserving twice.
+    let reusedJobId;
     try {
       this.ledger.transaction(() => {
+        const existing = this.db.prepare('SELECT * FROM generation_keys WHERE request_id=?').get(body.requestId);
+        if(existing){
+          if(existing.fingerprint!==fingerprint)fail('IDEMPOTENCY_CONFLICT',409);
+          reusedJobId=existing.job_id;return;
+        }
+        const duplicate=this.db.prepare("SELECT g.id FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND (j.status IN ('reserved','running','uncertain','ready') OR g.error_code='PROVIDER_UNCERTAIN') ORDER BY g.created_at DESC LIMIT 1").get(fingerprint);
+        if(duplicate){
+          this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(body.requestId,fingerprint,duplicate.id);
+          reusedJobId=duplicate.id;return;
+        }
+        if(this.tasks.size||this.db.prepare("SELECT id FROM jobs WHERE kind=? AND user_id=? AND status IN ('reserved','running') LIMIT 1").get(imageMediaType,LOCAL_USER))fail('GENERATION_ALREADY_RUNNING',409);
         const currentQuote=this.creditQuote();if(currentQuote.unit!==quote.unit||currentQuote.amount!==quote.amount)fail('CREDIT_QUOTE_CHANGED',409);
         this.ledger.reserve({ kind:imageMediaType, jobId: id, userId: LOCAL_USER, credits: quote.amount||1, unit:quote.unit, creditExempt: quote.amount===0, requestHash: fingerprint, modelRevision: IMAGE_REVISION, expiresAt: createdAt + 24 * 60 * 60 * 1000 });
         this.db.prepare('INSERT INTO generation_records(id,project_id,fingerprint,request_json,source_hash,created_at) VALUES (?,?,?,?,?,?)').run(id, body.projectId, fingerprint, JSON.stringify(request), source?.sha256 ?? null, createdAt);
         this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(body.requestId, fingerprint, id);
       });
     } catch (error) { if(error instanceof ApiFailure)throw error;fail('CREDIT_RESERVATION_FAILED', 409); }
+    if(reusedJobId)return {job:this.job(reusedJobId),wallet:this.wallet(),reused:true};
     const work = this.dispatch(id, request, source, references);
     this.tasks.add(work); work.finally(() => this.tasks.delete(work));
     return { job: this.job(id), wallet: this.wallet(), reused: false };

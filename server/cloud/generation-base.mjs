@@ -256,9 +256,26 @@ export class GenerationService {
             await this.storeAsset(source); // Content-addressed, immutable original bytes.
         for (const ref of references)
             await this.storeAsset(ref);
-        // Reserve credits and persist the request in one transaction, including the existing ledger methods.
+        // Preflight/storage can yield. Repeat admission under the ledger transaction so
+        // concurrent retries reuse the committed job instead of reserving twice.
+        let reusedJobId;
         try {
             await this.ledger.transaction(async () => {
+                const existing = await this.db.prepare('SELECT * FROM generation_keys WHERE request_id=?').get(body.requestId);
+                if (existing) {
+                    if (existing.fingerprint !== fingerprint)
+                        fail('IDEMPOTENCY_CONFLICT', 409);
+                    reusedJobId = existing.job_id;
+                    return;
+                }
+                const duplicate = await this.db.prepare("SELECT g.id FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND (j.status IN ('reserved','running','uncertain','ready') OR g.error_code='PROVIDER_UNCERTAIN') ORDER BY g.created_at DESC LIMIT 1").get(fingerprint);
+                if (duplicate) {
+                    await this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(body.requestId, fingerprint, duplicate.id);
+                    reusedJobId = duplicate.id;
+                    return;
+                }
+                if (this.tasks.size || await this.db.prepare("SELECT id FROM jobs WHERE kind=? AND user_id=? AND status IN ('reserved','running') LIMIT 1").get(imageMediaType, LOCAL_USER))
+                    fail('GENERATION_ALREADY_RUNNING', 409);
                 const currentQuote = await this.creditQuote();
                 if (currentQuote.unit !== quote.unit || currentQuote.amount !== quote.amount)
                     fail('CREDIT_QUOTE_CHANGED', 409);
@@ -272,6 +289,8 @@ export class GenerationService {
                 throw error;
             fail('CREDIT_RESERVATION_FAILED', 409);
         }
+        if (reusedJobId)
+            return { job: await this.job(reusedJobId), wallet: await this.wallet(), reused: true };
         const work = this.dispatch(id, request, source, references);
         this.tasks.add(work);
         work.finally(() => this.tasks.delete(work));
