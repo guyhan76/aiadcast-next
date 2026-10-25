@@ -1,3 +1,4 @@
+import {authenticatedSession,mockSession} from './helpers/authenticated-session';
 import {test,expect,type Page} from '@playwright/test';
 import sharp from 'sharp';
 import {createHash} from 'node:crypto';
@@ -7,6 +8,7 @@ const hash=createHash('sha256').update(bytes).digest('hex'),data='data:image/png
 const missing='이 프로젝트에서 저장된 완료 이미지를 찾지 못했습니다.';
 const progress='광고 시안을 제작하고 있습니다. 잠시만 기다려 주세요.';
 async function setup(page:Page){
+ await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
  const p=newProject();p.presentation='campaign';p.generation.mode='creative';p.dimensions.visible=false;p.dimensions.lines=false;p.productName='상자';
  p.product={name:'reference.png',data,width:480,height:640,sha256:hash};
  const state={posts:0,otherWrites:0,fail:false,providerFailed:false,finish:false,holdHistory:false,held:0,job:null as any,releaseHistory:()=>{}};
@@ -28,8 +30,9 @@ async function setup(page:Page){
   }
   return send({email:{enabled:false},checkout:{enabled:false}});
  });
+ await authenticatedSession(page,mockSession('history-user-123'));
  await page.goto('/#home');await expect(page.locator('.app-header')).toBeVisible();
- await page.evaluate(async p=>new Promise<void>((resolve,reject)=>{const r=indexedDB.open('aiadcast-workspace-drafts',1);r.onupgradeneeded=()=>r.result.createObjectStore('drafts');r.onsuccess=()=>{const tx=r.result.transaction('drafts','readwrite');tx.objectStore('drafts').put({editor:p,returnPage:'studio'},'guest');tx.oncomplete=()=>{r.result.close();resolve();};tx.onerror=()=>reject(tx.error);};}),p);
+ await page.evaluate(async p=>new Promise<void>((resolve,reject)=>{const r=indexedDB.open('aiadcast-workspace-drafts',1);r.onupgradeneeded=()=>r.result.createObjectStore('drafts');r.onsuccess=()=>{const tx=r.result.transaction('drafts','readwrite');tx.objectStore('drafts').put({editor:p,returnPage:'studio'},'history-user-123');tx.oncomplete=()=>{r.result.close();resolve();};tx.onerror=()=>reject(tx.error);};}),p);
  await page.evaluate(()=>history.replaceState(null,'','/#studio'));await page.reload();
  await expect(page.getByText(missing,{exact:true})).toBeVisible();
  await page.locator('.new-ad-options > summary').click();

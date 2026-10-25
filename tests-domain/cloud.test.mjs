@@ -21,14 +21,16 @@ function generation(){return {requestId:randomUUID(),projectId:'project-cloud-te
 
 // PGlite runs the real PostgreSQL SQL/constraints/transactions. Its one connection
 // is leased through a mutex; this is not a mock SQL engine or a remote TLS test.
-async function pgPool(folder){
+async function pgPool(folder,fault={}){
  const engine=new PGlite(folder);await engine.waitReady;
  await engine.exec("DO $$ DECLARE r text;BEGIN FOREACH r IN ARRAY ARRAY['postgres','anon','authenticated','service_role'] LOOP IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname=r) THEN EXECUTE format('CREATE ROLE %I',r);END IF;END LOOP;END $$;");
  let tail=Promise.resolve(),closed=false;
  return {engine,async connect(){
   if(closed)throw Error('POOL_CLOSED');let unlock;const previous=tail;tail=new Promise(r=>unlock=r);await previous;
-  let released=false;return {on(){},async query(sql,args=[]){
+  let released=false,readyWrite=false;return {on(){},async query(sql,args=[]){
    const r=(!args.length&&sql.trim().split(';').filter(s=>s.trim()).length>1)?(await engine.exec(sql)).at(-1):await engine.query(sql,args);
+   if(sql.includes("UPDATE jobs SET status='ready'"))readyWrite=true;
+   if(sql==='COMMIT'&&readyWrite&&fault.loseReadyCommit){fault.loseReadyCommit=false;fault.lost=true;throw Error('fixture commit response lost');}
    // Match the production pg integer parsers for BIGINT/NUMERIC. PGlite
    // otherwise leaves SUM(bigint) as strings and concatenates allocations.
    const rows=r.rows.map(row=>Object.fromEntries(Object.entries(row).map(([name,value])=>{const field=r.fields.find(f=>f.name===name);return [name,value!==null&&[20,1700].includes(field?.dataTypeID)?pg.types.getTypeParser(field.dataTypeID)(String(value)):value];})));
@@ -57,11 +59,11 @@ function bucketFixture(){
  };
  return {objects,calls,fetchImpl};
 }
-async function setup(t,{adapter,accounts}={}){
+async function setup(t,{adapter,accounts,fault={}}={}){
  const folder=mkdtempSync(join(tmpdir(),'aiadcast-cloud-')),bucket=bucketFixture();let app,calls=0;
  const defaultAdapter={generate:async()=>{calls++;return {bytes,mime:'image/png',width:8,height:8,sha256:hash,role:'background',usage,cost:imageUsageCost(usage),model:IMAGE_MODEL,revision:IMAGE_REVISION,providerRequestId:'fixture-provider'};}};
  const start=async()=>{
-  app=await createCloudBackend(config,env,{pool:await pgPool(join(folder,'pg')),storageFetch:bucket.fetchImpl,adapter:adapter??defaultAdapter,accounts:accounts??{},staticDirectory:null,skipInstanceLock:true});
+  app=await createCloudBackend(config,env,{pool:await pgPool(join(folder,'pg'),fault),storageFetch:bucket.fetchImpl,adapter:adapter??defaultAdapter,accounts:accounts??{},staticDirectory:null,skipInstanceLock:true});
   await new Promise(r=>app.server.listen(0,'127.0.0.1',r));return app;
  };
  await start();t.after(async()=>{if(app)await app.close();rmSync(folder,{recursive:true,force:true});});
@@ -358,3 +360,138 @@ test('admin overview is a read-only snapshot: no expired reservation release or 
  assert.equal((await s.app.store.db.prepare('SELECT nspname FROM pg_namespace WHERE nspname=?').all(cloudSchema(untouched.userId))).length,0);
  assert.equal(s.calls(),1);
 });
+
+for(const admin of [false,true])test(`pending cloud generation survives a lost delivery commit response and restart (${admin?'admin':'member'})`,async t=>{
+ let release,calls=0;const waiting=new Promise(r=>release=r),fault={loseReadyCommit:true};
+ const s=await setup(t,{fault,adapter:{generate:async()=>{calls++;await waiting;return {bytes,mime:'image/png',width:8,height:8,sha256:hash,role:'background',usage,cost:imageUsageCost(usage),model:IMAGE_MODEL,revision:IMAGE_REVISION};}}});
+ const a=await s.member('Recovery',1_000_000,admin?0:3);let token=a.token;
+ if(admin){await s.app.store.setRole(a.user.id,'admin');token=(await s.call('/api/auth/login',{body:{invite:(await s.app.store.issueInvite(a.user.id)).invite}})).data.token;}
+ const body=generation(),created=await s.call('/api/generations',{token,body}),id=created.data.job.id;
+ assert.equal(created.status,202);assert.equal((await s.call('/api/generations/'+id,{token})).data.job.state,'running');
+ const duplicate=await s.call('/api/generations',{token,body:{...body,requestId:randomUUID()}});assert.equal(duplicate.data.job.id,id);
+ release();let job;for(let i=0;i<100;i++){job=(await s.call('/api/generations/'+id,{token})).data.job;if(job.state!=='running')break;await new Promise(r=>setTimeout(r,5));}
+ assert.equal(fault.lost,true);assert.equal(job.state,'ready');assert.equal(job.artifact.dataUrl,source.data);assert.equal(calls,1);
+ await s.restart();job=(await s.call('/api/generations/'+id,{token})).data.job;assert.equal(job.state,'ready');assert.equal(job.artifact.dataUrl,source.data);
+ const status=(await s.call('/api/status',{token})).data;assert.equal(status.wallet.available,admin?0:2);assert.equal(status.wallet.reserved,admin?0:1);assert.equal(status.budget.spentMicros,imageUsageCost(usage).microUsd);
+ assert.equal((await s.call('/api/generations',{token,body})).data.job.id,id);assert.equal(calls,1);
+ const other=await s.member('Other');assert.equal((await s.call('/api/generations/'+id,{token:other.token})).status,404);
+});
+
+test('cloud result upload failure remains uncertain through status, retry and restart without another provider call',async t=>{
+ const s=await setup(t),a=await s.member('Storage failure',1_000_000,3),body=generation();
+ const put=s.app.storage.put.bind(s.app.storage);let uploads=0;
+ s.app.storage.put=async(...args)=>{if(++uploads===2)throw Error('fixture result upload lost');return put(...args);};
+ // Source is saved before dispatch; the second upload is the generated result.
+ const made=await s.call('/api/generations',{token:a.token,body});assert.equal(made.status,202);await s.restart();
+ const job=(await s.call('/api/generations/'+made.data.job.id,{token:a.token})).data.job;
+ assert.equal(job.state,'uncertain');assert.equal(job.artifact,null);assert.equal(s.calls(),1);
+ assert.equal((await s.call('/api/generations',{token:a.token,body:{...body,requestId:randomUUID()}})).data.job.id,job.id);assert.equal(s.calls(),1);
+ const status=(await s.call('/api/status',{token:a.token})).data;assert.equal(status.wallet.available,3);assert.equal(status.budget.heldMicros,500000);
+});
+
+// Exercise the real HTTP server, image adapter, PostgreSQL transactions and restart.
+// Only the provider transport/storage are local fixtures; no external requests occur.
+for(const failure of ['response-timeout','body-timeout','missing-usage'])test(`cloud transport diagnosis: ${failure} persists uncertain without redispatch`,async t=>{
+ const logs=[];t.mock.method(console,'warn',message=>logs.push(JSON.parse(message)));
+ const {OpenAIImageAdapter}=await import('../server/openai-image-adapter.mjs');
+ const png=await sharp({create:{width:1024,height:1024,channels:3,background:'#aaa'}}).png().toBuffer();
+ let calls=0,release;const gate=new Promise(r=>release=r);
+ const adapter=new OpenAIImageAdapter({apiKey:'local-fixture-only',timeoutMs:1000,fetchImpl:async(_url,{signal})=>{
+  calls++;await gate;
+  if(failure==='missing-usage')return Response.json({data:[{b64_json:png.toString('base64')}]});
+  if(failure==='body-timeout')return new Response(new ReadableStream({start(controller){signal.addEventListener('abort',()=>controller.error(signal.reason),{once:true});}}));
+  return new Promise((_,reject)=>{signal.addEventListener('abort',()=>reject(signal.reason),{once:true});});
+ }});
+ const s=await setup(t,{adapter}),a=await s.member('Transport fixture',1_000_000,3),body=generation();
+ const made=await s.call('/api/generations',{token:a.token,body});assert.equal(made.status,202);const id=made.data.job.id;
+ assert.equal((await s.call('/api/generations/'+id,{token:a.token})).data.job.state,'running');release();
+ let job;for(let i=0;i<200;i++){job=(await s.call('/api/generations/'+id,{token:a.token})).data.job;if(job.state!=='running')break;await new Promise(r=>setTimeout(r,10));}
+ assert.equal(job.state,'uncertain');assert.equal(job.errorCode,'PROVIDER_UNCERTAIN');assert.equal(job.artifact,null);assert.equal(calls,1);
+ const diagnostic=logs.find(x=>x.jobId===id);assert.equal(diagnostic.code,{'response-timeout':'PROVIDER_TIMEOUT','body-timeout':'PROVIDER_BODY_TIMEOUT','missing-usage':'PROVIDER_USAGE_UNCERTAIN'}[failure]);assert.equal(diagnostic.stage,failure==='missing-usage'?'usage':'provider');
+ const db=await new PostgresDatabase(s.app.pool,cloudSchema(a.user.id)).initialize();
+ const record=await db.prepare('SELECT artifact_hash,metadata_json FROM generation_records WHERE id=?').get(id);
+ assert.equal(Boolean(record.artifact_hash),failure==='missing-usage');
+ if(failure==='missing-usage')assert.equal(JSON.parse(record.metadata_json).cost,null);
+ await s.restart();assert.equal((await s.call('/api/generations/'+id,{token:a.token})).data.job.state,'uncertain');
+ const retry=await s.call('/api/generations',{token:a.token,body:{...body,requestId:randomUUID()}});assert.equal(retry.data.job.id,id);assert.equal(calls,1);
+ const status=(await s.call('/api/status',{token:a.token})).data;assert.equal(status.wallet.available,3);assert.equal(status.budget.heldMicros,500000);
+});
+
+test('cloud transport diagnosis: client abort during source persistence does not cancel or duplicate provider work',async t=>{
+ const s=await setup(t),a=await s.member('Client disconnect',1_000_000,3),body=generation();
+ let entered,release,first=true;const waiting=new Promise(r=>entered=r),gate=new Promise(r=>release=r),put=s.app.storage.put.bind(s.app.storage);
+ s.app.storage.put=async(...args)=>{if(first){first=false;entered();await gate;}return put(...args);};
+ const controller=new AbortController();
+ const pending=fetch('http://127.0.0.1:'+s.app.server.address().port+'/api/generations',{method:'POST',signal:controller.signal,headers:{Origin:origin,Authorization:'Bearer '+a.token,'Content-Type':'application/json','X-Aiadcast-Client':'local-studio'},body:JSON.stringify(body)});
+ await waiting;controller.abort();await assert.rejects(pending,e=>e.name==='AbortError');release();
+ let job;for(let i=0;i<100;i++){job=(await s.call('/api/generations?projectId='+body.projectId,{token:a.token})).data.jobs[0];if(job?.state==='ready')break;await new Promise(r=>setTimeout(r,10));}
+ assert.equal(job.state,'ready');assert.ok(job.artifactId);assert.equal(s.calls(),1);
+ const retry=await s.call('/api/generations',{token:a.token,body});assert.equal(retry.data.job.id,job.id);assert.equal(s.calls(),1);
+ await s.restart();assert.equal((await s.call('/api/generations/'+job.id,{token:a.token})).data.job.state,'ready');
+});
+
+for(const admin of [false,true])test(`cloud storage preflight refuses full account before provider or credit reservation (${admin?'admin':'member'})`,async t=>{
+ const s=await setup(t),a=await s.member('Storage admission',1_000_000,admin?0:3);let token=a.token;
+ if(admin){await s.app.store.setRole(a.user.id,'admin');token=(await s.call('/api/auth/login',{body:{invite:(await s.app.store.issueInvite(a.user.id)).invite}})).data.token;}
+ await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(a.user.id+'/existing-fixture',a.user.id,admin?299_000_000:99_000_000);
+ const before=(await s.call('/api/status',{token})).data,body=generation();body.request.output.format='9:16';body.role='admin';body.storageLimit=900000000;
+ const uploads=s.bucket.calls.length;
+ const result=await s.call('/api/generations',{token,body});assert.equal(result.status,413);assert.equal(result.data.error.code,'STORAGE_CAPACITY_UNAVAILABLE');
+ assert.equal(s.calls(),0);assert.equal(s.bucket.calls.length,uploads);
+ const after=(await s.call('/api/status',{token})).data;assert.deepEqual(after.wallet,before.wallet);assert.deepEqual(after.budget,before.budget);
+ assert.equal((await s.call('/api/generations',{token})).data.jobs.length,0);
+});
+test('cloud storage preflight accounts for global usage, deduplicated originals and two planar outputs without deleting data',async t=>{
+ const s=await setup(t),a=await s.member('A'),b=await s.member('B'),storage=s.app.storage;
+ const original={bytes,mime:'image/png',sha256:hash};
+ await storage.put(a.user.id,hash+'.png',bytes,'image/png');
+ await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(a.user.id+'/existing-fixture',a.user.id,84_000_000-bytes.length);
+ await storage.assertGenerationCapacity(a.user.id,[original],16_000_000);
+ await assert.rejects(storage.assertGenerationCapacity(a.user.id,[original],32_000_000),/STORAGE_CAPACITY_UNAVAILABLE/);
+ await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(b.user.id+'/global-fixture',b.user.id,801_000_001);
+ await assert.rejects(storage.assertGenerationCapacity(a.user.id,[original],16_000_000),/STORAGE_CAPACITY_UNAVAILABLE/);
+ assert.equal((await s.app.store.db.prepare('SELECT SUM(bytes) n FROM storage_objects').get()).n,885_000_001);
+ assert.deepEqual(await storage.get(a.user.id,a.user.id+'/'+hash+'.png'),bytes);
+});
+
+test('cloud quota filled after admission reproduces persist-image STORAGE_LIMIT and retains uncertain deduplication',async t=>{
+ const logs=[];t.mock.method(console,'warn',message=>logs.push(JSON.parse(message)));
+ const output=await sharp({create:{width:8,height:8,channels:3,background:'#123456'}}).png().toBuffer();
+ let calls=0,s,a;const adapter={generate:async()=>{
+  calls++;
+  // Another save fills the account after preflight; model bytes are valid but not stored.
+  await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(a.user.id+'/concurrent-save',a.user.id,100_000_000-bytes.length);
+  return {bytes:output,mime:'image/png',width:8,height:8,sha256:hashBytes(output),role:'background',usage,cost:imageUsageCost(usage),model:IMAGE_MODEL,revision:IMAGE_REVISION};
+ }};
+ s=await setup(t,{adapter});a=await s.member('Quota race',1_000_000,3);const body=generation();body.request.output.format='9:16';
+ const created=await s.call('/api/generations',{token:a.token,body});assert.equal(created.status,202);await s.restart();
+ assert.equal(logs[0].stage,'persist-image');assert.equal(logs[0].code,'STORAGE_LIMIT');
+ const job=(await s.call('/api/generations/'+created.data.job.id,{token:a.token})).data.job;
+ assert.equal(job.state,'uncertain');assert.equal(job.artifact,null);
+ assert.equal((await s.call('/api/generations',{token:a.token,body})).data.job.id,job.id);
+ assert.equal((await s.call('/api/generations',{token:a.token,body:{...body,requestId:randomUUID()}})).data.job.id,job.id);
+ const status=(await s.call('/api/status',{token:a.token})).data;assert.equal(status.wallet.available,3);assert.equal(status.budget.heldMicros,500000);assert.equal(calls,1);
+});
+
+ test('cloud admin storage allowance is finite, server-owned and never bypasses global capacity',async t=>{
+ const s=await setup(t),a=await s.member('Storage policy'),storage=s.app.storage;
+ assert.equal(await storage.accountLimit(a.user.id),100_000_000);
+ await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(a.user.id+'/fixture',a.user.id,98_707_402);
+ await assert.rejects(storage.assertGenerationCapacity(a.user.id,[],16_000_000),/STORAGE_CAPACITY_UNAVAILABLE/);
+ await s.app.store.setRole(a.user.id,'admin');assert.equal(await storage.accountLimit(a.user.id),300_000_000);
+ await storage.assertGenerationCapacity(a.user.id,[],16_000_000);
+ const data=Buffer.alloc(2_000_000,1);await storage.put(a.user.id,hashBytes(data)+'.png',data,'image/png');
+ await s.app.store.setRole(a.user.id,'member');assert.equal(await storage.accountLimit(a.user.id),100_000_000);
+ await assert.rejects(storage.put(a.user.id,hashBytes(Buffer.from('new'))+'.png',Buffer.from('new'),'image/png'),/STORAGE_LIMIT/);
+ await s.app.store.setRole(a.user.id,'admin');
+ await s.app.store.db.prepare('UPDATE storage_objects SET bytes=? WHERE path=?').run(299_000_000,a.user.id+'/fixture');
+ await assert.rejects(storage.assertGenerationCapacity(a.user.id,[],1),/STORAGE_CAPACITY_UNAVAILABLE/);
+ await assert.rejects(storage.put(a.user.id,hashBytes(Buffer.from('new'))+'.png',Buffer.from('new'),'image/png'),/STORAGE_LIMIT/);
+ await s.app.store.db.prepare('UPDATE storage_objects SET bytes=? WHERE path=?').run(98_707_402,a.user.id+'/fixture');
+ const b=await s.member('Other storage');await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(b.user.id+'/fixture',b.user.id,799_292_598);
+ await assert.rejects(storage.assertGenerationCapacity(a.user.id,[],1),/STORAGE_CAPACITY_UNAVAILABLE/);
+ await assert.rejects(storage.put(a.user.id,hashBytes(Buffer.from('new'))+'.png',Buffer.from('new'),'image/png'),/STORAGE_LIMIT/);
+ assert.equal((await s.app.store.db.prepare('SELECT SUM(bytes) n FROM storage_objects').get()).n,900_000_000);
+ await s.app.store.db.prepare('UPDATE users SET disabled=1 WHERE id=?').run(a.user.id);
+ assert.equal(await storage.accountLimit(a.user.id),100_000_000);
+ });

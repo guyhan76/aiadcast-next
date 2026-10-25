@@ -1,10 +1,11 @@
+import {googleProvider} from './google-provider.mjs';
 import {readFileSync} from 'node:fs';
 import {ApiFailure} from './generation-service.mjs';
 const fail=(code,status=503)=>{throw new ApiFailure(code,status);};
 export function resendMailer({apiKey,from,fetchImpl=fetch}){
  if(!apiKey||typeof from!=='string'||!from.includes('@')||/[\r\n]/.test(from))return undefined;
  return async({email,url,id})=>{
-  const response=await fetchImpl('https://api.resend.com/emails',{method:'POST',redirect:'error',signal:AbortSignal.timeout(15_000),headers:{Authorization:'Bearer '+apiKey,'Content-Type':'application/json','Idempotency-Key':'email-'+id},body:JSON.stringify({from,to:[email],subject:'aiadcast 이메일 인증',text:`aiadcast 로그인을 요청하셨나요?\n\n아래 링크에서 인증을 확인하면 요청한 기기에 로그인됩니다. 링크는 10분 동안 유효합니다.\n${url}\n\n직접 요청하지 않았다면 이 메일을 무시하세요.`})});
+  const response=await fetchImpl('https://api.resend.com/emails',{method:'POST',redirect:'error',signal:AbortSignal.timeout(15_000),headers:{Authorization:'Bearer '+apiKey,'Content-Type':'application/json','Idempotency-Key':'email-'+id},body:JSON.stringify({from,to:[email],subject:'Verify your email for aiadcast',text:`Did you request to sign in to aiadcast?\n\nOpen the link below to verify your email, then return to the app or tab where you requested it to finish signing in. This link expires in 10 minutes.\n${url}\n\nIf you did not request this, ignore this email.`})});
   if(!response.ok)fail('EMAIL_SEND_FAILED');
   const result=await response.json();if(typeof result.id!=='string')fail('EMAIL_SEND_FAILED');
  };
@@ -29,6 +30,6 @@ export function accountConfiguration(env=process.env){
  const clientKey=env.AIADCAST_TOSS_TEST_CLIENT_KEY??'';
  const paymentEnabled=env.AIADCAST_TOSS_TEST_ENABLED==='true';
  if(paymentEnabled&&!/^test_ck_[A-Za-z0-9_-]+$/.test(clientKey))throw Error('TOSS_TEST_CLIENT_KEY_REQUIRED');
- return {sendMail:email,password:{enabled:env.AIADCAST_TEST_AUTH_ENABLED===undefined?!emailEnabled:env.AIADCAST_TEST_AUTH_ENABLED==='true',adminEmail:env.AIADCAST_TEST_ADMIN_EMAIL??'selluplabs@gmail.com',adminPassword:env.AIADCAST_TEST_ADMIN_PASSWORD},clientKey:paymentEnabled?clientKey:null,provider:paymentEnabled?new TossTestProvider({secretKey:env.AIADCAST_TOSS_TEST_SECRET_KEY_FILE?readFileSync(env.AIADCAST_TOSS_TEST_SECRET_KEY_FILE,'utf8').trim():env.AIADCAST_TOSS_TEST_SECRET_KEY}):undefined};
+ return {google:env.AIADCAST_GOOGLE_ENABLED==='true'?googleProvider({clientId:env.AIADCAST_GOOGLE_CLIENT_ID,clientSecret:env.AIADCAST_GOOGLE_CLIENT_SECRET,redirectUri:(env.AIADCAST_BETA_PUBLIC_ORIGIN??'')+'/?google=1'}):undefined,sendMail:email,password:{enabled:env.AIADCAST_TEST_AUTH_ENABLED===undefined?!emailEnabled:env.AIADCAST_TEST_AUTH_ENABLED==='true',adminEmail:env.AIADCAST_TEST_ADMIN_EMAIL??'selluplabs@gmail.com',adminPassword:env.AIADCAST_TEST_ADMIN_PASSWORD},clientKey:paymentEnabled?clientKey:null,provider:paymentEnabled?new TossTestProvider({secretKey:env.AIADCAST_TOSS_TEST_SECRET_KEY_FILE?readFileSync(env.AIADCAST_TOSS_TEST_SECRET_KEY_FILE,'utf8').trim():env.AIADCAST_TOSS_TEST_SECRET_KEY}):undefined};
 }
 

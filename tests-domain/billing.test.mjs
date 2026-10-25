@@ -153,3 +153,12 @@ test('independent connections and restart retain balances and prevent spending t
   c.release('one', 'user', 'system_error'); c.close();
 });
 
+
+test('released customer reservation does not free uncertain supplier hold for another job',t=>{
+ const {ledger,reserve}=setup(t);reserve('first');
+ ledger.beginAttempt({jobId:'first',attemptId:'first-attempt',period:'2026-10',maximumMicros:500000,limitMicros:500000});
+ ledger.markAttemptUncertain('first-attempt');ledger.release('first','user','system_error');
+ assert.equal(ledger.job('first').status,'released');assert.equal(ledger.budget('2026-10').held_micros,500000);
+ reserve('second');assert.throws(()=>ledger.beginAttempt({jobId:'second',attemptId:'second-attempt',period:'2026-10',maximumMicros:500000,limitMicros:500000}),/budget unavailable/);
+ assert.equal(ledger.budget('2026-10').held_micros,500000);
+});

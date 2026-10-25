@@ -19,3 +19,13 @@
 .marketing-evidence h4{margin-top:16px;font-size:13px}
 .marketing-evidence p{font-size:13px;color:#5b635e}
 @media(min-width:600px){.marketing-summary{padding:24px}.marketing-summary .marketing-channels{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:24px}.marketing-channels li{border-bottom:0}.marketing-summary .marketing-keywords{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.marketing-analysis{margin:16px 0;text-align:left}
+.marketing-analysis>summary{min-height:44px;align-content:center;cursor:pointer;font-size:16px;font-weight:650}
+.marketing-analysis>summary:focus-visible{outline:2px solid currentColor;outline-offset:3px}
+
+.marketing-summary>.marketing-section:first-child{margin-top:0;padding-top:0;border-top:0}
+.dimension-guide-disclosure>summary{min-height:44px;align-content:center;cursor:pointer;font-size:16px}
+
+.new-ad-options > summary.another-ad-action{display:block;box-sizing:border-box;width:100%;padding:16px 20px;background:#1f1f1d;color:#fff;border-radius:12px;text-align:center;font-size:16px;font-weight:700;line-height:1.5;cursor:pointer;list-style:none;word-break:keep-all;overflow-wrap:anywhere}
+.new-ad-options > summary.another-ad-action::-webkit-details-marker{display:none}
+.new-ad-options > summary.another-ad-action:focus-visible{outline:3px solid #e8722a;outline-offset:3px}

@@ -1,4 +1,7 @@
 import {test,expect} from '@playwright/test';
+import {protectedScreen,mockSession} from './helpers/authenticated-session';
+// This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
+test.beforeEach(async({page})=>{await protectedScreen(page,mockSession('protected-box-geometry'));});
 import {mkdir} from 'node:fs/promises';
 test('box shape follows dimensions and remains explicitly unverified',async({page},testInfo)=>{
  await page.goto('/#editor');await page.locator('.editor-details > summary').click();

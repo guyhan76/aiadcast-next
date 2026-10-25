@@ -1,7 +1,8 @@
 import {test,expect,type Page} from '@playwright/test';
 async function setup(page:Page){
  await page.route('**/api/**',r=>r.fulfill({json:{generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0},email:{enabled:false},checkout:{enabled:false,test:true,currency:'KRW'}}}));
- await page.goto('/#home');await expect(page.locator('.app-header')).toBeVisible();
+ await page.route('**/api/auth/session',r=>r.fulfill({json:{user:{id:'sync-user-123',label:'A'}}}));
+ await page.goto('/#account-recovery');await expect(page.locator('.account-page,.app-header').first()).toBeVisible();
  await page.evaluate(async()=>{const m=await import('/src/model.ts');(window as any).syncFixture={...m.newProject(),name:'Isolated email draft'};});
 }
 test('sign-in handoff stops before guest migration after account switch or guest logout',async({page})=>{

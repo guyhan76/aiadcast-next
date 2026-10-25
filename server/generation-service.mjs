@@ -1,3 +1,4 @@
+import {supportsImageMedia,imageMediaType} from '../src/image-media.ts';
 import {aiDimensionInputKey,validAiDimensionReview} from '../src/ai-dimension-display.ts';
 import {makeDimensionPlan} from '../src/dimension-generation.ts';
 import {preparePlanarSource,requestPlanarRatio} from './planar-proportion.mjs';
@@ -5,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, openSync, closeSync, writeFileSync, readFileSync, unlinkSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { BillingLedger } from './billing.mjs';
-import { GENERATION_SIZES, IMAGE_MODEL, IMAGE_REVISION, hashBytes, parseSourceAsset, ProviderFailure } from './openai-image-adapter.mjs';
+import { GENERATION_SIZES, IMAGE_MODEL, IMAGE_REVISION, hashBytes, parseSourceAsset, ProviderFailure, generationFailureDiagnostic } from './openai-image-adapter.mjs';
 import { normalizeAssistantRequest, TEXT_MODEL, TEXT_MAX_HOLD_MICROS } from './text-assistant.mjs';
 import {createMarketingPlan} from '../src/marketing-plan.ts';
 import {parseCampaign} from '../src/campaign.ts';
@@ -34,6 +35,7 @@ function boundedObject(value, depth = 0) {
   fail('INVALID_REQUEST');
 }
 export function normalizeGenerationRequest(value) {
+  if(!supportsImageMedia(value?.mediaType)||!supportsImageMedia(value?.output?.mediaType))fail('UNSUPPORTED_MEDIA');
   if (!value || typeof value !== 'object' || JSON.stringify(value).length > 50_000) fail('INVALID_REQUEST');
   if (value.version !== 1 || !['original','creative'].includes(value.mode) || !['physical-product','service'].includes(value.subjectType) || typeof value.productName !== 'string' || value.productName.length > 100 || !GENERATION_SIZES[value.output?.format]) fail('INVALID_REQUEST');
   if (value.operation === 'image-region' || value.requestedEditOperation === 'masked-product-appearance-edit') fail('REGION_EDIT_NOT_AVAILABLE');
@@ -232,7 +234,9 @@ export class GenerationService {
     const rows = projectId ? this.db.prepare('SELECT id FROM generation_records WHERE project_id=? ORDER BY created_at DESC LIMIT 30').all(projectId) : this.db.prepare('SELECT id FROM generation_records ORDER BY created_at DESC LIMIT 30').all();
     return { jobs: rows.map(row => this.job(row.id, { includeArtifact: false })), wallet: this.wallet() };
   }
+  async assertOutputCapacity(request, originals) { /* Local disk implementation has no cloud quota. */ }
   async create(body) {
+    if(!supportsImageMedia(body?.mediaType))fail('UNSUPPORTED_MEDIA');
     if (!body || !identifier(body.requestId) || !identifier(body.projectId)) fail('INVALID_REQUEST');
     const request = normalizeGenerationRequest(body.request);
     if(request.inputMode==='text-example'&&(body.source!=null||(body.references??[]).length))fail('TEXT_EXAMPLE_PHOTOS_NOT_ALLOWED');
@@ -267,6 +271,7 @@ export class GenerationService {
     if (this.tasks.size) fail('GENERATION_ALREADY_RUNNING', 409);
     const quote=this.creditQuote();
     if((quote.unit==='credit-v2'||body.creditQuote)&&(!body.creditQuote||body.creditQuote.unit!==quote.unit||body.creditQuote.amount!==quote.amount||body.creditQuote.policy!==quote.policy))fail('CREDIT_QUOTE_CHANGED',409);
+    await this.assertOutputCapacity(request, all);
     const id = randomUUID();
     const createdAt = this.now();
     if (source) this.storeAsset(source); // Content-addressed, immutable original bytes.
@@ -275,7 +280,7 @@ export class GenerationService {
     try {
       this.ledger.transaction(() => {
         const currentQuote=this.creditQuote();if(currentQuote.unit!==quote.unit||currentQuote.amount!==quote.amount)fail('CREDIT_QUOTE_CHANGED',409);
-        this.ledger.reserve({ jobId: id, userId: LOCAL_USER, credits: quote.amount||1, unit:quote.unit, creditExempt: quote.amount===0, requestHash: fingerprint, modelRevision: IMAGE_REVISION, expiresAt: createdAt + 24 * 60 * 60 * 1000 });
+        this.ledger.reserve({ kind:imageMediaType, jobId: id, userId: LOCAL_USER, credits: quote.amount||1, unit:quote.unit, creditExempt: quote.amount===0, requestHash: fingerprint, modelRevision: IMAGE_REVISION, expiresAt: createdAt + 24 * 60 * 60 * 1000 });
         this.db.prepare('INSERT INTO generation_records(id,project_id,fingerprint,request_json,source_hash,created_at) VALUES (?,?,?,?,?,?)').run(id, body.projectId, fingerprint, JSON.stringify(request), source?.sha256 ?? null, createdAt);
         this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(body.requestId, fingerprint, id);
       });
@@ -285,7 +290,7 @@ export class GenerationService {
     return { job: this.job(id), wallet: this.wallet(), reused: false };
   }
   async dispatch(id, request, source, references = []) {
-    const attemptId = randomUUID(); let began = false;
+    const attemptId = randomUUID(); let began = false, stage='reserve';
     try {
       const attempt = this.ledger.transaction(() => {
         const period=this.period(),limit=this.budgetLimit(period);
@@ -293,18 +298,26 @@ export class GenerationService {
       });
       if (!attempt.shouldDispatch) return;
       began = true;
+      stage='provider';
       const result = await this.adapter.generate({ request, source: request.mode === 'creative' ? source : null, references:request.mode==='creative'?references:[], attemptId });
+      if(!supportsImageMedia(result.mediaType))throw new ProviderFailure('UNSUPPORTED_PROVIDER_MEDIA');
       // Persist provider metadata before any customer capture. Pixel validity is not semantic quality approval.
+      stage='persist-image';
       if(result.planarOriginal)this.storeAsset(result.planarOriginal);
       this.storeAsset(result);
+      stage='persist-metadata';
       this.db.prepare('UPDATE generation_records SET artifact_hash=?,artifact_role=?,metadata_json=? WHERE id=?').run(result.sha256, result.role, JSON.stringify({ model: result.model, revision: result.revision, ...(result.composition?{composition:result.composition}:{}), ...(result.planarReport?{planarReport:result.planarReport}:{}), usage: result.usage, cost: result.cost, providerRequestId: result.providerRequestId }), id);
+      stage='usage';
       if (!result.cost) throw new ProviderFailure('PROVIDER_USAGE_UNCERTAIN');
+      stage='settle';
       this.ledger.settleAttempt(attemptId, result.cost.microUsd, 'completed');
+      stage='ready';
       this.ledger.markReady(id, result.sha256);
     } catch (error) {
       // A delivery commit may succeed even when its response is lost. Preserve the
       // durable delivered result and charge instead of relabeling it as a failed/refunded job.
-      try { const delivered=this.ledger.job(id);if(delivered.captured&&delivered.artifact_id)return; } catch { /* Reconciliation remains necessary if storage is unavailable. */ }
+      try { const delivered=this.ledger.job(id);if(delivered.artifact_id&&(delivered.captured||['ready','accepted'].includes(delivered.status)))return; } catch { /* Reconciliation remains necessary if storage is unavailable. */ }
+      try { console.warn(JSON.stringify(generationFailureDiagnostic({jobId:id,stage,error}))); } catch { /* Diagnostics must never alter recovery. */ }
       // No automatic retries. Unknown execution/usage preserves the supplier-cost hold.
       const knownFailure = error instanceof ProviderFailure && !error.uncertain;
       let code = !began ? 'BUDGET_NOT_AVAILABLE' : knownFailure ? error.code : 'PROVIDER_UNCERTAIN';

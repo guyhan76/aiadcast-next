@@ -1,4 +1,7 @@
 import {test,expect,type Page} from '@playwright/test';
+import {protectedScreen,mockSession} from './helpers/authenticated-session';
+// This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
+test.beforeEach(async({page})=>{await protectedScreen(page,mockSession('protected-box-projection'));});
 import {createHash} from 'node:crypto';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import sharp from 'sharp';

@@ -1,3 +1,4 @@
+import {correctedOctoberOwnerLimit} from './october-admin-budget.mjs';
 import {DatabaseSync} from 'node:sqlite';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {mkdirSync,chmodSync} from 'node:fs';
@@ -54,7 +55,10 @@ export class BetaStore {
   const u=this.db.prepare('SELECT * FROM users WHERE id=?').get(id);if(!u)fail('USER_NOT_FOUND',404);
   const a=this.monthApproval(),r=this.db.prepare('SELECT * FROM monthly_demo_support WHERE period=?').get(period);
   const baseline=a?.user_id===id&&u.role==='admin'&&!u.disabled?a.allocation_micros:u.budget;
-  if(r?.owner_id===id)return Math.min(baseline,a.allocation_micros-r.micros);
+  if(r?.owner_id===id){
+   const owner=this.db.prepare('SELECT user_id FROM email_identities WHERE email=?').get('selluplabs@gmail.com');
+   return correctedOctoberOwnerLimit({now:this.now(),user:u,approval:a,support:r,ownerId:owner?.user_id,demo:Boolean(this.approvedDemoMember()),limit:Math.min(baseline,a.allocation_micros-r.micros)});
+  }
   const existing=baseline+(r?.user_id===id?r.micros:0);
   if(id===this.approvedDemoMember()){if(existing>10000000)fail('APPROVED_BUDGET_CONFLICT',409);return 10000000;}
   return existing;

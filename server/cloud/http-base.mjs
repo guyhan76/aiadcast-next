@@ -8,6 +8,8 @@ import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ApiFailure } from '../generation-service.mjs';
 import { ProviderFailure } from '../openai-image-adapter.mjs';
+import { GoogleAuth } from './google-auth-base.mjs';
+import { googleReturnPage, googleUiLanguage, googleReturnCsp } from '../google-return-page.mjs';
 import { EmailAuth } from './email-auth-base.mjs';
 import { PasswordAuth } from './password-auth-base.mjs';
 import { TestCheckout } from './test-checkout-base.mjs';
@@ -47,6 +49,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
     const service = async (user) => { if (!services.has(user.id))
         services.set(user.id, Promise.resolve().then(() => serviceFactory(user))); const instance = await services.get(user.id); instance.adminTestUnlimited = user.role === 'admin'; return instance; };
     const email = await new EmailAuth().initialize(store, { sendMail: accounts.sendMail, publicOrigin: origin, now });
+    const google = await new GoogleAuth().initialize(store, { provider: accounts.google, now });
     const password = await new PasswordAuth().initialize(store, accounts.password, now);
     await password.bootstrapOwner();
     const checkout = await new TestCheckout().initialize(store, { ...accounts, publicOrigin: origin, now, readPurchase: async (id, purchase) => { const user = await store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id); if (!user)
@@ -90,7 +93,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 res.end(bytes);
                 return;
             }
-            limit(['/api/auth/login', '/api/auth/test/signup', '/api/auth/test/login', '/api/auth/email/request', '/api/auth/email/verify', '/api/checkout/confirm', '/api/checkout/launch'].includes(url.pathname));
+            limit(['/api/auth/google/start', '/api/auth/google/finish', '/api/auth/google/native-callback', '/api/auth/google/link/request', '/api/auth/login', '/api/auth/test/signup', '/api/auth/test/login', '/api/auth/email/request', '/api/auth/email/verify', '/api/checkout/confirm', '/api/checkout/launch'].includes(url.pathname));
             if (req.headers.origin && !cors)
                 throw new ApiFailure('ORIGIN_NOT_ALLOWED', 403);
             if (req.method === 'OPTIONS') {
@@ -118,7 +121,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 return;
             }
             if (req.method === 'GET' && url.pathname === '/api/account/capabilities') {
-                send(res, 200, { email: { enabled: Boolean(accounts.sendMail) }, ...(password.available() ? { password: { enabled: true, test: true, adminReady: await password.ownerReady(), adminEmail: password.adminEmail } } : {}), checkout: { enabled: checkout.available(), test: true, currency: 'KRW' } }, cors);
+                send(res, 200, { email: { enabled: Boolean(accounts.sendMail) }, ...(google.available() ? { google: { enabled: true } } : {}), ...(password.available() ? { password: { enabled: true, test: true, adminReady: await password.ownerReady(), adminEmail: password.adminEmail } } : {}), checkout: { enabled: checkout.available(), test: true, currency: 'KRW' } }, cors);
                 return;
             }
             if (req.method === 'POST' && ['/api/auth/test/signup', '/api/auth/test/login'].includes(url.pathname)) {
@@ -140,6 +143,41 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 send(res, 200, result, cors);
                 return;
             }
+            if (req.method === 'POST' && url.pathname.startsWith('/api/auth/google/link/')) {
+                const b = await read(req, 2048);
+                let result;
+                if (url.pathname.endsWith('/status'))
+                    result = await google.linkStatus(b, req.headers.authorization);
+                else if (url.pathname.endsWith('/request'))
+                    result = await google.requestLinkEmail(b, req.headers.authorization, email);
+                else if (url.pathname.endsWith('/complete'))
+                    result = await google.completeLink(b, req.headers.authorization);
+                else if (url.pathname.endsWith('/cancel'))
+                    result = await google.cancelLink(b, req.headers.authorization);
+                else
+                    throw new ApiFailure('NOT_FOUND', 404);
+                send(res, 200, result, cors);
+                return;
+            }
+            if (req.method === 'POST' && url.pathname === '/api/auth/google/start') {
+                const b = await read(req, 1024);
+                send(res, 200, await google.startGoogle(req.headers.authorization, b?.packageId, googleUiLanguage(b?.language, req.headers['accept-language']), b?.linkRecovery), cors);
+                return;
+            }
+            if (req.method === 'GET' && url.pathname === '/api/auth/google/native-callback') {
+                const state = url.searchParams.get('state'), target = await google.approveNativeGoogle(state, url.searchParams.get('code')), language = await google.nativeGoogleLanguage(state) ?? googleUiLanguage(undefined, req.headers['accept-language']);
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': googleReturnCsp });
+                res.end(googleReturnPage(target, language));
+                return;
+            }
+            if (req.method === 'POST' && url.pathname === '/api/auth/google/native-poll') {
+                send(res, 200, await google.pollNativeGoogle(await read(req, 2048), req.headers.authorization), cors);
+                return;
+            }
+            if (req.method === 'POST' && url.pathname === '/api/auth/google/finish') {
+                send(res, 200, await google.finishGoogle(await read(req, 8192), req.headers.authorization), cors);
+                return;
+            }
             if (req.method === 'POST' && url.pathname === '/api/checkout/receipt') {
                 send(res, 200, await checkout.receipt(await read(req, 2048)), cors);
                 return;
@@ -150,6 +188,10 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 return;
             }
             const user = await store.authenticate(req.headers.authorization);
+            if (req.method === 'GET' && url.pathname === '/api/auth/session') {
+                send(res, 200, { user: { id: user.id, label: user.label, role: user.role } }, cors);
+                return;
+            }
             if (req.method === 'GET' && url.pathname === '/api/dimension-analysis') {
                 send(res, 200, dimensionAnalysis.capability(user), cors);
                 return;

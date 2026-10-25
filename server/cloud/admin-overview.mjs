@@ -1,3 +1,4 @@
+import {correctedOctoberOwnerLimit} from '../october-admin-budget.mjs';
 import {IMAGE_MODEL} from '../openai-image-adapter.mjs';
 import {ApiFailure} from '../generation-service.mjs';
 import {cloudSchema} from './postgres.mjs';
@@ -45,6 +46,7 @@ export async function readAdminOverview({pool,guard=()=>{},actor,admin,enabled,p
   const users=members.map(u=>{
    const baseline=approval?.user_id===u.id&&u.role==='admin'&&!u.disabled?approval.allocation_micros:u.budget;
    let limit=support?.owner_id===u.id?Math.min(baseline,approval.allocation_micros-support.micros):baseline+(support?.user_id===u.id?support.micros:0);
+   limit=correctedOctoberOwnerLimit({now:timestamp,user:u,approval,support,ownerId:members.find(m=>m.email==='selluplabs@gmail.com')?.id,demo,limit});
    if(demo&&u.id==='a3c39e4d-8621-4f0d-9021-2621a8cecdee'){if(limit>10000000)fail('APPROVED_BUDGET_CONFLICT');limit=10000000;}
    const s=summaries.get(u.id);
    // An entirely absent namespace has never had a ledger. Its initial grant is

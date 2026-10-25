@@ -1,0 +1,168 @@
+import {randomBytes,randomUUID,createHash} from 'node:crypto';
+import {ApiFailure} from './generation-service.mjs';
+const hash=s=>createHash('sha256').update(s).digest('hex');
+const secret=()=>randomBytes(32).toString('base64url');
+const valid=s=>typeof s==='string'&&/^[A-Za-z0-9_-]{43}$/.test(s);
+const fail=(code,status=401)=>{throw new ApiFailure(code,status);};
+export class GoogleAuth {
+ constructor(store,{provider,now=()=>Date.now()}={}){
+  this.store=store;this.db=store.db;this.provider=provider;this.now=now;
+  this.db.exec(`CREATE TABLE IF NOT EXISTS google_identities(subject TEXT PRIMARY KEY,user_id TEXT UNIQUE NOT NULL REFERENCES users(id));
+   CREATE TABLE IF NOT EXISTS google_requests(state_hash TEXT PRIMARY KEY,proof_hash TEXT NOT NULL,nonce TEXT NOT NULL,verifier TEXT NOT NULL,session_hash TEXT NOT NULL,expires INTEGER NOT NULL,consumed INTEGER NOT NULL DEFAULT 0);
+   CREATE TABLE IF NOT EXISTS google_native_requests(state_hash TEXT PRIMARY KEY REFERENCES google_requests(state_hash) ON DELETE CASCADE,package_id TEXT NOT NULL,claims TEXT);
+   CREATE TABLE IF NOT EXISTS google_request_languages(state_hash TEXT PRIMARY KEY REFERENCES google_requests(state_hash) ON DELETE CASCADE,language TEXT NOT NULL CHECK(language IN ('ko','en')));
+   CREATE TABLE IF NOT EXISTS google_link_requests(state_hash TEXT PRIMARY KEY REFERENCES google_requests(state_hash) ON DELETE CASCADE,user_id TEXT REFERENCES users(id),subject TEXT,email_request_id TEXT,expires INTEGER NOT NULL,consumed INTEGER NOT NULL DEFAULT 0);`);
+ }
+ available(){return !!this.provider;}
+ startGoogle(authorization,packageId,language='en',linkRecovery=false){
+  if(!this.available())fail('GOOGLE_UNAVAILABLE',503);
+  if(packageId!==undefined&&!['com.selluplabs.aiadcast.next','com.selluplabs.aiadcast.next.demo','com.selluplabs.aiadcast.next.dev','com.selluplabs.aiadcast.next.preview'].includes(packageId))fail('GOOGLE_NATIVE_INVALID');
+  // A link flow is bound to this exact already-authenticated session, never an email string.
+  if(authorization)this.store.authenticate(authorization);
+  const state=secret(),proof=secret(),nonce=secret(),verifier=secret(),expires=this.now()+600000;
+  this.store.transaction(()=>{this.db.prepare('DELETE FROM google_requests WHERE expires<=?').run(this.now());if(this.db.prepare('SELECT COUNT(*) n FROM google_requests').get().n>=1000)fail('RATE_LIMITED',429);
+   this.db.prepare('INSERT INTO google_requests(state_hash,proof_hash,nonce,verifier,session_hash,expires) VALUES(?,?,?,?,?,?)').run(hash(state),hash(proof),nonce,verifier,authorization?hash(authorization):'',expires);
+   if(linkRecovery===true&&!authorization)this.db.prepare('INSERT INTO google_link_requests(state_hash,expires) VALUES(?,?)').run(hash(state),expires);
+   if(packageId){this.db.prepare('INSERT INTO google_native_requests(state_hash,package_id) VALUES(?,?)').run(hash(state),packageId);this.db.prepare('INSERT INTO google_request_languages(state_hash,language) VALUES(?,?)').run(hash(state),language==='ko'?'ko':'en');}
+  });
+  const url=new URL('https://accounts.google.com/o/oauth2/v2/auth');url.search=new URLSearchParams({client_id:this.provider.clientId,redirect_uri:packageId?new URL('/api/auth/google/native-callback',this.provider.redirectUri).href:this.provider.redirectUri,response_type:'code',scope:'openid email',prompt:'select_account',state,nonce,code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256'}).toString();
+  return {state,proof,expires,url:url.href,...(packageId?{native:true}:{})};
+ }
+ nativeGoogleLanguage(state){
+  if(!valid(state))fail('GOOGLE_FLOW_INVALID');
+  return this.db.prepare('SELECT language FROM google_request_languages WHERE state_hash=?').get(hash(state))?.language;
+ }
+ claimGoogle(body,authorization){
+  if(!this.available())fail('GOOGLE_UNAVAILABLE',503);
+  if(!valid(body?.state)||!valid(body?.proof))fail('GOOGLE_FLOW_INVALID');
+  return this.store.transaction(()=>{
+   const row=this.db.prepare('SELECT * FROM google_requests WHERE state_hash=? AND proof_hash=? AND expires>? AND consumed=0').get(hash(body.state),hash(body.proof),this.now());
+   if(this.db.prepare('SELECT state_hash FROM google_native_requests WHERE state_hash=?').get(hash(body.state)))fail('GOOGLE_FLOW_INVALID');
+   if(!row||row.session_hash!==(authorization?hash(authorization):''))fail('GOOGLE_FLOW_INVALID');
+   if(authorization)this.store.authenticate(authorization);
+   this.db.prepare('UPDATE google_requests SET consumed=1 WHERE state_hash=?').run(row.state_hash);return row;
+  });
+ }
+ completeGoogle(flow,claims,authorization){
+  return this.store.transaction(()=>{
+   if(flow.expires<=this.now())fail('GOOGLE_FLOW_INVALID');
+   const owner=authorization?this.store.authenticate(authorization):undefined;
+   let identity=this.db.prepare('SELECT user_id FROM google_identities WHERE subject=?').get(claims.subject);
+   if(owner){
+    if(identity&&identity.user_id!==owner.id)fail('GOOGLE_LINK_CONFLICT',409);
+    const existing=this.db.prepare('SELECT subject FROM google_identities WHERE user_id=?').get(owner.id);if(existing&&existing.subject!==claims.subject)fail('GOOGLE_LINK_CONFLICT',409);
+    // Do not bind a Google email belonging to another pre-existing account.
+    const email=this.db.prepare('SELECT user_id FROM email_identities WHERE email=?').get(claims.email);if(email&&email.user_id!==owner.id)fail('GOOGLE_LINK_CONFLICT',409);
+    if(!identity)this.db.prepare('INSERT INTO google_identities VALUES(?,?)').run(claims.subject,owner.id);
+    identity={user_id:owner.id};
+   }
+   if(!identity){
+    const existingEmail=this.db.prepare('SELECT user_id FROM email_identities WHERE email=?').get(claims.email);
+    if(existingEmail){
+     const pending=this.db.prepare('SELECT * FROM google_link_requests WHERE state_hash=? AND consumed=0 AND expires>?').get(flow.state_hash,this.now());
+     if(!pending)fail('GOOGLE_ACCOUNT_LINK_REQUIRED',409);
+     this.db.prepare('UPDATE google_link_requests SET user_id=?,subject=? WHERE state_hash=?').run(existingEmail.user_id,claims.subject,flow.state_hash);
+     return {linkRequired:true,expires:pending.expires};
+    }
+    if(this.db.prepare('SELECT COUNT(*) n FROM users').get().n>=20)fail('BETA_ALLOCATION_EXCEEDED',409);
+    const id=randomUUID();this.db.prepare('INSERT INTO users(id,label,budget,credits) VALUES(?,?,0,0)').run(id,claims.email.slice(0,80));
+    this.db.prepare('INSERT INTO google_identities VALUES(?,?)').run(claims.subject,id);
+    this.db.prepare('INSERT INTO email_identities VALUES(?,?)').run(claims.email,id);identity={user_id:id};
+   }
+   const user=this.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(identity.user_id);if(!user)fail('AUTH_REQUIRED');
+   return this.store.createSession(user);
+  });
+ }
+ claimNativeGoogle(state){
+  if(!this.available())fail('GOOGLE_UNAVAILABLE',503);if(!valid(state))fail('GOOGLE_FLOW_INVALID');
+  return this.store.transaction(()=>{const row=this.db.prepare('SELECT r.*,n.package_id FROM google_requests r JOIN google_native_requests n ON n.state_hash=r.state_hash WHERE r.state_hash=? AND r.expires>? AND r.consumed=0').get(hash(state),this.now());if(!row)fail('GOOGLE_FLOW_INVALID');this.db.prepare('UPDATE google_requests SET consumed=1 WHERE state_hash=?').run(row.state_hash);return row;});
+ }
+ async approveNativeGoogle(state,code){
+  const row=this.claimNativeGoogle(state);let claims;
+  try{claims=await this.provider.exchange(code,row.verifier,row.nonce,new URL('/api/auth/google/native-callback',this.provider.redirectUri).href);}catch{this.db.prepare('UPDATE google_requests SET consumed=3 WHERE state_hash=?').run(row.state_hash);fail('GOOGLE_PROOF_INVALID');}
+  if(row.expires<=this.now())fail('GOOGLE_FLOW_INVALID');
+  this.db.prepare('UPDATE google_native_requests SET claims=? WHERE state_hash=?').run(JSON.stringify(claims),row.state_hash);
+  return row.package_id+'://google/return'; // Wake-up only; never a token or authorization code.
+ }
+ pollNativeGoogle(body,authorization){
+  if(!this.available())fail('GOOGLE_UNAVAILABLE',503);if(!valid(body?.state)||!valid(body?.proof))fail('GOOGLE_FLOW_INVALID');
+  const pending=this.linkStatusIfPresent(body,authorization);if(pending)return {state:'link-required',expires:pending.expires};
+  const row=this.store.transaction(()=>{
+   const r=this.db.prepare('SELECT r.*,n.claims FROM google_requests r JOIN google_native_requests n ON n.state_hash=r.state_hash WHERE r.state_hash=? AND r.proof_hash=? AND r.expires>? AND r.consumed<2').get(hash(body.state),hash(body.proof),this.now());
+   if(!r||r.session_hash!==(authorization?hash(authorization):''))fail('GOOGLE_FLOW_INVALID');if(authorization)this.store.authenticate(authorization);
+   if(!r.claims)return null;this.db.prepare('UPDATE google_requests SET consumed=2 WHERE state_hash=?').run(r.state_hash);return r;
+  });
+  if(!row)return {state:'pending'};
+  const session=this.completeGoogle(row,JSON.parse(row.claims),authorization);
+  return session.linkRequired?{state:'link-required',expires:session.expires}:{state:'verified',session};
+ }
+ // Recovery requires both the original device proof and an email request created
+ // for this exact verified subject/account. Generic email sessions cannot substitute.
+ linkRow(body,authorization){
+  if(authorization||!valid(body?.state)||!valid(body?.proof))fail('GOOGLE_LINK_INVALID');
+  const row=this.db.prepare(`SELECT l.*,r.proof_hash,r.session_hash FROM google_link_requests l JOIN google_requests r ON r.state_hash=l.state_hash
+   WHERE l.state_hash=? AND r.proof_hash=? AND l.expires>? AND l.consumed=0`).get(hash(body.state),hash(body.proof),this.now());
+  if(!row||row.session_hash||!row.user_id||!row.subject)fail('GOOGLE_LINK_INVALID');
+  const user=this.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(row.user_id);if(!user)fail('AUTH_REQUIRED');
+  return row;
+ }
+ linkStatusIfPresent(body,authorization){
+  if(!valid(body?.state)||!valid(body?.proof))return null;
+  const row=this.db.prepare('SELECT subject FROM google_link_requests WHERE state_hash=?').get(hash(body.state));
+  return row?.subject?this.linkStatus(body,authorization):null;
+ }
+ linkStatus(body,authorization){
+  const row=this.linkRow(body,authorization);
+  return {state:row.email_request_id?'waiting':'confirmation',expires:row.expires};
+ }
+ async requestLinkEmail(body,authorization,email){
+  if(body?.consent!==true)fail('GOOGLE_LINK_CONSENT_REQUIRED',400);
+  const row=this.store.transaction(()=>{const r=this.linkRow(body,authorization);
+   if(r.email_request_id)return {...r,existing:true};
+   this.db.prepare("UPDATE google_link_requests SET email_request_id='sending' WHERE state_hash=?").run(r.state_hash);return r;
+  });
+  if(row.existing)return this.linkStatus(body,authorization);
+  let request;
+  try{
+   const identity=this.db.prepare('SELECT email FROM email_identities WHERE user_id=?').get(row.user_id);if(!identity)fail('GOOGLE_LINK_INVALID');
+   request=await email.request(identity.email);
+   this.store.transaction(()=>{this.linkRow(body,authorization);this.db.prepare('UPDATE google_link_requests SET email_request_id=? WHERE state_hash=?').run(request.requestId,row.state_hash);});
+  }catch(error){
+   if(request)this.db.prepare('UPDATE email_requests SET consumed=1 WHERE id=?').run(request.requestId);
+   this.db.prepare("UPDATE google_link_requests SET email_request_id=NULL WHERE state_hash=? AND email_request_id='sending'").run(row.state_hash);throw error;
+  }
+  // Poll secret stays server-side; neither browser receives a session from verify.
+  return this.linkStatus(body,authorization);
+ }
+ completeLink(body,authorization){
+  return this.store.transaction(()=>{
+   const row=this.linkRow(body,authorization);
+   if(!row.email_request_id||row.email_request_id==='sending')return {state:'pending'};
+   const email=this.db.prepare(`SELECT e.* FROM email_requests e JOIN email_identities i ON i.email=e.email
+    WHERE e.id=? AND i.user_id=? AND e.expires>? AND e.consumed=0`).get(row.email_request_id,row.user_id,this.now());
+   if(!email)fail('GOOGLE_LINK_INVALID');if(!email.approved)return {state:'pending'};
+   const bySubject=this.db.prepare('SELECT user_id FROM google_identities WHERE subject=?').get(row.subject);
+   const byUser=this.db.prepare('SELECT subject FROM google_identities WHERE user_id=?').get(row.user_id);
+   if(bySubject&&bySubject.user_id!==row.user_id||byUser&&byUser.subject!==row.subject)fail('GOOGLE_LINK_CONFLICT',409);
+   if(!bySubject)this.db.prepare('INSERT INTO google_identities VALUES(?,?)').run(row.subject,row.user_id);
+   this.db.prepare('UPDATE google_link_requests SET consumed=1 WHERE state_hash=?').run(row.state_hash);
+   this.db.prepare('UPDATE email_requests SET consumed=1 WHERE id=?').run(email.id);
+   const user=this.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(row.user_id);if(!user)fail('AUTH_REQUIRED');
+   return {state:'verified',session:this.store.createSession(user)};
+  });
+ }
+ cancelLink(body,authorization){
+  // Cancellation only invalidates this device-proven request; a replacement session cannot authorize linking.
+  return this.store.transaction(()=>{const row=this.linkRow(body,undefined);
+   this.db.prepare('UPDATE google_link_requests SET consumed=1 WHERE state_hash=?').run(row.state_hash);
+   if(row.email_request_id)this.db.prepare('UPDATE email_requests SET consumed=1 WHERE id=?').run(row.email_request_id);
+   return {canceled:true};
+  });
+ }
+ async finishGoogle(body,authorization){
+  const flow=this.claimGoogle(body,authorization);
+  // A consumed/uncertain code is never exchanged twice. Restarting uses the same subject identity.
+  let claims;try{claims=await this.provider.exchange(body.code,flow.verifier,flow.nonce);}catch{fail('GOOGLE_PROOF_INVALID');}
+  return this.completeGoogle(flow,claims,authorization);
+ }
+}

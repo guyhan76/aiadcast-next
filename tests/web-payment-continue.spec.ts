@@ -16,10 +16,11 @@ async function setup(page:Page,role:'admin'|'member'|null,saved=false){
  await page.route('**/api/**',route=>{
   const req=route.request(),path=new URL(req.url()).pathname;calls.push(req.method()+' '+path);
   if(path==='/api/checkout/receipt'||path==='/api/checkout/orders/'+orderId)return route.fulfill({json:order});
+  if(path==='/api/auth/session')return route.fulfill({json:{user:{id:userId,label:'Fixture',role}}});
   if(req.method()!=='GET')return route.fulfill({status:500,json:{error:{code:'UNEXPECTED_WRITE'}}});
   return route.fulfill({json:{email:{enabled:false},password:{enabled:true,test:true,adminReady:true},checkout:{enabled:true,test:true,currency:'KRW'},generation:{enabled:false},wallet:{available:540,reserved:0}}});
  });
- await page.goto('/#home');await expect(page.locator('.app-header')).toBeVisible();
+ await page.goto('/#home');if(role)await expect(page.locator('.app-header')).toBeVisible();else await expect(page.getByRole('button',{name:'Google로 계속하기',exact:true})).toBeVisible();
  let draft:any;
  if(saved){const p=newProject();p.presentation='campaign';p.product=photo;p.productName='보존한 광고';p.productProfile.material='구매 전 저장한 설명';p.dimensions.width='34';p.dimensions.depth='25';p.dimensions.height='21';
  draft={editor:p,wizard:{project:p,step:0},returnPage:'create'};

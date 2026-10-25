@@ -22,10 +22,12 @@ async function checkFiles(folder) {
   }
 }
 await checkFiles(dist);
+const webBuild=JSON.parse(await readFile(join(dist,'web-build.json'),'utf8'));
+if(webBuild.schemaVersion!==1||typeof webBuild.version!=='string'||!(webBuild.commit===null||/^[a-f0-9]{40}$/.test(webBuild.commit)))throw new Error('Invalid web build metadata');
 if (resolve(destination) !== join(root, 'android/app/src/main/assets')) throw new Error('Unexpected asset destination');
 await mkdir(destination, { recursive: true });
 for (const item of await readdir(destination)) if (item !== '.gitkeep') await rm(join(destination, item), { recursive: true, force: true });
 await cp(dist, destination, { recursive: true });
 await cp(join(root, 'native/android-download-bridge.js'), join(destination, 'native-bridge.js'));
-await writeFile(join(destination, 'native-build.json'), JSON.stringify({ schemaVersion: 1, webBuildDigest: hash.digest('hex'), packagedAt: new Date().toISOString(), productionReady: false }, null, 2));
+await writeFile(join(destination, 'native-build.json'), JSON.stringify({ schemaVersion: 1, webBuild, webBuildDigest: hash.digest('hex'), packagedAt: new Date().toISOString(), productionReady: false }, null, 2));
 console.log('Bundled web assets prepared for Android. Production billing and release approval are not enabled.');

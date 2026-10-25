@@ -9,7 +9,8 @@ COPY src ./src
 COPY public ./public
 COPY scripts ./scripts
 COPY index.html tsconfig.json vite.config.ts ./
-RUN npx --no-install tsc --noEmit && npx --no-install vite build
+ARG RENDER_GIT_COMMIT
+RUN npx --no-install tsc --noEmit && npx --no-install vite build && node scripts/check-web-build.mjs --require-commit
 RUN npm prune --omit=dev --ignore-scripts --offline --no-audit --no-fund
 FROM node:24.19.0-bookworm-slim
 WORKDIR /app

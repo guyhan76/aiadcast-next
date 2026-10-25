@@ -20,6 +20,25 @@ export class SupabaseStorage {
   const info=await res.json();if(info.public!==false)fail('SUPABASE_PRIVATE_BUCKET_REQUIRED');return this;
  }
  path(userId,name){if(!/^[a-f0-9-]{36}$/.test(userId)||!/^([a-f0-9]{64}\.(png|jpeg|webp)|project-[A-Za-z0-9_-]{8,100}-[a-f0-9-]{36}\.json)$/.test(name))fail('INVALID_STORAGE_PATH',400);return userId+'/'+name;}
+ async accountLimit(userId){
+  // Storage allowance only: read the current server role, never client claims
+  // or a cached session role. This does not change supplier/credit budgets.
+  const user=await this.db.prepare('SELECT role FROM users WHERE id=? AND disabled=0').get(userId);
+  return user?.role==='admin'?300000000:100000000;
+ }
+ async assertGenerationCapacity(userId,originals,outputBytes){
+  let needed=outputBytes;
+  for(const asset of originals){
+   const extension=asset.mime==='image/png'?'png':asset.mime==='image/jpeg'?'jpeg':'webp';
+   const path=this.path(userId,asset.sha256+'.'+extension);
+   const old=await this.db.prepare('SELECT bytes FROM storage_objects WHERE path=?').get(path);
+   if(old&&old.bytes!==asset.bytes.length)fail('STORAGE_CONTENT_CONFLICT',409);
+   if(!old)needed+=asset.bytes.length;
+  }
+  const total=await this.db.prepare('SELECT COALESCE(SUM(bytes),0) n FROM storage_objects').get();
+  const user=await this.db.prepare('SELECT COALESCE(SUM(bytes),0) n FROM storage_objects WHERE user_id=?').get(userId);
+  if(total.n+needed>900000000||user.n+needed>await this.accountLimit(userId))fail('STORAGE_CAPACITY_UNAVAILABLE',413);
+ }
  async put(userId,name,bytes,mime){
   const path=this.path(userId,name);if(!Buffer.isBuffer(bytes)||bytes.length<1||bytes.length>40000000)fail('STORAGE_LIMIT',413);
   // Reserve storage quota before upload. Unknown outcomes retain the reservation.
@@ -28,7 +47,7 @@ export class SupabaseStorage {
    if(old){if(old.bytes!==bytes.length)fail('STORAGE_CONTENT_CONFLICT',409);return;}
    const total=await this.db.prepare('SELECT COALESCE(SUM(bytes),0) n FROM storage_objects').get();
    const user=await this.db.prepare('SELECT COALESCE(SUM(bytes),0) n FROM storage_objects WHERE user_id=?').get(userId);
-   if(total.n+bytes.length>900000000||user.n+bytes.length>100000000)fail('STORAGE_LIMIT',413);
+   if(total.n+bytes.length>900000000||user.n+bytes.length>await this.accountLimit(userId))fail('STORAGE_LIMIT',413);
    await this.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(path,userId,bytes.length);
   });
   const res=await this.call('/storage/v1/object/'+this.bucket+'/'+path,{method:'POST',body:bytes,mime,raw:true});if(!res.ok)fail('SUPABASE_UPLOAD_FAILED');return path;

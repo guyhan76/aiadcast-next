@@ -6,6 +6,7 @@ async function setup(page:Page){
  await page.addInitScript(s=>{if(!sessionStorage.getItem('fixture-seeded')){sessionStorage.setItem('aiadcast.beta-session',JSON.stringify(s));sessionStorage.setItem('fixture-seeded','1');}localStorage.setItem('aiadcast.ui-language','ko');},account('alpha'));
  const state={calls:0,status:200,wait:Promise.resolve(),loginDelayMs:0};
  await page.route('**/api/**',async route=>{const path=new URL(route.request().url()).pathname;
+  if(path==='/api/auth/session'){const token=route.request().headers().authorization;return route.fulfill({json:{user:account(token==='Bearer '+ 'b'.repeat(43)?'bravo':'alpha').user}});}
   if(path==='/api/account/capabilities')return route.fulfill({json:{email:{enabled:false},password:{enabled:true,test:true,adminReady:true,adminEmail:'owner@example.com'},checkout:{enabled:false,test:true,currency:'KRW'}}});
   if(path==='/api/auth/logout'){state.calls++;await state.wait;return route.fulfill({status:state.status,json:state.status===200?{signedOut:true}:{error:{code:state.status===401?'AUTH_REQUIRED':'UNAVAILABLE'}}});}
   if(path==='/api/auth/test/login'){if(state.loginDelayMs)await new Promise(r=>setTimeout(r,state.loginDelayMs));return route.fulfill({json:account(route.request().postDataJSON().email.startsWith('alpha')?'alpha':'bravo')});}
@@ -16,6 +17,7 @@ async function setup(page:Page){
 }
 const bar=(page:Page)=>page.getByRole('region',{name:'내 계정 및 로그아웃',exact:true});
 async function login(page:Page,name:string){
+ await expect(page.getByRole('button',{name:'Google로 계속하기',exact:true})).toBeVisible();await page.goto('/#account-recovery');
  await page.getByLabel('이메일',{exact:true}).fill(name+'@example.com');await page.getByLabel('비밀번호',{exact:true}).fill('Fixture-password!');
  // Wait for authentication separately from rendering the restored account.
  // The five-second DOM assertion must not also time a valid slow HTTP exchange.

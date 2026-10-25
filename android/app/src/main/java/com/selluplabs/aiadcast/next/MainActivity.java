@@ -125,9 +125,11 @@ public final class MainActivity extends ComponentActivity {
                 (view, message, origin, mainFrame, reply) -> {
                     if (!mainFrame || !APP_ORIGIN.equals(origin.toString())) return;
                     String data = message.getData();
-                    if (data != null && data.length() <= 1024) {
+                    if (data != null && data.length() <= 8192) {
                         try {
                             JSONObject request = new JSONObject(data);
+                            if ("google-sign-in".equals(request.optString("type"))) { openGoogle(request); return; }
+                            if ("google-sign-in-clear".equals(request.optString("type"))) { clearGoogle(request.optString("state")); return; }
                             if ("configure-test-server".equals(request.optString("type"))) {
                                 configureTestServer(request.getString("origin")); return;
                             }
@@ -223,6 +225,9 @@ public final class MainActivity extends ComponentActivity {
     }
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction()) && GoogleSignInPolicy.returnUrl(intent.getDataString(), BuildConfig.APPLICATION_ID)) {
+            setIntent(intent); googleResume(); return;
+        }
         if (checkoutReturn(intent)) {
             setIntent(intent);
             // A fixed wake-up signal only. No URLs, order identifiers or credentials enter JS.
@@ -241,8 +246,58 @@ public final class MainActivity extends ComponentActivity {
             + ";window.__AIADCAST_NATIVE_VERSION__={versionName:" + JSONObject.quote(BuildConfig.VERSION_NAME)
             + ",versionCode:" + BuildConfig.VERSION_CODE + ",packageName:" + JSONObject.quote(BuildConfig.APPLICATION_ID) + "};"
             + "window.dispatchEvent(new Event('aiadcast-native-version'));"
+            + "window.__AIADCAST_GOOGLE_NATIVE__={version:1,packageId:" + JSONObject.quote(BuildConfig.APPLICATION_ID) + ",pending:" + googlePending() + "};"
             + "window.__AIADCAST_TEST_CONNECTION__=" + BuildConfig.ALLOW_TEST_CONFIG + ";" + bridgeSource;
     }
+
+    private String googlePending() {
+        try {
+            JSONObject flow = new JSONObject(getPreferences(MODE_PRIVATE).getString("google-flow", "{}"));
+            if (flow.optLong("expires") <= System.currentTimeMillis() || !apiOrigin.equals(flow.optString("origin"))) {
+                getPreferences(MODE_PRIVATE).edit().remove("google-flow").apply(); return "null";
+            }
+            return flow.toString();
+        } catch (Exception invalid) { return "null"; }
+    }
+    private void refreshGoogleBridge() {
+        updateBridgeScript();
+        if (bridgeReady && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            if (documentStartScript != null) documentStartScript.remove();
+            documentStartScript = WebViewCompat.addDocumentStartJavaScript(webView, bridgeScript, Collections.singleton(APP_ORIGIN));
+        }
+    }
+    private void clearGoogle(String state) {
+        try {
+            JSONObject pending = new JSONObject(googlePending());
+            if (!state.equals(pending.optString("state"))) return;
+            getPreferences(MODE_PRIVATE).edit().remove("google-flow").commit(); refreshGoogleBridge();
+        } catch (Exception ignored) { }
+    }
+    private void openGoogle(JSONObject request) {
+        try {
+            String url=request.getString("url"), state=request.getString("state"), proof=request.getString("proof");
+            long expires=request.getLong("expires");
+            if (!GoogleSignInPolicy.start(url,state,proof,expires,System.currentTimeMillis(),apiOrigin,BuildConfig.APPLICATION_ID)) throw new IllegalArgumentException();
+            try { if (state.equals(new JSONObject(googlePending()).optString("state"))) return; } catch (Exception absent) { }
+            JSONObject flow=new JSONObject().put("state",state).put("proof",proof).put("expires",expires).put("native",true).put("origin",apiOrigin).put("owner",request.getString("owner"));
+            if (!getPreferences(MODE_PRIVATE).edit().putString("google-flow",flow.toString()).commit()) throw new IllegalStateException();
+            refreshGoogleBridge();
+            // Explicit Chrome only: no package query or default-browser fallback.
+            // The validated Google URL never contains the original-app proof.
+            startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE).setPackage("com.android.chrome"));
+        } catch (ActivityNotFoundException | SecurityException unavailable) {
+            clearGoogle(request.optString("state"));
+            webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('aiadcast-google-open-failed',{detail:{code:'CHROME_UNAVAILABLE'}}));",null);
+        } catch (Exception error) {
+            clearGoogle(request.optString("state"));
+            webView.evaluateJavascript("window.dispatchEvent(new Event('aiadcast-google-open-failed'));",null);
+        }
+    }
+    private void googleResume() {
+        if (webView != null && !"null".equals(googlePending()))
+            webView.evaluateJavascript("window.dispatchEvent(new Event('aiadcast-google-return'));",null);
+    }
+    @Override protected void onResume() { super.onResume(); googleResume(); }
 
     private void configureTestServer(String value) {
         if (!BuildConfig.ALLOW_TEST_CONFIG || exportInProgress) {

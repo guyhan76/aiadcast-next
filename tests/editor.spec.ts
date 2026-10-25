@@ -1,3 +1,4 @@
+import {protectedScreen,mockSession} from './helpers/authenticated-session';
 import {test,expect} from '@playwright/test';
 import sharp from 'sharp';
 import {selectIndustry} from './helpers/industry';
@@ -5,7 +6,7 @@ import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 const fixture=await sharp({create:{width:480,height:320,channels:4,background:{r:191,g:87,b:45,alpha:1}}}).png().toBuffer();
 const photo={name:'original-product.png',mimeType:'image/png',buffer:fixture};
-test.beforeEach(async({page})=>{await page.goto('/#editor');await page.locator('.editor-details > summary').click();await page.evaluate(()=>document.fonts.ready);});
+test.beforeEach(async({page})=>{await protectedScreen(page,mockSession('editor-user-123'));await page.goto('/#editor');await page.locator('.editor-details > summary').click();await page.evaluate(()=>document.fonts.ready);});
 async function backup(page:import('@playwright/test').Page){const promise=page.waitForEvent('download');await page.getByRole('button',{name:'프로젝트 백업',exact:true}).click();const download=await promise;return JSON.parse(await readFile((await download.path())!,'utf8'));}
 test('uploaded product is preserved through background, text, language and format changes',async({page})=>{
  await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles(photo);await expect(page.locator('.editor-container .feedback[role="status"]')).toContainText('원본 사진을 추가');

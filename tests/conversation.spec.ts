@@ -1,4 +1,7 @@
 import {test,expect,type Page} from '@playwright/test';
+import {protectedScreen,mockSession} from './helpers/authenticated-session';
+// This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
+test.beforeEach(async({page})=>{await protectedScreen(page,mockSession('protected-conversation'));});
 import sharp from 'sharp';
 import {readFile} from 'node:fs/promises';
 const bytes=await sharp({create:{width:400,height:300,channels:4,background:'#b58354'}}).png().toBuffer();
@@ -28,7 +31,7 @@ test('print direction needs explicit consent and survives device save and backup
  await page.getByLabel('프로젝트 파일 선택').setInputFiles({name:'conversation.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(data))});await expect(page.locator('.editor-container .feedback[role="status"]')).toContainText('프로젝트를 열었습니다');expect((await downloadJSON(page)).conversation).toEqual(data.conversation);
 });
 test('follow-up requests retain context and replacing a photo blocks old instructions',async({page})=>{
- const panel=director(page);await request(page,'상품은 그대로 두고 밝은 쇼룸에서 촬영한 느낌으로 연출해줘.');await request(page,'오른쪽은 문구를 넣을 수 있게 비워줘.');let plan=await downloadJSON(page,'광고 기획 저장');expect(plan.request.direction.instructions).toHaveLength(2);expect(plan.request.preserveProduct).toBe(true);
+ const panel=director(page);await request(page,'상품은 그대로 두고 밝은 쇼룸에서 촬영한 느낌으로 연출해줘.');await request(page,'오른쪽은 문구를 넣을 수 있게 비워줘.');let plan=await downloadJSON(page,'광고 기획 저장');expect(plan.request.direction.instructions).toHaveLength(2);expect(plan.request.mode).toBe('creative');expect(plan.request.direction.productPolicy.preserveSourceFile).toBe(true);expect(plan.request.source.sha256).toBe((await downloadJSON(page)).product.sha256);
  await panel.getByRole('listitem').first().getByRole('button',{name:'이 요청 제외',exact:true}).click();plan=await downloadJSON(page,'광고 기획 저장');expect(plan.request.direction.instructions).toHaveLength(1);expect(plan.request.direction.instructions[0].text).toContain('오른쪽');
  await page.getByRole('button',{name:'1 사진 삭제',exact:true}).click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({...photo,buffer:await sharp(bytes).resize(500,300).png().toBuffer()});await expect(page.locator('.editor-container .reference-item')).toHaveCount(1);await page.getByRole('button',{name:'광고 기획 저장',exact:true}).click();await expect(page.locator('.editor-container .feedback[role="status"]')).toContainText('이전 요청을 제외');await expect(panel.getByText(/원본·대상·언어가 바뀐 이전 요청/)).toBeVisible();
  await panel.getByRole('button',{name:'이 요청 제외',exact:true}).click();expect((await downloadJSON(page,'광고 기획 저장')).request.direction.instructions).toEqual([]);

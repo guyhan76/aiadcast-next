@@ -1,8 +1,11 @@
-import {test,expect} from '@playwright/test';import sharp from 'sharp';import{readFile,mkdir,writeFile}from'node:fs/promises';
+import {test,expect} from '@playwright/test';
+import {protectedScreen,mockSession} from './helpers/authenticated-session';
+// This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
+test.beforeEach(async({page})=>{await protectedScreen(page,mockSession('protected-dimension-controlled'));});import sharp from 'sharp';import{readFile,mkdir,writeFile}from'node:fs/promises';
 import {reloadDraft} from './helpers/workspace';
 const photo=await sharp({create:{width:480,height:320,channels:4,background:'#bd965f'}}).png().toBuffer();
 for(const shape of ['box','cylinder']as const)test(`dimension-controlled ${shape} follows numbers through review, PNG and reload without provider`,async({page},info)=>{
- let posts=0;await page.route('**/api/**',route=>{if(route.request().method()==='POST')posts++;return route.fulfill({json:{}});});
+ let posts=0;await page.route('**/api/**',route=>{if(new URL(route.request().url()).pathname==='/api/auth/session')return route.fallback();if(route.request().method()==='POST')posts++;return route.fulfill({json:{}});});
  await page.goto('/?dimensionProof=1#create');const f=page.locator('.consumer-create');await f.getByLabel('산업 선택').selectOption(shape==='box'?'boxes':'beauty');await f.getByLabel('상품명',{exact:true}).fill(shape==='box'?'규격에 맞춘 포장':'정확한 원통 본체');await f.getByRole('textbox',{name:'상세설명',exact:true}).fill('필요한 크기로 준비하세요');await f.getByLabel('참조사진 추가').setInputFiles({name:'reference-color.png',mimeType:'image/png',buffer:photo});await f.getByRole('button',{name:'규격 넣기',exact:true}).click();await f.getByLabel('규격 단위').selectOption('mm');if(shape==='cylinder')await f.getByLabel('규격 형식').selectOption('cylindrical');
  for(const[label,value]of shape==='box'?[['가로 mm','500'],['세로 mm','350'],['높이 mm','200']]:[['지름 mm','80'],['높이 mm','200']])await f.getByLabel(label,{exact:true}).fill(value);
  await f.getByRole('checkbox',{name:'규격 기하 검증용 구성',exact:true}).check();await expect(f.getByRole('radio',{name:'본제품에 직접 표시',exact:true})).toBeChecked();await f.getByRole('button',{name:'기하 검증 이미지 만들기',exact:true}).click();
@@ -15,9 +18,12 @@ for(const shape of ['box','cylinder']as const)test(`dimension-controlled ${shape
 });
 
 test('unsupported bag and garment shapes never become generic boxes, and original mode stays separate',async({page})=>{
- await page.route('**/api/**',r=>r.fulfill({json:{}}));await page.goto('/?dimensionProof=1#create');const f=page.locator('.consumer-create');
+ await page.route('**/api/**',r=>new URL(r.request().url()).pathname==='/api/auth/session'?r.fallback():r.fulfill({json:{}}));await page.goto('/?dimensionProof=1#create');const f=page.locator('.consumer-create');
  for(const category of ['bags','fashion']){await f.getByLabel('산업 선택').selectOption(category);await f.getByRole('button',{name:'규격 넣기',exact:true}).click();await expect(f.getByRole('checkbox',{name:'규격 기하 검증용 구성',exact:true})).toBeDisabled();}
- await f.getByLabel('산업 선택').selectOption('boxes');await f.getByRole('checkbox',{name:'규격 기하 검증용 구성',exact:true}).check();await f.getByRole('button',{name:'실사 그대로 사용',exact:true}).click();await expect(f.getByRole('checkbox',{name:'규격 기하 검증용 구성',exact:true})).toHaveCount(0);await f.getByRole('button',{name:'AI로 새 광고 생성',exact:true}).click();await expect(f.getByRole('checkbox',{name:'규격 기하 검증용 구성',exact:true})).not.toBeChecked();
+ await f.getByLabel('산업 선택').selectOption('boxes');await expect(f.getByRole('checkbox',{name:'규격 기하 검증용 구성',exact:true})).toBeEnabled();
+ // Original/manual composition is retained in the editor, not a switch in the
+ // new AI creation form. A geometry proof must not become an original photo.
+ await page.goto('/?dimensionProof=1#editor');await page.locator('.editor-details>summary').click();await expect(page.getByRole('radio',{name:'사진과 문구로 직접 만들기',exact:true})).toBeChecked();await expect(page.locator('.editor-container').getByRole('checkbox',{name:'규격 기하 검증용 구성',exact:true})).toHaveCount(0);await expect(page.locator('.controlled-product-result')).toHaveCount(0);
 });
 
 test('ordinary advertising creation does not offer schematic proofs as finished product ads',async({page})=>{await page.goto('/#create');const f=page.locator('.consumer-create');await f.getByLabel('산업 선택').selectOption('boxes');await f.getByRole('button',{name:'규격 넣기',exact:true}).click();await expect(f.getByRole('checkbox',{name:'규격 기하 검증용 구성',exact:true})).toHaveCount(0);await expect(f.getByRole('button',{name:'광고 생성',exact:true})).toBeVisible();});

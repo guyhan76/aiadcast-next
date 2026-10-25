@@ -241,3 +241,38 @@ test('multi-image adapter serializes every input and premium direction as image 
  for(const image of sent.body.getAll('image[]'))assert.deepEqual(Buffer.from(await image.arrayBuffer()),bytes);
 });
 
+
+test('unsupported media is rejected before reservations, idempotency records or provider dispatch',async t=>{
+ const {service,calls}=setup(t);const wallet=service.wallet(),budget=service.ledger.budget(service.period());
+ for(const mediaType of ['video','audio','',null,{},1])for(const location of ['body','request','output']){
+  const input=body();if(location==='body')input.mediaType=mediaType;else if(location==='request')input.request.mediaType=mediaType;else input.request.output.mediaType=mediaType;
+  await assert.rejects(service.create(input),e=>e.code==='UNSUPPORTED_MEDIA');
+ }
+ assert.equal(calls.length,0);assert.deepEqual(service.wallet(),wallet);assert.deepEqual(service.ledger.budget(service.period()),budget);
+ for(const table of ['jobs','generation_keys','attempts','credit_events'])assert.equal(service.db.prepare(`SELECT COUNT(*) n FROM ${table}`).get().n,0);
+ const input=body();const made=await service.create(input);await service.waitForIdle();const replay=await service.create({...input,mediaType:'image',request:{...input.request,mediaType:'image',output:{...input.request.output,mediaType:'image'}}});assert.equal(replay.job.id,made.job.id);assert.equal(calls.length,1);assert.equal(service.ledger.job(made.job.id).kind,'image');
+});
+test('unexpected provider media cannot become a delivered image or capture credits',async t=>{
+ const {service}=setup(t,{adapter:{generate:async()=>({...result(),mediaType:'video'})}});const made=await service.create(body());await service.waitForIdle();const job=service.job(made.job.id);assert.equal(job.state,'uncertain');assert.equal(job.artifact,null);assert.equal(job.creditCaptured,false);
+});
+
+for(const admin of [false,true])test(`edited ready preview retains its original and deduplicates the new request (${admin?'admin':'member'})`,async t=>{
+ const {service,calls}=setup(t,{testCredits:3});service.adminTestUnlimited=admin;
+ const first=body('creative'),a=await service.create(first);await service.waitForIdle();const original=service.job(a.job.id);
+ const next={...first,requestId:randomUUID(),request:{...first.request,brief:'Revised lighting and product arrangement'}};
+ const b=await service.create(next);await service.waitForIdle();
+ const replay=await service.create(next),sameInput=await service.create({...next,requestId:randomUUID()});
+ assert.notEqual(a.job.id,b.job.id);assert.equal(replay.job.id,b.job.id);assert.equal(sameInput.job.id,b.job.id);assert.equal(calls.length,2);
+ assert.deepEqual(service.job(a.job.id),original);assert.equal(original.state,'ready');
+ service.accept(b.job.id,service.job(b.job.id).artifactId);service.accept(b.job.id,service.job(b.job.id).artifactId);
+ assert.equal(calls.length,2);assert.equal(service.wallet().available,admin?3:1);assert.equal(service.wallet().reserved,admin?0:1);
+});
+
+test('lost ready response preserves a durable legacy preview without refund or provider retry',async t=>{
+ const {service,calls}=setup(t);const ready=service.ledger.markReady.bind(service.ledger);
+ service.ledger.markReady=(...args)=>{ready(...args);throw Error('fixture response lost after commit');};
+ const input=body(),made=await service.create(input);await service.waitForIdle();
+ const job=service.job(made.job.id);assert.equal(job.state,'ready');assert.ok(job.artifact);
+ assert.equal(service.wallet().reserved,1);assert.equal(service.wallet().available,2);
+ assert.equal((await service.create({...input,requestId:randomUUID()})).job.id,job.id);assert.equal(calls.length,1);
+});

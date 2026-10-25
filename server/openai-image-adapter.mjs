@@ -108,11 +108,13 @@ ${JSON.stringify({inputMode:request.inputMode,subjectType:request.subjectType,pr
 Return the completed advertisement with all its approved copy and facts included. ${english?languageRule:''}`;
 }
 export class ProviderFailure extends Error {
-  constructor(code, { uncertain = true, providerStatus = null } = {}) {
+  constructor(code, { uncertain = true, providerStatus = null, diagnosticCode = null } = {}) {
     super(code); this.name = 'ProviderFailure'; this.code = code;
-    this.uncertain = uncertain; this.providerStatus = providerStatus;
+    this.uncertain = uncertain; this.providerStatus = providerStatus; this.diagnosticCode = diagnosticCode;
   }
 }
+export const MAX_GENERATED_IMAGE_BYTES = 16_000_000;
+
 export async function validateImage(bytes, mime, { maximumPixels = 30_000_000, maximumBytes = 10 * 1024 * 1024 } = {}) {
   if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > maximumBytes) throw Error('INVALID_IMAGE');
   const signatures = { 'image/png': b => b.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])), 'image/jpeg': b => b[0] === 255 && b[1] === 216 && b[2] === 255, 'image/webp': b => b.subarray(0,4).toString() === 'RIFF' && b.subarray(8,12).toString() === 'WEBP' };
@@ -187,7 +189,12 @@ export class OpenAIImageAdapter {
   constructor({ apiKey, fetchImpl = globalThis.fetch, timeoutMs = 180_000 } = {}) {
     this.apiKey = apiKey; this.fetchImpl = fetchImpl; this.timeoutMs = timeoutMs;
   }
-  async generate({ request, source, references = [], attemptId }) {
+  async generate(options) {
+    const started=Date.now(),diagnostic={timeoutMs:this.timeoutMs,endpoint:options.request.mode==='creative'&&options.source?'edits':'generations'};
+    try { return await this.generateResponse({...options,diagnostic}); }
+    catch(error) { if(error instanceof Error)error.transportDiagnostic={...diagnostic,elapsedMs:Date.now()-started};throw error; }
+  }
+  async generateResponse({ request, source, references = [], attemptId, diagnostic }) {
     if(request.inputMode==='text-example'&&(source||references.length||request.mode!=='creative'||request.subjectType!=='physical-product'||!completeAdRequest(request)))throw new ProviderFailure('INVALID_TEXT_EXAMPLE',{uncertain:false});
     if (!this.apiKey) throw new ProviderFailure('PROVIDER_NOT_CONFIGURED', { uncertain: false });
     const size = photographSize(request);
@@ -209,26 +216,29 @@ export class OpenAIImageAdapter {
     let response;
     try {
       response = await this.fetchImpl(`https://api.openai.com/v1/images/${reference ? 'edits' : 'generations'}`, { method: 'POST', headers, body, redirect: 'error', signal: AbortSignal.timeout(this.timeoutMs) });
-    } catch { throw new ProviderFailure('PROVIDER_UNCERTAIN'); }
+    } catch (error) { throw new ProviderFailure('PROVIDER_UNCERTAIN',{diagnosticCode:error?.name==='TimeoutError'?'PROVIDER_TIMEOUT':'PROVIDER_NETWORK'}); }
+    diagnostic.httpStatus=response.status;
+    const requestId=response.headers.get('x-request-id');
+    diagnostic.providerRequestId=typeof requestId==='string'&&/^req_[A-Za-z0-9_-]{1,160}$/.test(requestId)?requestId:null;
     if (!response.ok) {
       // Do not forward/log provider error bodies, prompts, keys or signed URLs.
-      await response.body?.cancel();
-      throw new ProviderFailure(response.status === 429 ? 'PROVIDER_RATE_LIMITED' : 'PROVIDER_REQUEST_FAILED', { uncertain: ![400,401,403,404,413,422,429].includes(response.status), providerStatus: response.status });
+      try { await response.body?.cancel(); } catch { /* Preserve the known HTTP classification if cleanup fails. */ }
+      throw new ProviderFailure(response.status === 429 ? 'PROVIDER_RATE_LIMITED' : 'PROVIDER_REQUEST_FAILED', { uncertain: ![400,401,403,404,413,422,429].includes(response.status), providerStatus: response.status, diagnosticCode:'PROVIDER_HTTP' });
     }
     let result;
     try { result = await responseJsonLimited(response); }
-    catch (error) { throw error instanceof ProviderFailure ? error : new ProviderFailure('PROVIDER_UNCERTAIN'); }
+    catch (error) { throw error instanceof ProviderFailure ? error : new ProviderFailure('PROVIDER_UNCERTAIN',{diagnosticCode:error?.name==='TimeoutError'?'PROVIDER_BODY_TIMEOUT':'PROVIDER_BODY_NETWORK'}); }
     const raw = result?.data?.[0]?.b64_json;
     if (result.data?.length !== 1 || typeof raw !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(raw)) throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
     let bytes = Buffer.from(raw, 'base64');
     let meta;
     try {
-      meta = await validateImage(bytes, 'image/png', { maximumPixels: 8_294_400, maximumBytes: 16_000_000 });
+      meta = await validateImage(bytes, 'image/png', { maximumPixels: 8_294_400, maximumBytes: MAX_GENERATED_IMAGE_BYTES });
       if (`${meta.width}x${meta.height}` !== size) throw Error();
     } catch { throw new ProviderFailure('PROVIDER_INVALID_IMAGE'); }
     const cost = imageUsageCost(result.usage);
     let planar={};
-    if(request.proportionControl){const original={...meta,bytes};const controlled=await controlPlanarResult(bytes,requestPlanarRatio(request));bytes=controlled.bytes;meta=await validateImage(bytes,'image/png',{maximumPixels:8_294_400,maximumBytes:16_000_000});planar={planarReport:{...controlled.report,variantLabel:request.proportionControl.variantLabel},planarOriginal:original};}
+    if(request.proportionControl){const original={...meta,bytes};const controlled=await controlPlanarResult(bytes,requestPlanarRatio(request));bytes=controlled.bytes;meta=await validateImage(bytes,'image/png',{maximumPixels:8_294_400,maximumBytes:MAX_GENERATED_IMAGE_BYTES});planar={planarReport:{...controlled.report,variantLabel:request.proportionControl.variantLabel},planarOriginal:original};}
     return { ...meta, bytes,...planar, usage: result.usage ?? null, cost, providerRequestId: response.headers.get('x-request-id')?.slice(0, 200) ?? null, model: IMAGE_MODEL, revision: IMAGE_REVISION, role: request.mode === 'original' ? 'background' : 'creative', composition: completeAdRequest(request)?'complete-ad':'photo-plate', size, quality: 'high' };
   }
 }
@@ -262,4 +272,14 @@ export function promptFor(request){
   ? 'NO DIMENSION ARROWS: Do not draw measurement arrows, dimension lines or a measured product inset anywhere. Numeric specification text is allowed only when showDimensions is true.'
   : '';
  return rule?prompt+'\nCUSTOMER DIMENSION PLACEMENT — HIGHEST LAYOUT PRIORITY: '+rule+' This explicit selection overrides any conflicting style reference, recipe, brief or generic composition suggestion. Keep the other advertising style and supplied facts unchanged. Placement instructions do not certify physical proportions or measurement accuracy.':prompt;
+}
+
+// Only fixed enums and bounded identifiers enter operational diagnostics. Never error messages/bodies.
+export function generationFailureDiagnostic({jobId,stage,error}) {
+ const stages=['reserve','provider','persist-image','persist-metadata','usage','settle','ready'];
+ const codes=['PROVIDER_TIMEOUT','PROVIDER_NETWORK','PROVIDER_BODY_TIMEOUT','PROVIDER_BODY_NETWORK','PROVIDER_HTTP','PROVIDER_INVALID_RESPONSE','PROVIDER_INVALID_IMAGE','PROVIDER_USAGE_UNCERTAIN','UNSUPPORTED_PROVIDER_MEDIA','STORAGE_LIMIT','SUPABASE_CONNECTION_FAILED','SUPABASE_UPLOAD_FAILED','STORAGE_CONTENT_CONFLICT'];
+ const d=error?.transportDiagnostic??{},safeNumber=n=>Number.isSafeInteger(n)&&n>=0&&n<=3600000?n:null;
+ const transport={elapsedMs:safeNumber(d.elapsedMs),timeoutMs:safeNumber(d.timeoutMs),endpoint:['edits','generations'].includes(d.endpoint)?d.endpoint:null,providerRequestId:typeof d.providerRequestId==='string'&&/^req_[A-Za-z0-9_-]{1,160}$/.test(d.providerRequestId)?d.providerRequestId:null};
+ const proposed=error instanceof ProviderFailure?(error.diagnosticCode??error.code):error?.code;
+ return {event:'generation_failure',jobId:typeof jobId==='string'&&/^[a-f0-9-]{36}$/.test(jobId)?jobId:null,stage:stages.includes(stage)?stage:'unknown',code:codes.includes(proposed)?proposed:'UNCLASSIFIED',...transport,httpStatus:Number.isInteger(d.httpStatus)&&d.httpStatus>=100&&d.httpStatus<=599?d.httpStatus:error instanceof ProviderFailure&&Number.isInteger(error.providerStatus)&&error.providerStatus>=400&&error.providerStatus<=599?error.providerStatus:null};
 }

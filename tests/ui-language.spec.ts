@@ -1,5 +1,9 @@
 import {test,expect} from '@playwright/test';
+import {protectedScreen,mockSession} from './helpers/authenticated-session';
+// This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
+test.beforeEach(async({page})=>{await protectedScreen(page,mockSession('protected-ui-language'));});
 import {readFile} from 'node:fs/promises';
+import sharp from 'sharp';
 
 test.describe('Independent Korean and English interface',()=>{
  test.use({locale:'en-US'});
@@ -31,6 +35,7 @@ test.describe('Independent Korean and English interface',()=>{
   await page.getByRole('combobox',{name:'App language',exact:true}).selectOption('ko');
   await page.getByRole('combobox',{name:'앱 언어',exact:true}).selectOption('en');
   await expect(wizard.getByRole('combobox',{name:'Ad copy language',exact:true})).toHaveValue('ko');
+  await wizard.locator('input[type=file]').first().setInputFiles({name:'studio.png',mimeType:'image/png',buffer:await sharp({create:{width:400,height:300,channels:4,background:'#b87844'}}).png().toBuffer()});
   await wizard.getByRole('button',{name:'Generate ad',exact:true}).click();
   await expect(page).toHaveURL(/#studio$/);await page.goto('/#editor');
   await page.locator('#publishing-tools > summary').click();const download=page.waitForEvent('download');
@@ -56,10 +61,13 @@ test.describe('Independent Korean and English interface',()=>{
   await page.getByRole('textbox',{name:'Project name',exact:true}).fill('Back navigation draft');
   expect(await page.evaluate(()=>window.dispatchEvent(new CustomEvent('aiadcast-native-back',{cancelable:true})))).toBe(false);
   await expect(page).toHaveURL(/#projects$/);
-  await expect(page.locator('.project-tile').filter({hasText:'Back navigation draft'})).toBeVisible();
+  // Unaccepted drafts remain recoverable in the editor, separate from accepted ads.
+  await expect(page.locator('.project-tile').filter({hasText:'Back navigation draft'})).toHaveCount(0);
   expect(await page.evaluate(()=>window.dispatchEvent(new CustomEvent('aiadcast-native-back',{cancelable:true})))).toBe(false);
   await expect(page).toHaveURL(/#home$/);
   expect(await page.evaluate(()=>window.dispatchEvent(new CustomEvent('aiadcast-native-back',{cancelable:true})))).toBe(true);
+  await page.goto('/#editor');await page.locator('.editor-details > summary').click();
+  await expect(page.getByRole('textbox',{name:'Project name',exact:true})).toHaveValue('Back navigation draft');
  });
 });
 

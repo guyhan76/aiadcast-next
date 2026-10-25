@@ -1,3 +1,4 @@
+import {GoogleGate} from './GoogleSignIn';
 import {PreviewLeaveGuard,requestPreviewLeave} from './PreviewLeaveGuard';
 import {clearLoginDestination} from './login-navigation';
 import {CreditsPage} from './CreditsPage';
@@ -37,7 +38,8 @@ import './campaign-cover.css';
 type Page='portfolio'|'home'|'create'|'projects'|'guide'|'studio'|'signup'|'login'|'credits'|'checkout'|'verify'|'pay'|'payment-return'|'checkout-return'|'admin'|'editor';
 const navigation=[['home','홈',Home],['create','광고 만들기',Plus],['projects','내 프로젝트',FolderOpen],['guide','사용 안내',BookOpen]] as const;
 function currentPage():Page {if(new URLSearchParams(location.search).get('checkout')==='return')return 'payment-return';const route=location.hash.slice(1).split('?')[0];return ['portfolio','home','create','projects','guide','studio','signup','login','credits','checkout','verify','pay','payment-return','checkout-return','admin','editor'].includes(route)?route as Page:'home';}
-export default function StudioApp(){
+export default function StudioApp(){return <GoogleGate><AuthenticatedStudioApp/></GoogleGate>;}
+function AuthenticatedStudioApp(){
  const [route,setRoute]=useState(currentPage);
  useEffect(()=>{if(route!=='login'&&route!=='signup')clearLoginDestination();},[route]);
  useEffect(()=>{const update=()=>setRoute(currentPage());window.addEventListener('hashchange',update);return()=>window.removeEventListener('hashchange',update);},[]);
