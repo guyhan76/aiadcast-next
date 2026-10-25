@@ -46,3 +46,25 @@ for(const layout of ['main','inset','none'])test(`photo shape is preserved indep
 });
 
 test('historical original-photo background requests retain their empty-background prompt',()=>{const p=project('none');p.generation.mode='original';const r=normalizeGenerationRequest(buildGenerationRequest(p)),prompt=promptFor(r);assert.doesNotMatch(prompt,/PHOTO SHAPE PRIORITY/);assert.match(prompt,/Empty scene\/background only/);});
+
+for(const locale of ['ko','en'])for(const layout of ['main','inset'])test(`reference span preserves full measured interval, numbers and photo order (${locale}/${layout})`,async()=>{
+ const {dimensionReferenceSpanContract,displayedSpecifications}=await import('../server/openai-image-adapter.mjs');
+ const p=project(layout);p.locale=locale;p.dimensions={...p.dimensions,width:'364',depth:'266',height:'30.23'};
+ p.references=[{...photo,sha256:'b'.repeat(64)},{...photo,sha256:'c'.repeat(64)}];
+ const r=normalizeGenerationRequest(buildGenerationRequest(p));r.references[1].purpose='style';const before=JSON.stringify(r),prompt=promptFor(r),c=dimensionReferenceSpanContract(r);
+ assert.deepEqual(c.numericAuthority,displayedSpecifications(r));assert.deepEqual(c.references.map(x=>[x.image,x.mayEstablishMeasuredSpan]),[[1,true],[2,true],[3,false]]);
+ assert.equal(c.numericAuthority.find(x=>x.axis==='depth').value,'266 mm');assert.match(prompt,/BOTH physical endpoints and the ENTIRE interval/);assert.match(prompt,/not a short adjacent segment/);assert.match(prompt,/after unit conversion/);assert.match(prompt,/Leave the unresolved arrow\/label unrendered/);assert.match(prompt,/not automatically verified/);assert.doesNotMatch(prompt,/notebook|laptop/i);assert.equal(JSON.stringify(r),before);
+ const changed=normalizeGenerationRequest(buildGenerationRequest({...p,dimensions:{...p.dimensions,depth:'267'}}));assert.notEqual(changed.dimensionDisplay.inputHash,r.dimensionDisplay.inputHash);assert.equal(dimensionReferenceSpanContract(changed).numericAuthority.find(x=>x.axis==='depth').value,'267 mm');
+});
+test('span policy never creates annotations for hidden dimensions or legacy overlay',async()=>{
+ const {dimensionReferenceSpanContract}=await import('../server/openai-image-adapter.mjs');
+ for(const p of [project('none'),{...project(),dimensions:{...project().dimensions,visible:false},dimensionAnnotation:undefined},{...project(),dimensionAnnotation:{mode:'main',snapshot:''}}]){
+ const r=normalizeGenerationRequest(buildGenerationRequest(p));assert.equal(dimensionReferenceSpanContract(r),null);assert.doesNotMatch(promptFor(r),/MEASUREMENT SPAN PRIORITY/);
+ }
+});
+test('all ten product/reference images reach one mocked edit request in order',async()=>{
+ const p=project('main');const refs=[];for(let i=0;i<9;i++){const b=await sharp({create:{width:12,height:12,channels:3,background:{r:i*20,g:50,b:90}}}).png().toBuffer();refs.push({name:`ref-${i}.png`,data:'data:image/png;base64,'+b.toString('base64'),sha256:createHash('sha256').update(b).digest('hex'),width:12,height:12});}p.references=refs;
+ const r=normalizeGenerationRequest(buildGenerationRequest(p)),input=generationInputs(p);assert.equal(input.references.length,9);assert.deepEqual(r.references.map(x=>x.sha256),refs.map(x=>x.sha256));let calls=0;
+ const adapter=new OpenAIImageAdapter({apiKey:'fixture-not-a-real-key',fetchImpl:async(url,options)=>{calls++;assert.match(url,/images\/edits$/);const images=options.body.getAll('image[]');assert.equal(images.length,10);for(let i=0;i<images.length;i++){const value=Buffer.from(await images[i].arrayBuffer());assert.equal(createHash('sha256').update(value).digest('hex'),[photo,...refs][i].sha256);}assert.match(options.body.get('prompt'),/Inspect ALL supplied actual-product images/);return Response.json({data:[{b64_json:bytes.toString('base64')}],usage:{input_tokens:1,output_tokens:1}});}});
+ await adapter.generate({request:r,source:{bytes,mime:'image/png'},references:refs.map(x=>({bytes:Buffer.from(x.data.split(',')[1],'base64'),mime:'image/png'})),attemptId:randomUUID()});assert.equal(calls,1);
+});
