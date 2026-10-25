@@ -2,6 +2,7 @@ import {PostgresDatabase,cloudSchema} from '../cloud/postgres.mjs';
 import {CloudGenerationService} from '../cloud/beta.mjs';
 import {PostgresRecommendationService} from './postgres-service.mjs';
 import {ExistingImageBudget} from './existing-image-budget.mjs';
+import {savedRequestSnapshot} from './contracts.mjs';
 import {recommendationApi} from './api.mjs';
 // Explicit local test factory. No production caller or feature activation.
 export function existingAppRecommendationApi({store,pool,storage,adapter,origin,enabled=false,reservationMicros=1000}){
@@ -17,11 +18,10 @@ export function existingAppRecommendationApi({store,pool,storage,adapter,origin,
    if(!row)throw Error('NOT_FOUND');
    const request=JSON.parse(row.request_json),asset=await CloudGenerationService.prototype.asset.call({db,storage,cloudUser:owner},row.artifact_hash);
    if(!asset?.dataUrl)throw Error('OWNED_PERSISTED_IMAGE_REQUIRED');
-   const input=request.marketingPlan?.input;
-   return {ownerId:owner,media:'image',persisted:true,artifactHash:row.artifact_hash,imageBytes:Buffer.from(asset.dataUrl.split(',')[1],'base64'),snapshot:{productName:request.productName,facts:[...(input?.attributes??[]),...(request.specifications??[]).map(x=>({name:x.axis,value:x.value+' '+x.unit}))],directions:request.brief??'',confirmedCopy:Object.values(request.copy??{}).filter(x=>typeof x==='string'&&x.trim()),adLanguage:request.output.locale,purpose:input?.goal??'product introduction',format:request.output.format}};
+   return {ownerId:owner,media:'image',persisted:true,artifactHash:row.artifact_hash,imageBytes:Buffer.from(asset.dataUrl.split(',')[1],'base64'),snapshot:savedRequestSnapshot(request)};
   }});
   service.shared=new ExistingImageBudget({db,owner,period,limit});return service;
  })().catch(error=>{services.delete(owner);throw error;}));return services.get(owner);}
- const service={read:async(context,id)=>(await serviceFor(context.userId)).read(context,id),request:async(context,body)=>(await serviceFor(context.userId)).request(context,body)};
+ const service={readForGeneration:async(context,id)=>(await serviceFor(context.userId)).readForGeneration(context,id),read:async(context,id)=>(await serviceFor(context.userId)).read(context,id),request:async(context,body)=>(await serviceFor(context.userId)).request(context,body)};
  return {handle:recommendationApi({enabled,origin,service,authenticate:header=>store.authenticate(header)}),serviceFor};
 }

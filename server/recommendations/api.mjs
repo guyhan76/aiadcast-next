@@ -1,6 +1,6 @@
 // Standalone authenticated contract for local tests; not mounted in beta server.
 export function recommendationApi({authenticate,service,origin,enabled=false}){
- const send=(status,data)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
+ const send=(status,data)=>Response.json(status>=400&&typeof data?.error==='string'?{error:{code:data.error}}:data,{status,headers:{'Cache-Control':'no-store'}});
  return async request=>{
   if(!enabled)return send(503,{error:'RECOMMENDATIONS_DISABLED'});
   try{
@@ -10,6 +10,7 @@ export function recommendationApi({authenticate,service,origin,enabled=false}){
    const get=/^\/api\/recommendations\/([A-Za-z0-9_-]{1,100})$/.exec(url.pathname);
    if(request.method==='GET'&&get)return send(200,await service.read(context,get[1]));
    const post=/^\/api\/generations\/([A-Za-z0-9_-]{1,100})\/recommendations$/.exec(url.pathname);
+   if(request.method==='GET'&&post)return send(200,{recommendation:await service.readForGeneration(context,post[1])});
    if(request.method!=='POST'||!post)return send(404,{error:'NOT_FOUND'});
    if(request.headers.get('origin')!==origin||request.headers.get('x-aiadcast-client')!=='local-studio')return send(403,{error:'ORIGIN_NOT_ALLOWED'});
    if(request.headers.get('content-type')?.split(';')[0]!=='application/json')return send(415,{error:'JSON_REQUIRED'});

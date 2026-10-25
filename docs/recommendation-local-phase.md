@@ -12,7 +12,7 @@ A durable transaction reserves a separate recommendation budget before dispatch.
 
 Validated output is persisted even if usage is missing (`output_ready_usage_pending`). A supplied **trusted read-only evidence resolver**, not a customer request, can reconcile usage. Recorded completion cannot be settled twice. Known billed invalid output is a service expense, not a customer charge. Only the typed adapter proof `NotDispatched` permits a zero-cost release. Unknown errors/storage failures retain the hold and a sanitized error code. Actual cost above reservation is recorded in full and blocks subsequent work when the local budget is exhausted: reservation is not a provider-enforced spend cap.
 
-Output contract: 1–3 supported still-image channels, short usage/reasons with evidence fields, six distinct candidate phrases, explicit mock provenance and unverified confidence/search volume. Structure validation cannot prove factual accuracy; real model evaluation, insufficient-evidence handling and claim validation remain necessary. No actionable-target field is emitted yet. No video support is implied.
+Output contract: 1–3 supported still-image channels, short usage/reasons with evidence fields, one to six distinct candidate phrases, explicit mock provenance and unverified confidence/search volume. Structure validation cannot prove factual accuracy; real model evaluation, insufficient-evidence handling and claim validation remain necessary. No actionable-target field is emitted yet. No video support is implied.
 
 ## Minimal future migration and API (not applied)
 
@@ -47,3 +47,47 @@ The two local service implementations share contracts but are separate code path
 Integration tests verify exact old balances and image attempt rows at initialization, recommendation settlement increments once, full backend restart preserves totals/cache/session, another account cannot retrieve or recommend the image, logout and session expiration fail, and stored image bytes remain readable independently. A preexisting uncertain image attempt plus a new uncertain recommendation is charged to the same budget hold total; the actual existing image POST endpoint then rejects insufficient headroom before another mock provider dispatch. This closes the detached-ledger gap for the local mock phase.
 
 Still separately required: production migration/route activation and operational rollback review, real model/output quality validation, bounded real-cost approval, actual PostgreSQL multi-backend contention/TLS testing, deployment and any client UI/API wiring. PGlite is the tested PostgreSQL engine, not a remote production server. No secrets or live account data were used.
+
+## Read-only result UI follow-up (2026-10-25)
+
+The existing authenticated integration now supports GET
+`/api/generations/:id/recommendations` to recover a saved recommendation without
+knowing the recommendation ID (including a lost original response). It reads
+only owner-scoped persisted records, returns null when absent, and never calls
+the adapter. Responses identify the generation, artifact hash, immutable
+snapshot hash and stored locale. Both SQLite and PostgreSQL implementations
+support this read contract. Error HTTP responses now follow the app's
+`error.code` contract so session expiry remains handled by the existing client;
+a successful uncertain job keeps its state and error evidence.
+
+`RecommendationGuide` is mounted at the compatible image-result boundary but
+returns null by default, without effects or network requests. Only a local
+Vite test fixture explicitly enables the mock review. The component performs
+GET only on an explicit saved-result check, coalesces clicks, bounds read time,
+and hides late responses after logout/account or artifact/language changes.
+It has no provider-create, paid-refresh, wallet, export or acceptance actions.
+The current rules guide remains unchanged and accurately labelled. The mock
+panel explicitly says it is not real AI analysis; it does not claim measured
+search volume or performance. Keyword validation permits 1–6 distinct phrases
+rather than requiring six and encouraging filler.
+
+Tests exercise actual existing session/private-image/budget integration with
+PGlite, including preserved uncertain image holds; local browser fixtures cover
+read-only UI, both languages, narrow widths, mismatched artifacts, timeout and
+logout. These do not establish semantic model quality, physical Android
+behavior or real PostgreSQL multi-backend contention. Stored image data and
+project JSON are not rewritten. No production route, constructor migration,
+feature switch, model, price or customer credit policy is activated.
+
+Remaining approval boundary: review/apply production migration and route wiring,
+select/approve the real model and finite test spend, implement provider output
+validation and privacy-minimized image transport, and run real PostgreSQL and
+physical-device tests. A real result provenance contract and the included-first
+commercial policy must be approved before enabling a consumer AI recommendation
+action. Current output contracts deliberately accept only `mock-ai`.
+
+Final local checks for this follow-up: 29 domain/integration cases, 12 browser
+cases, type/build/cloud/isolation passed. Legacy saved requests now retain
+product category/description and attributes separately from the creative brief.
+No operating database, provider budget, customer wallet or production setting
+was modified.

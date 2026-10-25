@@ -17,7 +17,8 @@ export class PostgresRecommendationService {
     principal(context) { if (!context || typeof context.userId !== 'string' || !context.userId)
         throw Error('AUTH_REQUIRED'); return context.userId; }
     async read(context, id) { const row = await this.db.prepare('SELECT * FROM recommendation_jobs WHERE id=? AND owner_id=?').get(id, this.principal(context)); if (!row)
-        throw Error('NOT_FOUND'); return { id: row.id, state: row.state, output: row.output_json ? JSON.parse(row.output_json) : null, error: row.error_code, customerPolicy: row.customer_policy, customerCharge: 0, version: row.version, locale: row.locale }; }
+        throw Error('NOT_FOUND'); return { generationId:row.generation_id,artifactHash:row.artifact_hash,snapshotHash:hash(JSON.parse(row.snapshot_json)),id: row.id, state: row.state, output: row.output_json ? JSON.parse(row.output_json) : null, error: row.error_code, customerPolicy: row.customer_policy, customerCharge: 0, version: row.version, locale: row.locale }; }
+ async readForGeneration(context,generationId){const owner=this.principal(context);const row=await this.db.prepare('SELECT id FROM recommendation_jobs WHERE generation_id=? AND owner_id=?').get(generationId,owner);return row?await this.read(context,row.id):null;}
     async budget() { return await this.db.prepare('SELECT COALESCE(SUM(held_micros),0) held,COALESCE(SUM(actual_micros),0) spent FROM recommendation_attempts').get(); }
     async request(context, body) {
         const owner = this.principal(context);
