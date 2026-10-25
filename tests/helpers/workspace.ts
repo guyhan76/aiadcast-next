@@ -9,7 +9,8 @@ export async function reloadDraft(page:Page){
  try{await Promise.race([page.reload().catch(error=>{if(!protectedReload)throw error;}),stayedOnPage]);}
  finally{page.off('dialog',stay);}
  if(protectedReload){
-  await expect(page.locator('.workspace-save-state')).toHaveText('입력 내용이 기기에 저장되었습니다.');
+  const language=await page.locator('html').getAttribute('lang');
+  await expect(page.locator('.workspace-save-state')).toHaveText(language==='en'?'Draft saved on this device.':'입력 내용이 기기에 저장되었습니다.');
   await page.reload();
  }
 }
