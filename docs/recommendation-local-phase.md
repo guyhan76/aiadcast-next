@@ -91,3 +91,40 @@ cases, type/build/cloud/isolation passed. Legacy saved requests now retain
 product category/description and attributes separately from the creative brief.
 No operating database, provider budget, customer wallet or production setting
 was modified.
+
+## Local safety closure (2026-10-25)
+
+Both services now require explicit `executionMode: 'local-test'` and reject
+`NODE_ENV=production` before database access. These guards intentionally prevent
+mock prices/reservations from becoming a live policy even if a feature flag is
+accidentally enabled. A real adapter and approved live policy remain absent.
+
+PostgreSQL initialization performs schema probes only, never DDL. Temporary tests
+explicitly call `local-test-migration.mjs`; the draft migration is idempotent and
+adds only recommendation tables/expiry metadata. Production migration execution
+and rollback review remain separate approvals. Rollback should disable routes
+and preserve audit records, outputs and unresolved holds, not drop tables or
+reset existing budgets.
+
+New reservations obtain the account's current budget period and allocation at
+transaction time. Settlement uses the reservation's recorded period, even after
+a month change or restart. Existing image holds and prior-month exposure are
+preserved; recommendation audit rows are not counted a second time. Repeated
+settlements and reservation IDs remain idempotent; expiration never permits an
+automatic retry of an uncertain provider request.
+
+Pure input/output limit contracts validate explicit measured token counts, one
+image's byte/dimension limits, and output tokens. They do not tokenize, resize,
+invoke a provider or prove an image-token/USD upper bound. The limits are local
+contract ceilings, not deployed model settings or a promised spend cap.
+
+New tests cover initialization without implicit migration, default/production
+rejection, measurement bounds, concurrent monthly reservations, late settlement,
+restart, expiry and retained old holds. PGlite transactions are tested; actual
+PostgreSQL multi-backend contention and real provider billing remain unverified.
+Customer credit handling is unchanged and remains outside this mock subsystem.
+
+Final safety-closure validation: 32 recommendation domain/integration tests and
+12 desktop/mobile browser tests passed; TypeScript (as part of build), build,
+cloud-variant consistency and isolation checks passed. No tests were skipped in
+these runs. Real PostgreSQL, physical Android and real model calls were not run.

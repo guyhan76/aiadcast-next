@@ -1,16 +1,17 @@
-import { readFileSync } from 'node:fs';
+import {assertLocalRecommendationMode} from './safety-policy.mjs';
 import { SharedRecommendationBudget } from './shared-budget.mjs';
 import { randomUUID } from 'node:crypto';
 import { hash, snapshotOf, validateOutput } from './contracts.mjs';
 // Local PostgreSQL test implementation. Standalone API contract only; no production registration.
 export class PostgresRecommendationService {
-    async initialize(db, { resolveOwnedImage, adapter, enabled = false, version = 'mock-v1/prompt-v1', budgetMicros = 10000, reservationMicros = 1000, lookupEvidence, now = () => Date.now(), ttlMs = 3600000 }) {
+    async initialize(db, { resolveOwnedImage, adapter, enabled = false, executionMode, sharedBudget, version = 'mock-v1/prompt-v1', budgetMicros = 10000, reservationMicros = 1000, lookupEvidence, now = () => Date.now(), ttlMs = 3600000 }) {
+        assertLocalRecommendationMode(executionMode);
         if (!Number.isSafeInteger(budgetMicros) || budgetMicros < 0 || !Number.isSafeInteger(reservationMicros) || reservationMicros < 1 || !version || !Number.isSafeInteger(ttlMs) || ttlMs < 1)
             throw Error('INVALID_MOCK_POLICY');
         Object.assign(this, { resolveOwnedImage, adapter, enabled, version, budgetMicros, reservationMicros, lookupEvidence, db, now, ttlMs });
-        await db.exec(readFileSync(new URL('./migration-draft.sql', import.meta.url), 'utf8'));
-        await db.exec('ALTER TABLE recommendation_jobs ADD COLUMN IF NOT EXISTS expires_at BIGINT');
-        this.shared = new SharedRecommendationBudget(db, { limitMicros: budgetMicros });
+        try{await db.prepare('SELECT expires_at FROM recommendation_jobs LIMIT 0').get();await db.prepare('SELECT id FROM recommendation_attempts LIMIT 0').get();await db.prepare('SELECT request_id FROM recommendation_requests LIMIT 0').get();await db.prepare('SELECT reservation_micros FROM recommendation_supplier_costs LIMIT 0').get();}catch{throw Error('RECOMMENDATION_SCHEMA_REQUIRED');}
+        this.shared = sharedBudget??new SharedRecommendationBudget(db, { limitMicros: budgetMicros });
+        this.usesExistingBudget=Boolean(sharedBudget);
         return this;
     }
     async transaction(fn) { return await this.db.transaction(fn); }
@@ -45,7 +46,7 @@ export class PostgresRecommendationService {
             if (!this.enabled || !this.adapter)
                 throw Error('RECOMMENDATIONS_DISABLED');
             const b = await this.budget();
-            if (b.held + b.spent + this.reservationMicros > this.budgetMicros)
+            if (!this.usesExistingBudget && b.held + b.spent + this.reservationMicros > this.budgetMicros)
                 throw Error('RECOMMENDATION_BUDGET_UNAVAILABLE');
             const id = randomUUID(), attempt = randomUUID();
             await this.shared.reserve({ id: attempt, owner, category: 'recommendation', amount: this.reservationMicros });

@@ -3,3 +3,5 @@ CREATE TABLE IF NOT EXISTS recommendation_jobs(id TEXT PRIMARY KEY,owner_id TEXT
    CREATE TABLE IF NOT EXISTS recommendation_attempts(id TEXT PRIMARY KEY,job_id TEXT NOT NULL UNIQUE,state TEXT NOT NULL,held_micros INTEGER NOT NULL,actual_micros INTEGER);
    CREATE TABLE IF NOT EXISTS recommendation_requests(owner_id TEXT NOT NULL,request_id TEXT NOT NULL,fingerprint TEXT NOT NULL,job_id TEXT NOT NULL,PRIMARY KEY(owner_id,request_id));
 CREATE TABLE IF NOT EXISTS recommendation_supplier_costs(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,category TEXT NOT NULL CHECK(category IN ('image','recommendation')),period TEXT NOT NULL,held_micros BIGINT NOT NULL CHECK(held_micros>=0),actual_micros BIGINT CHECK(actual_micros>=0),state TEXT NOT NULL,reservation_micros BIGINT NOT NULL CHECK(reservation_micros>0));
+
+ALTER TABLE recommendation_jobs ADD COLUMN IF NOT EXISTS expires_at BIGINT;

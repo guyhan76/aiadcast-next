@@ -1,10 +1,12 @@
+import {assertLocalRecommendationMode} from './safety-policy.mjs';
 import {DatabaseSync} from 'node:sqlite';
 import {randomUUID} from 'node:crypto';
 import {hash,snapshotOf,validateOutput} from './contracts.mjs';
 
 // Local-only prototype. No HTTP route, production DB, wallet or provider wiring.
 export class RecommendationService {
- constructor({path,resolveOwnedImage,adapter,enabled=false,version='mock-v1/prompt-v1',budgetMicros=10000,reservationMicros=1000,lookupEvidence}){
+ constructor({path,resolveOwnedImage,adapter,enabled=false,executionMode,version='mock-v1/prompt-v1',budgetMicros=10000,reservationMicros=1000,lookupEvidence}){
+  assertLocalRecommendationMode(executionMode);
   if(!Number.isSafeInteger(budgetMicros)||budgetMicros<0||!Number.isSafeInteger(reservationMicros)||reservationMicros<1||!version)throw Error('INVALID_MOCK_POLICY');
   Object.assign(this,{resolveOwnedImage,adapter,enabled,version,budgetMicros,reservationMicros,lookupEvidence});
   this.db=new DatabaseSync(path);this.db.exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
