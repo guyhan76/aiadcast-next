@@ -5,7 +5,7 @@ import {dimensionControlErrors} from './dimension-control.ts';
 import {makeDimensionPlan} from './dimension-generation.ts';
 import {validMillimeters} from './dimension-units.ts';
 import {photoRole} from './photo-roles.ts';
-import {dimensionAxes,isServiceCategory} from './product.ts';
+import {dimensionAxes,axisLabel,isServiceCategory} from './product.ts';
 import {getImageFormat} from './formats.ts';
 import type {Project} from './model.ts';
 import {parseCampaign} from './campaign.ts';
@@ -64,7 +64,7 @@ export function generationIssues(p:Project):string[] {
   if(!creative&&p.product&&photoRole(p,p.product.sha256)==='style')errors.push('실사 그대로 사용하려면 실제 상품·공간 사진을 대표로 지정해주세요.');
   if(creative&&!service&&!isTextExample(p)&&p.product&&[p.product,...p.references??[]].every(a=>photoRole(p,a.sha256)==='style'))errors.push('디자인 참고 외에 실제 상품 사진을 한 장 이상 추가해주세요.');
   if(creative&&service&&!p.product&&!p.generation.brief.trim()&&!p.campaign?.creative&&!p.conversation?.turns.some(t=>t.state==='recorded'))errors.push('사진 없이 만들 광고의 내용과 요청사항을 입력해주세요.');
-  if(axes.some(axis=>!validMillimeters(p.dimensions[axis])))errors.push('생성에 참고할 규격은 0보다 크고 100,000 mm 이하로 입력해주세요.');
+  for(const axis of axes)if(!validMillimeters(p.dimensions[axis]))errors.push(`${axisLabel(axis,'ko',p.productProfile)} 규격을 확인해주세요. 숫자와 소수점(.)으로 0보다 크고 100,000 mm 이하를 입력해주세요.`);
   const assessment=assessReference(generationContext(p));if(['mismatch','invalid'].includes(assessment.status))errors.push(assessment.message);
   return errors;
 }
