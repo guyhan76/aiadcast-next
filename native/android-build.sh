@@ -20,6 +20,9 @@ if [[ "$variant" == Demo ]] && { [[ ! -f "${AIADCAST_DEMO_KEYSTORE:-}" ]] || [[ 
   exit 1
 fi
 npm run build
+if [[ "$variant" == Demo || "$variant" == Preview ]]; then
+  node scripts/check-web-build.mjs --require-commit
+fi
 node native/prepare-android.mjs
 cd android
 tasks=("test${variant}UnitTest" "lint${variant}" "assemble${variant}")
