@@ -1,5 +1,12 @@
 // Presentation-only translations. User copy and billing country remain independent.
 export const uiEnglish:Record<string,string>={
+ '광고에 참고할 상품·공간 사진을 추가해주세요.':'Add a product or location photo for this ad.',
+ '디자인 참고 외에 실제 상품 사진을 한 장 이상 추가해주세요.':'Add at least one actual product photo alongside design references.',
+ 'AI 자동 규격 표시는 실제 상품 사진·입력 규격과 AI 새 광고 모드가 필요합니다. 평면 형상 제어와 함께 사용하지 않습니다.':'Automatic dimension display needs an actual product photo, dimensions and creative mode. Turn off flat-shape control.',
+ '규격 기반 생성은 실제 상품 사진과 치수 기준에 맞는 숫자 규격이 필요합니다.':'Dimension-based generation needs an actual product photo and valid measurements for the selected basis.',
+ '평면 비례 자동 적용은 현재 실제 상품의 정면 사진과 가로·세로 규격을 확인한 경우에만 사용합니다.':'Flat proportion control requires a confirmed front product photo and width and height.',
+ '실사 그대로 사용하려면 실제 상품·공간 사진을 대표로 지정해주세요.':'Choose an actual product or location photo as the main photo for original-photo mode.',
+
  '실물·규격 상품':'Physical products',
  '포장재 · 식품 · 의류 · 가전 등':'Packaging · Food · Fashion · Appliances',
 
