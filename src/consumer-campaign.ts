@@ -14,9 +14,9 @@ export function starterProject(category:ProductCategory='other'):Project{
 }
 export function automaticDimensionDraft(project:Project):Project{
  const a=project.dimensionAnnotation;
- if(project.generation.mode!=='creative'||a?.method==='ai')return project;
+ if(project.generation.mode!=='creative'||a?.method==='manual'||a?.method==='ai')return project;
  // Migrate only a creation draft. Stored results and their review evidence stay unchanged.
- return {...project,dimensionAnnotation:{method:'ai',mode:a?.mode??'none',snapshot:''}};
+ return {...project,dimensionAnnotation:{method:'manual',mode:a?.mode??'none',snapshot:''}};
 }
 export function prepareCampaign(project:Project):Project{
  project=withoutDimensionReshape(automaticDimensionDraft(project));

@@ -1,3 +1,4 @@
+import {ManualDimensionPanel} from './ManualDimensionPanel';
 import {dimensionAxes,axisLabel} from './product';
 import {dimensionLabel} from './dimension-units';
 import {useEffect,useRef,useState} from 'react';
@@ -60,6 +61,7 @@ function VerifiedDimensionAnnotationPanel({project,change}:{project:Project;chan
 
 export function DimensionAnnotationPanel(props:{project:Project;change:(fn:(p:Project)=>Project)=>void}){
  const {t,language}=useUiLanguage(),p=props.project;
+ if(p.dimensionAnnotation?.method==='manual')return <ManualDimensionPanel {...props}/>;
  if(p.dimensionAnnotation?.method!=='ai')return <VerifiedDimensionAnnotationPanel {...props}/>;
  if(p.dimensionAnnotation.mode==='none')return null;
  return <section className="dimension-annotation" aria-label={t('AI 자동 규격 표시','AI dimension display')}><h3>{t('AI 자동 규격 표시','AI dimension display')}</h3><p>{p.dimensionAnnotation.mode==='main'?t('본제품에 직접 표시','On the main product'):p.dimensionAnnotation.mode==='inset'?t('같은 제품 작은 사진에 표시','On a small product photo'):t('사진 치수선 없음','No photo arrows')}</p><ul>{dimensionAxes(p.productProfile).map(a=><li key={a}>{axisLabel(a,language,p.productProfile)}: {dimensionLabel(p.dimensions[a],p.dimensions.displayUnit??'mm')}</li>)}</ul><p>{t('광고 이미지 안에 AI가 그린 표시입니다. 자동 측정·정밀 합성·정확도 보증이 아닙니다. 입력 수치와 단위, 각 축의 치수선과 누락 여부를 원본 상품과 비교해 직접 확인해주세요. 수정하려면 입력으로 돌아가세요. 자동으로 재생성하지 않습니다.','These labels were drawn by AI inside the ad, not measured or certified. Compare every value, unit, axis and missing label against your product. Return to the inputs to change the request; regeneration is never automatic.')}</p></section>;

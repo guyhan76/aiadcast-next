@@ -1,3 +1,5 @@
+import {manualRequested} from './manual-dimensions';
+import {paintManualDimensions} from './manual-dimension-render';
 import {isTextExample,textExampleGeometryError} from './generation-input';
 import {renderControlledProduct} from './controlled-product-render';
 import {annotationIncomplete} from './dimension-annotation';
@@ -19,10 +21,11 @@ import {hasCompleteAd,completeAdPlacement} from './complete-ad.ts';
 export {geometry} from './layout.ts';
 export const font='"Noto Sans KR Variable", sans-serif';
 const editorialFont='"Noto Serif KR Variable", serif';
-export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axis):Promise<string[]> {
+export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axis,manualBaseOnly=false):Promise<string[]> {
  const exampleError=textExampleGeometryError(p);if(exampleError)return [exampleError];
  if(p.dimensionControl)return renderControlledProduct(canvas,p);
- const incomplete=annotationIncomplete(p);if(incomplete){await render(canvas,{...p,dimensionAnnotation:undefined},editingAxis);return [incomplete];}
+ if(manualRequested(p)&&!manualBaseOnly){const errors=await render(canvas,p,editingAxis,true);if(errors.length)return errors;const missing=annotationIncomplete(p);if(missing)return [missing];try{await paintManualDimensions(canvas,p);}catch{return [p.locale==='ko'?'치수선 위치를 확인해주세요.':'Review dimension positions.'];}return [];}
+ const incomplete=manualBaseOnly?null:annotationIncomplete(p);if(incomplete){await render(canvas,{...p,dimensionAnnotation:undefined},editingAxis);return [incomplete];}
  if(p.dimensionAnnotation?.mode&&p.dimensionAnnotation.mode!=='none'&&p.dimensionAnnotation.proposal){
   const errors=await render(canvas,{...p,dimensionAnnotation:undefined},editingAxis);
   if(errors.length)return errors;
