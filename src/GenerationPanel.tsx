@@ -1,3 +1,4 @@
+import {recoveryDiagnostic,type RecoveryDiagnostic} from './recovery-diagnostic';
 import {setUnacceptedPreview} from './PreviewLeaveGuard';
 import {aiDimensionRequested,projectAiDimensionKey,parseAiDimensionDisplay,validAiDimensionReview,type AiDimensionReview} from './ai-dimension-display';
 import {isTextExample,generationInputs,generationSourceHash} from './generation-input';
@@ -46,6 +47,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
  useEffect(()=>{setUnacceptedPreview(job?.state==='ready');return()=>setUnacceptedPreview(false);},[job?.state]);
  const dispatching=useRef(false),generationRequest=useRef<AbortController|null>(null);
  const [recoveryChecked,setRecoveryChecked]=useState(false),[recoveryError,setRecoveryError]=useState('');
+ const [recoveryDetail,setRecoveryDetail]=useState<RecoveryDiagnostic|null>(null);
  const recoveryRequest=useRef<AbortController|null>(null);
  const [recovering,setRecovering]=useState(false),[pollStopped,setPollStopped]=useState(false);
  const [statusError,setStatusError]=useState(''),[checking,setChecking]=useState(false),[checked,setChecked]=useState<{at:string;same:boolean}>();const statusRequest=useRef<AbortController|null>(null),statusFingerprint=useRef('');const autoHandled=useRef('');
@@ -58,26 +60,28 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
  const failure=(e:unknown)=>{const code=e instanceof Error?e.message:'';setError(code==='STORAGE_CAPACITY_UNAVAILABLE'?t('저장 공간이 부족해 생성을 시작하지 않았습니다. 관리자에게 문의해주세요. 입력 내용은 보관했습니다.','Generation did not start because storage is full. Contact the administrator. Your inputs are preserved.'):code==='CREDIT_QUOTE_CHANGED'?t('잔액이나 이용권 종류가 바뀌었습니다. 상태를 새로 확인하고 차감을 다시 확인해주세요. 생성은 실행하지 않았습니다.','Your balance or credit unit changed. Refresh and confirm the charge again. No generation was dispatched.'):code==='PLANAR_SOURCE_UNCONFIRMED'?t('정면 평면 외곽이나 입력 비례를 확인하지 못했습니다. 가림 없는 정면 사진·가로·세로를 확인해주세요. 유료 생성을 요청하지 않았습니다.','Could not confirm the front plane outline or dimensions. Check the unobstructed front photo and measurements. No paid generation was dispatched.'):code==='PROPORTION_MISMATCH'?t('입력 규격과 사진 비례가 다릅니다. 자동 검사에서 촬영면·규격·전체 외곽을 확인해주세요. 새 시안은 요청하지 않았습니다.','Photo proportions differ from the dimensions. Check views, dimensions and full extent in the automatic check. No visual was requested.'):code==='BUDGET_NOT_AVAILABLE'?t('테스트 비용 한도에 도달했습니다. 추가 생성은 중단했습니다.','The test budget is exhausted. Generation is paused.'):code==='ARTIFACT_MISMATCH'||code==='INVALID_ARTIFACT'?t('결과 파일 검증에 실패했습니다. 사용 확정하지 않았습니다.','The result failed file validation. It has not been accepted.'):t('연결 또는 요청을 확인하지 못했습니다. 자동으로 다시 생성하지 않습니다. 연결 상태와 기존 작업을 확인해주세요.','The request could not be confirmed. No automatic regeneration will occur. Refresh the connection and check the existing job.'));};
  async function recover(automatic=false){
   if(recoveryRequest.current)return;
-  const controller=new AbortController();recoveryRequest.current=controller;setRecoveryChecked(false);setRecoveryError('');setRecovering(true);setPollStopped(false);
+  const controller=new AbortController();recoveryRequest.current=controller;setRecoveryChecked(false);setRecoveryError('');setRecoveryDetail(null);setRecovering(true);setPollStopped(false);
   const timer=setTimeout(()=>controller.abort(),automatic?45000:30000);
+  let step:'history'|'job'='history',httpStatus:number|null=null;
+  const read=async<T,>(path:string,next:'history'|'job')=>{step=next;httpStatus=null;return apiRequest<T>(path,undefined,controller.signal,status=>{httpStatus=status;});};
   const current=()=>alive.current&&recoveryRequest.current===controller;
   try{
    for(let attempt=0;attempt<(automatic?3:1);attempt++){
    try{
    let record=pending.current,id=record?.jobId;
    if(!id){
-    const history=await apiRequest<{jobs:GenerationJob[]}>(`/api/generations?projectId=${encodeURIComponent(project.id)}`,undefined,controller.signal);
+    const history=await read<{jobs:GenerationJob[]}>(`/api/generations?projectId=${encodeURIComponent(project.id)}`,'history');
     if(!current())return;
-    if(!Array.isArray(history.jobs))throw Error('INVALID_HISTORY');
+    if(!history||!Array.isArray(history.jobs)||history.jobs.some(j=>!j||typeof j.id!=='string'||typeof j.projectId!=='string'||typeof j.state!=='string'||j.requestIds!==undefined&&(!Array.isArray(j.requestIds)||j.requestIds.some(id=>typeof id!=='string'))))throw Error('INVALID_HISTORY');
     const candidates=history.jobs.filter(j=>j.projectId===project.id&&(record?(j.requestId===record.requestId||j.requestIds?.includes(record.requestId)):['running','ready','uncertain'].includes(j.state)));
     if(candidates.length>1)throw Error('AMBIGUOUS_HISTORY');
     id=candidates[0]?.id;
     if(record&&!id)throw Error('REQUEST_NOT_FOUND');
    }
    if(id){
-    const result=await apiRequest<JobResponse>(`/api/generations/${encodeURIComponent(id)}`,undefined,controller.signal);
+    const result=await read<JobResponse>(`/api/generations/${encodeURIComponent(id)}`,'job');
     if(!current())return;
-    if(result.job.id!==id||result.job.projectId!==project.id)throw Error('INVALID_HISTORY');
+    if(!result?.job||result.job.id!==id||result.job.projectId!==project.id||!['running','ready','accepted','rejected','failed','uncertain','expired','refunded'].includes(result.job.state)||!result.wallet||!Number.isFinite(result.wallet.available)||!Number.isFinite(result.wallet.reserved))throw Error('INVALID_HISTORY');
     // Without the original pending marker, only the server's complete-ad input key
     // can establish compatibility. Other results remain visible but cannot be accepted.
     if(!record||record.recovered)record={recovered:true,projectId:project.id,jobId:id,requestId:result.job.requestId??result.job.requestIds?.[0]??'',key:result.job.composition==='complete-ad'&&result.job.compositionKey===completeAdKey(project)&&result.job.sourceHash===generationSourceHash(project)&&result.job.mode===project.generation.mode?generatedCompatibilityKey(project):''};
@@ -89,7 +93,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
     await new Promise<void>(resolve=>{const done=()=>{clearTimeout(wait);controller.signal.removeEventListener('abort',done);resolve();};const wait=setTimeout(done,1000*(attempt+1));controller.signal.addEventListener('abort',done,{once:true});});
     if(!current())return;if(controller.signal.aborted)throw Error('RECOVERY_TIMEOUT');
    }}
-  }catch(e){if(current()){setRecoveryError(e instanceof ApiRequestFailure&&e.status===401?t('로그인 인증을 확인하지 못했습니다. 다시 로그인한 뒤 기존 결과를 확인해주세요.','Authentication failed. Sign in again to recover the existing result.'):t('기존 작업을 확인하지 못했습니다. 중복 생성을 막기 위해 새 생성을 멈췄습니다. 기존 결과를 다시 확인해주세요.','Could not check existing work. New generation is paused to prevent duplicates. Check existing results again.'));}}
+  }catch(e){if(current()){setRecoveryDetail(recoveryDiagnostic({step,status:httpStatus,code:e instanceof Error?e.message:undefined,aborted:controller.signal.aborted,network:e instanceof TypeError}));setRecoveryError(e instanceof ApiRequestFailure&&e.status===401?t('로그인 인증을 확인하지 못했습니다. 다시 로그인한 뒤 기존 결과를 확인해주세요.','Authentication failed. Sign in again to recover the existing result.'):t('기존 작업을 확인하지 못했습니다. 중복 생성을 막기 위해 새 생성을 멈췄습니다. 기존 결과를 다시 확인해주세요.','Could not check existing work. New generation is paused to prevent duplicates. Check existing results again.'));}}
   finally{clearTimeout(timer);if(recoveryRequest.current===controller){recoveryRequest.current=null;if(alive.current)setRecovering(false);}}
  }
  async function refresh(){
@@ -240,6 +244,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
   {status?.generation.creditQuote?.unit==='credit-v2'&&<div className="generation-hint"><p>{t('신규 크레딧 잔액','New credit balance')}: {status.wallet.credits?.available??0} · {t('예약 중','Reserved')}: {status.wallet.credits?.reserved??0}. {t('생성·재생성 1회 10크레딧. 정상 결과 제공 시 차감하며 단순 취향 반려·미확인은 환급하지 않습니다. 오류는 신고 후 확인하여 복원합니다.','10 credits per generation or regeneration, charged on delivery. Preference rejection or no review does not refund. Report defects for review and restoration.')}</p><label><input type="checkbox" checked={creditConsent} disabled={busy||active} onChange={e=>setCreditConsent(e.target.checked)}/>{t('이번 생성 10크레딧 차감을 확인했습니다.','I confirm the 10-credit charge for this generation.')}</label></div>}
   {(!simple||status?.generation.enabled&&!(job?.state==='ready'&&compatible)&&job?.state!=='uncertain')&&<button className="generate-button" disabled={!recoveryChecked||!status?.generation.enabled||status.generation.creditQuote?.unit==='credit-v2'&&!creditConsent||referenceBlocked||busy||active||issues.length>0||!!pending.current&&!job} onClick={()=>void start()}><Sparkles size={17}/>{job?.state==='ready'&&!revisedReady?t('생성 완료 · 결과 확인','Generation complete · Review result'):pollStopped?t('결과 확인 필요','Check existing result'):job?.state==='running'?t('시안 제작 중…','Creating your visual…'):recovering?t('기존 요청 확인 중…','Checking existing request…'):status?.generation.creditQuote?.unit==='credit-v2'?t('광고 생성 · 10크레딧','Generate ad · 10 credits'):simple?(busy?t('생성 준비 중…','Preparing…'):active?t('광고 생성·확인 중','Creating or reviewing'):adminUnlimited?(job?.state==='accepted'?t('다른 시안 생성 · 관리자 테스트','Create another visual · Admin test'):t('광고 생성 · 관리자 테스트','Generate ad · Admin test')):job?.state==='accepted'?t('다른 시안 생성 · 1개','Create another visual · 1 credit'):t('광고 생성 · 1개','Generate ad · 1 credit')):busy?t('처리 중…','Working…'):adminUnlimited?t('관리자 테스트 생성 · 차감 없음','Admin test · No credits used'):demo?t('체험 시안 만들기 · 1개','Compose demo visual · 1 credit'):project.generation.mode==='original'?t('AI 배경 요청 · 1개','Create backdrop · 1 credit'):t('AI 새 시안 요청 · 1개','Create visual · 1 credit')}</button>}
   {recoveryError&&<p role="alert">{recoveryError}</p>}
+  {recoveryError&&recoveryDetail&&<details className="recovery-diagnostic"><summary>{t('조회 오류 상세','Lookup error details')}</summary><p>{recoveryDetail.step==='history'?t('이전 요청 목록','Request history'):t('기존 작업 조회','Existing job lookup')} · {recoveryDetail.status===null?t('HTTP 응답 없음','No HTTP response'):`HTTP ${recoveryDetail.status}`} · {recoveryDetail.code}</p></details>}
   {simple&&(recoveryError||recovering||pollStopped||job?.state==='uncertain')&&<button type="button" disabled={busy||recovering} onClick={()=>void refresh()}>{t('기존 결과 다시 확인','Check existing results again')}</button>}
   {simple&&busy&&!job&&<p role="status">{t('광고 시안을 제작하고 있습니다. 잠시만 기다려 주세요.','We are creating your ad. Please wait.')}</p>}
   {pending.current&&!job&&recovering&&!recoveryError&&(!simple||!busy)&&<p role="status">{t('이전 요청 상태를 확인하고 있습니다. 중복 생성을 막기 위해 새 요청을 보류합니다.','Checking the earlier request. New requests are paused to prevent duplicate generation.')}</p>}

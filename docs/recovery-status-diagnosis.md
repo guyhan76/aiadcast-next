@@ -38,3 +38,17 @@ If an actual request cannot be observed, the screenshot confirms recovery failur
 ## Verification
 
 The new regression first reproduced failed + loading simultaneously with a mocked 404. The matrix covers 404, network failure, malformed detail, different-project detail, and empty history with a pending request, in Korean/English and desktop/mobile. It preserves pending identity, checks disabled generation, read-only recovery, duplicate-click suppression and continued blocking after recovery to uncertain. These mocks do not establish the production job's cause or provider billing state.
+
+## Mobile-safe diagnostic details
+
+Local follow-up adds a collapsed **조회 오류 상세 / Lookup error details** under the failure message. It shows only the fixed lookup stage (이전 요청 목록 / Request history or 기존 작업 조회 / Existing job lookup), HTTP status or HTTP 응답 없음 / No HTTP response, and an allowlisted diagnostic code. Examples: HTTP 404 · JOB_NOT_FOUND; HTTP 200 · INVALID_HISTORY; NETWORK_ERROR; LOOKUP_TIMEOUT. Unknown HTTP error codes become HTTP_ERROR. Non-JSON responses use API_UNAVAILABLE; invalid JSON uses INVALID_RESPONSE. A timeout after headers may retain HTTP 200 without implying a valid response body.
+
+The client observes only the response status; it never stores the response body or arbitrary error message in diagnostic state. IDs, URLs, account details, cookies, authorization and prompts/images are excluded. Details clear when a new lookup begins or the component unmounts. A normal AUTH_REQUIRED 401 still performs existing sign-in redirection; this detail view does not retain private state across logout.
+
+Recovery now explicitly rejects null/invalid job details, mismatched identities, unsupported states and missing/invalid wallet numbers instead of crashing on null data. No unknown request is cleared or retried as generation. No new server logging or operational data changes. The underlying production lookup cause is still unknown until the diagnostic is actually deployed and observed.
+
+After separately approved deployment, the mobile user can expand “조회 오류 상세” and share that one line after a single read-only recheck. Browser developer tools/HAR are not required. This local change has not been deployed.
+
+Verification follow-up: diagnostic classifier tests cover allowlisted 401/404, timeout before/after headers, network error, invalid schema, session change, unknown/private codes and invalid status. Browser fixtures cover 404, network, null job, wrong project, missing request, non-JSON HTTP 502, malformed JSON HTTP 200, and unknown/private HTTP 500 codes across both languages and viewports. Separate account-credit tests verified existing AUTH_REQUIRED logout behavior; 4 legacy assertions targeting the hidden `생성 상태 조회` region failed and reproduced identically on unmodified parent 6ea995b3 (2 tests × desktop/mobile). No legacy assertion was removed or relaxed. Timer classification is unit-tested; these checks do not reproduce a physical Android network timeout or the actual operational error.
+
+User update 2026-10-25 07:48 UTC: sign-out/sign-in did not remove the same block. This does not establish a new provider call or prove an authentication cause. Pending markers are stored under account/API-origin/project namespaces and survive session renewal. A valid new session can still encounter missing/mismatched/ambiguous history, HTTP errors or transport failure. No session/budget/hold reset is justified from this evidence.

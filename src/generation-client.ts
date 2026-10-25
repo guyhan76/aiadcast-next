@@ -18,11 +18,12 @@ export function apiUrl(path:string){
  return path;
 }
 export class ApiRequestFailure extends Error {constructor(public code:string,public status:number){super(code);}}
-export async function apiRequest<T>(path:string,body?:unknown,signal?:AbortSignal):Promise<T>{
+export async function apiRequest<T>(path:string,body?:unknown,signal?:AbortSignal,onResponse?:(status:number)=>void):Promise<T>{
  if(offlineDemo()){if(signal?.aborted)throw new DOMException('Aborted','AbortError');const token=betaSession()?.token;try{const result=await demoRequest(path,body);if(!offlineDemo()||token!==betaSession()?.token)throw Error('SESSION_CHANGED');if(signal?.aborted)throw new DOMException('Aborted','AbortError');return result as T;}catch(e){const value=e as {code?:string;status?:number};if(value.code==='AUTH_REQUIRED'&&value.status===401&&token&&offlineDemo()&&token===betaSession()?.token)setBetaSession(null,'login');if(value.code)throw new ApiRequestFailure(value.code,value.status??400);throw e;}}
  const session=betaSession(),url=apiUrl(path);
  const auth:Record<string,string>=session?{Authorization:`Bearer ${session.token}`}:{ };
  const response=await fetch(url,{method:body===undefined?'GET':'POST',credentials:'same-origin',redirect:'error',...(path==='/api/account/capabilities'?{cache:'no-store' as const}:{}),headers:body===undefined?auth:{...auth,'Content-Type':'application/json','X-Aiadcast-Client':'local-studio'},body:body===undefined?undefined:JSON.stringify(body),signal:signal??AbortSignal.timeout(30_000)});
+ onResponse?.(response.status);
  if(!response.headers.get('content-type')?.includes('application/json'))throw Error('API_UNAVAILABLE');
  const data=await response.json();if(apiUrl(path)!==url||(betaSession()?.token??null)!==(session?.token??null))throw Error('SESSION_CHANGED');if(response.status===401&&data?.error?.code==='AUTH_REQUIRED'&&session)setBetaSession(null,'login');if(!response.ok)throw new ApiRequestFailure(data?.error?.code??'API_UNAVAILABLE',response.status);
  if(path==='/api/status'&&(typeof data?.generation?.enabled!=='boolean'||!Number.isFinite(data?.wallet?.available)||!Number.isFinite(data?.wallet?.reserved)||!Number.isFinite(data?.budget?.limitMicros)))throw Error('API_UNAVAILABLE');
