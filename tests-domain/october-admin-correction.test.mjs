@@ -6,3 +6,8 @@ test('finite correction requires the existing active identity and exact pre-appr
  assert.equal(limit(fixture()),5000000);
  for(const change of [f=>f.user.role='member',f=>f.user.disabled=1,f=>f.ownerId='other',f=>f.user.id='new-admin',f=>f.demo=false,f=>f.approval.created=f.now,f=>f.support.created=f.now,f=>f.support.user_id='other',f=>f.support.micros=0,f=>f.approval.total_micros=6000000,f=>f.now=Date.UTC(2026,10,1)]){const f=fixture();change(f);assert.equal(limit(f),4000000);}
 });
+
+test('new approval keeps earlier limits and expires exactly at November UTC boundary',()=>{
+ const f=fixture();for(const [at,expected] of [[Date.UTC(2026,9,25,9,34,59,999),5000000],[Date.UTC(2026,9,25,9,35),100000000],[Date.UTC(2026,9,31,23,59,59,999),100000000],[Date.UTC(2026,10,1),4000000]]){f.now=at;assert.equal(limit(f),expected);}
+ f.now=Date.UTC(2026,9,25,10);for(const mutate of [x=>x.user.id='another-admin',x=>x.ownerId='another-admin',x=>x.user.role='member',x=>x.user.disabled=1,x=>x.limit=0,x=>x.demo=false]){const x=structuredClone(f);mutate(x);assert.equal(limit(x),x.limit);}
+});

@@ -131,15 +131,15 @@ test('approved October owner correction preserves accounting, other allocations,
  await s.owner.db.prepare('INSERT INTO budgets VALUES(?,?,?,?)').run('2026-10',4000000,2121900,1500000);
  const snapshot=async()=>({users:await s.db.prepare('SELECT * FROM users ORDER BY id').all(),approval:await s.store.monthApproval(),support:await s.db.prepare('SELECT * FROM monthly_demo_support').all(),ledger:await s.owner.ledger.budget('2026-10'),wallet:await s.owner.wallet()});
  s.advance('2026-10-24T15:00:59Z');const before=await snapshot();assert.equal(await s.store.effectiveBudget(s.actor.id,'2026-10'),4000000);assert.equal(await s.store.effectiveCap(),14000000);
- for(const at of ['2026-10-24T15:01:00Z','2026-10-31T23:59:59.999Z']){
-  s.advance(at);assert.equal(await s.store.effectiveBudget(s.actor.id,'2026-10'),5000000);assert.equal(await s.store.effectiveBudget(s.body.userId,'2026-10'),10000000);assert.equal(await s.store.effectiveCap(),15000000);
-  const status=await s.owner.status();assert.equal(status.budget.spentMicros,2121900);assert.equal(status.budget.heldMicros,1500000);assert.equal(status.generation.enabled,true);
+ for(const [at,ownerLimit] of [['2026-10-24T15:01:00Z',5000000],['2026-10-25T09:34:59.999Z',5000000],['2026-10-25T09:35:00Z',100000000],['2026-10-31T23:59:59.999Z',100000000]]){
+  s.advance(at);assert.equal(await s.store.effectiveBudget(s.actor.id,'2026-10'),ownerLimit);assert.equal(await s.store.effectiveBudget(s.body.userId,'2026-10'),10000000);assert.equal(await s.store.effectiveCap(),ownerLimit+10000000);
+  const status=await s.owner.status();assert.equal(status.budget.spentMicros,2121900);assert.equal(status.budget.heldMicros,1500000);assert.equal(status.generation.enabled,true);assert.equal(status.generation.perRequestReservationUsd,0.5);
   await s.admin.activateOctoberBudget(s.actor,{});await s.apply(originalQuote);assert.deepEqual(await snapshot(),before);
  }
  await assert.rejects(s.admin.allocate({id:s.body.userId,role:'member'},{userId:s.actor.id,budgetMicros:5000000,role:'admin'}),/ADMIN_REQUIRED/);
  const other=(await s.store.provision({label:'Other admin',credits:0})).userId;await s.store.setRole(other,'admin');assert.equal(await s.store.effectiveBudget(other,'2026-10'),0);
  await s.db.prepare('UPDATE email_identities SET email=? WHERE user_id=?').run('changed@example.com',s.actor.id);assert.equal(await s.store.effectiveBudget(s.actor.id,'2026-10'),4000000);
  await s.db.prepare('UPDATE email_identities SET email=? WHERE user_id=?').run('selluplabs@gmail.com',s.actor.id);
- await s.store.setRole(s.actor.id,'member');assert.notEqual(await s.store.effectiveBudget(s.actor.id,'2026-10'),5000000);await s.store.setRole(s.actor.id,'admin');
+ await s.store.setRole(s.actor.id,'member');assert.equal(await s.store.effectiveBudget(s.actor.id,'2026-10'),1000000);await s.store.setRole(s.actor.id,'admin');
  s.advance('2026-11-01T00:00:00Z');assert.equal(await s.store.effectiveBudget(s.actor.id,'2026-11'),1000000);assert.equal(await s.store.effectiveBudget(s.body.userId,'2026-11'),0);assert.equal(await s.store.effectiveCap(),1000000);assert.deepEqual(await s.owner.ledger.budget('2026-10'),before.ledger);assert.equal(s.calls(),0);
 });
