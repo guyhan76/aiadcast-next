@@ -4,11 +4,11 @@ import { randomUUID } from 'node:crypto';
 import { hash, snapshotOf, validateOutput } from './contracts.mjs';
 // Local PostgreSQL test implementation. Standalone API contract only; no production registration.
 export class PostgresRecommendationService {
-    async initialize(db, { resolveOwnedImage, adapter, enabled = false, executionMode, sharedBudget, version = 'mock-v1/prompt-v1', budgetMicros = 10000, reservationMicros = 1000, lookupEvidence, now = () => Date.now(), ttlMs = 3600000 }) {
+    async initialize(db, { resolveOwnedImage, adapter, enabled = false, executionMode, sharedBudget, outputProvenance = 'mock-ai', version = 'mock-v1/prompt-v1', budgetMicros = 10000, reservationMicros = 1000, lookupEvidence, now = () => Date.now(), ttlMs = 3600000 }) {
         assertLocalRecommendationMode(executionMode);
         if (!Number.isSafeInteger(budgetMicros) || budgetMicros < 0 || !Number.isSafeInteger(reservationMicros) || reservationMicros < 1 || !version || !Number.isSafeInteger(ttlMs) || ttlMs < 1)
             throw Error('INVALID_MOCK_POLICY');
-        Object.assign(this, { resolveOwnedImage, adapter, enabled, version, budgetMicros, reservationMicros, lookupEvidence, db, now, ttlMs });
+        Object.assign(this, { resolveOwnedImage, adapter, enabled, outputProvenance, version, budgetMicros, reservationMicros, lookupEvidence, db, now, ttlMs });
         try{await db.prepare('SELECT expires_at FROM recommendation_jobs LIMIT 0').get();await db.prepare('SELECT id FROM recommendation_attempts LIMIT 0').get();await db.prepare('SELECT request_id FROM recommendation_requests LIMIT 0').get();await db.prepare('SELECT reservation_micros FROM recommendation_supplier_costs LIMIT 0').get();}catch{throw Error('RECOMMENDATION_SCHEMA_REQUIRED');}
         this.shared = sharedBudget??new SharedRecommendationBudget(db, { limitMicros: budgetMicros });
         this.usesExistingBudget=Boolean(sharedBudget);
@@ -80,7 +80,7 @@ export class PostgresRecommendationService {
     async finish(id, result) {
         let output;
         try {
-            output = validateOutput(result?.output);
+            output = validateOutput(result?.output,this.outputProvenance);
         }
         catch { }
         const cost = result?.actualMicros, known = Number.isSafeInteger(cost) && cost >= 0;

@@ -128,3 +128,63 @@ Final safety-closure validation: 32 recommendation domain/integration tests and
 12 desktop/mobile browser tests passed; TypeScript (as part of build), build,
 cloud-variant consistency and isolation checks passed. No tests were skipped in
 these runs. Real PostgreSQL, physical Android and real model calls were not run.
+
+## OpenAI adapter preparation — network-free (2026-10-25)
+
+`openai-adapter.mjs` implements the Responses request/response contract with an
+explicit injected transport, key, model and pricing. It has no default fetch,
+credential lookup, model or price; it rejects production mode. Existing server
+configuration resolves `AIADCAST_BETA_OPENAI_KEY_FILE` or
+`AIADCAST_NEXT_STAGING_OPENAI_API_KEY` into `c.key` in beta-server.mjs. Future
+approved composition can inject that in-memory value; this work neither invoked
+that lookup nor read, copied, stored or verified any real credential.
+
+Only tests specify `gpt-5.4-mini-2026-03-17`. The new adapter is not imported by
+production startup or mounted routes. Explicit server-side outputProvenance is
+required to accept `openai` results; the default remains `mock-ai`, and no client
+field can switch it. No real recommendation is displayed or activated.
+
+Input is the existing owned immutable snapshot plus one completed image. JPEG,
+PNG and WebP are decoded with a 40M-pixel bound, auto-oriented, resized inside
+1024x1024, flattened and re-encoded JPEG without source metadata. Input bytes
+remain unchanged. Prepared images are limited to 1MB, snapshot JSON to 6000 UTF-8
+bytes, and output to 1000 tokens. Text/schema/instruction tokenization is NOT
+verified and the byte bound is not a token or dollar guarantee. Pixel-embedded
+contact information remains possible; metadata removal is not content redaction.
+A real trial must review the image for unnecessary personal data first.
+
+The structured schema permits up to three channels and six keyword candidates.
+The trusted instruction treats pixels/text as untrusted data and prohibits
+invented efficacy/performance/search-volume claims. This is a prompt defense,
+not proof against prompt injection or a factual quality evaluation. Both remain
+real-model evaluation tasks. Invalid/refused/incomplete output is not shown;
+known usage is still an expense. Missing usage preserves valid output and holds.
+Timeout, HTTP, parse and response-size failures are uncertain, never automatically
+retried or treated as proof of zero cost. A pre-dispatch invalid input uses the
+PG service's typed NotDispatched proof. This adapter integration targets PG;
+the legacy SQLite prototype is not its operational execution path.
+
+Tests inject synthetic authorization and Response objects only, never HTTP.
+The PG integration persists an OpenAI-shaped output with missing usage, reuses
+it on duplicate requests and reconciles cost exactly once. Customer charge stays
+zero. Actual usage cost uses supplied micro-USD-per-million-token rates and
+rounds upward; missing cached detail conservatively uses full input price.
+Reservation is not an invoice or provider spend cap. Production pricing approval
+and model access are still unverified.
+
+Official contracts checked read-only:
+- https://developers.openai.com/api/docs/guides/structured-outputs
+- https://developers.openai.com/api/docs/guides/images-vision
+- https://developers.openai.com/api/docs/models/gpt-5.4-mini
+- https://developers.openai.com/api/reference/python/resources/responses/methods/create/
+
+Next separate authorization: one reviewed, minimized image request with explicit
+model/rates, accepted estimated spend (not a promised hard cap), and no automatic
+retry after uncertainty. Before that request, approve a narrowly scoped real
+transport/policy gate; current adapter rejects production execution. Production
+migration/activation, push/deployment and APK are separate and not performed.
+
+Adapter-preparation validation: 38 domain/integration cases and 12 browser cases
+passed with zero skipped, plus TypeScript/build/cloud/isolation. All adapter
+transports returned synthetic local responses. No key presence/access check,
+model access probe, provider HTTP request or production mutation was performed.

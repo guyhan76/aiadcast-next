@@ -19,3 +19,11 @@ test('generation lookup recovers lost response without dispatch and binds immuta
  for(let i=0;i<3;i++){const saved=(await (await read('a')).json()).recommendation;assert.equal(saved.id,job.id);assert.equal(saved.generationId,'g1');assert.equal(saved.artifactHash,job.artifactHash);assert.equal(saved.snapshotHash,job.snapshotHash);}
  assert.deepEqual(await (await read('b')).json(),{recommendation:null});assert.equal(mock.calls,1);assert.deepEqual(await service.shared.totals(),before);
 });
+test('OpenAI transport simulation persists unknown usage and reconciles once without redispatch',async t=>{
+ const {createOpenAIRecommendationAdapter}=await import('../server/recommendations/openai-adapter.mjs');const sharp=(await import('sharp')).default;let calls=0;
+ const adapter=createOpenAIRecommendationAdapter({executionMode:'local-test',apiKey:'synthetic-test-placeholder',model:'gpt-5.4-mini-2026-03-17',pricing:{input:750000,cached:75000,output:4500000},transport:async()=>{calls++;return Response.json({status:'completed',output:[{type:'message',role:'assistant',content:[{type:'output_text',text:JSON.stringify({channels:[{channel:'website',reason:'Product context',usage:'Beside product details',evidence:['productName']}],keywords:['Hoodie']})}]}]});}});
+ const {service,record}=await setup(t,{adapter,outputProvenance:'openai'});record.imageBytes=await sharp({create:{width:8,height:8,channels:3,background:'white'}}).png().toBuffer();record.artifactHash=hash(record.imageBytes);
+ const result=await service.request(a,body);assert.equal(result.state,'output_ready_usage_pending');assert.equal(result.output.provenance,'openai');assert.equal(result.customerCharge,0);assert.deepEqual({...await service.shared.totals()},{held:1000,spent:0});
+ assert.equal((await service.request(a,{...body,requestId:'duplicate'})).id,result.id);assert.equal(calls,1);
+ await service.finish(result.id,{output:result.output,actualMicros:165});await service.finish(result.id,{output:result.output,actualMicros:165});assert.deepEqual({...await service.shared.totals()},{held:0,spent:165});assert.equal(calls,1);
+});

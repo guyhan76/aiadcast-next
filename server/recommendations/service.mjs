@@ -5,10 +5,10 @@ import {hash,snapshotOf,validateOutput} from './contracts.mjs';
 
 // Local-only prototype. No HTTP route, production DB, wallet or provider wiring.
 export class RecommendationService {
- constructor({path,resolveOwnedImage,adapter,enabled=false,executionMode,version='mock-v1/prompt-v1',budgetMicros=10000,reservationMicros=1000,lookupEvidence}){
+ constructor({path,resolveOwnedImage,adapter,enabled=false,executionMode,outputProvenance='mock-ai',version='mock-v1/prompt-v1',budgetMicros=10000,reservationMicros=1000,lookupEvidence}){
   assertLocalRecommendationMode(executionMode);
   if(!Number.isSafeInteger(budgetMicros)||budgetMicros<0||!Number.isSafeInteger(reservationMicros)||reservationMicros<1||!version)throw Error('INVALID_MOCK_POLICY');
-  Object.assign(this,{resolveOwnedImage,adapter,enabled,version,budgetMicros,reservationMicros,lookupEvidence});
+  Object.assign(this,{resolveOwnedImage,adapter,enabled,outputProvenance,version,budgetMicros,reservationMicros,lookupEvidence});
   this.db=new DatabaseSync(path);this.db.exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
    CREATE TABLE IF NOT EXISTS recommendation_jobs(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,generation_id TEXT NOT NULL,cache_key TEXT NOT NULL,snapshot_json TEXT NOT NULL,artifact_hash TEXT NOT NULL,locale TEXT NOT NULL,version TEXT NOT NULL,state TEXT NOT NULL,output_json TEXT,error_code TEXT,customer_policy TEXT NOT NULL DEFAULT 'proposed-included-first',customer_charge INTEGER NOT NULL DEFAULT 0 CHECK(customer_charge=0),UNIQUE(owner_id,generation_id),UNIQUE(owner_id,cache_key));
    CREATE TABLE IF NOT EXISTS recommendation_attempts(id TEXT PRIMARY KEY,job_id TEXT NOT NULL UNIQUE,state TEXT NOT NULL,held_micros INTEGER NOT NULL,actual_micros INTEGER);
@@ -51,7 +51,7 @@ export class RecommendationService {
   return this.read(context,outcome.id);
  }
  finish(id,result){
-  let output;try{output=validateOutput(result?.output);}catch{}
+  let output;try{output=validateOutput(result?.output,this.outputProvenance);}catch{}
   const cost=result?.actualMicros,known=Number.isSafeInteger(cost)&&cost>=0;
   this.transaction(()=>{
    const a=this.db.prepare('SELECT * FROM recommendation_attempts WHERE job_id=?').get(id);if(!a||!['pending','uncertain'].includes(a.state))return;

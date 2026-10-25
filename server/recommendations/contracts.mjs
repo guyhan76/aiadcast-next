@@ -9,11 +9,11 @@ export function snapshotOf(record,ownerId){
  // Allowlist: contacts, source images, credentials and mutable project state excluded.
  return canonical({productName:s.productName,facts:s.facts.map(({name,value})=>({name,value})),directions:s.directions,confirmedCopy:s.confirmedCopy,adLanguage:s.adLanguage,purpose:s.purpose,format:s.format});
 }
-export function validateOutput(raw){
- if(!raw||raw.provenance!=='mock-ai'||!Array.isArray(raw.channels)||raw.channels.length<1||raw.channels.length>3||!Array.isArray(raw.keywords)||raw.keywords.length<1||raw.keywords.length>6)throw Error('INVALID_RECOMMENDATION');
+export function validateOutput(raw,provenance='mock-ai'){
+ if(!raw||!['mock-ai','openai'].includes(provenance)||raw.provenance!==provenance||!Array.isArray(raw.channels)||raw.channels.length<1||raw.channels.length>3||!Array.isArray(raw.keywords)||raw.keywords.length<1||raw.keywords.length>6)throw Error('INVALID_RECOMMENDATION');
  const channels=raw.channels.map(c=>{if(!['instagram','website','blog','lookbook','brochure'].includes(c.channel)||!text(c.reason,300)||!text(c.usage,300)||!Array.isArray(c.evidence)||!c.evidence.length||c.evidence.some(x=>!['productName','facts','directions','confirmedCopy','adLanguage','purpose','format','artifact'].includes(x)))throw Error('INVALID_RECOMMENDATION');return {channel:c.channel,reason:c.reason,usage:c.usage,evidence:c.evidence};});
  if(new Set(channels.map(c=>c.channel)).size!==channels.length||raw.keywords.some(k=>!text(k,100))||new Set(raw.keywords.map(k=>k.trim().toLowerCase())).size!==raw.keywords.length)throw Error('INVALID_RECOMMENDATION');
- return {provenance:'mock-ai',channels,keywords:raw.keywords,confidence:'unverified',searchVolumeVerified:false};
+ return {provenance,channels,keywords:raw.keywords,confidence:'unverified',searchVolumeVerified:false};
 }
 
 // Only a persisted server request enters here; never a mutable client draft.
