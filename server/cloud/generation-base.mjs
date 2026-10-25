@@ -172,6 +172,21 @@ export class GenerationService {
         const state = row.error_code === 'PROVIDER_UNCERTAIN' ? 'uncertain' : row.error_code ? 'failed' : billing.status === 'released' ? (billing.reason === 'customer_rejected' ? 'rejected' : 'expired') : billing.status === 'refunded' ? 'refunded' : billing.status === 'reserved' ? 'running' : billing.status;
         return { id, requestFingerprint: hashBytes(Buffer.from(generationMatchKey(request))), ...(request.dimensionDisplay ? { dimensionDisplay: request.dimensionDisplay, ...(metadata?.dimensionReview ? { dimensionReview: metadata.dimensionReview } : {}) } : {}), ...(request.inputMode === 'text-example' ? { inputMode: 'text-example' } : {}), ...(request.dimensionPlan ? { dimensionPlan: request.dimensionPlan } : {}), ...(metadata?.planarReport ? { planarReport: metadata.planarReport, ...(includeArtifact ? { planarOriginal: await this.asset(metadata.planarReport.originalHash) } : {}) } : {}), creditUnit: billing.unit, creditPolicy: billing.creditExempt ? 'admin-unlimited' : billing.policy, creditCost: billing.creditExempt ? 0 : billing.credits, creditCaptured: billing.captured, ...(await this.db.prepare('SELECT state FROM defect_reports WHERE job_id=?').get(id) ? { defectReport: await this.db.prepare('SELECT state FROM defect_reports WHERE job_id=?').get(id) } : {}), requestId: requestIds[0] ?? null, requestIds, projectId: row.project_id, state, mode: request.mode, sourceHash: row.source_hash, createdAt: new Date(row.created_at).toISOString(), model: metadata?.model ?? IMAGE_MODEL, quality: 'high', outputFormat: request.output.format, ...(metadata?.composition ? { composition: metadata.composition, ...(metadata.composition === 'complete-ad' ? { compositionKey: request.output.compositionKey } : {}) } : {}), artifact: ['ready', 'accepted'].includes(state) && includeArtifact && row.artifact_hash ? { ...await this.asset(row.artifact_hash), role: row.artifact_role } : null, artifactId: row.artifact_hash, errorCode: row.error_code, usage: metadata?.usage ?? null, cost: metadata?.cost ?? null, providerRequestId: metadata?.providerRequestId ?? null, marketingPlan: request.marketingPlan ?? null, review: 'human-review-required', billingStatus: billing.status, expiresAt: billing.expires_at };
     }
+    async requestStatus(requestId, projectId) {
+        if (!identifier(requestId) || !identifier(projectId))
+            fail('INVALID_REQUEST');
+        // This is a tenant-scoped key lookup, not the truncated recent-history view.
+        // Missing means no committed key yet, NOT proof that no POST is in flight.
+        const key = await this.db.prepare('SELECT job_id FROM generation_keys WHERE request_id=?').get(requestId);
+        if (!key)
+            return { version: 1, requestId, projectId, state: 'not-recorded', jobId: null };
+        const row = await this.db.prepare('SELECT project_id FROM generation_records WHERE id=?').get(key.job_id);
+        if (!row)
+            fail('INTERNAL_ERROR', 500);
+        if (row.project_id !== projectId)
+            fail('REQUEST_PROJECT_MISMATCH', 409);
+        return { version: 1, requestId, projectId, state: 'found', jobId: key.job_id };
+    }
     async history(projectId) {
         if (projectId !== undefined && !identifier(projectId))
             fail('INVALID_PROJECT_ID');

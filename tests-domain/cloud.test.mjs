@@ -417,6 +417,20 @@ for(const failure of ['response-timeout','body-timeout','missing-usage'])test(`c
  const status=(await s.call('/api/status',{token:a.token})).data;assert.equal(status.wallet.available,3);assert.equal(status.budget.heldMicros,500000);
 });
 
+test('cloud request-key lookup is authenticated, tenant/project bound, restart durable and read-only',async t=>{
+ const s=await setup(t),a=await s.member('Lookup owner',1_000_000,3),b=await s.member('Other owner',0,0),input=generation();
+ const path=`/api/generation-requests/${input.requestId}?projectId=${input.projectId}`;
+ assert.equal((await s.call(path)).status,401);
+ const before=await s.call(path,{token:a.token});assert.equal(before.status,200);assert.equal(before.data.state,'not-recorded');assert.equal(s.calls(),0);
+ const created=await s.call('/api/generations',{token:a.token,body:input});assert.equal(created.status,202);
+ let job;for(let i=0;i<100;i++){job=(await s.call('/api/generations/'+created.data.job.id,{token:a.token})).data.job;if(job.state==='ready')break;await new Promise(r=>setTimeout(r,10));}assert.equal(job.state,'ready');
+ const original=(await s.call('/api/status',{token:a.token})).data;
+ const found=await s.call(path,{token:a.token});assert.equal(found.data.jobId,job.id);assert.equal(found.data.state,'found');
+ const other=await s.call(path,{token:b.token});assert.equal(other.data.state,'not-recorded');assert.equal(other.data.jobId,null);
+ assert.equal((await s.call(`/api/generation-requests/${input.requestId}?projectId=wrong-project`,{token:a.token})).status,409);
+ await s.restart();assert.equal((await s.call(path,{token:a.token})).data.jobId,job.id);
+ const after=(await s.call('/api/status',{token:a.token})).data;assert.deepEqual(after.wallet,original.wallet);assert.deepEqual(after.budget,original.budget);assert.equal(s.calls(),1);
+});
 test('cloud transport diagnosis: client abort during source persistence does not cancel or duplicate provider work',async t=>{
  const s=await setup(t),a=await s.member('Client disconnect',1_000_000,3),body=generation();
  let entered,release,first=true;const waiting=new Promise(r=>entered=r),gate=new Promise(r=>release=r),put=s.app.storage.put.bind(s.app.storage);

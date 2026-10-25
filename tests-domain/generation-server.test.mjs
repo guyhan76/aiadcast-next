@@ -189,6 +189,29 @@ test('HTTP creation, history, accept and duplicate actions follow server-owned w
  const history=await (await call('/api/generations?projectId=project-test-001')).json();assert.equal(history.jobs.length,1);assert.equal(history.jobs[0].artifact,null);
  const accepted=await (await call(`/api/generations/${created.job.id}/accept`,post({artifactId:preview.job.artifact.id}))).json();assert.equal(accepted.wallet.available,2);assert.equal(accepted.job.state,'accepted');
 });
+test('request lookup finds older keys beyond recent history without changing balances or dispatching',async t=>{
+ const {service,call,calls}=await httpSetup(t,{testCredits:0,budgetMicros:10_000_000});service.adminTestUnlimited=true;
+ const first=body();const created=await service.create(first);await service.waitForIdle();service.accept(created.job.id,service.job(created.job.id).artifactId);
+ // Real accepted jobs in the same project push the first record out of LIMIT 30.
+ for(let i=0;i<30;i++){const next=await service.create(body());await service.waitForIdle();service.accept(next.job.id,service.job(next.job.id).artifactId);}
+ const history=await (await call('/api/generations?projectId='+first.projectId)).json();assert.equal(history.jobs.length,30);assert.ok(!history.jobs.some(j=>j.requestIds.includes(first.requestId)));
+ const before=JSON.stringify([service.wallet(),service.status().budget]),count=calls.length;
+ const lookup=await (await call(`/api/generation-requests/${first.requestId}?projectId=${first.projectId}`)).json();
+ assert.deepEqual(lookup,{version:1,requestId:first.requestId,projectId:first.projectId,state:'found',jobId:created.job.id});
+ assert.equal((await call(`/api/generation-requests/${first.requestId}?projectId=another-project`)).status,409);
+ const missing=randomUUID();assert.equal((await (await call(`/api/generation-requests/${missing}?projectId=${first.projectId}`)).json()).state,'not-recorded');
+ assert.equal(calls.length,count);assert.equal(JSON.stringify([service.wallet(),service.status().budget]),before);
+});
+test('unrecorded lookup cannot cause a second dispatch when the original POST resumes late',async t=>{
+ const {service,call,calls}=await httpSetup(t);const input=body();let entered,release;
+ const waiting=new Promise(r=>entered=r),gate=new Promise(r=>release=r);let first=true;
+ service.assertOutputCapacity=async()=>{if(first){first=false;entered();await gate;}};
+ const original=service.create(input);await waiting;
+ const lookup=await (await call(`/api/generation-requests/${input.requestId}?projectId=${input.projectId}`)).json();assert.equal(lookup.state,'not-recorded');assert.equal(calls.length,0);
+ const resumed=await service.create(input);release();const late=await original;await service.waitForIdle();
+ assert.equal(resumed.job.id,late.job.id);assert.equal(calls.length,1);assert.equal(late.reused,true);
+ assert.equal(service.requestStatus(input.requestId,input.projectId).jobId,late.job.id);
+});
 test('image adapter uses background-only generation for original and multipart edits for creative',async()=>{
  const output=await sharp({create:{width:1024,height:1024,channels:4,background:'#ddd'}}).png().toBuffer();
  const calls=[];const adapter=new OpenAIImageAdapter({apiKey:'fake-test',fetchImpl:async(url,options)=>{calls.push({url,options});return new Response(JSON.stringify({data:[{b64_json:output.toString('base64')}],usage}),{status:200,headers:{'x-request-id':'mock'}});}});

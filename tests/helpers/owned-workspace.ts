@@ -3,7 +3,7 @@ import type {Project} from '../../src/model';
 
 // Restore a pre-existing draft in the authenticated owner's namespace. This is
 // not a guest migration and never changes server identity or bypasses the gate.
-export async function restoreOwnedWorkspace(page:Page,project:Project,owner:string,route='studio',pending?:{jobId:string;requestId:string;key:string}){
+export async function restoreOwnedWorkspace(page:Page,project:Project,owner:string,route='studio',pending?:{jobId?:string;requestId:string;key:string}){
  await page.goto('/#home');await expect(page.locator('.app-header')).toBeVisible();
  expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('aiadcast.beta-session')??'null')?.user.id)).toBe(owner);
  await page.evaluate(async({project,owner,route})=>new Promise<void>((resolve,reject)=>{

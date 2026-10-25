@@ -110,6 +110,8 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
    if(project&&req.method==='POST'){send(res,200,store.save(user.id,project[1],await read(req,40_001_000)),cors);return;}
    if(req.method==='GET'&&url.pathname==='/api/status'){const s=service(user).status();send(res,200,{...s,mode:password.available()?'test-account-beta':'invite-beta',limitations:s.limitations.filter(x=>!['local-single-user','no-production-auth'].includes(x)).concat([password.available()?'test-email-unverified':'invite-only','single-instance-beta','no-live-payment']),user:{id:user.id,label:user.label}},cors);return;}
    if(req.method==='GET'&&url.pathname==='/api/generations'){send(res,200,service(user).history(url.searchParams.get('projectId')??undefined),cors);return;}
+   const requestLookup=/^\/api\/generation-requests\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
+   if(req.method==='GET'&&requestLookup){send(res,200,service(user).requestStatus(requestLookup[1],url.searchParams.get('projectId')),cors);return;}
    const job=/^\/api\/generations\/([A-Za-z0-9_-]{8,100})(?:\/(accept|reject|report))?$/.exec(url.pathname);
    if(req.method==='GET'&&job&&!job[2]){const s=service(user);send(res,200,{job:s.job(job[1]),wallet:s.wallet()},cors);return;}
    if(req.method==='POST'&&['/api/generations','/api/assistant'].includes(url.pathname)){const body=await read(req,14_100_000),s=service(user);send(res,url.pathname==='/api/generations'?202:200,await(url.pathname==='/api/generations'?s.create(body):s.assist(body)),cors);return;}

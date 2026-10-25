@@ -57,6 +57,8 @@ export function createGenerationHttpServer({ service, allowedOrigins = DEFAULT_O
       const url = new URL(req.url, ownOrigin);
       if (req.method === 'GET' && url.pathname === '/api/status') { sendJson(res, 200, service.status(), origin); return; }
       if (req.method === 'GET' && url.pathname === '/api/generations') { sendJson(res, 200, service.history(url.searchParams.has('projectId') ? url.searchParams.get('projectId') : undefined), origin); return; }
+      const requestLookup = /^\/api\/generation-requests\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
+      if (req.method === 'GET' && requestLookup) { sendJson(res, 200, service.requestStatus(requestLookup[1],url.searchParams.get('projectId')), origin); return; }
       const route = /^\/api\/generations\/([A-Za-z0-9_-]{8,100})(?:\/(accept|reject|report))?$/.exec(url.pathname);
       if (req.method === 'GET' && route && !route[2]) { sendJson(res, 200, { job:service.job(route[1]),wallet:service.wallet() }, origin); return; }
       if (req.method === 'POST') {

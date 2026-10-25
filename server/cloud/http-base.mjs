@@ -303,6 +303,11 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 send(res, 200, await (await service(user)).history(url.searchParams.get('projectId') ?? undefined), cors);
                 return;
             }
+            const requestLookup = /^\/api\/generation-requests\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
+            if (req.method === 'GET' && requestLookup) {
+                send(res, 200, await (await service(user)).requestStatus(requestLookup[1], url.searchParams.get('projectId')), cors);
+                return;
+            }
             const job = /^\/api\/generations\/([A-Za-z0-9_-]{8,100})(?:\/(accept|reject|report))?$/.exec(url.pathname);
             if (req.method === 'GET' && job && !job[2]) {
                 const s = await service(user);

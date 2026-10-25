@@ -25,7 +25,7 @@ for(const language of ['ko','en'] as const)for(const failure of ['404','network'
  await expect(panel.getByRole('alert')).toContainText(language==='ko'?'기존 작업을 확인하지 못했습니다':'Could not check existing work');
  const loading=panel.getByText(language==='ko'?'이전 요청 상태를 확인하고 있습니다. 중복 생성을 막기 위해 새 요청을 보류합니다.':'Checking the earlier request. New requests are paused to prevent duplicate generation.',{exact:true});
  const detail=panel.locator('.recovery-diagnostic');await expect(detail).not.toHaveAttribute('open','');await detail.locator('summary').click();
- const expected={ '404':'HTTP 404 · JOB_NOT_FOUND',network:'NETWORK_ERROR',malformed:'HTTP 200 · INVALID_HISTORY','wrong-project':'HTTP 200 · INVALID_HISTORY','missing-request':'HTTP 200 · REQUEST_NOT_FOUND','non-json':'HTTP 502 · API_UNAVAILABLE','invalid-json':'HTTP 200 · INVALID_RESPONSE','unsafe-code':'HTTP 500 · HTTP_ERROR'}[failure];
+ const expected={ '404':'HTTP 404 · JOB_NOT_FOUND',network:'NETWORK_ERROR',malformed:'HTTP 200 · INVALID_HISTORY','wrong-project':'HTTP 200 · INVALID_HISTORY','missing-request':'HTTP 404 · NOT_FOUND','non-json':'HTTP 502 · API_UNAVAILABLE','invalid-json':'HTTP 200 · INVALID_RESPONSE','unsafe-code':'HTTP 500 · HTTP_ERROR'}[failure];
  await expect(detail).toContainText(expected);await expect(detail).not.toContainText('private');await expect(detail).not.toContainText(p.id);await expect(detail).not.toContainText(pending.requestId);
  await expect(loading).toHaveCount(0);
  await expect(panel.locator('.generate-button')).toBeDisabled();
