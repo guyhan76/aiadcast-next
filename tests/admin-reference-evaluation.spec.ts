@@ -19,7 +19,7 @@ async function setup(page:Page,{lost=false}={}){
   return route.fulfill({status:404,json:{error:{code:'FIXTURE_ROUTE_NOT_FOUND'}}});
  });
  await authenticatedSession(page,{...mockSession('admin-fixture','admin'),user:{id:'admin-fixture',label:'Operator',role:'admin'}},{seed:false});
- await page.goto('/#admin');await expect(page.getByRole('heading',{name:'승인 원본 사진 분석',exact:true})).toBeVisible();
+ await page.goto('/#admin');await page.locator('.admin-advanced > summary').click();await expect(page.getByRole('heading',{name:'승인 원본 사진 분석',exact:true})).toBeVisible();
  return {posts:()=>posts,select:()=>page.getByLabel('승인 원본 JPG 선택').setInputFiles({name:'22932.jpg',mimeType:'image/jpeg',buffer:bytes})};
 }
 test('administrator reference analysis preserves original bytes, distinct overlay pixels and refresh without another call',async({page},testInfo)=>{
@@ -31,10 +31,10 @@ test('administrator reference analysis preserves original bytes, distinct overla
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'진단 PNG 저장 (기존 표시 포함)'}).click();const diagnostic=await readFile((await(await download).path())!);const meta=await sharp(diagnostic).metadata();expect([meta.width,meta.height]).toEqual([300,400]);
  const pixel=async(b:Buffer,left:number,top:number)=>Array.from(await sharp(b).extract({left,top,width:1,height:1}).removeAlpha().raw().toBuffer());
  expect(await pixel(diagnostic,10,10)).toEqual(await pixel(bytes,10,10));expect(await pixel(diagnostic,60,200)).toEqual([255,0,184]);
- await page.reload();await expect(page.getByText(/결과를 복구했습니다/)).toBeVisible();expect(s.posts()).toBe(1);await s.select();await expect(page.getByRole('button',{name:'진단 PNG 저장 (기존 표시 포함)'})).toBeEnabled();expect(s.posts()).toBe(1);
+ await page.reload();await page.locator('.admin-advanced > summary').click();await expect(page.getByText(/결과를 복구했습니다/)).toBeVisible();expect(s.posts()).toBe(1);await s.select();await expect(page.getByRole('button',{name:'진단 PNG 저장 (기존 표시 포함)'})).toBeEnabled();expect(s.posts()).toBe(1);
  for(const width of [320,390,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
 });
 test('unknown response is recovered by GET only and mismatched source cannot be submitted',async({page})=>{
  const s=await setup(page,{lost:true});await page.getByLabel('승인 원본 JPG 선택').setInputFiles({name:'22932.jpg',mimeType:'image/jpeg',buffer:Buffer.from('different')});await expect(page.getByRole('alert')).toContainText('원본');expect(s.posts()).toBe(0);
- await s.select();await page.getByRole('button',{name:'분석 1회 요청 (최대 $0.03 예약)',exact:true}).click();await expect(page.getByText(/처리 결과가 미확인/)).toBeVisible();await page.getByRole('button',{name:'상태를 재확인',exact:true}).click();await expect(page.getByText(/처리 결과가 미확인/)).toHaveCount(0);await expect(page.getByRole('button',{name:'진단 PNG 저장 (기존 표시 포함)'})).toBeEnabled();expect(s.posts()).toBe(1);await page.reload();await expect(page.getByText(/결과를 복구했습니다/)).toBeVisible();expect(s.posts()).toBe(1);
+ await s.select();await page.getByRole('button',{name:'분석 1회 요청 (최대 $0.03 예약)',exact:true}).click();await expect(page.getByText(/처리 결과가 미확인/)).toBeVisible();await page.getByRole('button',{name:'상태를 재확인',exact:true}).click();await expect(page.getByText(/처리 결과가 미확인/)).toHaveCount(0);await expect(page.getByRole('button',{name:'진단 PNG 저장 (기존 표시 포함)'})).toBeEnabled();expect(s.posts()).toBe(1);await page.reload();await page.locator('.admin-advanced > summary').click();await expect(page.getByText(/결과를 복구했습니다/)).toBeVisible();expect(s.posts()).toBe(1);
 });

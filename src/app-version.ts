@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
 export type NativeVersion={versionName:string;versionCode:number;packageName:string};
-export type WebBuild={version:string;commit:string|null};
+export type WebBuild={schemaVersion?:1;version:string;commit:string|null;commitSource?:'git'|'render'|'unavailable';dirty?:boolean|null;builtAt?:string};
 declare const __AIADCAST_WEB_BUILD__:WebBuild;
 export const webBuild:WebBuild=typeof __AIADCAST_WEB_BUILD__==='undefined'?{version:'unknown',commit:null}:__AIADCAST_WEB_BUILD__;
 export function readNativeVersion():NativeVersion|null{
