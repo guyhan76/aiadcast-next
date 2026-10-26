@@ -8,8 +8,8 @@ export class SupabaseStorage {
   if(u.protocol!=='https:'||!/^([a-z0-9]{20})\.supabase\.co$/.test(u.hostname)||u.username||u.password||u.search||u.hash||u.pathname!=='/'||typeof secretKey!=='string'||!/^sb_secret_[A-Za-z0-9_-]+$/.test(secretKey))throw Error('SUPABASE_SECRET_CONFIGURATION_REQUIRED');
   this.origin=u.origin;this.key=secretKey;this.db=accountsDb;this.fetch=fetchImpl;this.bucket='aiadcast-private-beta';this.cache=new Map();this.cacheBytes=0;
  }
- async call(path,{method='GET',body,mime='application/json',raw=false}={}){
-  let res;try{res=await this.fetch(this.origin+path,{method,redirect:'error',signal:AbortSignal.timeout(30000),headers:{apikey:this.key,...(body?{'Content-Type':mime}:{}),...(raw&&method==='POST'?{'x-upsert':'true'}:{})},...(body?{body:raw?body:JSON.stringify(body)}:{})});}catch{fail('SUPABASE_CONNECTION_FAILED');}
+ async call(path,{method='GET',body,mime='application/json',raw=false,upsert=true}={}){
+  let res;try{res=await this.fetch(this.origin+path,{method,redirect:'error',signal:AbortSignal.timeout(30000),headers:{apikey:this.key,...(body?{'Content-Type':mime}:{}),...(raw&&method==='POST'&&upsert?{'x-upsert':'true'}:{})},...(body?{body:raw?body:JSON.stringify(body)}:{})});}catch{fail('SUPABASE_CONNECTION_FAILED');}
   return res;
  }
  async initialize(){
@@ -39,8 +39,26 @@ export class SupabaseStorage {
   const user=await this.db.prepare('SELECT COALESCE(SUM(bytes),0) n FROM storage_objects WHERE user_id=?').get(userId);
   if(total.n+needed>900000000||user.n+needed>await this.accountLimit(userId))fail('STORAGE_CAPACITY_UNAVAILABLE',413);
  }
- async put(userId,name,bytes,mime){
+ async verifyAsset(userId,asset){
+  if(!Buffer.isBuffer(asset.bytes)||sha(asset.bytes)!==asset.sha256)fail('STORAGE_CONTENT_MISMATCH');
+  const extension=asset.mime==='image/png'?'png':asset.mime==='image/jpeg'?'jpeg':'webp';
+  const path=this.path(userId,asset.sha256+'.'+extension);
+  const record=await this.db.prepare('SELECT bytes FROM storage_objects WHERE path=? AND user_id=?').get(path,userId);
+  if(!record)return false;
+  if(record.bytes!==asset.bytes.length)fail('STORAGE_CONTENT_CONFLICT',409);
+  // Bypass the in-memory cache: committed metadata is not proof of a live blob.
+  const res=await this.call('/storage/v1/object/authenticated/'+this.bucket+'/'+path);
+  if(res.status===404)return false;
+  if(!res.ok)fail('SUPABASE_DOWNLOAD_FAILED');
+  if(Number(res.headers.get('content-length')??0)>asset.bytes.length)fail('STORAGE_CONTENT_MISMATCH');
+  const hash=createHash('sha256');let size=0;
+  for await(const chunk of res.body){size+=chunk.length;if(size>asset.bytes.length)fail('STORAGE_CONTENT_MISMATCH');hash.update(chunk);}
+  if(size!==asset.bytes.length||hash.digest('hex')!==asset.sha256)fail('STORAGE_CONTENT_MISMATCH');
+  return true;
+ }
+ async put(userId,name,bytes,mime,{immutable=false}={}){
   const path=this.path(userId,name);if(!Buffer.isBuffer(bytes)||bytes.length<1||bytes.length>40000000)fail('STORAGE_LIMIT',413);
+  if(immutable&&name!==sha(bytes)+'.'+(mime==='image/png'?'png':mime==='image/jpeg'?'jpeg':'webp'))fail('STORAGE_CONTENT_MISMATCH');
   // Reserve storage quota before upload. Unknown outcomes retain the reservation.
   await this.db.transaction(async()=>{
    const old=await this.db.prepare('SELECT bytes FROM storage_objects WHERE path=?').get(path);
@@ -50,7 +68,13 @@ export class SupabaseStorage {
    if(total.n+bytes.length>900000000||user.n+bytes.length>await this.accountLimit(userId))fail('STORAGE_LIMIT',413);
    await this.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(path,userId,bytes.length);
   });
-  const res=await this.call('/storage/v1/object/'+this.bucket+'/'+path,{method:'POST',body:bytes,mime,raw:true});if(!res.ok)fail('SUPABASE_UPLOAD_FAILED');return path;
+  const res=await this.call('/storage/v1/object/'+this.bucket+'/'+path,{method:'POST',body:bytes,mime,raw:true,upsert:!immutable});
+  if(!res.ok){
+   // Create-only upload: a racing writer must not be overwritten. An error
+   // acknowledgement is successful only if the actual winner's bytes match.
+   if(!immutable||!await this.verifyAsset(userId,{bytes,mime,sha256:sha(bytes)}))fail('SUPABASE_UPLOAD_FAILED');
+  }
+  return path;
  }
  async get(userId,path){
   if(!path.startsWith(userId+'/'))fail('STORAGE_OWNER_MISMATCH',403);

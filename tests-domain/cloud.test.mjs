@@ -53,7 +53,7 @@ function bucketFixture(){
   if(u.pathname===prefix&&o.method==='DELETE'){for(const p of JSON.parse(o.body).prefixes)objects.delete(p);return Response.json({});}
   if(u.pathname.startsWith(prefix+'/')){
    const p=u.pathname.slice(prefix.length+1);
-   if(o.method==='POST'){objects.set(p,Buffer.from(o.body));return Response.json({});}
+   if(o.method==='POST'){if(objects.has(p)&&o.headers['x-upsert']!=='true')return new Response('',{status:409});objects.set(p,Buffer.from(o.body));return Response.json({});}
    return objects.has(p)?new Response(objects.get(p)):new Response('',{status:404});
   }
   throw Error('UNEXPECTED_FIXTURE_ROUTE');
@@ -532,15 +532,19 @@ test('table protection skips already-enabled RLS but restores disabled RLS and s
  assert.equal(s.calls(),0);
 });
 
-test('committed immutable source and output assets are not uploaded again for an edited ad',async t=>{
+for(const missing of [false,true])test(`committed immutable assets are verified and missing blobs restored for edited ads (${missing})`,async t=>{
  const s=await setup(t),a=await s.member('Immutable asset owner',1_000_000,3),body=generation();
  const first=await s.call('/api/generations',{token:a.token,body});assert.equal(first.status,202);
  const ready=async id=>{let job;for(let i=0;i<100;i++){job=(await s.call('/api/generations/'+id,{token:a.token})).data.job;if(job.state==='ready')return job;await new Promise(r=>setTimeout(r,10));}assert.fail('fixture job did not complete');};
  await ready(first.data.job.id);
  const uploads=()=>s.bucket.calls.filter(c=>c.method==='POST'&&c.path.endsWith('/'+a.user.id+'/'+hash+'.png')).length;
- const before=uploads();body.requestId=randomUUID();body.request.brief='A different approved studio scene';
+ const before=uploads(),quotaBefore=(await s.app.store.db.prepare('SELECT SUM(bytes) n FROM storage_objects WHERE user_id=?').get(a.user.id)).n;
+ if(missing)s.bucket.objects.delete(a.user.id+'/'+hash+'.png'); // Local mock bucket only.
+ body.requestId=randomUUID();body.request.brief='A different approved studio scene';
  const second=await s.call('/api/generations',{token:a.token,body});assert.equal(second.status,202);await ready(second.data.job.id);
- assert.equal(uploads(),before,'completed immutable originals/results must not re-upload');assert.equal(s.calls(),2);
+ assert.equal(uploads(),before+(missing?1:0),'restore a missing object once; never trust metadata alone');assert.equal(s.calls(),2);
+ assert.equal((await s.app.store.db.prepare('SELECT SUM(bytes) n FROM storage_objects WHERE user_id=?').get(a.user.id)).n,quotaBefore);
+ assert.deepEqual(s.bucket.objects.get(a.user.id+'/'+hash+'.png'),bytes);
  const lookup=await s.call(`/api/generation-requests/${body.requestId}?projectId=${body.projectId}`,{token:a.token});assert.equal(lookup.data.jobId,second.data.job.id);
 });
 

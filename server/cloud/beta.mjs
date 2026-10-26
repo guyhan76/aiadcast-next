@@ -75,15 +75,15 @@ export class CloudGenerationService extends GenerationService {
  }
  async storeAsset(asset){
   if(hashBytes(asset.bytes)!==asset.sha256)fail('STORAGE_CONTENT_MISMATCH');
-  // This row is written only AFTER a successful immutable object upload.
-  // A quota reservation alone is not proof of upload and must never skip it.
+  // Metadata and a live, owner-scoped byte/hash verification are both required.
+  // A missing object is restored using create-only upload, never blind overwrite.
   const existing=await this.db.prepare('SELECT * FROM generation_assets WHERE hash=?').get(asset.sha256);
   if(existing){
    if(existing.mime!==asset.mime||existing.width!==asset.width||existing.height!==asset.height||existing.bytes!==asset.bytes.length)fail('STORAGE_CONTENT_MISMATCH');
-   return;
+   if(await this.storage.verifyAsset(this.cloudUser,asset))return;
   }
   const extension=asset.mime==='image/png'?'png':asset.mime==='image/jpeg'?'jpeg':'webp';
-  await this.storage.put(this.cloudUser,asset.sha256+'.'+extension,asset.bytes,asset.mime);
+  await this.storage.put(this.cloudUser,asset.sha256+'.'+extension,asset.bytes,asset.mime,{immutable:true});
   await this.db.prepare('INSERT INTO generation_assets VALUES(?,?,?,?,?) ON CONFLICT(hash) DO NOTHING').run(asset.sha256,asset.mime,asset.width,asset.height,asset.bytes.length);
  }
  async asset(hash,{includeBytes=true}={}){
