@@ -49,10 +49,17 @@ function AuthenticatedStudioApp(){
  return <><PreviewLeaveGuard/><WorkspaceLoader/></>;
 }
 function WorkspaceLoader(){
- const [loaded,setLoaded]=useState<{draft?:WorkspaceDraft}|null>(null),[error,setError]=useState(false);
- useEffect(()=>{let alive=true;loadWorkspace().then(draft=>{if(alive)setLoaded({draft});}).catch(()=>{if(alive){setError(true);setLoaded({});}});return()=>{alive=false};},[]);
- if(!loaded)return <p role="status">aiadcast…</p>;
- return <>{error&&<p role="alert">이 기기의 임시 작업을 읽지 못했습니다. / Could not restore the local draft.</p>}<StudioWorkspace restored={loaded.draft}/></>;
+ const {t}=useUiLanguage();
+ const [loaded,setLoaded]=useState<{draft?:WorkspaceDraft}|null>(null),[error,setError]=useState(false),[attempt,setAttempt]=useState(0);
+ const pending=useRef(false);
+ useEffect(()=>{
+  let active=true;pending.current=true;setError(false);
+  const timer=setTimeout(()=>{if(active){active=false;pending.current=false;setError(true);}},15000);
+  loadWorkspace().then(draft=>{if(active){active=false;pending.current=false;clearTimeout(timer);setLoaded({draft});}}).catch(()=>{if(active){active=false;pending.current=false;clearTimeout(timer);setError(true);}});
+  return()=>{active=false;pending.current=false;clearTimeout(timer);};
+ },[attempt]);
+ if(!loaded)return <section className="google-signin"><div className="google-signin-card">{error?<><p role="alert">{t('저장된 작업을 읽지 못했습니다. 입력 내용은 변경하지 않았습니다.','Could not read saved work. Your inputs have not been changed.')}</p><button type="button" onClick={()=>{if(pending.current)return;pending.current=true;setAttempt(a=>a+1);}}>{t('저장된 작업 다시 읽기','Reload saved work')}</button></>:<p role="status">{t('저장된 작업을 불러오는 중…','Loading saved work…')}</p>}</div></section>;
+ return <StudioWorkspace restored={loaded.draft}/>;
 }
 function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  const [workspaceScope]=useState(storageNamespace);

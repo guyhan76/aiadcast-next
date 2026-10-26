@@ -1,3 +1,4 @@
+import {useStartupConnection} from './use-startup-connection';
 import {GoogleAccountRecovery,rememberGoogleLink,readGoogleLink,type GoogleLinkFlow} from './GoogleAccountRecovery';
 import {BrandLogo} from './BrandLogo';
 import {offlineDemo} from './demo-mode';
@@ -23,7 +24,8 @@ async function restoreLink(flow:{state:string;proof:string;expires:number}){
  return {state:flow.state,proof:flow.proof,expires:Math.min(status.expires,flow.expires)};
 }
 export function GoogleGate({children}:{children:ReactNode}){
- const {t,language}=useUiLanguage();const [route,setRoute]=useState(location.hash),[reply]=useState(callback),[checked,setChecked]=useState(false),[available,setAvailable]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[linkNeeded,setLinkNeeded]=useState(false);const locked=useRef(false);
+ const {t,language}=useUiLanguage();const [route,setRoute]=useState(location.hash),[reply]=useState(callback),[busy,setBusy]=useState(false),[error,setError]=useState(''),[linkNeeded,setLinkNeeded]=useState(false);const locked=useRef(false);
+ const connection=useStartupConnection(),{checked,available}=connection;
  const [linkFlow,setLinkFlow]=useState<GoogleLinkFlow|undefined>(readGoogleLink);
  const [nativeFlow,setNativeFlow]=useState<NativeGoogleFlow|undefined>(nativeGoogleRestore);
  const nativeUnsupported=(!!(window as Window&{AiadcastNative?:unknown}).AiadcastNative||!!configuredApiOrigin()&&configuredApiOrigin()!==location.origin)&&!nativeGooglePackage();
@@ -31,11 +33,7 @@ export function GoogleGate({children}:{children:ReactNode}){
  const payment=['#pay','#payment-return','#checkout-return'].includes(location.hash.split('?')[0])||new URLSearchParams(location.search).get('checkout')==='return';
  const signed=!!betaSession(),demoAuth=offlineDemo()&&!betaSession()&&['#login','#signup'].includes(route),recovery=route==='#account-recovery',link=signed&&(route==='#google-link'||sessionStorage.getItem('aiadcast.google-recover')==='1');
  useEffect(()=>{const update=()=>setRoute(location.hash);window.addEventListener('hashchange',update);return()=>window.removeEventListener('hashchange',update);},[]);
- useEffect(()=>{let alive=true;const guard=signInBoundary();
-  if(signed){void apiRequest<{user:BetaSession['user']}>('/api/auth/session').then(r=>{guard();if(r.user.id!==betaSession()?.user.id)throw Error('SESSION_CHANGED');if(alive){setChecked(true);if(!location.hash||['#login','#signup'].includes(location.hash))location.hash='home';}}).catch(()=>{if(alive)setError(t('로그인을 확인하지 못했습니다. 다시 시도해주세요.','Could not confirm sign-in. Please retry.'));});}
-  else {setChecked(true);if(!reply&&!recovery&&!payment&&!demoAuth&&!location.hash.startsWith('#verify'))location.hash='login';}
-  void apiRequest<{google?:{enabled:boolean}}>('/api/account/capabilities').then(r=>{if(alive)setAvailable(r.google?.enabled===true);}).catch(()=>{if(alive)setError(t('연결을 확인한 뒤 다시 시도해주세요.','Check your connection and retry.'));});return()=>{alive=false;};
- },[]);
+ useEffect(()=>{if(!signed&&!reply&&!recovery&&!payment&&!demoAuth&&!location.hash.startsWith('#verify'))location.hash='login';},[]);
  useEffect(()=>{if(!reply)return;let alive=true;const guard=signInBoundary();history.replaceState(null,'',location.pathname+'#login');
   const {flow,state,code}=reply;
   if(reply.error||!flow||flow.expires<=Date.now()||flow.state!==state||!code){sessionStorage.removeItem(key);setError(t('로그인을 다시 시작해주세요.','Please start sign-in again.'));return;}
@@ -76,5 +74,5 @@ export function GoogleGate({children}:{children:ReactNode}){
  // Existing ownership verification is a recovery route, never the default signup path.
  if(recovery&&!signed)return <div className="google-recovery"><div className="auth-language"><LanguageSwitcher/></div><EmailAccountPage mode="login" preserve={async()=>{}} returnPage="home"/></div>;
  if(signed&&checked&&!reply&&!link)return <>{children}</>;
- return <main className="google-signin"><div className="google-signin-card"><h1><BrandLogo/></h1><p>{t('쉽고 빠르게, 나만의 광고 이미지','Your ad image. Easy and fast.')}</p><button className="google-continue" disabled={!!nativeFlow||nativeUnsupported||!available||busy||signed&&!checked} onClick={()=>void start()}>{busy?t('로그인 중…','Signing in…'):link?t('이 계정에 Google 연결','Connect Google to this account'):t('Google로 계속하기','Continue with Google')}</button>{nativeFlow&&<><p role="status">{t('Google 인증 후 앱으로 돌아오면 로그인됩니다.','Return after Google verification to finish sign-in.')}</p><button onClick={clearNative}>{t('취소','Cancel')}</button></>}{nativeUnsupported&&<p role="status">{t('이 앱의 Google 로그인 연결을 준비 중입니다.','Google sign-in for this app is not connected yet.')}</p>}{!nativeUnsupported&&!available&&!error&&<p role="status">{t('Google 로그인 연결 준비 중입니다.','Google sign-in is not connected yet.')}</p>}{error&&<p role="alert">{error}</p>}{linkNeeded&&<a href="#account-recovery" onClick={()=>sessionStorage.setItem('aiadcast.google-recover','1')}>{t('기존 계정 확인','Verify existing account')}</a>}<div className="auth-language"><LanguageSwitcher/></div></div></main>;
+ return <main className="google-signin"><div className="google-signin-card"><h1><BrandLogo/></h1><p>{t('쉽고 빠르게, 나만의 광고 이미지','Your ad image. Easy and fast.')}</p><button className="google-continue" disabled={!!nativeFlow||nativeUnsupported||!available||busy||signed&&!checked} onClick={()=>void start()}>{busy?t('로그인 중…','Signing in…'):link?t('이 계정에 Google 연결','Connect Google to this account'):t('Google로 계속하기','Continue with Google')}</button>{nativeFlow&&<><p role="status">{t('Google 인증 후 앱으로 돌아오면 로그인됩니다.','Return after Google verification to finish sign-in.')}</p><button onClick={clearNative}>{t('취소','Cancel')}</button></>}{nativeUnsupported&&<p role="status">{t('이 앱의 Google 로그인 연결을 준비 중입니다.','Google sign-in for this app is not connected yet.')}</p>}{!nativeUnsupported&&!available&&!error&&!connection.checking&&!connection.error&&<p role="status">{t('Google 로그인 연결 준비 중입니다.','Google sign-in is not connected yet.')}</p>}{connection.checking&&!nativeUnsupported&&<p role="status">{t('연결 확인 중…','Checking connection…')}</p>}{connection.error&&<><p role="alert">{connection.error==='timeout'?t('연결이 지연되고 있습니다. 다시 연결해주세요.','Connection is taking too long. Please reconnect.'):t('연결하지 못했습니다. 다시 연결해주세요.','Could not connect. Please reconnect.')}</p><button type="button" disabled={connection.checking} onClick={connection.reconnect}>{t('다시 연결','Reconnect')}</button></>}{error&&<p role="alert">{error}</p>}{linkNeeded&&<a href="#account-recovery" onClick={()=>sessionStorage.setItem('aiadcast.google-recover','1')}>{t('기존 계정 확인','Verify existing account')}</a>}<div className="auth-language"><LanguageSwitcher/></div></div></main>;
 }
