@@ -16,10 +16,10 @@ async function setup(page:Page,language:'ko'|'en'='ko'){
  const pending={jobId:'existing-job',requestId:'original-request',key:generatedCompatibilityKey(p),inputKey:JSON.stringify(buildGenerationRequest(p))};
  const wallet={available:3,reserved:1,kind:'test'};
  const job={id:pending.jobId,projectId:p.id,requestId:pending.requestId,state:'ready',mode:'creative',sourceHash:hash,createdAt:'2026-10-25T00:00:00.000Z',model:'mock',artifactId:hash,artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+bytes.toString('base64'),width:12,height:12,role:'creative'},errorCode:null,composition:'complete-ad',compositionKey:completeAdKey(p),requestFingerprint:createHash('sha256').update(generationMatchKey(buildGenerationRequest(p))).digest('hex')};
- const state={reads:0,historyReads:0,writes:0,failures:0,errorStatus:503,network:false,hold:false,job,historyJobs:null as null|typeof job[],lookup:'unsupported',lookupReads:0,posted:[] as any[],postConflict:false,postNetwork:false};
+ const state={statusReads:0,holdStatus:false,reads:0,historyReads:0,writes:0,failures:0,errorStatus:503,network:false,hold:false,job,historyJobs:null as null|typeof job[],lookup:'unsupported',lookupReads:0,posted:[] as any[],postConflict:false,postNetwork:false};
  await page.route('**/api/**',async r=>{
  const path=new URL(r.request().url()).pathname;if(path==='/api/auth/session')return r.fallback();if(r.request().method()!=='GET')state.writes++;
- if(path==='/api/status')return r.fulfill({json:{generation:{enabled:true,model:'mock',photoPurposes:true},wallet,budget:{limitMicros:5000000,spentMicros:0,heldMicros:500000}}});
+ if(path==='/api/status'){state.statusReads++;while(state.holdStatus&&!page.isClosed())await new Promise(resolve=>setTimeout(resolve,20));return r.fulfill({json:{generation:{enabled:true,model:'mock',photoPurposes:true},wallet,budget:{limitMicros:5000000,spentMicros:0,heldMicros:500000}}});}
  if(path.startsWith('/api/generation-requests/')){state.lookupReads++;if(state.lookup==='unsupported')return r.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});return r.fulfill({json:{version:1,requestId:pending.requestId,projectId:state.lookup==='wrong-project'?'wrong-project':p.id,state:state.lookup==='found'?'found':'not-recorded',jobId:state.lookup==='found'?job.id:null}});}
  if(path==='/api/generations'&&r.request().method()==='POST'){state.posted.push(r.request().postDataJSON());if(state.postNetwork)return r.abort('failed');if(state.postConflict){state.lookup='found';return r.fulfill({status:409,json:{error:{code:'IDEMPOTENCY_CONFLICT'}}});}return r.fulfill({status:202,json:{job:state.job,wallet}});}
  if(path.startsWith('/api/generations')){const attempt=path==='/api/generations'?++state.historyReads:++state.reads;const responseJob=state.job;while(state.hold&&!page.isClosed())await new Promise(resolve=>setTimeout(resolve,20));
@@ -53,9 +53,10 @@ test('one network-restored recovery is bounded and cannot restart a paid request
  await page.evaluate(()=>{window.dispatchEvent(new Event('online'));window.dispatchEvent(new Event('online'));});await page.clock.fastForward(60000);expect(s.state.reads).toBe(4);expect(s.state.writes).toBe(0);
 });
 test('uncertain request receives only three bounded automatic reads and remains blocked',async({page})=>{
- const s=await setup(page);s.state.job={...s.state.job,state:'uncertain',artifact:null as any,artifactId:null as any,errorCode:'PROVIDER_UNCERTAIN'};await page.clock.install({time:new Date('2026-10-25T00:00:00Z')});await page.clock.pauseAt(new Date('2026-10-25T00:01:00Z'));const panel=await s.open();
+ const s=await setup(page);s.state.job={...s.state.job,state:'uncertain',artifact:null as any,artifactId:null as any,errorCode:'PROVIDER_UNCERTAIN'};await page.clock.install({time:new Date('2026-10-25T00:00:00Z')});await page.clock.pauseAt(new Date('2026-10-25T00:01:00Z'));await page.addInitScript(()=>{const original=window.setTimeout;(window as any).pollTimers=[];window.setTimeout=((handler:TimerHandler,delay?:number,...args:any[])=>{if([2000,4000,8000].includes(delay??0))(window as any).pollTimers.push(delay);return original(handler,delay,...args);}) as typeof window.setTimeout;});const panel=await s.open();
  await expect.poll(()=>s.state.reads).toBe(1);
- for(const delay of [2001,4001,8001]){const before=s.state.reads;await page.clock.fastForward(delay);await expect.poll(()=>s.state.reads).toBe(before+1);}
+ // Wait for each response to schedule its next timer before advancing time.
+ for(const delay of [2000,4000,8000]){await expect.poll(()=>page.evaluate(d=>(window as any).pollTimers?.includes(d),delay)).toBe(true);const before=s.state.reads;await page.clock.fastForward(delay+1);await expect.poll(()=>s.state.reads).toBe(before+1);}
  await expect(panel.getByRole('alert')).toContainText('결과 확인이 지연');await page.clock.fastForward(120000);expect(s.state.reads).toBe(4);expect(s.state.writes).toBe(0);
  await expect(panel.locator('.generation-ad-preview')).toHaveCount(0);
 });
@@ -168,4 +169,17 @@ test('leaving while explicit form intent waits for lookup cancels it across back
  const s=await setup(page);s.state.historyJobs=[];s.state.lookup='not-recorded';const {jobId,...pending}=s.pending;await restoreOwnedWorkspace(page,s.p,s.owner,'studio',pending);await expect.poll(()=>s.state.lookupReads).toBe(1);
  await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();s.state.hold=true;const before=s.state.historyReads;await page.locator('.consumer-create').getByRole('button',{name:'광고 생성',exact:true}).click();await expect.poll(()=>s.state.historyReads).toBeGreaterThan(before);
  await page.getByRole('link',{name:'aiadcast 홈',exact:true}).click();await expect(page).toHaveURL(/#home$/);s.state.hold=false;await page.goBack();await expect(page).toHaveURL(/#studio$/);await expect.poll(()=>s.state.lookupReads).toBeGreaterThanOrEqual(2);await expect(page.locator('.generate-button')).toBeEnabled();expect(s.state.posted).toHaveLength(0);
+});
+
+for(const language of ['ko','en'] as const)for(const delayedRecovery of [false,true])test(`readiness timeout cancels queued intent even with delayed recovery (${language}, ${delayedRecovery})`,async({page})=>{
+ const s=await setup(page,language);s.state.historyJobs=[];await restoreOwnedWorkspace(page,s.p,s.owner,'studio');await expect.poll(()=>s.state.historyReads).toBe(1);
+ await page.getByRole('button',{name:language==='ko'?'입력 내용 수정':'Edit details',exact:true}).click();
+ await page.clock.install();s.state.holdStatus=true;s.state.hold=delayedRecovery;const before=s.state.statusReads;
+ await page.locator('.consumer-create').getByRole('button',{name:language==='ko'?'광고 생성':'Generate ad',exact:true}).click();await expect.poll(()=>s.state.statusReads).toBeGreaterThan(before);await page.clock.fastForward(16000);
+ await expect(page.getByText(language==='ko'?'생성 준비 상태를 15초 안에 확인하지 못했습니다. 다시 확인해주세요.':'Could not check generation readiness within 15 seconds. Please check again.',{exact:true})).toBeVisible();
+ expect(s.state.posted).toHaveLength(0);s.state.hold=false;s.state.holdStatus=false;
+ const retry=page.getByRole('button',{name:language==='ko'?'다시 확인':'Check again',exact:true});await retry.evaluate((b:HTMLButtonElement)=>{b.click();b.click();});
+ await expect(page.locator('.generate-button')).toBeEnabled();await page.clock.fastForward(2000);expect(s.state.posted).toHaveLength(0);
+ await page.locator('.generate-button').click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.posted).toHaveLength(1);
+ await page.reload();await expect.poll(()=>s.state.reads).toBeGreaterThan(0);expect(s.state.posted).toHaveLength(1);
 });
