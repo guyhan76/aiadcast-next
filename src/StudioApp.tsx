@@ -77,7 +77,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  async function preserve(){await saveWorkspace(snapshot,workspaceScope);}
  // Persist every committed edit immediately: a debounce discarded photos on quick reloads.
  useLayoutEffect(()=>{let active=true;setDraftSaving(true);void saveWorkspace({wizard,editor:current,returnPage},workspaceScope).then(()=>{if(active){setDraftSaving(false);setDraftError(false);}}).catch(()=>{if(active){setDraftSaving(false);setDraftError(true);}});return()=>{active=false;};},[wizard,current,returnPage,workspaceScope]);
- useEffect(()=>{const onHash=()=>{const next=currentPage();if(next==='credits'&&priorPage.current!=='credits')creditsBack.current=priorPage.current;if(next==='admin'&&priorPage.current!=='admin')adminBack.current='#'+priorPage.current;priorPage.current=next;setPage(next);window.scrollTo(0,0);};window.addEventListener('hashchange',onHash);return()=>window.removeEventListener('hashchange',onHash);},[]);
+ useEffect(()=>{const onHash=()=>{const next=currentPage();if(next!=='studio')setGenerationIntent(undefined);if(next==='credits'&&priorPage.current!=='credits')creditsBack.current=priorPage.current;if(next==='admin'&&priorPage.current!=='admin')adminBack.current='#'+priorPage.current;priorPage.current=next;setPage(next);window.scrollTo(0,0);};window.addEventListener('hashchange',onHash);return()=>window.removeEventListener('hashchange',onHash);},[]);
  useEffect(()=>{if(page!=='projects')return;let alive=true;projects().then(p=>{if(alive){setItems(p);setLibraryError('');}}).catch(()=>{if(alive)setLibraryError(text('이 기기의 저장된 작업을 읽지 못했습니다.'));});return()=>{alive=false};},[page]);
  function go(next:Page){location.hash=next;setPage(next);window.scrollTo(0,0);}
  useEffect(()=>{

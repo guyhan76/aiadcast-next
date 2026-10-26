@@ -16,12 +16,12 @@ async function setup(page:Page,language:'ko'|'en'='ko'){
  const pending={jobId:'existing-job',requestId:'original-request',key:generatedCompatibilityKey(p),inputKey:JSON.stringify(buildGenerationRequest(p))};
  const wallet={available:3,reserved:1,kind:'test'};
  const job={id:pending.jobId,projectId:p.id,requestId:pending.requestId,state:'ready',mode:'creative',sourceHash:hash,createdAt:'2026-10-25T00:00:00.000Z',model:'mock',artifactId:hash,artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+bytes.toString('base64'),width:12,height:12,role:'creative'},errorCode:null,composition:'complete-ad',compositionKey:completeAdKey(p),requestFingerprint:createHash('sha256').update(generationMatchKey(buildGenerationRequest(p))).digest('hex')};
- const state={reads:0,historyReads:0,writes:0,failures:0,errorStatus:503,network:false,hold:false,job,historyJobs:null as null|typeof job[],lookup:'unsupported',lookupReads:0,posted:[] as any[],postConflict:false};
+ const state={reads:0,historyReads:0,writes:0,failures:0,errorStatus:503,network:false,hold:false,job,historyJobs:null as null|typeof job[],lookup:'unsupported',lookupReads:0,posted:[] as any[],postConflict:false,postNetwork:false};
  await page.route('**/api/**',async r=>{
  const path=new URL(r.request().url()).pathname;if(path==='/api/auth/session')return r.fallback();if(r.request().method()!=='GET')state.writes++;
  if(path==='/api/status')return r.fulfill({json:{generation:{enabled:true,model:'mock',photoPurposes:true},wallet,budget:{limitMicros:5000000,spentMicros:0,heldMicros:500000}}});
  if(path.startsWith('/api/generation-requests/')){state.lookupReads++;if(state.lookup==='unsupported')return r.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});return r.fulfill({json:{version:1,requestId:pending.requestId,projectId:state.lookup==='wrong-project'?'wrong-project':p.id,state:state.lookup==='found'?'found':'not-recorded',jobId:state.lookup==='found'?job.id:null}});}
- if(path==='/api/generations'&&r.request().method()==='POST'){state.posted.push(r.request().postDataJSON());if(state.postConflict){state.lookup='found';return r.fulfill({status:409,json:{error:{code:'IDEMPOTENCY_CONFLICT'}}});}return r.fulfill({status:202,json:{job:state.job,wallet}});}
+ if(path==='/api/generations'&&r.request().method()==='POST'){state.posted.push(r.request().postDataJSON());if(state.postNetwork)return r.abort('failed');if(state.postConflict){state.lookup='found';return r.fulfill({status:409,json:{error:{code:'IDEMPOTENCY_CONFLICT'}}});}return r.fulfill({status:202,json:{job:state.job,wallet}});}
  if(path.startsWith('/api/generations')){const attempt=path==='/api/generations'?++state.historyReads:++state.reads;const responseJob=state.job;while(state.hold&&!page.isClosed())await new Promise(resolve=>setTimeout(resolve,20));
  if(attempt<=state.failures){if(state.network)return r.abort('failed');return r.fulfill({status:state.errorStatus,json:{error:{code:state.errorStatus===401?'AUTH_REQUIRED':state.errorStatus===404?'JOB_NOT_FOUND':'INTERNAL_ERROR'}}});}
  return r.fulfill({json:path==='/api/generations'?{jobs:state.historyJobs??[responseJob]}:{job:responseJob,wallet}});}
@@ -80,14 +80,22 @@ test('direct lookup of an uncertain job outside recent history keeps generation 
  await expect(page.locator('.generate-button')).toHaveCount(0);await expect(page.locator('.generation-ad-preview')).toHaveCount(0);expect(s.state.writes).toBe(0);
  const saved=await page.evaluate(({owner,id})=>JSON.parse(localStorage.getItem(owner+':aiadcast.pending-generation.'+id)!),{owner:s.owner,id:s.p.id});expect(saved.jobId).toBe(jobId);expect(saved.requestId).toBe(s.pending.requestId);
 });
-test('the form auto-request intent cannot automatically resubmit an unrecorded pending request',async({page})=>{
- const s=await setup(page);s.state.historyJobs=[];s.state.lookup='not-recorded';const {jobId,...pending}=s.pending;
+for(const language of ['ko','en'] as const)test(`one explicit form click resumes an unrecorded request without a second click (${language})`,async({page})=>{
+ const s=await setup(page,language);s.state.historyJobs=[];s.state.lookup='not-recorded';const {jobId,...pending}=s.pending;
+ await restoreOwnedWorkspace(page,s.p,s.owner,'studio',pending);await expect.poll(()=>s.state.lookupReads).toBe(1);expect(s.state.writes).toBe(0);
+ await page.getByRole('button',{name:language==='ko'?'입력 내용 수정':'Edit details',exact:true}).click();
+ // A late original accepted response must not leave the form intent queued.
+ s.state.job={...s.state.job,state:'accepted'};
+ await page.locator('.consumer-create').getByRole('button',{name:language==='ko'?'광고 생성':'Generate ad',exact:true}).click();
+ await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.posted).toHaveLength(1);expect(s.state.posted[0].requestId).toBe(s.pending.requestId);
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.reload();await expect.poll(()=>s.state.reads).toBeGreaterThan(0);expect(s.state.posted).toHaveLength(1);
+});
+test('a failed form dispatch consumes intent and missing lookup cannot automatically POST again',async({page})=>{
+ const s=await setup(page);s.state.historyJobs=[];s.state.lookup='not-recorded';s.state.postNetwork=true;const {jobId,...pending}=s.pending;
  await restoreOwnedWorkspace(page,s.p,s.owner,'studio',pending);await expect.poll(()=>s.state.lookupReads).toBe(1);
- await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();
- await page.locator('.consumer-create').getByRole('button',{name:'광고 생성',exact:true}).click();
- await expect.poll(()=>s.state.lookupReads).toBe(2);await expect(page.locator('.generate-button')).toBeEnabled();expect(s.state.writes).toBe(0);
- s.state.job={...s.state.job,state:'accepted'};await page.locator('.generate-button').click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.posted).toHaveLength(1);
- const saved=await page.evaluate(({owner,id})=>JSON.parse(localStorage.getItem(owner+':aiadcast.pending-generation.'+id)!),{owner:s.owner,id:s.p.id});expect(saved.requestId).toBe(s.pending.requestId);
+ await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await page.locator('.consumer-create').getByRole('button',{name:'광고 생성',exact:true}).click();
+ await expect.poll(()=>s.state.lookupReads).toBeGreaterThanOrEqual(3);await expect(page.locator('.generate-button')).toBeEnabled();expect(s.state.posted).toHaveLength(1);expect(s.state.posted[0].requestId).toBe(s.pending.requestId);
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.reload();await expect.poll(()=>s.state.lookupReads).toBeGreaterThanOrEqual(4);expect(s.state.posted).toHaveLength(1);
 });
 for(const language of ['ko','en'] as const)test(`unrecorded pending request waits for an explicit click and keeps its original key (${language})`,async({page})=>{
  const s=await setup(page,language);s.state.historyJobs=[];s.state.lookup='not-recorded';const {jobId,...pending}=s.pending;
@@ -150,4 +158,14 @@ test('switching projects leaves the earlier request intact and displays only the
  s.state.job={...s.state.job,id:pending.jobId,projectId:second.id,requestId:pending.requestId,compositionKey:completeAdKey(second),requestFingerprint:createHash('sha256').update(generationMatchKey(buildGenerationRequest(second))).digest('hex')};s.state.hold=false;
  await restoreOwnedWorkspace(page,second,s.owner,'studio',pending);await expect(page.locator('.generation-ad-preview')).toBeVisible();await expect(page.locator('.result-name')).toContainText('Different product');expect(s.state.writes).toBe(0);
  const saved=await page.evaluate(({owner,first,second})=>[first,second].map(id=>JSON.parse(localStorage.getItem(owner+':aiadcast.pending-generation.'+id)!).requestId),{owner:s.owner,first:s.p.id,second:second.id});expect(saved).toEqual([s.pending.requestId,pending.requestId]);
+});
+
+test('fresh form submission sends one request without another result-page click',async({page})=>{
+ const s=await setup(page);s.state.historyJobs=[];await restoreOwnedWorkspace(page,s.p,s.owner,'studio');await expect.poll(()=>s.state.historyReads).toBe(1);expect(s.state.posted).toHaveLength(0);
+ await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await page.locator('.consumer-create').getByRole('button',{name:'광고 생성',exact:true}).evaluate((button:HTMLButtonElement)=>{button.click();button.click();});await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.posted).toHaveLength(1);
+});
+test('leaving while explicit form intent waits for lookup cancels it across back navigation',async({page})=>{
+ const s=await setup(page);s.state.historyJobs=[];s.state.lookup='not-recorded';const {jobId,...pending}=s.pending;await restoreOwnedWorkspace(page,s.p,s.owner,'studio',pending);await expect.poll(()=>s.state.lookupReads).toBe(1);
+ await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();s.state.hold=true;const before=s.state.historyReads;await page.locator('.consumer-create').getByRole('button',{name:'광고 생성',exact:true}).click();await expect.poll(()=>s.state.historyReads).toBeGreaterThan(before);
+ await page.getByRole('link',{name:'aiadcast 홈',exact:true}).click();await expect(page).toHaveURL(/#home$/);s.state.hold=false;await page.goBack();await expect(page).toHaveURL(/#studio$/);await expect.poll(()=>s.state.lookupReads).toBeGreaterThanOrEqual(2);await expect(page.locator('.generate-button')).toBeEnabled();expect(s.state.posted).toHaveLength(0);
 });

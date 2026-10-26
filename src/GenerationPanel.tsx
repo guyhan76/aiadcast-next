@@ -190,7 +190,9 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
   return()=>{cancelled=true;};
  },[project,job?.id,job?.artifactId,!!job?.artifact,compatible]);
  const previewReady=!!preview&&preview.source===project&&preview.jobId===job?.id&&!preview.errors.length;
- useEffect(()=>{if(resumableRequestId){if(autoRequest&&autoHandled.current!==autoRequest){autoHandled.current=autoRequest;onAutoHandled?.();}return;}if(!recoveryChecked||!autoRequest||autoHandled.current===autoRequest||(!status&&!statusError)||(!!pending.current&&!job))return;autoHandled.current=autoRequest;onAutoHandled?.();if(status?.generation.creditQuote?.unit==='credit-v2')return;if(status?.generation.enabled&&!active)void start();},[autoRequest,status,statusError,job?.id,job?.state,recoveryChecked,active,resumableRequestId]);
+ // A form click is an explicit, in-memory intent. Consume it before dispatch,
+ // including a same-key resumption; recovery alone never creates this intent.
+ useEffect(()=>{if(!recoveryChecked||!autoRequest||autoHandled.current===autoRequest||(!status&&!statusError)||(!!pending.current&&!job&&resumableRequestId!==pending.current.requestId))return;autoHandled.current=autoRequest;onAutoHandled?.();if(status?.generation.creditQuote?.unit==='credit-v2')return;if(status?.generation.enabled&&!active)void start();},[autoRequest,status,statusError,job?.id,job?.state,recoveryChecked,active,resumableRequestId]);
  async function start(){
   if(dispatching.current||!recoveryChecked||!status?.generation.enabled)return;
   if(busy||active||pending.current&&!job&&resumableRequestId!==pending.current.requestId)return;
