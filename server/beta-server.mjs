@@ -1,3 +1,4 @@
+import {observeSubmission,submissionStage,submissionError} from './submission-observation.mjs';
 import {observeReadiness,readinessMeasure} from './readiness-observation.mjs';
 import {serverBuild} from './build-info.mjs';
 import {singleBoxService} from './vision-evaluation/single-box-service.mjs';
@@ -72,6 +73,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
    if(req.method==='POST'&&url.pathname==='/api/auth/google/finish'){send(res,200,await google.finishGoogle(await read(req,8192),req.headers.authorization),cors);return;}
    if(req.method==='POST'&&url.pathname==='/api/checkout/receipt'){send(res,200,await checkout.receipt(await read(req,2048)),cors);return;}
    if(req.method==='POST'&&['/api/checkout/launch','/api/checkout/confirm'].includes(url.pathname)){const b=await read(req,2048);send(res,200,await (url.pathname.endsWith('/launch')?checkout.launch(b):checkout.confirm(b)),cors);return;}
+   submissionStage('authentication');
    const user=readinessMeasure('authentication',()=>store.authenticate(req.headers.authorization));
    if(req.method==='GET'&&url.pathname==='/api/auth/session'){send(res,200,{user:{id:user.id,label:user.label,role:user.role}},cors);return;}
    if(req.method==='GET'&&url.pathname==='/api/dimension-analysis'){send(res,200,dimensionAnalysis.capability(user),cors);return;}
@@ -115,12 +117,12 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
    if(req.method==='GET'&&requestLookup){send(res,200,service(user).requestStatus(requestLookup[1],url.searchParams.get('projectId')),cors);return;}
    const job=/^\/api\/generations\/([A-Za-z0-9_-]{8,100})(?:\/(accept|reject|report))?$/.exec(url.pathname);
    if(req.method==='GET'&&job&&!job[2]){const s=service(user);send(res,200,{job:s.job(job[1]),wallet:s.wallet()},cors);return;}
-   if(req.method==='POST'&&['/api/generations','/api/assistant'].includes(url.pathname)){const body=await read(req,14_100_000),s=service(user);send(res,url.pathname==='/api/generations'?202:200,await(url.pathname==='/api/generations'?s.create(body):s.assist(body)),cors);return;}
+   if(req.method==='POST'&&['/api/generations','/api/assistant'].includes(url.pathname)){submissionStage('body_read');const body=await read(req,14_100_000);submissionStage('service_initialization');const s=service(user);submissionStage('generation_admission');const result=await (url.pathname==='/api/generations'?s.create(body):s.assist(body));submissionStage('response');send(res,url.pathname==='/api/generations'?202:200,result,cors);return;}
    if(req.method==='POST'&&job?.[2]){const body=await read(req,8192),s=service(user);send(res,200,job[2]==='report'?s.reportDefect(job[1],body):job[2]==='accept'?s.accept(job[1],body.artifactId,body.dimensionReview):s.reject(job[1]),cors);return;}
    throw new ApiFailure('NOT_FOUND',404);
-  }catch(e){send(res,e instanceof ApiFailure?e.status:500,{error:{code:e instanceof ApiFailure?e.code:'INTERNAL_ERROR'}},cors);}
+  }catch(e){submissionError(e instanceof ApiFailure?e.code:'INTERNAL_ERROR');send(res,e instanceof ApiFailure?e.status:500,{error:{code:e instanceof ApiFailure?e.code:'INTERNAL_ERROR'}},cors);}
  };
- const server=createServer((req,res)=>observeReadiness(req,res,()=>handle(req,res)));
+ const server=createServer((req,res)=>observeSubmission(req,res,()=>observeReadiness(req,res,()=>handle(req,res))));
  server.requestTimeout=30_000;server.headersTimeout=10_000;server.maxConnections=100;
  return {server,close:async()=>{await new Promise(resolve=>server.close(resolve));await Promise.all([...services.values()].map(s=>s.close()));services.clear();await dimensionAnalysis.close();await singleBox.close();}};
 }

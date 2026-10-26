@@ -72,6 +72,7 @@ for(const [name,kind] of [['google-auth','GoogleAuth'],['email-auth','EmailAuth'
 }
 s=read('beta-server');s=s.slice(0,s.indexOf('export function betaConfig'));
 s=s.replace("from './readiness-observation.mjs'","from '../readiness-observation.mjs'");
+s=s.replace("from './submission-observation.mjs'","from '../submission-observation.mjs'");
 s=s.replace("from './build-info.mjs'","from '../build-info.mjs'");
 s=s.replace("from './google-return-page.mjs'","from '../google-return-page.mjs'");
 s=s.replace("from './demo-support.mjs'","from '../demo-support.mjs'");
