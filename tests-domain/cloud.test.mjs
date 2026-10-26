@@ -434,11 +434,12 @@ test('cloud request-key lookup is authenticated, tenant/project bound, restart d
 });
 test('cloud transport diagnosis: client abort during source persistence does not cancel or duplicate provider work',async t=>{
  const s=await setup(t),a=await s.member('Client disconnect',1_000_000,3),body=generation();
+ const logs=[],info=console.info;console.info=line=>{try{const value=JSON.parse(line);if(value.event==='generation_submission')logs.push(value);}catch{}};t.after(()=>{console.info=info;});
  let entered,release,first=true;const waiting=new Promise(r=>entered=r),gate=new Promise(r=>release=r),put=s.app.storage.put.bind(s.app.storage);
  s.app.storage.put=async(...args)=>{if(first){first=false;entered();await gate;}return put(...args);};
  const controller=new AbortController();
  const pending=fetch('http://127.0.0.1:'+s.app.server.address().port+'/api/generations',{method:'POST',signal:controller.signal,headers:{Origin:origin,Authorization:'Bearer '+a.token,'Content-Type':'application/json','X-Aiadcast-Client':'local-studio'},body:JSON.stringify(body)});
- await waiting;controller.abort();await assert.rejects(pending,e=>e.name==='AbortError');release();
+ await waiting;const missing=await s.call(`/api/generation-requests/${body.requestId}?projectId=${body.projectId}`,{token:a.token});assert.equal(missing.data.state,'not-recorded');assert.equal(s.calls(),0);controller.abort();await assert.rejects(pending,e=>e.name==='AbortError');await new Promise(r=>setTimeout(r,30));assert.equal(logs.find(x=>x.outcome==='disconnected')?.stage,'original_persistence');release();
  let job;for(let i=0;i<100;i++){job=(await s.call('/api/generations?projectId='+body.projectId,{token:a.token})).data.jobs[0];if(job?.state==='ready')break;await new Promise(r=>setTimeout(r,10));}
  assert.equal(job.state,'ready');assert.ok(job.artifactId);assert.equal(s.calls(),1);
  const retry=await s.call('/api/generations',{token:a.token,body});assert.equal(retry.data.job.id,job.id);assert.equal(s.calls(),1);
@@ -529,4 +530,28 @@ test('table protection skips already-enabled RLS but restores disabled RLS and s
  const row=await db.prepare("SELECT relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=? AND c.relname='wallets'").get(schema);assert.equal(row.relrowsecurity,true);
  const access=await db.prepare('SELECT has_table_privilege(?, ?, ?) AS allowed').get('anon',`"${schema}".wallets`,'SELECT');assert.equal(access.allowed,false);
  assert.equal(s.calls(),0);
+});
+
+test('committed immutable source and output assets are not uploaded again for an edited ad',async t=>{
+ const s=await setup(t),a=await s.member('Immutable asset owner',1_000_000,3),body=generation();
+ const first=await s.call('/api/generations',{token:a.token,body});assert.equal(first.status,202);
+ const ready=async id=>{let job;for(let i=0;i<100;i++){job=(await s.call('/api/generations/'+id,{token:a.token})).data.job;if(job.state==='ready')return job;await new Promise(r=>setTimeout(r,10));}assert.fail('fixture job did not complete');};
+ await ready(first.data.job.id);
+ const uploads=()=>s.bucket.calls.filter(c=>c.method==='POST'&&c.path.endsWith('/'+a.user.id+'/'+hash+'.png')).length;
+ const before=uploads();body.requestId=randomUUID();body.request.brief='A different approved studio scene';
+ const second=await s.call('/api/generations',{token:a.token,body});assert.equal(second.status,202);await ready(second.data.job.id);
+ assert.equal(uploads(),before,'completed immutable originals/results must not re-upload');assert.equal(s.calls(),2);
+ const lookup=await s.call(`/api/generation-requests/${body.requestId}?projectId=${body.projectId}`,{token:a.token});assert.equal(lookup.data.jobId,second.data.job.id);
+});
+
+test('cloud returns durable request-key acceptance while the mock provider is still pending',async t=>{
+ let release,entered,calls=0;const gate=new Promise(r=>release=r),started=new Promise(r=>entered=r);
+ const s=await setup(t,{adapter:{generate:async()=>{calls++;entered();await gate;return {bytes,mime:'image/png',width:8,height:8,sha256:hash,role:'background',usage,cost:imageUsageCost(usage),model:IMAGE_MODEL,revision:IMAGE_REVISION};}}});
+ const a=await s.member('Durable acceptance',1_000_000,3),body=generation();let timer;
+ try{
+  const created=await Promise.race([s.call('/api/generations',{token:a.token,body}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('acceptance waited for provider result')),5000);})]);clearTimeout(timer);
+  assert.equal(created.status,202);assert.equal(created.data.job.state,'running');await started;
+  const lookup=await s.call(`/api/generation-requests/${body.requestId}?projectId=${body.projectId}`,{token:a.token});assert.equal(lookup.data.state,'found');assert.equal(lookup.data.jobId,created.data.job.id);
+  const duplicate=await s.call('/api/generations',{token:a.token,body});assert.equal(duplicate.data.job.id,created.data.job.id);assert.equal(calls,1);
+ }finally{clearTimeout(timer);release();}
 });

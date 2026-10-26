@@ -1,3 +1,4 @@
+import {submissionStage} from '../submission-observation.mjs';
 import {readinessMeasure} from '../readiness-observation.mjs';
 import {MAX_GENERATED_IMAGE_BYTES} from '../openai-image-adapter.mjs';
 import {readAdminOverview} from './admin-overview.mjs';
@@ -57,6 +58,7 @@ export class CloudBetaStore extends BetaStore {
 }
 export class CloudGenerationService extends GenerationService {
  async create(body){
+  submissionStage('admission_queue');
   // The local implementation has synchronous admission. Cloud reads yield: serialize
   // admission so concurrent retries see the persisted job before reserving again.
   if((this.admissions??0)>=2)fail('GENERATION_ALREADY_RUNNING',409);
@@ -73,6 +75,13 @@ export class CloudGenerationService extends GenerationService {
  }
  async storeAsset(asset){
   if(hashBytes(asset.bytes)!==asset.sha256)fail('STORAGE_CONTENT_MISMATCH');
+  // This row is written only AFTER a successful immutable object upload.
+  // A quota reservation alone is not proof of upload and must never skip it.
+  const existing=await this.db.prepare('SELECT * FROM generation_assets WHERE hash=?').get(asset.sha256);
+  if(existing){
+   if(existing.mime!==asset.mime||existing.width!==asset.width||existing.height!==asset.height||existing.bytes!==asset.bytes.length)fail('STORAGE_CONTENT_MISMATCH');
+   return;
+  }
   const extension=asset.mime==='image/png'?'png':asset.mime==='image/jpeg'?'jpeg':'webp';
   await this.storage.put(this.cloudUser,asset.sha256+'.'+extension,asset.bytes,asset.mime);
   await this.db.prepare('INSERT INTO generation_assets VALUES(?,?,?,?,?) ON CONFLICT(hash) DO NOTHING').run(asset.sha256,asset.mime,asset.width,asset.height,asset.bytes.length);

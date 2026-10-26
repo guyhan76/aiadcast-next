@@ -1,3 +1,4 @@
+import {submissionStage} from './submission-observation.mjs';
 import {readinessMeasure} from './readiness-observation.mjs';
 import {generationMatchKey} from '../src/generation-match.ts';
 import {supportsImageMedia,imageMediaType} from '../src/image-media.ts';
@@ -255,6 +256,7 @@ export class GenerationService {
   }
   async assertOutputCapacity(request, originals) { /* Local disk implementation has no cloud quota. */ }
   async create(body) {
+    submissionStage('input_validation');
     if(!supportsImageMedia(body?.mediaType))fail('UNSUPPORTED_MEDIA');
     if (!body || !identifier(body.requestId) || !identifier(body.projectId)) fail('INVALID_REQUEST');
     const request = normalizeGenerationRequest(body.request);
@@ -272,31 +274,38 @@ export class GenerationService {
     if (!source && request.subjectType === 'physical-product' && request.inputMode!=='text-example') fail('SOURCE_REQUIRED');
     if(request.proportionControl){try{await preparePlanarSource(source.bytes,requestPlanarRatio(request));}catch{fail('PLANAR_SOURCE_UNCONFIRMED');}}
     const fingerprint = hashBytes(JSON.stringify({ projectId: body.projectId, request, sourceHash: source?.sha256 ?? null, revision: IMAGE_REVISION }));
+    submissionStage('request_deduplication');
     const previous = this.db.prepare('SELECT * FROM generation_keys WHERE request_id=?').get(body.requestId);
     if (previous) {
       if (previous.fingerprint !== fingerprint) fail('IDEMPOTENCY_CONFLICT', 409);
+      submissionStage('existing_response');
       return { job: this.job(previous.job_id), wallet: this.wallet(), reused: true };
     }
     const matching = this.db.prepare("SELECT g.id FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND (j.status IN ('reserved','running','uncertain','ready') OR g.error_code='PROVIDER_UNCERTAIN') ORDER BY g.created_at DESC LIMIT 1").get(fingerprint);
     if (matching) {
       this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(body.requestId, fingerprint, matching.id);
+      submissionStage('existing_response');
       return { job: this.job(matching.id), wallet: this.wallet(), reused: true };
     }
     const rejected = this.db.prepare("SELECT count(*) n FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND j.reason='customer_rejected'").get(fingerprint).n;
     if (rejected >= 2 && !this.adminTestUnlimited && this.creditQuote().unit==='legacy-ticket') fail('REVIEW_REQUIRED_AFTER_REJECTIONS', 409);
+    submissionStage('admission_readiness');
     const status = this.status();
     if (!status.generation.enabled) fail(status.generation.reason, 503);
     // Serial dispatch avoids a queue whose provider budget could change before execution.
     if (this.tasks.size) fail('GENERATION_ALREADY_RUNNING', 409);
     const quote=this.creditQuote();
     if((quote.unit==='credit-v2'||body.creditQuote)&&(!body.creditQuote||body.creditQuote.unit!==quote.unit||body.creditQuote.amount!==quote.amount||body.creditQuote.policy!==quote.policy))fail('CREDIT_QUOTE_CHANGED',409);
+    submissionStage('storage_capacity');
     await this.assertOutputCapacity(request, all);
     const id = randomUUID();
     const createdAt = this.now();
+    submissionStage('original_persistence');
     if (source) this.storeAsset(source); // Content-addressed, immutable original bytes.
     for(const ref of references)this.storeAsset(ref);
     // Preflight/storage can yield. Repeat admission under the ledger transaction so
     // concurrent retries reuse the committed job instead of reserving twice.
+    submissionStage('admission_transaction');
     let reusedJobId;
     try {
       this.ledger.transaction(() => {
@@ -317,6 +326,7 @@ export class GenerationService {
         this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(body.requestId, fingerprint, id);
       });
     } catch (error) { if(error instanceof ApiFailure)throw error;fail('CREDIT_RESERVATION_FAILED', 409); }
+    submissionStage('accepted_response');
     if(reusedJobId)return {job:this.job(reusedJobId),wallet:this.wallet(),reused:true};
     const work = this.dispatch(id, request, source, references);
     this.tasks.add(work); work.finally(() => this.tasks.delete(work));
