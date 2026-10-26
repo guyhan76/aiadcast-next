@@ -63,8 +63,8 @@ export class PostgresDatabase {
   });
  }
  async protectTables(){await this.using(async c=>{
-  const {rows}=await c.query('SELECT tablename FROM pg_tables WHERE schemaname=$1',[this.schema]);
-  for(const r of rows){if(!/^[a-z_]+$/.test(r.tablename))throw Error('INVALID_TABLE');await c.query(`ALTER TABLE "${this.schema}"."${r.tablename}" ENABLE ROW LEVEL SECURITY`);}
+  const {rows}=await c.query("SELECT c.relname AS tablename,c.relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relkind IN ('r','p')",[this.schema]);
+  for(const r of rows){if(!/^[a-z_]+$/.test(r.tablename))throw Error('INVALID_TABLE');if(r.relrowsecurity!==true)await c.query(`ALTER TABLE "${this.schema}"."${r.tablename}" ENABLE ROW LEVEL SECURITY`);}
   const result=await c.query("SELECT rolname FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role')");
   const roles=['PUBLIC',...result.rows.map(r=>'"'+r.rolname+'"')].join(',');
   await c.query(`REVOKE ALL ON ALL TABLES IN SCHEMA "${this.schema}" FROM ${roles}`);

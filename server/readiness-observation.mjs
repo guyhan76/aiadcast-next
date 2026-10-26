@@ -2,7 +2,7 @@ import {AsyncLocalStorage} from 'node:async_hooks';
 import {randomUUID} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
 const context=new AsyncLocalStorage();
-const stages=new Set(['authentication','service_initialization','expiry','budget','wallet','pool_wait','lock_wait']);
+const stages=new Set(['authentication','service_initialization','schema_setup','generation_initialize','table_protection','expiry','budget','wallet','pool_wait','lock_wait']);
 // Observe only; never abort, retry, settle, or alter a request. No supplied values
 // (including error messages, URL parameters and identifiers) enter log records.
 export function readinessMeasure(stage,fn){

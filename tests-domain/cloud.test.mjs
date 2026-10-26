@@ -28,6 +28,7 @@ async function pgPool(folder,fault={}){
  return {engine,async connect(){
   if(closed)throw Error('POOL_CLOSED');let unlock;const previous=tail;tail=new Promise(r=>unlock=r);await previous;
   let released=false,readyWrite=false;return {on(){},async query(sql,args=[]){
+   fault.observeQuery?.(sql);
    const r=(!args.length&&sql.trim().split(';').filter(s=>s.trim()).length>1)?(await engine.exec(sql)).at(-1):await engine.query(sql,args);
    if(sql.includes("UPDATE jobs SET status='ready'"))readyWrite=true;
    if(sql==='COMMIT'&&readyWrite&&fault.loseReadyCommit){fault.loseReadyCommit=false;fault.lost=true;throw Error('fixture commit response lost');}
@@ -509,3 +510,23 @@ test('cloud quota filled after admission reproduces persist-image STORAGE_LIMIT 
  await s.app.store.db.prepare('UPDATE users SET disabled=1 WHERE id=?').run(a.user.id);
  assert.equal(await storage.accountLimit(a.user.id),100_000_000);
  });
+
+test('readiness cold initialization performs schema work once and shares concurrent startup without provider dispatch',async t=>{
+ const stats={queries:0,userSchema:0,ddl:0};const reset=()=>{stats.queries=stats.userSchema=stats.ddl=0;};
+ const fault={observeQuery:sql=>{stats.queries++;if(/^CREATE SCHEMA IF NOT EXISTS "aiadcast_user_/.test(sql))stats.userSchema++;if(/^(CREATE|ALTER|REVOKE)/.test(sql.trim()))stats.ddl++;}};
+ const s=await setup(t,{fault}),member=await s.member('Readiness fixture',500000,3);reset();
+ const first=await s.call('/api/status',{token:member.token});assert.equal(first.status,200);const cold={...stats};assert.equal(cold.userSchema,1);assert.ok(cold.ddl>0);reset();
+ const second=await s.call('/api/status',{token:member.token});assert.equal(second.status,200);const warm={...stats};assert.equal(warm.userSchema,0);assert.equal(warm.ddl,0);assert.deepEqual(second.data.wallet,first.data.wallet);assert.deepEqual(second.data.budget,first.data.budget);
+ await s.restart();reset();const results=await Promise.all(Array.from({length:3},()=>s.call('/api/status',{token:member.token})));assert.ok(results.every(r=>r.status===200));assert.equal(stats.userSchema,1);for(const r of results){assert.deepEqual(r.data.wallet,first.data.wallet);assert.deepEqual(r.data.budget,first.data.budget);}assert.equal(s.calls(),0);
+ t.diagnostic(JSON.stringify({cold,warm,restartThreeRequests:{...stats},providerCalls:s.calls()}));
+});
+
+test('table protection skips already-enabled RLS but restores disabled RLS and still revokes access',async t=>{
+ let enables=0;const s=await setup(t,{fault:{observeQuery:sql=>{if(/^ALTER TABLE .* ENABLE ROW LEVEL SECURITY/.test(sql))enables++;}}});const member=await s.member('Protection fixture',500000,3);await s.call('/api/status',{token:member.token});
+ const schema=cloudSchema(member.user.id),db=new PostgresDatabase(s.app.pool,schema);enables=0;await db.protectTables();assert.equal(enables,0);
+ await db.exec(`ALTER TABLE "${schema}".wallets DISABLE ROW LEVEL SECURITY; GRANT SELECT ON "${schema}".wallets TO anon;`);
+ await db.protectTables();assert.equal(enables,1);
+ const row=await db.prepare("SELECT relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=? AND c.relname='wallets'").get(schema);assert.equal(row.relrowsecurity,true);
+ const access=await db.prepare('SELECT has_table_privilege(?, ?, ?) AS allowed').get('anon',`"${schema}".wallets`,'SELECT');assert.equal(access.allowed,false);
+ assert.equal(s.calls(),0);
+});
