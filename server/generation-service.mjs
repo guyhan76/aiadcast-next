@@ -1,3 +1,4 @@
+import {readinessMeasure} from './readiness-observation.mjs';
 import {generationMatchKey} from '../src/generation-match.ts';
 import {supportsImageMedia,imageMediaType} from '../src/image-media.ts';
 import {aiDimensionInputKey,validAiDimensionReview} from '../src/ai-dimension-display.ts';
@@ -209,12 +210,12 @@ export class GenerationService {
     return value;
   }
   status() {
-    this.ledger.expire();
-    const period=this.period(),limit=this.budgetLimit(period),budget = this.ledger.budget(period);
+    readinessMeasure('expiry',()=>this.ledger.expire());
+    const period=this.period(),limit=readinessMeasure('budget',()=>this.budgetLimit(period)),budget = readinessMeasure('budget',()=>this.ledger.budget(period));
     const available = limit - (budget?.spent_micros ?? 0) - (budget?.held_micros ?? 0);
-    const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : limit < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : !this.adminTestUnlimited && this.wallet().available < 1 && this.wallet().credits.available < 10 ? 'NO_TEST_CREDITS' : null;
+    const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : limit < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : !this.adminTestUnlimited && readinessMeasure('wallet',()=>this.wallet()).available < 1 && readinessMeasure('wallet',()=>this.wallet()).credits.available < 10 ? 'NO_TEST_CREDITS' : null;
     const assistantReason = !this.assistantEnabled ? 'ASSISTANT_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : this.budgetMicros-(budget?.spent_micros??0)-(budget?.held_micros??0) < TEXT_MAX_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : null;
-    return { mode: 'local-development', commercialReady: false, generation: { creditQuote:this.creditQuote(), enabled: reason === null, manualDimensionOverlay:true, aiDimensionDisplay: true, photoPurposes: true, textExamples: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet: this.wallet(), budget: { currency: 'USD', period, limitMicros: limit, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
+    return { mode: 'local-development', commercialReady: false, generation: { creditQuote:readinessMeasure('wallet',()=>this.creditQuote()), enabled: reason === null, manualDimensionOverlay:true, aiDimensionDisplay: true, photoPurposes: true, textExamples: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet: readinessMeasure('wallet',()=>this.wallet()), budget: { currency: 'USD', period, limitMicros: limit, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
   }
   storeAsset(asset) {
     this.db.prepare('INSERT INTO generation_assets VALUES (?,?,?,?,?) ON CONFLICT(hash) DO NOTHING').run(asset.sha256, asset.mime, asset.width, asset.height, asset.bytes);

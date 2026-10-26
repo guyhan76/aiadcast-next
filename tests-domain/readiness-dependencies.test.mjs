@@ -1,3 +1,5 @@
+import {EventEmitter} from 'node:events';
+import {createReadinessObserver} from '../server/readiness-observation.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PostgresDatabase} from '../server/cloud/postgres.mjs';
@@ -16,10 +18,12 @@ for (const rejected of [false,true]) test(`readiness waits for expiry transactio
  const budget={spent_micros:5008600,held_micros:2000000};ledger.budget=async()=>({...budget});
  service.enabled=true;service.providerConfigured=true;service.adminTestUnlimited=true;service.assistantEnabled=false;
  service.wallet=async()=>({available:3,reserved:1,credits:{available:0,reserved:0}});service.creditQuote=async()=>({unit:'legacy-ticket'});
- let settled=false;const request=service.status().finally(()=>settled=true);const outcome=request.then(value=>({value}),error=>({error}));
+ const logs=[],observe=createReadinessObserver({write:s=>logs.push(JSON.parse(s)),slowMs:0});const res=Object.assign(new EventEmitter(),{statusCode:200,writableFinished:false});
+ let settled=false;const request=observe({method:'GET',url:'/api/status'},res,()=>service.status()).finally(()=>settled=true);const outcome=request.then(value=>({value}),error=>({error}));
  await reached;await new Promise(resolve=>setTimeout(resolve,25));assert.equal(settled,false);
  if(rejected)fail(Error('SIMULATED_LOCK_FAILURE'));else unlock();
- const result=await outcome;
+ const result=await outcome;res.statusCode=rejected?500:200;res.writableFinished=true;res.emit('finish');
+ assert.equal(logs.length,1);assert.equal(logs[0].stages.lock_wait.outcome,rejected?'error':'ok');assert.equal(logs[0].stages.expiry.outcome,rejected?'error':'ok');assert.ok(logs[0].stages.lock_wait.durationMs>=20);
  if(rejected){assert.match(result.error.message,/SIMULATED_LOCK_FAILURE/);assert.ok(queries.includes('ROLLBACK'));}
  else {assert.equal(result.value.generation.enabled,true);assert.equal(result.value.budget.heldMicros,2000000);assert.ok(queries.includes('COMMIT'));}
  assert.deepEqual(budget,{spent_micros:5008600,held_micros:2000000});assert.equal(queries.some(sql=>/^(UPDATE|DELETE|INSERT)/.test(sql)),false);

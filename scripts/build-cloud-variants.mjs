@@ -27,7 +27,7 @@ function transform(source){
     if(prop==='map'&&n.arguments.some(a=>ts.isArrowFunction(a)&&a.modifiers?.some(m=>m.kind===ts.SyntaxKind.AsyncKeyword)))return factory.createAwaitExpression(factory.createCallExpression(factory.createPropertyAccessExpression(factory.createIdentifier('Promise'),'all'),undefined,[n]));
     const dbCall=['get','all','run','exec'].includes(prop)&&n.expression.expression.getText(file).includes('.db');
     const nativeServerClose=prop==='close'&&n.expression.expression.getText(file)==='server';
-    if(dbCall||(!nativeServerClose&&methods.has(prop))||(ts.isIdentifier(n.expression)&&n.expression.text==='service'))return factory.createAwaitExpression(n);
+    if(dbCall||(!nativeServerClose&&methods.has(prop))||(ts.isIdentifier(n.expression)&&['service','readinessMeasure'].includes(n.expression.text)))return factory.createAwaitExpression(n);
    }
    return n;
   }return node=>ts.visitNode(node,visit);
@@ -57,7 +57,7 @@ let body=c.body.getText(f).slice(1,-1);
 body=body.slice(body.indexOf('    this.db = this.ledger.db;')).replace("bytes BLOB NOT NULL",'bytes INTEGER NOT NULL');
 s=constructorToInitialize(s,`async initialize({db,adapter,assistantAdapter,assistantEnabled=false,enabled=false,budgetMicros=0,providerConfigured=false,testCredits=3,managedBudgetIncrease=false,budgetForPeriod,now=()=>Date.now()}={}){if(!Number.isSafeInteger(budgetMicros)||budgetMicros<0||budgetMicros>100000000||!Number.isSafeInteger(testCredits)||testCredits<0||testCredits>30)throw Error('INVALID_CLOUD_CONFIG');this.unlock=()=>{};this.ledger=await new BillingLedger().initialize(db,now);${body};return this;}`);
 s=s.replace('ORDER BY rowid DESC','ORDER BY request_id DESC');
-const imports=`import {generationMatchKey} from '../../src/generation-match.ts';import {supportsImageMedia,imageMediaType} from '../../src/image-media.ts';import {validAiDimensionReview} from '../../src/ai-dimension-display.ts';import {preparePlanarSource,requestPlanarRatio} from '../planar-proportion.mjs';import {randomUUID} from 'node:crypto';import {BillingLedger} from './billing-base.mjs';import {normalizeGenerationRequest,ApiFailure} from '../generation-service.mjs';import {GENERATION_SIZES,IMAGE_MODEL,IMAGE_REVISION,hashBytes,parseSourceAsset,ProviderFailure,generationFailureDiagnostic} from '../openai-image-adapter.mjs';import {normalizeAssistantRequest,TEXT_MODEL,TEXT_MAX_HOLD_MICROS} from '../text-assistant.mjs';const LOCAL_USER='aiadcast-next-local-developer';const MODEL_COST_HOLD_MICROS=500000;const fail=(c,s)=>{throw new ApiFailure(c,s)};function identifier(v){return typeof v==='string'&&/^[A-Za-z0-9_-]{8,100}$/.test(v);}`;
+const imports=`import {readinessMeasure} from '../readiness-observation.mjs';import {generationMatchKey} from '../../src/generation-match.ts';import {supportsImageMedia,imageMediaType} from '../../src/image-media.ts';import {validAiDimensionReview} from '../../src/ai-dimension-display.ts';import {preparePlanarSource,requestPlanarRatio} from '../planar-proportion.mjs';import {randomUUID} from 'node:crypto';import {BillingLedger} from './billing-base.mjs';import {normalizeGenerationRequest,ApiFailure} from '../generation-service.mjs';import {GENERATION_SIZES,IMAGE_MODEL,IMAGE_REVISION,hashBytes,parseSourceAsset,ProviderFailure,generationFailureDiagnostic} from '../openai-image-adapter.mjs';import {normalizeAssistantRequest,TEXT_MODEL,TEXT_MAX_HOLD_MICROS} from '../text-assistant.mjs';const LOCAL_USER='aiadcast-next-local-developer';const MODEL_COST_HOLD_MICROS=500000;const fail=(c,s)=>{throw new ApiFailure(c,s)};function identifier(v){return typeof v==='string'&&/^[A-Za-z0-9_-]{8,100}$/.test(v);}`;
 writeFileSync(new URL('generation-base.mjs',out),transform(imports+s));
 for(const [name,kind] of [['google-auth','GoogleAuth'],['email-auth','EmailAuth'],['password-auth','PasswordAuth'],['test-checkout','TestCheckout'],['admin-api','AdminApi']]){
  let t=read(name).replace("from './generation-service.mjs'","from '../generation-service.mjs'");
@@ -71,6 +71,7 @@ for(const [name,kind] of [['google-auth','GoogleAuth'],['email-auth','EmailAuth'
  writeFileSync(new URL(name+'-base.mjs',out),transform(t));
 }
 s=read('beta-server');s=s.slice(0,s.indexOf('export function betaConfig'));
+s=s.replace("from './readiness-observation.mjs'","from '../readiness-observation.mjs'");
 s=s.replace("from './build-info.mjs'","from '../build-info.mjs'");
 s=s.replace("from './google-return-page.mjs'","from '../google-return-page.mjs'");
 s=s.replace("from './demo-support.mjs'","from '../demo-support.mjs'");

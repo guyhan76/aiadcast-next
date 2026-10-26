@@ -1,3 +1,4 @@
+import {observeReadiness,readinessMeasure} from './readiness-observation.mjs';
 import {serverBuild} from './build-info.mjs';
 import {singleBoxService} from './vision-evaluation/single-box-service.mjs';
 import {dimensionAnalysisService} from './vision-evaluation/service.mjs';
@@ -35,7 +36,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
  const admin=new AdminApi(store,{service,accounts,checkout,ownerEmail:password.adminEmail,overviewReader,now});
  const send=(res,status,value,cors)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer',...(cors?{'Access-Control-Allow-Origin':cors,'Vary':'Origin'}:{})});res.end(JSON.stringify(value));};
  const read=async(req,max)=>{if(!/^application\/json(?:;.*)?$/i.test(req.headers['content-type']??''))throw new ApiFailure('JSON_REQUIRED',415);if(Number(req.headers['content-length']??0)>max)throw new ApiFailure('REQUEST_TOO_LARGE',413);if(bodies>=2)throw new ApiFailure('SERVER_BUSY',429);bodies++;try{let size=0;const parts=[];for await(const part of req){size+=part.length;if(size>max)throw new ApiFailure('REQUEST_TOO_LARGE',413);parts.push(part);}try{return JSON.parse(Buffer.concat(parts).toString('utf8'));}catch{throw new ApiFailure('INVALID_JSON',400);}}finally{bodies--;}};
- const server=createServer(async(req,res)=>{
+ const handle=async(req,res)=>{
   const cors=allowed.has(req.headers.origin)?req.headers.origin:null;
   try {
    const url=new URL(req.url,origin);
@@ -71,7 +72,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
    if(req.method==='POST'&&url.pathname==='/api/auth/google/finish'){send(res,200,await google.finishGoogle(await read(req,8192),req.headers.authorization),cors);return;}
    if(req.method==='POST'&&url.pathname==='/api/checkout/receipt'){send(res,200,await checkout.receipt(await read(req,2048)),cors);return;}
    if(req.method==='POST'&&['/api/checkout/launch','/api/checkout/confirm'].includes(url.pathname)){const b=await read(req,2048);send(res,200,await (url.pathname.endsWith('/launch')?checkout.launch(b):checkout.confirm(b)),cors);return;}
-   const user=store.authenticate(req.headers.authorization);
+   const user=readinessMeasure('authentication',()=>store.authenticate(req.headers.authorization));
    if(req.method==='GET'&&url.pathname==='/api/auth/session'){send(res,200,{user:{id:user.id,label:user.label,role:user.role}},cors);return;}
    if(req.method==='GET'&&url.pathname==='/api/dimension-analysis'){send(res,200,dimensionAnalysis.capability(user),cors);return;}
    if(req.method==='POST'&&url.pathname==='/api/dimension-analysis'){throw new ApiFailure('REFERENCE_EVALUATION_ONLY',403);}
@@ -108,7 +109,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
    const project=/^\/api\/projects\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
    if(project&&req.method==='GET'){send(res,200,store.project(user.id,project[1]),cors);return;}
    if(project&&req.method==='POST'){send(res,200,store.save(user.id,project[1],await read(req,40_001_000)),cors);return;}
-   if(req.method==='GET'&&url.pathname==='/api/status'){const s=service(user).status();send(res,200,{...s,mode:password.available()?'test-account-beta':'invite-beta',limitations:s.limitations.filter(x=>!['local-single-user','no-production-auth'].includes(x)).concat([password.available()?'test-email-unverified':'invite-only','single-instance-beta','no-live-payment']),user:{id:user.id,label:user.label}},cors);return;}
+   if(req.method==='GET'&&url.pathname==='/api/status'){const instance=readinessMeasure('service_initialization',()=>service(user)),s=instance.status();send(res,200,{...s,mode:password.available()?'test-account-beta':'invite-beta',limitations:s.limitations.filter(x=>!['local-single-user','no-production-auth'].includes(x)).concat([password.available()?'test-email-unverified':'invite-only','single-instance-beta','no-live-payment']),user:{id:user.id,label:user.label}},cors);return;}
    if(req.method==='GET'&&url.pathname==='/api/generations'){send(res,200,service(user).history(url.searchParams.get('projectId')??undefined),cors);return;}
    const requestLookup=/^\/api\/generation-requests\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
    if(req.method==='GET'&&requestLookup){send(res,200,service(user).requestStatus(requestLookup[1],url.searchParams.get('projectId')),cors);return;}
@@ -118,7 +119,8 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
    if(req.method==='POST'&&job?.[2]){const body=await read(req,8192),s=service(user);send(res,200,job[2]==='report'?s.reportDefect(job[1],body):job[2]==='accept'?s.accept(job[1],body.artifactId,body.dimensionReview):s.reject(job[1]),cors);return;}
    throw new ApiFailure('NOT_FOUND',404);
   }catch(e){send(res,e instanceof ApiFailure?e.status:500,{error:{code:e instanceof ApiFailure?e.code:'INTERNAL_ERROR'}},cors);}
- });
+ };
+ const server=createServer((req,res)=>observeReadiness(req,res,()=>handle(req,res)));
  server.requestTimeout=30_000;server.headersTimeout=10_000;server.maxConnections=100;
  return {server,close:async()=>{await new Promise(resolve=>server.close(resolve));await Promise.all([...services.values()].map(s=>s.close()));services.clear();await dimensionAnalysis.close();await singleBox.close();}};
 }

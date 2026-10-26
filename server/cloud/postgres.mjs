@@ -1,3 +1,4 @@
+import {readinessMeasure} from '../readiness-observation.mjs';
 import pg from 'pg';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {readFileSync} from 'node:fs';
@@ -25,7 +26,7 @@ function sqlDialect(text){
 function parameters(text){let i=0;return text.replace(/\?/g,()=>'$'+(++i));}
 export class PostgresDatabase {
  constructor(pool,schema,{guard=()=>{}}={}){if(!/^aiadcast_(accounts|user_[a-f0-9]{32})$/.test(schema))throw Error('INVALID_DATABASE_SCHEMA');this.pool=pool;this.schema=schema;this.guard=guard;this.atomicSchemas=true;}
- async initialize(){const c=await this.pool.connect();try{
+ async initialize(){const c=await readinessMeasure('pool_wait',()=>this.pool.connect());try{
   await c.query(`CREATE SCHEMA IF NOT EXISTS "${this.schema}"`);
   const {rows}=await c.query("SELECT rolname FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role')");
   const roles=['PUBLIC',...rows.map(r=>'"'+r.rolname+'"')].join(',');
@@ -42,7 +43,7 @@ export class PostgresDatabase {
    const run=current.tail.then(async()=>{this.guard();await current.client.query(`SET LOCAL search_path TO "${this.schema}", pg_catalog`);return fn(current.client);});
    current.tail=run.catch(error=>{current.failed??=error;});return run;
   }
-  const c=await this.pool.connect();try{this.guard();await c.query(`SET search_path TO "${this.schema}", pg_catalog`);return await fn(c);}finally{c.release();}
+  const c=await readinessMeasure('pool_wait',()=>this.pool.connect());try{this.guard();await c.query(`SET search_path TO "${this.schema}", pg_catalog`);return await fn(c);}finally{c.release();}
  }
  async query(text,values=[]){return this.using(async c=>{
   if(text.startsWith('PRAGMA table_info(')){const name=/PRAGMA table_info\((\w+)\)/.exec(text)?.[1];return c.query('SELECT column_name AS name FROM information_schema.columns WHERE table_schema=$1 AND table_name=$2',[this.schema,name]);}
@@ -55,7 +56,7 @@ export class PostgresDatabase {
   return this.using(async client=>{
    await client.query('BEGIN');const scope={pool:this.pool,client,tail:Promise.resolve(),failed:null};
    try{
-    await client.query("SELECT pg_advisory_xact_lock(hashtext('aiadcast-next-budget-transactions-v1'))");
+    await readinessMeasure('lock_wait',()=>client.query("SELECT pg_advisory_xact_lock(hashtext('aiadcast-next-budget-transactions-v1'))"));
     const result=await context.run(scope,fn);await scope.tail;if(scope.failed)throw scope.failed;
     this.guard();await client.query('COMMIT');return result;
    }catch(error){await scope.tail;await client.query('ROLLBACK');throw error;}
