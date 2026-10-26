@@ -41,11 +41,11 @@ function bucketFixture(){
  };
  return {objects,calls,fetchImpl};
 }
-export async function setup(t,{adapter,accounts,fault={}}={}){
+export async function setup(t,{adapter,accounts,fault={},recommendationPolicy,recommendationTransport}={}){
  const folder=mkdtempSync(join(tmpdir(),'aiadcast-cloud-')),bucket=bucketFixture();let app,calls=0;
  const defaultAdapter={generate:async()=>{calls++;return {bytes,mime:'image/png',width:8,height:8,sha256:hash,role:'background',usage,cost:imageUsageCost(usage),model:IMAGE_MODEL,revision:IMAGE_REVISION,providerRequestId:'fixture-provider'};}};
  const start=async()=>{
-  app=await createCloudBackend(config,env,{pool:await pgPool(join(folder,'pg'),fault),storageFetch:bucket.fetchImpl,adapter:adapter??defaultAdapter,accounts:accounts??{},staticDirectory:null,skipInstanceLock:true});
+  app=await createCloudBackend({...config,...(recommendationPolicy?{recommendationPolicy,key:'synthetic-test-placeholder'}:{})},env,{pool:await pgPool(join(folder,'pg'),fault),storageFetch:bucket.fetchImpl,recommendationTransport,adapter:adapter??defaultAdapter,accounts:accounts??{},staticDirectory:null,skipInstanceLock:true});
   await new Promise(r=>app.server.listen(0,'127.0.0.1',r));return app;
  };
  await start();t.after(async()=>{if(app)await app.close();rmSync(folder,{recursive:true,force:true});});

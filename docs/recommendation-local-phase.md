@@ -188,3 +188,36 @@ Adapter-preparation validation: 38 domain/integration cases and 12 browser cases
 passed with zero skipped, plus TypeScript/build/cloud/isolation. All adapter
 transports returned synthetic local responses. No key presence/access check,
 model access probe, provider HTTP request or production mutation was performed.
+
+## 2026-10-26 server/API/APK integration (not activated)
+
+The existing cloud server now mounts authenticated recommendation GET/POST routes.
+The finished-ad UI uses these routes instead of rule-based keyword fallback.
+Only an explicit Get AI recommendations click may POST. Reopening, navigation,
+language changes and recovery only GET. Customer-request markers survive reload;
+unknown outcomes cannot automatically retry. Cached output is artifact/owner/locale
+bound and never blocks original image export. Saved additional creative requests
+are included; mutable drafts and account credentials are excluded.
+
+Runtime consumes the existing injected config.key; no key lookup or new credential.
+There is deliberately NO production model, price, reservation or enabled default.
+A reviewed config.recommendationPolicy is required: approved-server-policy-v1,
+model, promptVersion, micro-USD-per-million input/cached/output rates, output-token
+limit <=1000, reservationMicros, per-owner monthlyCapMicros, and explicit
+included-first-approved/customerCharge=0 policy. Tests use synthetic values only.
+Reservation and token limits do not guarantee a provider invoice hard cap.
+The existing per-owner and total image budgets remain the authoritative expense
+aggregates; recommendation audit rows are not added a second time.
+
+Before activation: separately approve model/prices/reservation/monthly limit and
+first-included policy, review/apply migration-draft.sql in eligible owner schemas
+with existing RLS/revocation protections, then supply the reviewed server policy.
+Initialization only verifies tables/RLS; it never migrates or changes accounts.
+All four new tables are additive. Rollback disables policy and retains rows and
+uncertain holds for reconciliation; do not DROP or zero supplier records. Existing
+accounts, image tables, credits and prior holds are not migrated.
+
+APK alone cannot activate recommendations against the currently deployed server.
+Without server policy/tables it says recommendations are not enabled yet while
+save/share remain available. Source push, deployment, operational migration, actual
+provider trial and physical-device validation are not performed in this phase.

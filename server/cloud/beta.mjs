@@ -1,3 +1,4 @@
+import {recommendationRuntime} from '../recommendations/runtime.mjs';
 import {submissionStage} from '../submission-observation.mjs';
 import {readinessMeasure} from '../readiness-observation.mjs';
 import {MAX_GENERATED_IMAGE_BYTES} from '../openai-image-adapter.mjs';
@@ -93,7 +94,7 @@ export class CloudGenerationService extends GenerationService {
   return {id:a.hash,sha256:a.hash,width:a.width,height:a.height,...(bytes?{dataUrl:`data:${a.mime};base64,${bytes.toString('base64')}`}:{})};
  }
 }
-export async function createCloudBackend(config,env=process.env,{pool:injectedPool,storage:injectedStorage,storageFetch,adapter:injectedAdapter,extraOrigins=[],accounts:injectedAccounts,staticDirectory=resolve('dist'),skipInstanceLock=false,onStandby}={}){
+export async function createCloudBackend(config,env=process.env,{pool:injectedPool,storage:injectedStorage,storageFetch,adapter:injectedAdapter,recommendationTransport,extraOrigins=[],accounts:injectedAccounts,staticDirectory=resolve('dist'),skipInstanceLock=false,onStandby}={}){
  const pool=injectedPool??createPool(postgresConfiguration(env.DATABASE_URL,env.SUPABASE_URL,env));
  let instance,app,closing=false;
  const lost=()=>{if(app&&!closing){closing=true;void app.close().finally(()=>pool.end()).finally(()=>{process.exitCode=1;});}};
@@ -107,7 +108,7 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
   const supabaseMail=env.AIADCAST_EMAIL_ENABLED==='true'&&env.AIADCAST_EMAIL_PROVIDER==='supabase';
   const accounts=injectedAccounts??accountConfiguration(env);
   if(!injectedAccounts&&supabaseMail)accounts.sendMail=options=>storage.sendAuthEmail(options);
-  app=await createBetaServer({store,overviewReader:(actor,admin)=>readAdminOverview({pool,guard,actor,admin,enabled:config.enabled,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter)}),publicUrl:config.publicUrl,singleBox:singleBoxService({apiKey:config.key,statusReader:(actor,id)=>readSingleBoxEvaluation(accountsDb,actor,id),ledgerFactory:()=>new SingleBoxLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),dimensionAnalysis:dimensionAnalysisService({evaluationEnabled:true,apiKey:config.key,statusReader:(actor,id)=>readCloudEvaluation(accountsDb,actor,id),ledgerFactory:()=>new CloudVisionLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),extraOrigins,staticDirectory,accounts,serviceFactory:async user=>{
+  app=await createBetaServer({store,recommendations:recommendationRuntime({store,pool,storage,origin:config.publicUrl,extraOrigins:['https://appassets.androidplatform.net',...extraOrigins],apiKey:config.key,policy:config.recommendationPolicy,transport:recommendationTransport,guard:()=>instance?.assert()}),overviewReader:(actor,admin)=>readAdminOverview({pool,guard,actor,admin,enabled:config.enabled,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter)}),publicUrl:config.publicUrl,singleBox:singleBoxService({apiKey:config.key,statusReader:(actor,id)=>readSingleBoxEvaluation(accountsDb,actor,id),ledgerFactory:()=>new SingleBoxLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),dimensionAnalysis:dimensionAnalysisService({evaluationEnabled:true,apiKey:config.key,statusReader:(actor,id)=>readCloudEvaluation(accountsDb,actor,id),ledgerFactory:()=>new CloudVisionLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),extraOrigins,staticDirectory,accounts,serviceFactory:async user=>{
    instance?.assert();const db=await readinessMeasure('schema_setup',()=>new PostgresDatabase(pool,cloudSchema(user.id),{guard}).initialize());
    const s=new CloudGenerationService();s.storage=storage;s.cloudUser=user.id;
    await readinessMeasure('generation_initialize',()=>s.initialize({db,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:config.enabled,assistantEnabled:config.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter),adapter:{generate:options=>{instance?.assert();return gate(()=>adapter.generate(options));}},assistantAdapter:options=>{instance?.assert();return gate(()=>assistCopy({...options,apiKey:config.key}));}}));

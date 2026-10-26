@@ -5,3 +5,11 @@ CREATE TABLE IF NOT EXISTS recommendation_jobs(id TEXT PRIMARY KEY,owner_id TEXT
 CREATE TABLE IF NOT EXISTS recommendation_supplier_costs(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,category TEXT NOT NULL CHECK(category IN ('image','recommendation')),period TEXT NOT NULL,held_micros BIGINT NOT NULL CHECK(held_micros>=0),actual_micros BIGINT CHECK(actual_micros>=0),state TEXT NOT NULL,reservation_micros BIGINT NOT NULL CHECK(reservation_micros>0));
 
 ALTER TABLE recommendation_jobs ADD COLUMN IF NOT EXISTS expires_at BIGINT;
+
+-- Run only within the explicitly selected owner's schema in a reviewed migration.
+-- No public policies; existing privileged application DB role owns access.
+ALTER TABLE recommendation_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recommendation_attempts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recommendation_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recommendation_supplier_costs ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON recommendation_jobs,recommendation_attempts,recommendation_requests,recommendation_supplier_costs FROM PUBLIC;

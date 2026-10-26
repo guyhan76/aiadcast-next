@@ -1,15 +1,17 @@
-import {assertLocalRecommendationMode} from './safety-policy.mjs';
+import {assertRecommendationExecution} from './safety-policy.mjs';
 import { SharedRecommendationBudget } from './shared-budget.mjs';
 import { randomUUID } from 'node:crypto';
 import { hash, snapshotOf, validateOutput } from './contracts.mjs';
-// Local PostgreSQL test implementation. Standalone API contract only; no production registration.
+// Persistent jobs use an explicit server policy or isolated local test policy.
 export class PostgresRecommendationService {
-    async initialize(db, { resolveOwnedImage, adapter, enabled = false, executionMode, sharedBudget, outputProvenance = 'mock-ai', version = 'mock-v1/prompt-v1', budgetMicros = 10000, reservationMicros = 1000, lookupEvidence, now = () => Date.now(), ttlMs = 3600000 }) {
-        assertLocalRecommendationMode(executionMode);
+    async initialize(db, { resolveOwnedImage, adapter, enabled = false, executionMode, policy, sharedBudget, outputProvenance = 'mock-ai', version = 'mock-v1/prompt-v1', budgetMicros = 10000, reservationMicros = 1000, lookupEvidence, now = () => Date.now(), ttlMs = 3600000 }) {
+        assertRecommendationExecution(executionMode,policy);
+        if(executionMode==='server'&&(outputProvenance!=='openai'||version!==policy.model+'/'+policy.promptVersion||reservationMicros!==policy.reservationMicros||!sharedBudget))throw Error('RECOMMENDATION_LIVE_POLICY_NOT_APPROVED');
         if (!Number.isSafeInteger(budgetMicros) || budgetMicros < 0 || !Number.isSafeInteger(reservationMicros) || reservationMicros < 1 || !version || !Number.isSafeInteger(ttlMs) || ttlMs < 1)
             throw Error('INVALID_MOCK_POLICY');
-        Object.assign(this, { resolveOwnedImage, adapter, enabled, outputProvenance, version, budgetMicros, reservationMicros, lookupEvidence, db, now, ttlMs });
+        Object.assign(this, { customerPolicy:executionMode==='server'?policy.customerPolicy:'proposed-included-first', resolveOwnedImage, adapter, enabled, outputProvenance, version, budgetMicros, reservationMicros, lookupEvidence, db, now, ttlMs });
         try{await db.prepare('SELECT expires_at FROM recommendation_jobs LIMIT 0').get();await db.prepare('SELECT id FROM recommendation_attempts LIMIT 0').get();await db.prepare('SELECT request_id FROM recommendation_requests LIMIT 0').get();await db.prepare('SELECT reservation_micros FROM recommendation_supplier_costs LIMIT 0').get();}catch{throw Error('RECOMMENDATION_SCHEMA_REQUIRED');}
+        if(executionMode==='server'){const r=await db.prepare("SELECT COUNT(*) AS n FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=current_schema() AND c.relname IN ('recommendation_jobs','recommendation_attempts','recommendation_requests','recommendation_supplier_costs') AND c.relrowsecurity=true").get();if(r.n!==4)throw Error('RECOMMENDATION_SCHEMA_REQUIRED');}
         this.shared = sharedBudget??new SharedRecommendationBudget(db, { limitMicros: budgetMicros });
         this.usesExistingBudget=Boolean(sharedBudget);
         return this;
@@ -51,7 +53,7 @@ export class PostgresRecommendationService {
             const id = randomUUID(), attempt = randomUUID();
             await this.shared.reserve({ id: attempt, owner, category: 'recommendation', amount: this.reservationMicros });
             await this.db.prepare('INSERT INTO recommendation_jobs(id,owner_id,generation_id,cache_key,snapshot_json,artifact_hash,locale,version,state) VALUES(?,?,?,?,?,?,?,?,?)').run(id, owner, body.generationId, key, JSON.stringify(snapshot), record.artifactHash, body.locale, this.version, 'pending');
-            await this.db.prepare('UPDATE recommendation_jobs SET expires_at=? WHERE id=?').run(this.now() + this.ttlMs, id);
+            await this.db.prepare('UPDATE recommendation_jobs SET expires_at=?,customer_policy=? WHERE id=?').run(this.now() + this.ttlMs,this.customerPolicy, id);
             await this.db.prepare('INSERT INTO recommendation_attempts VALUES(?,?,?,?,NULL)').run(attempt, id, 'pending', this.reservationMicros);
             await this.db.prepare('INSERT INTO recommendation_requests VALUES(?,?,?,?)').run(owner, body.requestId, fingerprint, id);
             return { id, attempt, dispatch: true };
@@ -71,7 +73,7 @@ export class PostgresRecommendationService {
                     if (zero)
                         await this.shared.settle(a.id, 0);
                     await this.db.prepare('UPDATE recommendation_attempts SET state=?,held_micros=?,actual_micros=? WHERE job_id=?').run(zero ? 'failed' : 'uncertain', zero ? 0 : a.held_micros, zero ? 0 : null, outcome.id);
-                    await this.db.prepare('UPDATE recommendation_jobs SET state=?,error_code=? WHERE id=?').run(zero ? 'failed' : 'uncertain', zero ? 'NOT_DISPATCHED' : 'OUTCOME_UNKNOWN', outcome.id);
+                    await this.db.prepare('UPDATE recommendation_jobs SET state=?,error_code=? WHERE id=?').run(zero ? 'failed' : 'uncertain', zero ? 'NOT_DISPATCHED' : /^PROVIDER_(TIMEOUT|HTTP_[45][0-9]{2}|RESPONSE_TOO_LARGE)$/.test(e?.message)?e.message:'OUTCOME_UNKNOWN', outcome.id);
                 });
             }
         }

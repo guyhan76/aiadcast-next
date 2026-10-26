@@ -13,3 +13,11 @@ export function validateRecommendationMeasurements(limits,measurement){
  if(!measurement||Object.keys(measurement).some(k=>!['inputTextTokens','outputTokens','imageBytes','imageWidth','imageHeight','imageCount'].includes(k))||['inputTextTokens','outputTokens','imageBytes','imageWidth','imageHeight','imageCount'].some(k=>!Number.isSafeInteger(measurement[k])||measurement[k]<0)||measurement.imageCount!==1||measurement.imageWidth<1||measurement.imageHeight<1||measurement.imageBytes<1||measurement.inputTextTokens>policy.maxInputTextTokens||measurement.outputTokens>policy.maxOutputTokens||measurement.imageBytes>policy.maxImageBytes||Math.max(measurement.imageWidth,measurement.imageHeight)>policy.maxImageEdge)throw Error('RECOMMENDATION_LIMIT_EXCEEDED');
  return {withinConfiguredLimits:true,providerCostBoundVerified:false};
 }
+
+// Supplied only by a reviewed server deployment, never by an HTTP request.
+// No default model, token prices, reservation or commercial approval.
+export function validateServerRecommendationPolicy(p){
+ if(!p||p.kind!=='approved-server-policy-v1'||p.customerPolicy!=='included-first-approved'||p.customerCharge!==0||typeof p.model!=='string'||!/^gpt-[a-z0-9.-]{1,80}$/.test(p.model)||!/^recommendation-v[0-9]+$/.test(p.promptVersion)||!Number.isSafeInteger(p.reservationMicros)||p.reservationMicros<1||!Number.isSafeInteger(p.monthlyCapMicros)||p.monthlyCapMicros<p.reservationMicros||!Number.isSafeInteger(p.maxOutputTokens)||p.maxOutputTokens<1||p.maxOutputTokens>1000||!p.pricing||['input','cached','output'].some(k=>!Number.isSafeInteger(p.pricing[k])||p.pricing[k]<0)||p.pricing.input<1||p.pricing.output<1||p.pricing.cached>p.pricing.input)throw Error('RECOMMENDATION_LIVE_POLICY_NOT_APPROVED');
+ return structuredClone(p);
+}
+export function assertRecommendationExecution(mode,policy){if(mode==='local-test')return assertLocalRecommendationMode(mode);if(mode!=='server')throw Error('RECOMMENDATION_LIVE_POLICY_NOT_APPROVED');return validateServerRecommendationPolicy(policy);}

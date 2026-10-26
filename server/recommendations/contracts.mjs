@@ -20,5 +20,5 @@ export function validateOutput(raw,provenance='mock-ai'){
 export function savedRequestSnapshot(request){
  const input=request.marketingPlan?.input,attributes=request.attributes??input?.attributes??[];
  const facts=[...attributes,...(request.productProfile?.category?[{name:'category',value:request.productProfile.category}]:[]),...(request.productProfile?.material&&!attributes.some(x=>x.value===request.productProfile.material)?[{name:'description',value:request.productProfile.material}]:[]),...(request.specifications??[]).map(x=>({name:x.axis,value:x.value+' '+x.unit}))];
- return {productName:request.productName,facts,directions:request.brief??'',confirmedCopy:Object.values(request.copy??{}).filter(x=>typeof x==='string'&&x.trim()),adLanguage:request.output.locale,purpose:input?.goal??'product introduction',format:request.output.format};
+ return {productName:request.productName,facts,directions:[request.brief,request.creativeDirection?.additionalInstructions].filter(x=>typeof x==='string'&&x.trim()).filter((x,i,a)=>a.indexOf(x)===i).join('\n'),confirmedCopy:Object.values(request.copy??{}).filter(x=>typeof x==='string'&&x.trim()),adLanguage:request.output.locale,purpose:input?.goal??'product introduction',format:request.output.format};
 }

@@ -1,3 +1,4 @@
+import {AIRecommendation} from './AIRecommendation';
 import {providerFailureMessage} from './provider-failure-message';
 import {submissionDiagnostic,parseSubmissionDiagnostic,type SubmissionDiagnostic} from './submission-diagnostic';
 import {generationMatchKey} from './generation-match';
@@ -13,7 +14,6 @@ import {parsePlanarReport} from './planar-proportion';
 import {imageFile} from './model';
 import {preflightProportions} from './proportion-browser';
 import {offlineDemo} from './demo-mode';
-import {MarketingSummary} from './MarketingSummary';
 import {parseMarketingPlan} from './marketing-plan';
 import {storageNamespace} from './beta-session';
 import {useEffect,useRef,useState} from 'react';
@@ -321,7 +321,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
 
    {preview?.composed.generated?.planarReport&&<PlanarResult report={preview.composed.generated.planarReport} original={preview.composed.generated.planarOriginal}/>}
    {(job.state==='ready'||job.state==='accepted')&&<>{!compatible&&<p role="alert">{revisedReady?t('입력이 바뀌었습니다. 새 광고를 생성할 수 있으며 이전 결과와 차감 내역은 유지됩니다.','Details changed. You can generate a new ad; the previous result and charges are preserved.'):t('사진·상품 설정 또는 완성 광고의 문구·규격 표시·연락처가 바뀌었습니다. 원래 정보를 복원하거나 시안을 반려한 뒤 현재 정보로 새로 생성해주세요.','The photo, product settings or finished ad copy, dimension display or contacts changed. Restore the original details, or reject the visual and generate with the current details.')}</p>}{preview&&manualBaseExport(preview.composed)&&<p role="status">{t('치수선 없는 광고입니다. 입력 규격은 보관됩니다.','Ad without added dimension lines. Your measurements are preserved.')}</p>}<label className="generation-review"><input type="checkbox" checked={reviewed} disabled={!compatible||!previewReady} onChange={e=>setReviewed(e.target.checked)}/>{t('상품·재질 구조·규격·가격·문구를 확인했습니다.','I reviewed the product, material structure, dimensions, price and copy.')}</label><div className="generation-review-actions"><button disabled={busy||!reviewed||!compatible||!previewReady} onClick={()=>void accept()}><Check size={16}/>{job.state==='accepted'?t('저장한 시안 다시 적용','Reapply accepted visual'):job.creditCaptured?t('사용 확정 · 추가 차감 없음','Accept · no extra charge'):exemptJob?t('사용 확정 · 이용권 차감 없음','Accept · No credits used'):t('사용 확정 · 1개 차감','Accept · use 1 credit')}</button>{job.state==='ready'&&<button disabled={busy} onClick={()=>void reject()}><X size={16}/>{job.creditCaptured?t('반려 · 자동 복원 없음','Reject · no automatic refund'):exemptJob?t('시안 반려','Reject visual'):t('반려 · 이용권 복원','Reject · restore credit')}</button>}</div></>}
-   {job.artifact&&job.marketingPlan&&compatible&&<MarketingSummary plan={job.marketingPlan} format={project.format} saved/>}
+   {job.artifact&&compatible&&<AIRecommendation key={job.id+job.artifact.sha256} binding={{generationId:job.id,artifactHash:job.artifact.sha256}}/>}
    {job.state==='uncertain'&&<p>{t('결과를 확인하지 못했습니다. 기존 결과를 다시 확인해주세요. 중복 생성을 막기 위해 새 요청은 보내지 않습니다.','The result is unconfirmed. Check the existing result again. No new request will be sent to avoid duplicate generation.')}</p>}
   </div>}
   {enlarged&&previewReady&&<ImageReview label={t('시안 확대 검수','Enlarged visual inspection')} onClose={()=>setEnlarged(false)}><img src={preview!.dataUrl} alt={t('광고 전체 확대 검수','Inspect the complete ad')}/></ImageReview>}

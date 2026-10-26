@@ -22,7 +22,7 @@ import {AdminApi} from './admin-api.mjs';
 export const ANDROID_ORIGIN='https://appassets.androidplatform.net';
 export function providerGate(max=2){let active=0;return async task=>{if(active>=max)throw new ProviderFailure('PROVIDER_BUSY',{uncertain:false});active++;try{return await task();}finally{active--;}};}
 export function publicOrigin(value){const u=new URL(value);if(u.protocol!=='https:'||!u.hostname||u.username||u.password||u.search||u.hash||u.pathname!=='/')throw Error('HTTPS_ORIGIN_REQUIRED');return u.origin;}
-export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,now=()=>Date.now(),extraOrigins=[],staticDirectory,accounts={},dimensionAnalysis=dimensionAnalysisService(),singleBox=singleBoxService()}) {
+export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,recommendations,now=()=>Date.now(),extraOrigins=[],staticDirectory,accounts={},dimensionAnalysis=dimensionAnalysisService(),singleBox=singleBoxService()}) {
  const assets=new Map();
  if(staticDirectory){const scan=(folder,prefix='')=>{for(const item of readdirSync(folder,{withFileTypes:true})){const name=prefix+item.name;if(item.isDirectory())scan(join(folder,item.name),name+'/');else assets.set('/'+name,readFileSync(join(folder,item.name)));}};scan(staticDirectory);}
  const origin=publicOrigin(publicUrl),allowed=new Set([origin,ANDROID_ORIGIN,...extraOrigins.map(publicOrigin)]),services=new Map();
@@ -76,6 +76,12 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
    submissionStage('authentication');
    const user=readinessMeasure('authentication',()=>store.authenticate(req.headers.authorization));
    if(req.method==='GET'&&url.pathname==='/api/auth/session'){send(res,200,{user:{id:user.id,label:user.label,role:user.role}},cors);return;}
+   if(/^\/api\/(?:generations\/[A-Za-z0-9_-]{1,100}\/recommendations|recommendations\/[A-Za-z0-9_-]{1,100})$/.test(url.pathname)){
+    if(!recommendations){send(res,503,{error:{code:'RECOMMENDATIONS_DISABLED'}},cors);return;}
+    const body=req.method==='POST'?JSON.stringify(await read(req,2048)):undefined;
+    const response=await recommendations.handle(new Request(url,{method:req.method,headers:{authorization:req.headers.authorization??'',origin:req.headers.origin??'','content-type':req.headers['content-type']??'','x-aiadcast-client':req.headers['x-aiadcast-client']??''},...(body?{body}:{})}));
+    send(res,response.status,await response.json(),cors);return;
+   }
    if(req.method==='GET'&&url.pathname==='/api/dimension-analysis'){send(res,200,dimensionAnalysis.capability(user),cors);return;}
    if(req.method==='POST'&&url.pathname==='/api/dimension-analysis'){throw new ApiFailure('REFERENCE_EVALUATION_ONLY',403);}
    if(url.pathname.startsWith('/api/admin/')){

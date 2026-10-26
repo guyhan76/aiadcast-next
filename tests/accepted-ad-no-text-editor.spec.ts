@@ -15,7 +15,7 @@ for(const language of ['ko','en'] as const)test(`accepted ad hides text editor a
  p.generated.marketingPlan=marketingPlanForProject(p);
  const layer={id:'saved-layer',text:'Preserved edit',x:0,y:0,width:1,height:1,size:.05,color:'#ffffff',cover:'#ff0000',bold:true,align:'left' as const};p.textEdit={source:structuredClone(p.product!),layers:[layer],saved:[{...layer,text:'Last saved copy'}]};
  await restoreOwnedWorkspace(page,p,owner);const accepted=page.locator('.accepted-ad');await expect(accepted).toBeVisible();await expect(page.locator('.dimension-guide')).toHaveCount(0);await expect(page.locator('.text-layer-section')).toHaveCount(0);await expect(page.getByText('글씨 편집',{exact:true})).toHaveCount(0);await expect(page.getByText(/글씨 편집 내용이 보관/)).toHaveCount(0);
- await page.locator('.marketing-analysis > summary').click();await expect(page.locator('.marketing-keywords')).toContainText('Aster laptop');await expect(page.locator('.marketing-keywords')).not.toContainText(/소형가전|생활가전|small appliances|household appliances/);
+ await page.locator('.marketing-analysis > summary').click();await expect(page.locator('.marketing-keywords')).toHaveCount(0);await expect(page.locator('.ai-recommendation')).not.toContainText(/소형가전|생활가전|small appliances|household appliances/);
  const variant=page.getByRole('button',{name:language==='ko'?'같은 상품으로 다른 시안 만들기':'Create another design for this product',exact:true});await expect(variant).toHaveCount(1);await expect(variant).toBeVisible();await expect(page.locator('.generate-button')).toHaveCount(0);expect(writes).toBe(0);
  await expect(accepted).toBeVisible();
  const button=accepted.getByRole('button',{name:language==='ko'?'이미지 저장 · 공유':'Save / share image',exact:true});await expect(button).toBeEnabled();

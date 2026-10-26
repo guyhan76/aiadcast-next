@@ -14,10 +14,10 @@ test('concurrent image and recommendation categories cannot reserve beyond share
 test('generation lookup recovers lost response without dispatch and binds immutable output',async t=>{
  const {service,mock,record}=await setup(t);const api=recommendationApi({enabled:true,executionMode:'local-test',origin:'https://local.test',service,authenticate:async token=>({id:token==='Bearer a'?'a':'b'})});
  const read=token=>api(new Request('https://local.test/api/generations/g1/recommendations',{headers:{authorization:'Bearer '+token}}));
- assert.deepEqual(await (await read('a')).json(),{recommendation:null});assert.equal(mock.calls,0);
+ assert.deepEqual(await (await read('a')).json(),{enabled:true,customerCharge:0,recommendation:null});assert.equal(mock.calls,0);
  const job=await service.request(a,body),before=await service.shared.totals();record.snapshot.directions='Changed draft must not replace saved facts';
  for(let i=0;i<3;i++){const saved=(await (await read('a')).json()).recommendation;assert.equal(saved.id,job.id);assert.equal(saved.generationId,'g1');assert.equal(saved.artifactHash,job.artifactHash);assert.equal(saved.snapshotHash,job.snapshotHash);}
- assert.deepEqual(await (await read('b')).json(),{recommendation:null});assert.equal(mock.calls,1);assert.deepEqual(await service.shared.totals(),before);
+ assert.deepEqual(await (await read('b')).json(),{enabled:true,customerCharge:0,recommendation:null});assert.equal(mock.calls,1);assert.deepEqual(await service.shared.totals(),before);
 });
 test('OpenAI transport simulation persists unknown usage and reconciles once without redispatch',async t=>{
  const {createOpenAIRecommendationAdapter}=await import('../server/recommendations/openai-adapter.mjs');const sharp=(await import('sharp')).default;let calls=0;
