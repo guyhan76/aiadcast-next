@@ -1,3 +1,4 @@
+import {verifyRecommendationInput} from './input-accounting.mjs';
 import sharp from 'sharp';
 import {snapshotOf,hash,validateOutput} from './contracts.mjs';
 import {assertRecommendationExecution} from './safety-policy.mjs';
@@ -26,7 +27,7 @@ export async function prepareRecommendation({snapshot,imageBytes,locale}){
  const meta=await source.metadata();if(!['jpeg','png','webp'].includes(meta.format)||(meta.pages??1)>1)throw Error('UNSUPPORTED_IMAGE');
  const image=await source.rotate().resize({width:1024,height:1024,fit:'inside',withoutEnlargement:true}).flatten({background:'#ffffff'}).jpeg({quality:80}).toBuffer();
  if(image.length>1_000_000)throw Error('PREPARED_IMAGE_TOO_LARGE');
- return {text,image};
+ const outputMeta=await sharp(image).metadata();return {text,image,width:outputMeta.width,height:outputMeta.height};
 }
 // No key lookup or default model/prices. Reviewed server policy or a local test
 // supplies runtime dependencies; never an HTTP client configuration.
@@ -37,6 +38,7 @@ export function createOpenAIRecommendationAdapter({executionMode,policy,transpor
  return async input=>{
   let prepared;try{prepared=await prepareRecommendation(input);}catch{throw new NotDispatched('INPUT_REJECTED');}
   const body={model,store:false,stream:false,max_output_tokens:maxOutputTokens,instructions,input:[{role:'user',content:[{type:'input_text',text:prepared.text},{type:'input_image',image_url:'data:image/jpeg;base64,'+prepared.image.toString('base64'),detail:'high'}]}],text:{format:{type:'json_schema',name:'ad_usage_recommendation',strict:true,schema:recommendationSchema}}};
+  if(executionMode==='server')try{verifyRecommendationInput(body,prepared,approved);}catch{throw new NotDispatched('INPUT_POLICY_REJECTED');}
   const controller=new AbortController();let timer;
   const deadline=new Promise((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Error('PROVIDER_TIMEOUT'));},timeoutMs);});
   try{return await Promise.race([(async()=>{

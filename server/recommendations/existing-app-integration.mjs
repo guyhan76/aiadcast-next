@@ -26,5 +26,5 @@ export function existingAppRecommendationApi({store,pool,storage,adapter,origin,
   return service;
  })().catch(error=>{services.delete(owner);throw error;}));return services.get(owner);}
  const service={readForGeneration:async(context,id)=>(await serviceFor(context.userId)).readForGeneration(context,id),read:async(context,id)=>(await serviceFor(context.userId)).read(context,id),request:async(context,body)=>(await serviceFor(context.userId)).request(context,body)};
- return {handle:recommendationApi({enabled,origin,extraOrigins,service,authenticate:header=>store.authenticate(header)}),serviceFor};
+ return {handle:recommendationApi({enabled,origin,extraOrigins,service,adminPolicy:executionMode==='server'?{reservationMicros:policy.reservationMicros,monthlyCapMicros:policy.monthlyCapMicros}:undefined,authenticate:header=>store.authenticate(header)}),serviceFor};
 }

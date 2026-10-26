@@ -18,3 +18,7 @@ for(const failure of ['429','json','unknown','failed','disabled'])test(`recommen
 test('logout discards late response and cannot expose former account recommendation',async({page})=>{
  await setup(page);let resolve=()=>{};await page.route('**/api/**',async r=>{await new Promise<void>(done=>resolve=done);await r.fulfill({json:{enabled:true,customerCharge:0,recommendation:job()}}).catch(()=>{});});await page.goto(url);await page.getByRole('button',{name:'Logout fixture'}).click();resolve();await expect(page.getByText('cotton hoodie',{exact:true})).toHaveCount(0);await expect(page.getByRole('link',{name:'Original export fixture'})).toBeVisible();
 });
+for(const language of ['ko','en'])test(`server admin quote stays compact and customer has no cost detail (${language})`,async({page})=>{
+ await setup(page,language);let admin=true;await page.route('**/api/**',r=>r.fulfill({json:{enabled:true,customerCharge:0,recommendation:null,...(admin?{adminPolicy:{reservationMicros:20000,monthlyCapMicros:500000}}:{})}}));
+ await page.goto(url);await page.locator('summary').click();await expect(page.getByText(/\$0.02.*\$0.50/)).toBeVisible();for(const width of [320,390,768]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}admin=false;await page.reload();await page.locator('summary').click();await expect(page.getByText(/\$0.02.*\$0.50/)).toHaveCount(0);await expect(page.getByRole('button',{name:language==='ko'?'AI 추천 받기':'Get AI recommendations'})).toBeVisible();
+});

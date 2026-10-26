@@ -1,3 +1,4 @@
+import {recommendationPolicyFromEnv} from './recommendations/policy-config.mjs';
 import {observeSubmission,submissionStage,submissionError} from './submission-observation.mjs';
 import {observeReadiness,readinessMeasure} from './readiness-observation.mjs';
 import {serverBuild} from './build-info.mjs';
@@ -137,7 +138,7 @@ export function betaConfig(env=process.env){
  const budgetUsd=Number(env.AIADCAST_BETA_MONTHLY_BUDGET_USD??0),port=Number(env.PORT??8790);
  if(!Number.isFinite(budgetUsd)||budgetUsd<0||budgetUsd>100||!Number.isInteger(budgetUsd*1e6)||!Number.isInteger(port)||port<1024||port>65535)throw Error('INVALID_BETA_CONFIG');
  const key=env.AIADCAST_BETA_OPENAI_KEY_FILE?readFileSync(env.AIADCAST_BETA_OPENAI_KEY_FILE,'utf8').trim():env.AIADCAST_NEXT_STAGING_OPENAI_API_KEY;
- return {publicUrl,directory,monthlyBudgetMicros:budgetUsd*1e6,port,key,enabled:env.AIADCAST_BETA_ENABLE_GENERATION==='true',assistantEnabled:env.AIADCAST_BETA_ENABLE_ASSISTANT==='true'};
+ return {recommendationPolicy:recommendationPolicyFromEnv(env),publicUrl,directory,monthlyBudgetMicros:budgetUsd*1e6,port,key,enabled:env.AIADCAST_BETA_ENABLE_GENERATION==='true',assistantEnabled:env.AIADCAST_BETA_ENABLE_ASSISTANT==='true'};
 }
 async function main(){
  if(process.env.AIADCAST_BETA_PROCESS_LOCKED!=='1')throw Error('USE_BETA_LAUNCHER');
