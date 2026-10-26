@@ -148,6 +148,12 @@ test('known upstream refusal restores credits and does not auto retry or expose 
  const made=await service.create(body());await service.waitForIdle();assert.equal(service.job(made.job.id).state,'failed');
  assert.equal(service.wallet().available,3);assert.equal(service.ledger.budget(service.period()).held_micros,0);assert.equal(calls,1);
 });
+for(const code of ['PROVIDER_QUOTA_EXHAUSTED','PROVIDER_TEMPORARY_RATE_LIMIT','PROVIDER_429_UNCLASSIFIED'])test(`classified ${code} preserves refusal accounting and same-key idempotency`,async t=>{
+ let calls=0;const {service}=setup(t,{adapter:{generate:async()=>{calls++;throw new ProviderFailure(code,{uncertain:false,providerStatus:429});}}});
+ const input=body();const made=await service.create(input);await service.waitForIdle();const job=service.job(made.job.id);
+ assert.equal(job.state,'failed');assert.equal(job.errorCode,code);assert.equal(service.wallet().available,3);assert.equal(service.ledger.budget(service.period()).held_micros,0);
+ const replay=await service.create(input);assert.equal(replay.job.id,made.job.id);assert.equal(calls,1);
+});
 test('insufficient supplier budget rejects before credit reservation or external work',async t=>{
  const {service,calls}=setup(t,{budgetMicros:499999});await assert.rejects(service.create(body()),/BUDGET_NOT_AVAILABLE/);
  assert.equal(calls.length,0);assert.equal(service.wallet().available,3);assert.equal(service.wallet().reserved,0);

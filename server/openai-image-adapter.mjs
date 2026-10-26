@@ -1,3 +1,4 @@
+import {providerHttpError,safeProviderEnum} from './provider-http-error.mjs';
 import {preparePlanarSource,requestPlanarRatio,controlPlanarResult} from './planar-proportion.mjs';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
@@ -222,9 +223,9 @@ export class OpenAIImageAdapter {
     const requestId=response.headers.get('x-request-id');
     diagnostic.providerRequestId=typeof requestId==='string'&&/^req_[A-Za-z0-9_-]{1,160}$/.test(requestId)?requestId:null;
     if (!response.ok) {
-      // Do not forward/log provider error bodies, prompts, keys or signed URLs.
-      try { await response.body?.cancel(); } catch { /* Preserve the known HTTP classification if cleanup fails. */ }
-      throw new ProviderFailure(response.status === 429 ? 'PROVIDER_RATE_LIMITED' : 'PROVIDER_REQUEST_FAILED', { uncertain: ![400,401,403,404,413,422,429].includes(response.status), providerStatus: response.status, diagnosticCode:'PROVIDER_HTTP' });
+      const classified=await providerHttpError(response);
+      Object.assign(diagnostic,{providerErrorCode:classified.providerErrorCode,providerErrorType:classified.providerErrorType,retryAfterSeconds:classified.retryAfterSeconds});
+      throw new ProviderFailure(classified.code, { uncertain: ![400,401,403,404,413,422,429].includes(response.status), providerStatus: response.status, diagnosticCode:'PROVIDER_HTTP' });
     }
     let result;
     try { result = await responseJsonLimited(response); }
@@ -302,5 +303,5 @@ export function generationFailureDiagnostic({jobId,stage,error}) {
  const d=error?.transportDiagnostic??{},safeNumber=n=>Number.isSafeInteger(n)&&n>=0&&n<=3600000?n:null;
  const transport={elapsedMs:safeNumber(d.elapsedMs),timeoutMs:safeNumber(d.timeoutMs),endpoint:['edits','generations'].includes(d.endpoint)?d.endpoint:null,providerRequestId:typeof d.providerRequestId==='string'&&/^req_[A-Za-z0-9_-]{1,160}$/.test(d.providerRequestId)?d.providerRequestId:null};
  const proposed=error instanceof ProviderFailure?(error.diagnosticCode??error.code):error?.code;
- return {event:'generation_failure',jobId:typeof jobId==='string'&&/^[a-f0-9-]{36}$/.test(jobId)?jobId:null,stage:stages.includes(stage)?stage:'unknown',code:codes.includes(proposed)?proposed:'UNCLASSIFIED',...transport,httpStatus:Number.isInteger(d.httpStatus)&&d.httpStatus>=100&&d.httpStatus<=599?d.httpStatus:error instanceof ProviderFailure&&Number.isInteger(error.providerStatus)&&error.providerStatus>=400&&error.providerStatus<=599?error.providerStatus:null};
+ return {event:'generation_failure',jobId:typeof jobId==='string'&&/^[a-f0-9-]{36}$/.test(jobId)?jobId:null,stage:stages.includes(stage)?stage:'unknown',code:codes.includes(proposed)?proposed:'UNCLASSIFIED',...transport,...(d.httpStatus>=400?{providerErrorCode:safeProviderEnum(d.providerErrorCode),providerErrorType:safeProviderEnum(d.providerErrorType),retryAfterSeconds:Number.isSafeInteger(d.retryAfterSeconds)&&d.retryAfterSeconds>=0&&d.retryAfterSeconds<=86400?d.retryAfterSeconds:null}:{}),httpStatus:Number.isInteger(d.httpStatus)&&d.httpStatus>=100&&d.httpStatus<=599?d.httpStatus:error instanceof ProviderFailure&&Number.isInteger(error.providerStatus)&&error.providerStatus>=400&&error.providerStatus<=599?error.providerStatus:null};
 }

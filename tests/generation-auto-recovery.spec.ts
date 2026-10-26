@@ -277,3 +277,14 @@ test('unresolved admission stops bounded reads, preserves key and permits only r
  await page.reload();await expect.poll(()=>s.state.lookupReads).toBeGreaterThan(count);expect(s.state.writes).toBe(0);
  await page.evaluate(()=>location.hash='projects');const stopped=s.state.lookupReads;await page.clock.fastForward(60000);expect(s.state.lookupReads).toBe(stopped);expect(s.state.writes).toBe(0);
 });
+
+for(const language of ['ko','en'] as const)for(const [code,ko,en] of [
+ ['PROVIDER_QUOTA_EXHAUSTED','잔액 또는 사용 한도','exhausted credits'],
+ ['PROVIDER_TEMPORARY_RATE_LIMIT','일시 호출 제한','temporarily rate limiting'],
+ ['PROVIDER_429_UNCLASSIFIED','세부 원인','reason is unconfirmed'],
+ ['PROVIDER_RATE_LIMITED','세부 원인','reason is unconfirmed']
+])test(`provider refusal guidance ${code} (${language}) stays read-only`,async({page})=>{
+ const s=await setup(page,language);s.state.job={...s.state.job,state:'failed',artifact:null as any,artifactId:null as any,errorCode:code as any};const panel=await s.open();
+ await expect(panel.getByRole('alert')).toContainText(language==='ko'?ko:en);expect(s.state.writes).toBe(0);
+ await page.reload();await expect(page.getByRole('alert').filter({hasText:language==='ko'?ko:en})).toBeVisible();expect(s.state.writes).toBe(0);
+});
