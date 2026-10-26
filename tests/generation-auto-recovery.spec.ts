@@ -183,3 +183,14 @@ for(const language of ['ko','en'] as const)for(const delayedRecovery of [false,t
  await page.locator('.generate-button').click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.posted).toHaveLength(1);
  await page.reload();await expect.poll(()=>s.state.reads).toBeGreaterThan(0);expect(s.state.posted).toHaveLength(1);
 });
+
+for(const language of ['ko','en'] as const)for(const delay of [13600,14900])for(const unregistered of [false,true])test(`valid slow readiness continues first form click once (${language}, ${delay}, ${unregistered})`,async({page},info)=>{
+ const s=await setup(page,language);s.state.historyJobs=[];s.state.lookup='not-recorded';const {jobId,...pending}=s.pending;await restoreOwnedWorkspace(page,s.p,s.owner,'studio',unregistered?pending:undefined);await expect.poll(()=>s.state.historyReads).toBe(1);if(unregistered)await expect.poll(()=>s.state.lookupReads).toBe(1);
+ await page.getByRole('button',{name:language==='ko'?'입력 내용 수정':'Edit details',exact:true}).click();
+ await page.clock.install({time:new Date('2026-10-26T00:00:00Z')});await page.clock.pauseAt(new Date('2026-10-26T00:01:00Z'));s.state.holdStatus=true;const before=s.state.statusReads;
+ await page.locator('.consumer-create').getByRole('button',{name:language==='ko'?'광고 생성':'Generate ad',exact:true}).evaluate((b:HTMLButtonElement)=>{b.click();b.click();});
+ await expect.poll(()=>s.state.statusReads).toBeGreaterThan(before);await page.clock.fastForward(delay);
+ await expect(page.locator('.generation-intent-status')).toBeVisible();await expect(page.locator('.generate-button')).toHaveCount(0);await expect(page.locator('.generation-notice')).toHaveCount(0);expect(s.state.posted).toHaveLength(0);if(delay===13600&&unregistered)await page.screenshot({path:info.outputPath('pending-single-click.png'),fullPage:true});
+ s.state.holdStatus=false;await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.posted).toHaveLength(1);if(unregistered)expect(s.state.posted[0].requestId).toBe(pending.requestId);
+ await page.reload();await expect.poll(()=>s.state.reads).toBeGreaterThan(0);expect(s.state.posted).toHaveLength(1);
+});
