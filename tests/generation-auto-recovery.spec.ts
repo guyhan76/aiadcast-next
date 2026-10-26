@@ -20,6 +20,7 @@ async function setup(page:Page,language:'ko'|'en'='ko',admin=false){
  await page.route('**/api/**',async r=>{
  const path=new URL(r.request().url()).pathname;if(path==='/api/auth/session')return r.fallback();if(path.endsWith('/recommendations'))return r.fulfill({status:503,json:{error:{code:'RECOMMENDATIONS_DISABLED'}}});if(r.request().method()!=='GET')state.writes++;
  if(path==='/api/status'){state.statusReads++;while(state.holdStatus&&!page.isClosed())await new Promise(resolve=>setTimeout(resolve,20));return r.fulfill({json:{generation:{enabled:true,model:'mock',photoPurposes:true,...(admin?{creditQuote:{unit:'legacy-ticket',amount:0,policy:'legacy-accept-v1'}}:{})},wallet,budget:{limitMicros:5000000,spentMicros:0,heldMicros:500000}}});}
+ if(path.endsWith('/accept')){state.job={...state.job,state:'accepted'};return r.fulfill({json:{job:state.job,wallet}});}
  if(path.startsWith('/api/generation-requests/')){state.lookupReads++;if(state.lookup==='unsupported')return r.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});return r.fulfill({json:{version:1,requestId:decodeURIComponent(path.split('/').at(-1)!),projectId:state.lookup==='wrong-project'?'wrong-project':p.id,state:state.lookup==='found'?'found':'not-recorded',jobId:state.lookup==='found'?job.id:null}});}
  if(path==='/api/generations'&&r.request().method()==='POST'){state.posted.push(r.request().postDataJSON());while(state.postHold&&!page.isClosed())await new Promise(resolve=>setTimeout(resolve,20));if(state.postInvalid)return r.fulfill({status:202,json:{job:null,wallet}});if(state.postNetwork)return r.abort('failed');if(state.postError)return r.fulfill({status:state.postError,json:{error:{code:state.postError===409?'CREDIT_RESERVATION_FAILED':'INTERNAL_ERROR'}}});if(state.postConflict){state.lookup='found';return r.fulfill({status:409,json:{error:{code:'IDEMPOTENCY_CONFLICT'}}});}return r.fulfill({status:202,json:{job:state.job,wallet}});}
  if(path.startsWith('/api/generations')){const attempt=path==='/api/generations'?++state.historyReads:++state.reads;const responseJob=state.job;while(state.hold&&!page.isClosed())await new Promise(resolve=>setTimeout(resolve,20));
@@ -190,7 +191,7 @@ for(const language of ['ko','en'] as const)for(const delay of [13600,14900])for(
  await page.clock.install({time:new Date('2026-10-26T00:00:00Z')});await page.clock.pauseAt(new Date('2026-10-26T00:01:00Z'));s.state.holdStatus=true;const before=s.state.statusReads;
  await page.locator('.consumer-create').getByRole('button',{name:language==='ko'?'광고 생성':'Generate ad',exact:true}).evaluate((b:HTMLButtonElement)=>{b.click();b.click();});
  await expect.poll(()=>s.state.statusReads).toBeGreaterThan(before);await page.clock.fastForward(delay);
- await expect(page.locator('.generation-intent-status')).toBeVisible();await expect(page.locator('.generate-button')).toHaveCount(0);await expect(page.locator('.generation-notice')).toHaveCount(0);expect(s.state.posted).toHaveLength(0);if(delay===13600&&unregistered)await page.screenshot({path:info.outputPath('pending-single-click.png'),fullPage:true});
+ await expect(page.locator('.generation-progress')).toBeVisible();await expect(page.locator('.generate-button')).toHaveCount(0);await expect(page.locator('.generation-notice')).toHaveCount(0);expect(s.state.posted).toHaveLength(0);if(delay===13600&&unregistered)await page.screenshot({path:info.outputPath('pending-single-click.png'),fullPage:true});
  s.state.holdStatus=false;await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.posted).toHaveLength(1);if(unregistered)expect(s.state.posted[0].requestId).toBe(pending.requestId);
  await page.reload();await expect.poll(()=>s.state.reads).toBeGreaterThan(0);expect(s.state.posted).toHaveLength(1);
 });
@@ -205,7 +206,7 @@ for(const language of ['ko','en'] as const)for(const failure of ['network','http
  const details=page.locator('.submission-failure details');await expect(page.locator('.submission-failure')).toBeVisible({timeout:3000});await details.locator('summary').click();
  await expect(details).toContainText(failure==='http'?'HTTP 409':(language==='ko'?'HTTP 응답 없음':'No HTTP response'));
  await expect(details).toContainText(failure==='http'?'CREDIT_RESERVATION_FAILED':'NETWORK_ERROR');
- await expect(page.locator('.generate-button')).toBeDisabled();
+ await expect(page.locator('.generate-button:enabled')).toHaveCount(0);
  const request=s.state.posted[0].requestId;await page.reload();const options=page.locator('.new-ad-options');if(!await options.evaluate(e=>(e as HTMLDetailsElement).open))await options.locator(':scope > summary').click();await expect(page.locator('.submission-failure')).toBeVisible();expect(s.state.posted).toHaveLength(1);
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));expect(s.state.posted).toHaveLength(1);
  const saved=await page.evaluate(({owner,id})=>JSON.parse(localStorage.getItem(owner+':aiadcast.pending-generation.'+id)!),{owner:s.owner,id:s.p.id});expect(saved.requestId).toBe(request);expect(saved.submissionFailure.code).toBe(failure==='http'?'CREDIT_RESERVATION_FAILED':'NETWORK_ERROR');
@@ -218,7 +219,7 @@ for(const failure of ['timeout','invalid'] as const)test(`submission ${failure} 
  await page.locator('.consumer-create').getByRole('button',{name:'광고 생성',exact:true}).click();await expect.poll(()=>s.state.posted.length).toBe(1);
  if(failure==='timeout'){await page.clock.fastForward(30001);s.state.postHold=false;}
  const detail=page.locator('.submission-failure details');await detail.locator('summary').click();await expect(detail).toContainText(failure==='timeout'?'SUBMISSION_TIMEOUT':'HTTP 202 · INVALID_RESPONSE');
- await expect.poll(()=>s.state.lookupReads).toBeGreaterThan(0);await expect(page.locator('.generate-button')).toBeDisabled();expect(s.state.posted).toHaveLength(1);
+ await expect.poll(()=>s.state.lookupReads).toBeGreaterThan(0);await expect(page.locator('.generate-button:enabled')).toHaveCount(0);expect(s.state.posted).toHaveLength(1);
  // A later authoritative result is recovered by GET, not another POST.
  s.state.lookup='found';s.state.job.requestId=s.state.posted[0].requestId;await page.reload();await expect(page.locator('.generation-ad-preview')).toBeVisible();await expect(page.locator('.submission-failure')).toHaveCount(0);expect(s.state.posted).toHaveLength(1);
 });
@@ -249,11 +250,11 @@ for(const language of ['ko','en'] as const)for(const clientTimeout of [26000,300
  const s=await setup(page,language,true);s.state.historyJobs=[];s.state.lookup='not-recorded';s.state.postHold=true;
  await restoreOwnedWorkspace(page,s.p,s.owner,'studio');await page.getByRole('button',{name:language==='ko'?'입력 내용 수정':'Edit details',exact:true}).click();
  await page.clock.install({time:new Date('2026-10-26T00:00:00Z')});await page.clock.pauseAt(new Date('2026-10-26T00:01:00Z'));
- await page.locator('.consumer-create').getByRole('button',{name:language==='ko'?'광고 생성':'Generate ad',exact:true}).click();
- await expect.poll(()=>s.state.posted.length).toBe(1);
+ s.state.holdStatus=true;await page.locator('.consumer-create').getByRole('button',{name:language==='ko'?'광고 생성':'Generate ad',exact:true}).click();await expect(page.locator('.generation-progress')).toHaveText(language==='ko'?'광고 이미지를 만들고 있어요':'Creating your ad image');await page.clock.fastForward(10001);s.state.holdStatus=false;
+ await expect.poll(()=>s.state.posted.length).toBe(1);await expect(page.locator('.generation-progress')).toHaveText(language==='ko'?'광고 이미지를 만들고 있어요':'Creating your ad image');await expect(page.locator('.generation-panel [role="status"]')).toHaveCount(1);
  await page.clock.fastForward(clientTimeout);if(clientTimeout===26000){s.state.postNetwork=true;s.state.postHold=false;}await expect.poll(()=>s.state.lookupReads).toBe(1);
  await expect(page.locator('.submission-failure [role="alert"]')).toHaveCount(0);
- await expect(page.locator('.generate-button')).toBeDisabled();
+ await expect(page.locator('.generate-button')).toHaveCount(0);await expect(page.locator('.generation-progress')).toHaveText(language==='ko'?'광고 이미지를 만들고 있어요':'Creating your ad image');
  await page.clock.fastForward(2001);await expect.poll(()=>s.state.lookupReads).toBe(2);
  await page.clock.fastForward(4001);await expect.poll(()=>s.state.lookupReads).toBe(3);
  await page.clock.fastForward(40600-clientTimeout-6002); // 40.6 seconds after POST: durable record finally exists.
@@ -262,11 +263,11 @@ for(const language of ['ko','en'] as const)for(const clientTimeout of [26000,300
  // Let mocked HTTP responses settle between clock advances; jumping 15s can
  // fire the GET timeout before Playwright delivers an already queued response.
  for(let i=0;i<20&&!s.state.reads;i++){await page.clock.fastForward(1001);await new Promise(resolve=>setTimeout(resolve,30));}
- await expect(page.locator('.submission-failure')).toHaveCount(0);await expect(page.locator('.generation-ad-preview')).toHaveCount(0);
+ await expect(page.locator('.submission-failure')).toHaveCount(0);await expect(page.locator('.generation-ad-preview')).toHaveCount(0);await expect(page.locator('.generation-progress')).toHaveText(language==='ko'?'광고 이미지를 만들고 있어요':'Creating your ad image');await expect(page.locator('.generation-panel [role="status"]')).toHaveCount(1);
  s.state.job=completed;for(let i=0;i<10&&!await page.locator('.generation-ad-preview').count();i++){await page.clock.fastForward(1001);await new Promise(resolve=>setTimeout(resolve,30));}
- await expect(page.locator('.generation-ad-preview')).toBeVisible();
+ await expect(page.locator('.generation-ad-preview')).toBeVisible();await expect(page.locator('.generation-progress')).toHaveCount(0);
  await expect(page.locator('.submission-failure')).toHaveCount(0);expect(s.state.posted).toHaveLength(1);expect(s.state.reads).toBeGreaterThan(0);
- await page.reload();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.posted).toHaveLength(1);
+ await page.reload();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.posted).toHaveLength(1);await page.locator('.generation-review input').check();await page.locator('.generation-review-actions button').first().click();const save=page.locator('.accepted-ad > .primary-action');await expect(save).toBeEnabled();const download=page.waitForEvent('download');await save.click();expect((await download).suggestedFilename()).toMatch(/\.png$/);expect(s.state.posted).toHaveLength(1);
 });
 test('unresolved admission stops bounded reads, preserves key and permits only recovery after reopening',async({page})=>{
  const s=await setup(page,'ko',true);s.state.historyJobs=[];s.state.lookup='not-recorded';
@@ -298,4 +299,14 @@ for(const language of ['ko','en'] as const)test(`unaccepted result survives proj
  await page.locator('a[href="#projects"]:visible').first().click();const leave=page.getByRole('dialog',{name:language==='ko'?'미확정 시안 나가기':'Leave unaccepted preview'});await expect(leave).toBeVisible();await leave.getByRole('button',{name:language==='ko'?'저장하지 않고 나가기':'Leave without saving',exact:true}).click();
  await expect(page.locator('.projects-page')).toBeVisible();await expect(page.locator('.project-tile')).toHaveCount(1);await page.locator('.project-tile').click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.writes).toBe(0);
  const nav=page.getByRole('navigation',{name:language==='ko'?'화면 이동':'Screen history'});await nav.getByRole('button',{name:language==='ko'?'뒤로':'Back',exact:true}).click();await expect(page.locator('.projects-page')).toBeVisible();await nav.getByRole('button',{name:language==='ko'?'앞으로':'Forward',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.writes).toBe(0);
+});
+
+for(const language of ['ko','en'] as const)test(`single progress stops on offline and actual terminal failure (${language})`,async({page})=>{
+ const s=await setup(page,language,true);s.state.historyJobs=[];s.state.lookup='not-recorded';s.state.postHold=true;
+ await restoreOwnedWorkspace(page,s.p,s.owner,'studio');await page.getByRole('button',{name:language==='ko'?'입력 내용 수정':'Edit details',exact:true}).click();await page.locator('.consumer-create').getByRole('button',{name:language==='ko'?'광고 생성':'Generate ad',exact:true}).click();await expect.poll(()=>s.state.posted.length).toBe(1);await expect(page.locator('.generation-progress')).toBeVisible();
+ await page.evaluate(()=>{Object.defineProperty(navigator,'onLine',{configurable:true,value:false});window.dispatchEvent(new Event('offline'));});await expect(page.locator('.generation-progress')).toHaveCount(0);await expect(page.getByRole('alert')).toContainText(language==='ko'?'인터넷 연결':'internet connection');
+ await page.evaluate(()=>{Object.defineProperty(navigator,'onLine',{configurable:true,value:true});window.dispatchEvent(new Event('online'));});await expect(page.locator('.generation-progress')).toBeVisible();s.state.job={...s.state.job,state:'failed',artifact:null as any,artifactId:null as any,errorCode:'PROVIDER_HTTP' as any};s.state.postHold=false;await expect(page.locator('.generation-result')).toContainText(language==='ko'?'실패':'Failed');await expect(page.locator('.generation-progress')).toHaveCount(0);expect(s.state.posted).toHaveLength(1);
+});
+test('legacy timed-out marker has the same progress and never starts a POST on reopen',async({page})=>{
+ const s=await setup(page,'ko',true);s.state.historyJobs=[];s.state.lookup='not-recorded';const {jobId,...pending}=s.pending;await restoreOwnedWorkspace(page,s.p,s.owner,'studio',{...pending,submissionFailure:{status:null,code:'SUBMISSION_TIMEOUT',at:'2026-10-26T00:00:00.000Z'}});await expect.poll(()=>s.state.lookupReads).toBeGreaterThan(0);await expect(page.locator('.generation-progress')).toHaveText('광고 이미지를 만들고 있어요');await expect(page.locator('.generation-panel [role="status"]')).toHaveCount(1);expect(s.state.posted).toHaveLength(0);
 });
