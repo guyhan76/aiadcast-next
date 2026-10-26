@@ -41,7 +41,7 @@ function updatedWallet(status:ApiStatus|null,wallet:ApiStatus['wallet']){
  return {...status,wallet,generation:{...status.generation,...(old?{creditQuote:{unit,amount:wallet.unlimited?0:unit==='legacy-ticket'?1:10,policy:unit==='legacy-ticket'?'legacy-accept-v1':'delivered-2026-10-18'} as const}:{})}};
 }
 function recoveryInputKey(p:Project){try{return JSON.stringify(buildGenerationRequest(p));}catch{return null;}}
-type Pending={projectId:string;requestId:string;key:string;jobId?:string;recovered?:boolean;inputKey?:string;submissionFailure?:SubmissionDiagnostic};
+type Pending={projectId:string;requestId:string;key:string;jobId?:string;recovered?:boolean;inputKey?:string;submissionFailure?:SubmissionDiagnostic;submittedAt?:string};
 type JobResponse={job:GenerationJob;wallet:ApiStatus['wallet']};
 type AdPreview={source:Project;composed:Project;dataUrl:string;errors:string[];jobId:string};
 export function GenerationPanel({project,change,simple=false,onEditInputs,onCreativeDraft,autoRequest,onAutoHandled,onGenerationStarted}:{project:Project;change:(fn:(p:Project)=>Project)=>void;simple?:boolean;onEditInputs?:()=>void;onCreativeDraft?:()=>Promise<void>;autoRequest?:string;onAutoHandled?:()=>void;onGenerationStarted?:()=>void}){
@@ -69,7 +69,9 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
   if(recoveryRequest.current)return;
   const controller=new AbortController();recoveryRequest.current=controller;setRecoveryChecked(false);setRecoveryError('');setRecoveryDetail(null);setResumableRequestId(null);retryableRecovery.current=false;setRecovering(true);setPollStopped(false);
   const recoveryProject=latest.current;
-  const timer=setTimeout(()=>controller.abort(),automatic?45000:30000);
+  const awaitingAdmission=!!pending.current&&!pending.current.jobId&&!!(pending.current.submittedAt||pending.current.submissionFailure);
+  const maxAttempts=awaitingAdmission?10:automatic?3:1;
+  const timer=setTimeout(()=>controller.abort(),awaitingAdmission?120000:automatic?45000:30000);
   let step:'history'|'request'|'job'='history',httpStatus:number|null=null;
   const read=async<T,>(path:string,next:'history'|'request'|'job')=>{
    step=next;httpStatus=null;const requestController=new AbortController();const requestTimer=setTimeout(()=>requestController.abort(),automatic?15000:30000);
@@ -79,7 +81,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
   };
   const current=()=>alive.current&&recoveryRequest.current===controller&&latest.current.id===recoveryProject.id;
   try{
-   for(let attempt=0;attempt<(automatic?3:1);attempt++){
+   for(let attempt=0;attempt<maxAttempts;attempt++){
    try{
    let record=pending.current,id=record?.jobId;
    if(!id){
@@ -95,6 +97,11 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
      if(lookup?.version!==1||lookup.requestId!==record.requestId||lookup.projectId!==recoveryProject.id||!['found','not-recorded'].includes(lookup.state)||lookup.state==='found'&&(typeof lookup.jobId!=='string'||!lookup.jobId)||lookup.state==='not-recorded'&&lookup.jobId!==null)throw Error('INVALID_HISTORY');
      if(lookup.state==='found'){id=lookup.jobId!;record={...record,recovered:true};}
      else {
+      if(record.submittedAt||record.submissionFailure){
+       setSubmissionFailure(parseSubmissionDiagnostic(record.submissionFailure));
+       setNotice(t('요청 접수를 확인하고 있습니다. 새로 생성하지 않고 결과를 자동으로 확인합니다.','Confirming your submitted request. Checking its result automatically without generating again.'));
+       throw Error('ADMISSION_PENDING');
+      }
       // Keep the same idempotency key: an older POST could still arrive later.
       // Only a deliberate click may resubmit; never auto-start after this GET.
       setResumableRequestId(record.requestId);setJob(null);
@@ -116,15 +123,16 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
      const matches=!!fingerprint&&result.job.requestFingerprint===fingerprint&&result.job.composition==='complete-ad'&&result.job.compositionKey===completeAdKey(recoveryProject)&&result.job.sourceHash===generationSourceHash(recoveryProject)&&result.job.mode===recoveryProject.generation.mode;
      record={recovered:true,projectId:recoveryProject.id,jobId:id,requestId:result.job.requestId??result.job.requestIds?.[0]??'',key:matches?generatedCompatibilityKey(recoveryProject):'',...(matches&&inputKey?{inputKey}:{})};
     }
-    remember({...record,jobId:id,submissionFailure:undefined});setSubmissionFailure(undefined);setJob(result.job);setStatus(s=>updatedWallet(s,result.wallet));
+    remember({...record,jobId:id,submissionFailure:undefined});setSubmissionFailure(undefined);setNotice('');setJob(result.job);setStatus(s=>updatedWallet(s,result.wallet));
    }
    setRecoveryChecked(true);setError('');return;
    }catch(e){
-    if(!automatic||attempt===2||controller.signal.aborted||!retryRecoveryRead({status:httpStatus,code:e instanceof Error?e.message:undefined,network:e instanceof TypeError,timedOut:e instanceof Error&&e.message==='RECOVERY_TIMEOUT'}))throw e;
-    await new Promise<void>(resolve=>{const done=()=>{clearTimeout(wait);controller.signal.removeEventListener('abort',done);resolve();};const wait=setTimeout(done,recoveryDelays[attempt]);controller.signal.addEventListener('abort',done,{once:true});});
+    const admissionPending=e instanceof Error&&e.message==='ADMISSION_PENDING';
+    if((!automatic&&!admissionPending)||attempt===maxAttempts-1||controller.signal.aborted||!admissionPending&&!retryRecoveryRead({status:httpStatus,code:e instanceof Error?e.message:undefined,network:e instanceof TypeError,timedOut:e instanceof Error&&e.message==='RECOVERY_TIMEOUT'}))throw e;
+    await new Promise<void>(resolve=>{const done=()=>{clearTimeout(wait);controller.signal.removeEventListener('abort',done);resolve();};const wait=setTimeout(done,admissionPending?[2000,4000,8000,15000][Math.min(attempt,3)]:recoveryDelays[Math.min(attempt,1)]);controller.signal.addEventListener('abort',done,{once:true});});
     if(!current())return;if(controller.signal.aborted)throw Error('RECOVERY_TIMEOUT');
    }}
-  }catch(e){if(current()){retryableRecovery.current=retryRecoveryRead({status:httpStatus,code:e instanceof Error?e.message:undefined,network:e instanceof TypeError,timedOut:controller.signal.aborted||e instanceof Error&&e.message==='RECOVERY_TIMEOUT'});setRecoveryDetail(recoveryDiagnostic({step,status:httpStatus,code:e instanceof Error?e.message:undefined,aborted:controller.signal.aborted||e instanceof Error&&e.message==='RECOVERY_TIMEOUT',network:e instanceof TypeError}));setRecoveryError(e instanceof ApiRequestFailure&&e.status===401?t('로그인 인증을 확인하지 못했습니다. 다시 로그인한 뒤 기존 결과를 확인해주세요.','Authentication failed. Sign in again to recover the existing result.'):t('기존 작업을 확인하지 못했습니다. 중복 생성을 막기 위해 새 생성을 멈췄습니다. 기존 결과를 다시 확인해주세요.','Could not check existing work. New generation is paused to prevent duplicates. Check existing results again.'));}}
+  }catch(e){if(current()){retryableRecovery.current=retryRecoveryRead({status:httpStatus,code:e instanceof Error?e.message:undefined,network:e instanceof TypeError,timedOut:controller.signal.aborted||e instanceof Error&&e.message==='RECOVERY_TIMEOUT'});setRecoveryDetail(recoveryDiagnostic({step,status:httpStatus,code:e instanceof Error?e.message:undefined,aborted:controller.signal.aborted||e instanceof Error&&e.message==='RECOVERY_TIMEOUT',network:e instanceof TypeError}));setRecoveryError(awaitingAdmission?t('접수 확인이 지연되고 있습니다. 새 생성은 보류하며, 같은 요청을 다시 조회할 수 있습니다.','Submission confirmation is delayed. New generation stays paused; you can check the same request again.'):e instanceof ApiRequestFailure&&e.status===401?t('로그인 인증을 확인하지 못했습니다. 다시 로그인한 뒤 기존 결과를 확인해주세요.','Authentication failed. Sign in again to recover the existing result.'):t('기존 작업을 확인하지 못했습니다. 중복 생성을 막기 위해 새 생성을 멈췄습니다. 기존 결과를 다시 확인해주세요.','Could not check existing work. New generation is paused to prevent duplicates. Check existing results again.'));}}
   finally{clearTimeout(timer);if(recoveryRequest.current===controller){recoveryRequest.current=null;if(alive.current)setRecovering(false);}}
  }
  async function refresh(automatic=false){
@@ -217,7 +225,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
    if(snapshot.dimensionAnnotation?.method==='manual'&&snapshot.dimensionAnnotation.mode!=='none'&&!status?.generation.manualDimensionOverlay){setError(t('치수선 합성을 지원하는 서버 업데이트가 필요합니다. 생성은 요청하지 않았습니다.','A server update is needed for dimension overlays. No generation was requested.'));return;}
    if(snapshot.dimensionAnnotation?.method!=='manual'&&!aiDimensionRequested(snapshot)&&snapshot.dimensionAnnotation?.mode&&snapshot.dimensionAnnotation.mode!=='none'){const capability=await apiRequest<{available:boolean}>('/api/dimension-analysis');if(!capability.available){setError(t('선택한 사진 규격 표시를 완성할 수 없어 새 AI 생성을 요청하지 않았습니다. 규격 표시 경로가 준비된 뒤 다시 진행해주세요. 입력 내용은 보관했습니다.','No new AI generation was requested because the selected photo dimensions cannot be completed. Continue when dimension placement is available. Your inputs are preserved.'));return;}}
    if(status?.generation.creditQuote?.unit==='credit-v2'&&!creditConsent)return;
-   const measured=await preflightProportions(snapshot);if(measured?.status==='mismatch')throw Error('PROPORTION_MISMATCH');if(latest.current!==snapshot)throw Error('STALE_PROJECT');const request=buildNewGenerationRequest(snapshot);await saveProject(snapshot);if(!alive.current||generationEpoch.current!==epoch||latest.current!==snapshot)return;const record={projectId:snapshot.id,requestId:resumableRequestId&&pending.current?.requestId===resumableRequestId?resumableRequestId:crypto.randomUUID(),key:generatedCompatibilityKey(snapshot),inputKey:JSON.stringify(request)};remember(record);setResumableRequestId(null);setJob(null);
+   const measured=await preflightProportions(snapshot);if(measured?.status==='mismatch')throw Error('PROPORTION_MISMATCH');if(latest.current!==snapshot)throw Error('STALE_PROJECT');const request=buildNewGenerationRequest(snapshot);await saveProject(snapshot);if(!alive.current||generationEpoch.current!==epoch||latest.current!==snapshot)return;const record={projectId:snapshot.id,requestId:resumableRequestId&&pending.current?.requestId===resumableRequestId?resumableRequestId:crypto.randomUUID(),key:generatedCompatibilityKey(snapshot),inputKey:JSON.stringify(request),submittedAt:new Date().toISOString()};remember(record);setResumableRequestId(null);setJob(null);
    const controller=new AbortController();generationRequest.current=controller;const timeout=setTimeout(()=>controller.abort(),30000);
    let result:JobResponse;let responseStatus:number|null=null;
    try{
@@ -315,7 +323,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
    {job.state==='uncertain'&&<p>{t('결과를 확인하지 못했습니다. 기존 결과를 다시 확인해주세요. 중복 생성을 막기 위해 새 요청은 보내지 않습니다.','The result is unconfirmed. Check the existing result again. No new request will be sent to avoid duplicate generation.')}</p>}
   </div>}
   {enlarged&&previewReady&&<ImageReview label={t('시안 확대 검수','Enlarged visual inspection')} onClose={()=>setEnlarged(false)}><img src={preview!.dataUrl} alt={t('광고 전체 확대 검수','Inspect the complete ad')}/></ImageReview>}
-  {error&&<p role="alert" className="generation-error">{error}</p>}{notice&&!queuedIntent&&!submissionFailure&&<p role="status" className="generation-notice">{notice}</p>}
+  {error&&<p role="alert" className="generation-error">{error}</p>}{notice&&!queuedIntent&&!recoveryError&&(!submissionFailure||recovering)&&<p role="status" className="generation-notice">{notice}</p>}
  </section>;
 }
 

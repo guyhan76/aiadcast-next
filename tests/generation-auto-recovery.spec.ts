@@ -95,7 +95,7 @@ test('a failed form dispatch consumes intent and missing lookup cannot automatic
  const s=await setup(page);s.state.historyJobs=[];s.state.lookup='not-recorded';s.state.postNetwork=true;const {jobId,...pending}=s.pending;
  await restoreOwnedWorkspace(page,s.p,s.owner,'studio',pending);await expect.poll(()=>s.state.lookupReads).toBe(1);
  await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await page.locator('.consumer-create').getByRole('button',{name:'광고 생성',exact:true}).click();
- await expect.poll(()=>s.state.lookupReads).toBeGreaterThanOrEqual(3);await expect(page.locator('.generate-button')).toBeEnabled();expect(s.state.posted).toHaveLength(1);expect(s.state.posted[0].requestId).toBe(s.pending.requestId);
+ await expect.poll(()=>s.state.lookupReads).toBeGreaterThanOrEqual(3);await expect(page.locator('.generate-button')).toBeDisabled();expect(s.state.posted).toHaveLength(1);expect(s.state.posted[0].requestId).toBe(s.pending.requestId);
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.reload();await expect.poll(()=>s.state.lookupReads).toBeGreaterThanOrEqual(4);expect(s.state.posted).toHaveLength(1);
 });
 for(const language of ['ko','en'] as const)test(`unrecorded pending request waits for an explicit click and keeps its original key (${language})`,async({page})=>{
@@ -205,7 +205,7 @@ for(const language of ['ko','en'] as const)for(const failure of ['network','http
  const details=page.locator('.submission-failure details');await expect(page.locator('.submission-failure')).toBeVisible({timeout:3000});await details.locator('summary').click();
  await expect(details).toContainText(failure==='http'?'HTTP 409':(language==='ko'?'HTTP 응답 없음':'No HTTP response'));
  await expect(details).toContainText(failure==='http'?'CREDIT_RESERVATION_FAILED':'NETWORK_ERROR');
- await expect(page.locator('.generation-notice')).toHaveCount(0);
+ await expect(page.locator('.generate-button')).toBeDisabled();
  const request=s.state.posted[0].requestId;await page.reload();const options=page.locator('.new-ad-options');if(!await options.evaluate(e=>(e as HTMLDetailsElement).open))await options.locator(':scope > summary').click();await expect(page.locator('.submission-failure')).toBeVisible();expect(s.state.posted).toHaveLength(1);
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));expect(s.state.posted).toHaveLength(1);
  const saved=await page.evaluate(({owner,id})=>JSON.parse(localStorage.getItem(owner+':aiadcast.pending-generation.'+id)!),{owner:s.owner,id:s.p.id});expect(saved.requestId).toBe(request);expect(saved.submissionFailure.code).toBe(failure==='http'?'CREDIT_RESERVATION_FAILED':'NETWORK_ERROR');
@@ -218,7 +218,7 @@ for(const failure of ['timeout','invalid'] as const)test(`submission ${failure} 
  await page.locator('.consumer-create').getByRole('button',{name:'광고 생성',exact:true}).click();await expect.poll(()=>s.state.posted.length).toBe(1);
  if(failure==='timeout'){await page.clock.fastForward(30001);s.state.postHold=false;}
  const detail=page.locator('.submission-failure details');await detail.locator('summary').click();await expect(detail).toContainText(failure==='timeout'?'SUBMISSION_TIMEOUT':'HTTP 202 · INVALID_RESPONSE');
- await expect.poll(()=>s.state.lookupReads).toBeGreaterThan(0);await expect(page.locator('.generation-notice')).toHaveCount(0);expect(s.state.posted).toHaveLength(1);
+ await expect.poll(()=>s.state.lookupReads).toBeGreaterThan(0);await expect(page.locator('.generate-button')).toBeDisabled();expect(s.state.posted).toHaveLength(1);
  // A later authoritative result is recovered by GET, not another POST.
  s.state.lookup='found';s.state.job.requestId=s.state.posted[0].requestId;await page.reload();await expect(page.locator('.generation-ad-preview')).toBeVisible();await expect(page.locator('.submission-failure')).toHaveCount(0);expect(s.state.posted).toHaveLength(1);
 });
@@ -243,4 +243,37 @@ test('leaving after a form click while local preparation is pending cannot dispa
  await page.getByRole('link',{name:'aiadcast 홈',exact:true}).click();await expect(page).toHaveURL(/#home$/);
  await page.evaluate(()=>{for(const release of (window as any).releasePreparation)release();});
  await page.waitForTimeout(250);expect(s.state.posted).toHaveLength(0);
+});
+
+for(const language of ['ko','en'] as const)for(const clientTimeout of [26000,30001])test(`late admission at 40.6 seconds recovers after submission timeout with one real form click (${language}, ${clientTimeout})`,async({page})=>{
+ const s=await setup(page,language,true);s.state.historyJobs=[];s.state.lookup='not-recorded';s.state.postHold=true;
+ await restoreOwnedWorkspace(page,s.p,s.owner,'studio');await page.getByRole('button',{name:language==='ko'?'입력 내용 수정':'Edit details',exact:true}).click();
+ await page.clock.install({time:new Date('2026-10-26T00:00:00Z')});await page.clock.pauseAt(new Date('2026-10-26T00:01:00Z'));
+ await page.locator('.consumer-create').getByRole('button',{name:language==='ko'?'광고 생성':'Generate ad',exact:true}).click();
+ await expect.poll(()=>s.state.posted.length).toBe(1);
+ await page.clock.fastForward(clientTimeout);if(clientTimeout===26000){s.state.postNetwork=true;s.state.postHold=false;}await expect.poll(()=>s.state.lookupReads).toBe(1);
+ await expect(page.locator('.generate-button')).toBeDisabled();
+ await page.clock.fastForward(2001);await expect.poll(()=>s.state.lookupReads).toBe(2);
+ await page.clock.fastForward(4001);await expect.poll(()=>s.state.lookupReads).toBe(3);
+ await page.clock.fastForward(40600-clientTimeout-6002); // 40.6 seconds after POST: durable record finally exists.
+ s.state.job.requestId=s.state.posted[0].requestId;s.state.lookup='found';s.state.postHold=false;
+ // Let mocked HTTP responses settle between clock advances; jumping 15s can
+ // fire the GET timeout before Playwright delivers an already queued response.
+ for(let i=0;i<20&&!s.state.reads;i++){await page.clock.fastForward(1001);await new Promise(resolve=>setTimeout(resolve,30));}
+ await expect(page.locator('.generation-ad-preview')).toBeVisible();
+ await expect(page.locator('.submission-failure')).toHaveCount(0);expect(s.state.posted).toHaveLength(1);expect(s.state.reads).toBeGreaterThan(0);
+ await page.reload();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.posted).toHaveLength(1);
+});
+test('unresolved admission stops bounded reads, preserves key and permits only recovery after reopening',async({page})=>{
+ const s=await setup(page,'ko',true);s.state.historyJobs=[];s.state.lookup='not-recorded';
+ const {jobId,...pending}=s.pending;
+ await page.clock.install({time:new Date('2026-10-26T00:00:00Z')});await page.clock.pauseAt(new Date('2026-10-26T00:01:00Z'));
+ await restoreOwnedWorkspace(page,s.p,s.owner,'studio',{...pending,submittedAt:'2026-10-26T00:00:00.000Z'});
+ const options=page.locator('.new-ad-options');if(!await options.evaluate(e=>(e as HTMLDetailsElement).open))await options.locator(':scope > summary').click();
+ await expect.poll(()=>s.state.lookupReads).toBe(1);
+ for(const [i,ms] of [2001,4001,8001,15001,15001,15001,15001,15001,15001].entries()){await page.clock.fastForward(ms);await expect.poll(()=>s.state.lookupReads).toBe(i+2);}
+ await expect(page.getByRole('alert')).toContainText('접수 확인이 지연');await expect(page.locator('.generate-button')).toBeDisabled();
+ const count=s.state.lookupReads;await page.clock.fastForward(60000);expect(s.state.lookupReads).toBe(count);expect(s.state.writes).toBe(0);
+ await page.reload();await expect.poll(()=>s.state.lookupReads).toBeGreaterThan(count);expect(s.state.writes).toBe(0);
+ await page.evaluate(()=>location.hash='projects');const stopped=s.state.lookupReads;await page.clock.fastForward(60000);expect(s.state.lookupReads).toBe(stopped);expect(s.state.writes).toBe(0);
 });
