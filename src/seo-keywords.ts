@@ -83,14 +83,15 @@ function usable(value:string){
  return value.length>1&&value.length<=60&&!broad.has(key(value))&&!/[\n\r@<>]|https?:|www\.|\d{2,4}[- ]\d{3,4}[- ]\d{4}|\d[\d,]*\s*(?:원|만원|달러)|[$₩]/i.test(value)
   &&!/(?:소개|선택\s*가이드|상세\s*정보|이용\s*안내|문의\s*안내| overview| selection guide| details)$/i.test(value);
 }
-export function recommendSeoKeywords(input:SeoInput,limit=6):string[]{
+export function recommendSeoKeywords(input:SeoInput,limit=6,evidenceOnly=false):string[]{
  const name=input.name.trim();
  const matches=families.filter(f=>f.categories.includes(input.category));
  const family=matches.find(f=>f.match.test(name));
  // Infer the actual product from its name first. A description is only a fallback for a broad name.
  const description=input.attributes.filter(a=>/^(소재|재질|상세설명|material|description)$/i.test(a.name)).map(a=>a.value).join(' ');
- const related=(family??(!usable(name)?matches.find(f=>f.match.test(description)):undefined))?.terms??categories[input.category];
- const nouns=related[input.locale].split('|').filter(Boolean);
+ const evidenceFamily=family??(!usable(name)?matches.find(f=>f.match.test(description)):undefined);
+ const related=evidenceFamily?.terms??categories[input.category];
+ const nouns=related[input.locale].split('|').filter(Boolean).filter(word=>!evidenceOnly||!!evidenceFamily||key(name+' '+description).includes(key(word)));
  const places=input.attributes.filter(a=>/^(지역|제공 지역|서비스 지역|도시|location|city|service area)$/i.test(a.name)&&a.value.length<=24&&usable(a.value.trim())).map(a=>a.value.trim());
  const local=places.map(place=>`${place} ${nouns[0]??name}`);
  const materials=input.attributes.filter(a=>/^(소재|재질|material)$/i.test(a.name)&&a.value.length<=16&&usable(a.value.trim())).map(a=>`${a.value.trim()} ${nouns[0]??name}`);

@@ -8,13 +8,11 @@ export function PreviewLeaveGuard(){
  const {t}=useUiLanguage(),dialog=useRef<HTMLDialogElement>(null),next=useRef<(()=>void)|null>(null);
  const [open,setOpen]=useState(false);
  useEffect(()=>{
-  ask=action=>{next.current=action;setOpen(true);};let hash=location.hash,bypass=false;
+  ask=action=>{next.current=action;setOpen(true);};
   const click=(event:MouseEvent)=>{const a=(event.target as Element)?.closest?.('a[href]') as HTMLAnchorElement|null;if(!pending||!a||a.hasAttribute('download')||a.href===location.href)return;event.preventDefault();event.stopImmediatePropagation();requestPreviewLeave(()=>a.click());};
-  const back=(event:Event)=>{if(!pending||dialog.current?.open)return;event.preventDefault();event.stopImmediatePropagation();requestPreviewLeave(()=>window.dispatchEvent(new Event('aiadcast-native-back',{cancelable:true})));};
-  const changed=(event:HashChangeEvent)=>{if(!pending||bypass){bypass=false;hash=location.hash;return;}const target=location.hash;event.stopImmediatePropagation();history.replaceState(null,'',location.pathname+location.search+hash);requestPreviewLeave(()=>{bypass=true;location.hash=target;});};
   const unload=(event:BeforeUnloadEvent)=>{if(pending){event.preventDefault();event.returnValue='';}};
-  document.addEventListener('click',click,true);window.addEventListener('hashchange',changed,true);window.addEventListener('aiadcast-native-back',back,true);window.addEventListener('beforeunload',unload);
-  return()=>{ask=undefined;pending=false;document.removeEventListener('click',click,true);window.removeEventListener('hashchange',changed,true);window.removeEventListener('aiadcast-native-back',back,true);window.removeEventListener('beforeunload',unload);};
+  document.addEventListener('click',click,true);window.addEventListener('beforeunload',unload);
+  return()=>{ask=undefined;pending=false;document.removeEventListener('click',click,true);window.removeEventListener('beforeunload',unload);};
  },[]);
  useEffect(()=>{if(open&&!dialog.current?.open)dialog.current?.showModal();},[open]);
  function stay(){next.current=null;setOpen(false);dialog.current?.close();}

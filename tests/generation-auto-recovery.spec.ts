@@ -252,14 +252,18 @@ for(const language of ['ko','en'] as const)for(const clientTimeout of [26000,300
  await page.locator('.consumer-create').getByRole('button',{name:language==='ko'?'광고 생성':'Generate ad',exact:true}).click();
  await expect.poll(()=>s.state.posted.length).toBe(1);
  await page.clock.fastForward(clientTimeout);if(clientTimeout===26000){s.state.postNetwork=true;s.state.postHold=false;}await expect.poll(()=>s.state.lookupReads).toBe(1);
+ await expect(page.locator('.submission-failure [role="alert"]')).toHaveCount(0);
  await expect(page.locator('.generate-button')).toBeDisabled();
  await page.clock.fastForward(2001);await expect.poll(()=>s.state.lookupReads).toBe(2);
  await page.clock.fastForward(4001);await expect.poll(()=>s.state.lookupReads).toBe(3);
  await page.clock.fastForward(40600-clientTimeout-6002); // 40.6 seconds after POST: durable record finally exists.
  s.state.job.requestId=s.state.posted[0].requestId;s.state.lookup='found';s.state.postHold=false;
+ const completed={...s.state.job};s.state.job={...s.state.job,state:'running',artifact:null as any,artifactId:null as any};
  // Let mocked HTTP responses settle between clock advances; jumping 15s can
  // fire the GET timeout before Playwright delivers an already queued response.
  for(let i=0;i<20&&!s.state.reads;i++){await page.clock.fastForward(1001);await new Promise(resolve=>setTimeout(resolve,30));}
+ await expect(page.locator('.submission-failure')).toHaveCount(0);await expect(page.locator('.generation-ad-preview')).toHaveCount(0);
+ s.state.job=completed;for(let i=0;i<10&&!await page.locator('.generation-ad-preview').count();i++){await page.clock.fastForward(1001);await new Promise(resolve=>setTimeout(resolve,30));}
  await expect(page.locator('.generation-ad-preview')).toBeVisible();
  await expect(page.locator('.submission-failure')).toHaveCount(0);expect(s.state.posted).toHaveLength(1);expect(s.state.reads).toBeGreaterThan(0);
  await page.reload();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.posted).toHaveLength(1);
@@ -287,4 +291,11 @@ for(const language of ['ko','en'] as const)for(const [code,ko,en] of [
  const s=await setup(page,language);s.state.job={...s.state.job,state:'failed',artifact:null as any,artifactId:null as any,errorCode:code as any};const panel=await s.open();
  await expect(panel.getByRole('alert')).toContainText(language==='ko'?ko:en);expect(s.state.writes).toBe(0);
  await page.reload();await expect(page.getByRole('alert').filter({hasText:language==='ko'?ko:en})).toBeVisible();expect(s.state.writes).toBe(0);
+});
+
+for(const language of ['ko','en'] as const)test(`unaccepted result survives project library and screen history without generating (${language})`,async({page})=>{
+ const s=await setup(page,language);await s.open();await expect(page.locator('.generation-ad-preview')).toBeVisible();
+ await page.locator('a[href="#projects"]:visible').first().click();const leave=page.getByRole('dialog',{name:language==='ko'?'미확정 시안 나가기':'Leave unaccepted preview'});await expect(leave).toBeVisible();await leave.getByRole('button',{name:language==='ko'?'저장하지 않고 나가기':'Leave without saving',exact:true}).click();
+ await expect(page.locator('.projects-page')).toBeVisible();await expect(page.locator('.project-tile')).toHaveCount(1);await page.locator('.project-tile').click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.writes).toBe(0);
+ const nav=page.getByRole('navigation',{name:language==='ko'?'화면 이동':'Screen history'});await nav.getByRole('button',{name:language==='ko'?'뒤로':'Back',exact:true}).click();await expect(page.locator('.projects-page')).toBeVisible();await nav.getByRole('button',{name:language==='ko'?'앞으로':'Forward',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.writes).toBe(0);
 });

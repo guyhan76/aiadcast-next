@@ -17,12 +17,12 @@ function ProjectPreview({project}:{project:Project}){
 }
 export function ProjectLibrary({items,error,onNew,onOpen}:{items:Project[];error:string;onNew:()=>void;onOpen:(p:Project)=>void}){
  const {language,t}=useUiLanguage(),[filter,setFilter]=useState('');
- const filtered=items.filter(hasSavedAcceptedAd).filter(p=>(p.name+' '+p.productName).toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
+ const filtered=items.filter(p=>hasSavedAcceptedAd(p)||p.presentation==='campaign'&&!!p.productName.trim()).filter(p=>(p.name+' '+p.productName).toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
  return <>
   <div className="projects-heading"><h1>{t('내 프로젝트','My projects')}</h1><button className="primary-action" onClick={onNew}><Plus size={18}/>{t('새 광고','New ad')}</button></div>
   <label className="project-search"><Search size={20}/><input aria-label={t('프로젝트 검색','Search projects')} placeholder={t('광고 이름 검색','Search ad names')} value={filter} onChange={e=>setFilter(e.target.value)}/></label>
   {error&&<p role="alert">{error}</p>}
-  {!filtered.length?<div className="project-empty"><FolderOpen size={32}/><h2>{filter?t('검색 결과가 없습니다.','No matches.'):t('첫 광고를 만들어보세요.','Create your first ad.')}</h2>{filter&&<button onClick={()=>setFilter('')}>{t('검색 초기화','Clear search')}</button>}</div>:<div className="project-grid">{filtered.map(p=><button key={p.id} className="project-tile" onClick={()=>onOpen(p)}><ProjectPreview project={p}/><div className="project-tile-caption"><strong>{p.name||p.productName||t('이름 없는 광고','Untitled ad')}</strong><ArrowUpRight size={18}/><small>{new Date(p.updatedAt).toLocaleDateString(language==='ko'?'ko-KR':'en-US')}</small></div></button>)}</div>}
+  {!filtered.length?<div className="project-empty"><FolderOpen size={32}/><h2>{filter?t('검색 결과가 없습니다.','No matches.'):t('첫 광고를 만들어보세요.','Create your first ad.')}</h2>{filter&&<button onClick={()=>setFilter('')}>{t('검색 초기화','Clear search')}</button>}</div>:<div className="project-grid">{filtered.map(p=><button key={p.id} className="project-tile" onClick={()=>onOpen(p)}><ProjectPreview project={p}/><div className="project-tile-caption"><strong>{p.name||p.productName||t('이름 없는 광고','Untitled ad')}</strong><ArrowUpRight size={18}/><small>{!hasSavedAcceptedAd(p)&&t('제작 중 · ','Draft · ')}{new Date(p.updatedAt).toLocaleDateString(language==='ko'?'ko-KR':'en-US')}</small></div></button>)}</div>}
   <details className="library-backup"><summary><span>{t('이 기기에 저장됨','Saved on this device')}</span><strong>{t('백업·불러오기','Backup & import')}</strong></summary><p>{t('다른 기기에서 열려면 프로젝트 파일을 백업하세요.','Back up your project file to open it on another device.')}</p><p>{t('광고를 열고 ‘프로젝트 백업’을 누르세요. 가져온 파일은 ‘파일 불러오기’로 열 수 있습니다.','Open an ad and choose Project backup. Use Import file to restore a backup.')}</p><a href="#studio">{t('파일 불러오러 가기','Go to file import')} <ArrowUpRight size={16}/></a></details>
  </>;
 }
