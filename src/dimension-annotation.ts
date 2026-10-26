@@ -13,6 +13,8 @@ export function annotationIncomplete(p:Project):string|null{
  if(!p.generated||a.snapshot!==annotationSnapshot(p)||!a.proposal)return p.locale==='ko'?'규격 사진·치수선 배치가 미완료입니다. 자동 배치를 완료한 뒤 저장해주세요. 원본 광고는 별도로 보존됩니다.':'Photo dimension placement is incomplete. Complete automatic placement before exporting. The original ad is preserved separately.';
  return null;
 }
+// Explicit original-export path only; never treats missing placement as verified.
+export const manualBaseExport=(p:Project)=>p.dimensionAnnotation?.method==='manual'&&!!annotationIncomplete(p);
 export const annotationAxes:AnnotationAxis[]=['width','depth','height'];
 export const annotationSnapshot=(p:Project)=>JSON.stringify({source:p.generated?.asset.sha256,dimensions:annotationAxes.map(a=>p.dimensions[a]),basis:p.generation.dimensionBasis??'outer-body'});
 export function parseAnnotation(raw:unknown):DimensionAnnotation|undefined{

@@ -2,7 +2,7 @@ import {parseTextEdit,type TextEdit} from './text-layers.ts';
 import {aiDimensionReviewError} from './ai-dimension-display.ts';
 import {isTextExample,textExampleGeometryError} from './generation-input.ts';
 import {parseDimensionControl,dimensionControlErrors,dimensionControlKey,type DimensionControl} from './dimension-control.ts';
-import {annotationIncomplete,parseAnnotation,type DimensionAnnotation} from './dimension-annotation.ts';
+import {annotationIncomplete,manualBaseExport,parseAnnotation,type DimensionAnnotation} from './dimension-annotation.ts';
 import type {PhotoView} from './automatic-proportion.ts';
 import {parsePhotoRoles,photoRole,type PhotoRole} from './photo-roles.ts';
 import {validMillimeters,type DimensionUnit} from './dimension-units.ts';
@@ -56,11 +56,11 @@ export async function imageFile(file:File):Promise<Asset> {
  return {name:file.name,data,width:img.naturalWidth,height:img.naturalHeight,sha256};
 }
 export async function loadImage(data:string):Promise<HTMLImageElement> {const img=new Image();img.src=data;await img.decode();return img;}
-export function exportErrors(p:Project) {
+export function exportErrors(p:Project, originalWithoutManualLines=false) {
  const errors:string[]=[];const exampleError=textExampleGeometryError(p);if(exampleError)return [exampleError];
  if(p.dimensionControl){errors.push(...dimensionControlErrors(p));if(p.dimensionControl.acceptedKey!==dimensionControlKey(p))errors.push('규격 제품의 현재 형상과 문구를 검수한 뒤 확정해주세요.');return errors;}
  const aiReviewError=aiDimensionReviewError(p);if(aiReviewError)errors.push(aiReviewError);
- const annotationError=annotationIncomplete(p);if(annotationError)errors.push(annotationError);
+ const annotationError=annotationIncomplete(p);if(annotationError&&!(originalWithoutManualLines&&manualBaseExport(p)))errors.push(annotationError);
  const projectionError=boxProjectionError(p);if(projectionError)errors.push(projectionError);
  if((p.generation?.mode==='creative'||isTextExample(p))&&!hasUsableCreative(p))errors.push('새 광고 결과가 아직 준비되지 않았거나 원본·규격·문구·연락처가 변경되었습니다. AI 연결 후 현재 조건으로 생성하고 결과를 승인해주세요.');
  if(!p.product&&!isServiceCategory(p.productProfile.category)&&!isTextExample(p))errors.push('원본 상품 사진을 먼저 추가해주세요.');

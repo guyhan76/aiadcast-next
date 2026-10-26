@@ -1,6 +1,7 @@
+import {annotationIncomplete,manualBaseExport} from '../src/dimension-annotation.ts';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {newProject} from '../src/model.ts';
+import {newProject,exportErrors} from '../src/model.ts';
 import {freshManualPlacement,manualSnapshot,manualPlan,manualIncomplete,parseManualPlacement} from '../src/manual-dimensions.ts';
 function fixture(mode='main'){
  const p=newProject();p.format='1:1';p.locale='ko';p.generation.mode='creative';p.dimensions={...p.dimensions,width:'364',depth:'266',height:'30.23',displayUnit:'mm'};p.dimensionAnnotation={method:'manual',mode,snapshot:''};p.generated={asset:{sha256:'a'.repeat(64),data:'data:image/png;base64,AA==',width:1000,height:1000},composition:'complete-ad',compositionKey:JSON.stringify({manualDimensionBase:true}),role:'creative'};
@@ -16,3 +17,10 @@ test('inset uses user-selected crop and uniform mapping without stretching produ
 test('inset has no guessed crop; unconfirmed clean base blocks export',()=>{const p=fixture('inset');delete p.dimensionAnnotation.manual.crop;assert.throws(()=>manualPlan(p,p.dimensionAnnotation.manual),/CROP_REQUIRED/);const q=fixture();q.dimensionAnnotation.manual.clearBase=false;assert.ok(manualIncomplete(q));q.dimensionAnnotation.manual.clearBase=true;q.dimensionAnnotation.manual.confirmed=false;assert.ok(manualIncomplete(q));});
 test('parser accepts partial user edits but strips unknown fields and rejects invalid points',()=>{const p=fixture(),m=p.dimensionAnnotation.manual;const copied=parseManualPlacement({...m,private:'not stored',axes:{width:{start:[.3,.4],offset:0,private:'ignored'}}});assert.deepEqual(copied.axes,{width:{start:[.3,.4],offset:0}});assert.equal(copied.private,undefined);assert.throws(()=>parseManualPlacement({...m,axes:{width:{start:[-1,.5],offset:0}}}),/INVALID/);assert.throws(()=>parseManualPlacement({...m,axes:{width:{start:[.5,.5],offset:NaN}}}),/INVALID/);});
 test('flat and cylindrical products require only their actual axes',()=>{for(const [specType,expected] of [['flat',['width','depth']],['cylindrical',['width','height']]]){const p=fixture();p.productProfile.specType=specType;p.dimensionAnnotation.manual.snapshot=manualSnapshot(p);assert.deepEqual(manualPlan(p,p.dimensionAnnotation.manual).planned.map(e=>e.axis),expected);}});
+
+test('explicit base export bypasses only unfinished manual placement without mutating saved data',()=>{
+ const p=fixture();p.dimensionAnnotation.manual.confirmed=false;const before=JSON.stringify(p),missing=annotationIncomplete(p);assert.equal(manualBaseExport(p),true);
+ const strict=exportErrors(p),base=exportErrors(p,true);assert.ok(strict.includes(missing));assert.deepEqual(base,strict.filter(e=>e!==missing));assert.ok(base.length>0,'invalid artifact/source guards remain');assert.equal(JSON.stringify(p),before);
+ p.dimensionAnnotation.manual.confirmed=true;assert.equal(manualBaseExport(p),false);assert.deepEqual(exportErrors(p,true),exportErrors(p));
+ p.dimensionAnnotation.method='verified';assert.equal(manualBaseExport(p),false);assert.deepEqual(exportErrors(p,true),exportErrors(p));
+});
