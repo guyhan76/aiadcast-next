@@ -30,7 +30,7 @@ for(const layout of ['main','inset','none'])for(const dimensionBased of [false,t
  const p=project(layout);p.productName='G형 조립형 골판지박스';p.brief='Use a small dimension inset as a style reference';p.generation.dimensionBased=dimensionBased;p.generation.dimensionBasis='outer-body';
  const request=normalizeGenerationRequest(buildGenerationRequest(p)),prompt=promptFor(request);
  assert.equal(request.dimensionDisplay?.layout,layout==='none'?undefined:layout);
- assert.equal(request.output.showDimensions,true);assert.equal(request.output.showDimensionLines,layout!=='none');assert.equal(!!request.dimensionPlan,dimensionBased);
+ assert.equal(request.output.showDimensions,layout!=='none');assert.equal(request.output.showDimensionLines,layout!=='none');assert.equal(!!request.dimensionPlan,dimensionBased);
  assert.deepEqual(request.specifications.map(s=>s.value),['300','200','100']);
  const guard=prompt.slice(prompt.lastIndexOf('CUSTOMER DIMENSION PLACEMENT'));
  assert.match(guard,/overrides any conflicting style reference/);

@@ -19,7 +19,9 @@ export function automaticDimensionDraft(project:Project):Project{
  return {...project,dimensionAnnotation:{method:'manual',mode:a?.mode??'none',snapshot:''}};
 }
 export function prepareCampaign(project:Project):Project{
- project=withoutDimensionReshape(automaticDimensionDraft(project));
+ // Convert only the explicitly submitted new request, never the restored draft/result.
+ const annotation=project.dimensionAnnotation;
+ project=withoutDimensionReshape(project.generation.mode==='creative'?{...project,dimensionAnnotation:{method:'ai',mode:annotation?.mode??'none',snapshot:''},dimensions:{...project.dimensions,visible:!!annotation&&annotation.mode!=='none',lines:!!annotation&&annotation.mode!=='none'}}:project);
  const automatic=creativeSettings(project).copyMode==='ai';
  return {...project,name:project.productName+(project.locale==='ko'?' 광고':' ad'),presentation:'campaign',generation:{...project.generation,brief:project.generation.mode==='creative'&&!project.generation.brief.trim()?finishedAdBrief:project.generation.brief},updatedAt:new Date().toISOString(),copy:{...project.copy,[project.locale]:{...project.copy[project.locale],...(automatic?creativeCopy(project):{})}}};
 }
