@@ -20,7 +20,7 @@ for(const language of ['ko','en'] as const)for(const scenario of ['missing','fai
  if(scenario==='failed-history'){await expect(panel.getByRole('alert')).toContainText(language==='ko'?'기존 작업을 확인하지 못했습니다':'Could not check existing work');await expect(button).toBeDisabled();fail=false;const check=panel.getByRole('button',{name:language==='ko'?'기존 결과 다시 확인':'Check existing results again'});hold=true;await check.click();await expect(check).toBeDisabled();const before=reads;await check.evaluate((el:HTMLButtonElement)=>{el.click();el.click();});expect(reads).toBe(before);hold=false;await expect(button).toBeEnabled();}
  if(scenario==='normal')await expect(button).toBeEnabled();
  if(scenario==='running'){await expect(button).toBeDisabled();await expect(button).toContainText(language==='ko'?'시안 제작 중':'Creating your visual');}
- if(scenario==='budget')await expect(panel.getByText(language==='ko'?'관리자 이용권은 차감되지 않지만 이미지 생성용 예산이 부족합니다. 이 계정의 월 배정·사용·보류액을 확인해주세요.':'Administrator credits are exempt, but the image generation budget is insufficient. Check this account’s monthly allocation, spend and holds.',{exact:true})).toBeVisible();
+ if(scenario==='budget')await expect(panel.getByText(language==='ko'?'생성 예산이 부족합니다. 관리자에게 확인해주세요. 추가 결제로 해결되지 않습니다.':'Generation budget is unavailable. Contact your administrator; another purchase will not resolve this.',{exact:true})).toBeVisible();
  if(scenario==='checking'){await expect(button).toBeDisabled();await expect(panel.getByText(language==='ko'?'이전 생성 요청을 확인 중입니다. 확인 후 생성할 수 있습니다.':'Checking previous requests before allowing generation.',{exact:true})).toBeVisible();hold=false;await expect(button).toBeEnabled();}
  expect(posts).toBe(0);hold=false;
 });
