@@ -19,8 +19,12 @@
   const emit = (status, message) => window.dispatchEvent(new CustomEvent('aiadcast-native-export', { detail: { status, message } }));
   const sendDownload = async (anchor) => {
     if (activeRequest) return;
+    const producerSignal = anchor.aiadcastExportSignal;
+    if (producerSignal?.aborted) return;
     const requestId = crypto.randomUUID(), startEpoch = epoch, startOwner = owner;
     activeRequest = requestId;
+    const cancelled = () => { if (activeRequest === requestId) activeRequest = null; };
+    producerSignal?.addEventListener('abort', cancelled, {once:true});
     try {
       if (!startOwner) throw new Error('Wait for your account and saved work to load.');
       const url = new URL(anchor.href, location.href);
@@ -35,13 +39,15 @@
         reader.onerror = () => reject(new Error('The export file could not be read.'));
         reader.readAsDataURL(blob);
       });
-      if (startEpoch !== epoch || startOwner !== owner) return;
+      if (producerSignal?.aborted || startEpoch !== epoch || startOwner !== owner) return;
       emit('requested', 'Choose where to save or share your file.');
       window.AiadcastNative.postMessage(JSON.stringify({ type: 'export', requestId, owner: startOwner, filename: anchor.download || 'aiadcast', mime: blob.type, base64: encoded }));
     } catch (error) {
-      if (startEpoch !== epoch) return;
+      if (producerSignal?.aborted || startEpoch !== epoch) return;
       activeRequest = null;
       emit('error', error instanceof Error ? error.message : 'The export could not be prepared.');
+    } finally {
+      producerSignal?.removeEventListener('abort', cancelled);
     }
   };
   const originalClick = HTMLAnchorElement.prototype.click;
