@@ -1,3 +1,4 @@
+import {waitForSavedDraft} from './helpers/workspace-menu';
 // Korean UI scenarios explicitly select Korean; English cases override this choice.
 test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));});
 import {authenticatedSession,mockSession} from './helpers/authenticated-session';
@@ -131,7 +132,7 @@ test('large photo drafts retain original bytes through immediate role changes an
 
 test('draft storage failure stays visible and protects unsaved input until a successful retry',async({page})=>{
  await mocks(page);const form=await details(page);
- await expect(page.locator('.workspace-save-state')).toHaveText('입력 내용이 기기에 저장되었습니다.');
+ await waitForSavedDraft(page);
  await page.evaluate(()=>{
   const put=IDBObjectStore.prototype.put;
   (window as any).failDraft=true;
@@ -142,7 +143,7 @@ test('draft storage failure stays visible and protects unsaved input until a suc
  expect(await page.evaluate(()=>{const event=new Event('beforeunload',{cancelable:true});window.dispatchEvent(event);return event.defaultPrevented;})).toBe(true);
  await page.evaluate(()=>{(window as any).failDraft=false;});
  await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('저장 공간 복구 후 다시 저장');
- await expect(page.locator('.workspace-save-state')).toHaveText('입력 내용이 기기에 저장되었습니다.');
+ await waitForSavedDraft(page);
  await expect(page.getByRole('alert')).toHaveCount(0);
  await reloadDraft(page);await expect(form.getByLabel('서비스명',{exact:true})).toHaveValue('저장 실패 시 지킬 이름');
  await expect(form.getByRole('textbox',{name:'상세설명',exact:true})).toHaveValue('저장 공간 복구 후 다시 저장');

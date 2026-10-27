@@ -1,3 +1,4 @@
+import {openWorkspaceMenu} from './helpers/workspace-menu';
 import {test,expect} from '@playwright/test';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -19,7 +20,7 @@ test('owner applies the fixed October cap once through real HTTP and it expires 
  await page.route('**/api/**',async route=>{const req=route.request(),url=new URL(req.url());if(url.pathname==='/api/admin/october-budget'){activations++;expect(req.postDataJSON()).toEqual({});}const response=await route.fetch({url:'http://127.0.0.1:'+port+url.pathname+url.search,headers:{...req.headers(),origin}});await route.fulfill({response});});
  try{
   await page.clock.install({time:new Date(time)});await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));await page.addInitScript(s=>sessionStorage.setItem('aiadcast.beta-session',JSON.stringify(s)),store.login(invite.invite));await page.goto('/#home');
-  await page.locator('.app-header').getByRole('link',{name:'관리자',exact:true}).click();
+  await openWorkspaceMenu(page);await page.locator('.app-header').getByRole('link',{name:'관리자',exact:true}).click();
   await expect.poll(()=>services.has(owner)).toBe(true);const service=services.get(owner)!;
   service.db.prepare('INSERT INTO budgets VALUES(?,?,?,?)').run('2026-10',1000000,527300,100000);
   await page.locator('.admin-page').getByRole('button',{name:'새로고침',exact:true}).click();

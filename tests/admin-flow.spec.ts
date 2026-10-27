@@ -1,3 +1,4 @@
+import {openWorkspaceMenu} from './helpers/workspace-menu';
 import {test,expect} from '@playwright/test';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -28,7 +29,7 @@ test('server signup, operator allocation, generation review and PNG export work 
   await Promise.all([proxy(page),proxy(shop),proxy(proof)]);
   // Establish the operator through the local store; the UI gate still verifies this real session over HTTP.
   await page.addInitScript(s=>sessionStorage.setItem('aiadcast.beta-session',JSON.stringify(s)),store.login(invite.invite));await page.goto('/#home');
-  await page.locator('.app-header').getByRole('link',{name:'관리자',exact:true}).click();await expect(page.locator('.admin-page').getByRole('heading',{name:'회원 목록',exact:true})).toBeVisible();
+  await openWorkspaceMenu(page);await page.locator('.app-header').getByRole('link',{name:'관리자',exact:true}).click();await expect(page.locator('.admin-page').getByRole('heading',{name:'회원 목록',exact:true})).toBeVisible();
   await shop.goto('/#account-recovery');await shop.locator('.account-page').getByLabel('이메일',{exact:true}).fill('member@example.com');await shop.getByRole('button',{name:'인증메일 받기',exact:true}).click();await expect(shop.getByRole('heading',{name:'메일함을 확인해주세요'})).toBeVisible();
   await expect.poll(()=>mail.length).toBe(1);const token=new URLSearchParams(new URL(mail[0].url).hash.split('?')[1]).get('token');
   await proof.goto('/#verify?token='+token);await proof.getByRole('button',{name:'이메일 인증하기',exact:true}).click();await expect(proof.getByRole('heading',{name:'인증 완료'})).toBeVisible();expect(await proof.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();

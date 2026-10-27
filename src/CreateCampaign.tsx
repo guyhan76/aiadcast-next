@@ -47,7 +47,7 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{
  }
  const companyFields:[FooterField,string,string][]=[['company',t('회사명','Company'),'셀업랩스'],['contact',t('연락처','Phone'),'010-0000-0000'],['email',t('이메일 주소','Email'),'hello@brand.com'],['website',t('홈페이지','Website'),'https://www.brand.com']];
  return <div className="create-page consumer-create">
-  <div className="create-heading"><h1>{t('광고 만들기','Create an ad')}</h1><p>{t('내 정보를 넣으면, AI가 한 장의 광고로 만듭니다.','Add your details. AI creates one finished ad.')}</p></div>
+  <div className="create-heading"><h1>{t('광고 만들기','Create an ad')}</h1><p>{t('사진과 정보로 만드는 광고','Create ads with photos and details')}</p></div>
   <form onSubmit={e=>{e.preventDefault();void submit();}}>
    <section className="creation-section" data-order="1"><h2><span>1</span>{t('광고할 산업','Your industry')}</h2>
     <label className="field" htmlFor={id+'-industry'}>{t('산업 선택','Choose an industry')}<select id={id+'-industry'} value={chosen?project.productProfile.category:''} onChange={e=>{if(!e.target.value)return;setChosen(true);change(p=>withCategory(p,e.target.value as ProductCategory));}}><option value="">{t('산업을 선택해주세요','Select your industry')}</option>{industryGroups.map(g=><optgroup key={g.id} label={`${g.kind==='product'?t('상품','Products'):t('서비스','Services')} · ${text(g.label)}`}>{g.categoryIds.map(c=><option key={c} value={c}>{text(industryLabel(c))}</option>)}</optgroup>)}</select></label>

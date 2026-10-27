@@ -22,14 +22,14 @@ import {HomeShowcase} from './HomeShowcase';
 import {PortfolioPage} from './PortfolioPage';
 import {BetaAccount} from './BetaAccount';
 import {AccountBar} from './AccountBar';
+import {WorkspaceHeader} from './WorkspaceHeader';
 import {TestConnection} from './TestConnection';
-import {useUiLanguage,LanguageSwitcher} from './ui-language';
+import {useUiLanguage} from './ui-language';
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {ArrowUpRight,BookOpen,FolderOpen,Home,Plus,ShieldCheck} from 'lucide-react';
 import Editor from './App';
 import {SimpleAdResult} from './SimpleAdResult';
 import {CreateCampaign} from './CreateCampaign';
-import {PricingDialog} from './PricingDialog';
 import {newProject} from './model';
 import type {Project} from './model';
 import {projects,saveProject} from './storage';
@@ -73,7 +73,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  const [page,setPage]=useState<Page>(currentPage),[seed,setSeed]=useState<Project>(()=>restored?.editor??({...newProject(),locale:language})),[current,setCurrent]=useState<Project>(seed),[editorKey,setEditorKey]=useState(0);
  const submittedWizard=useRef<string|undefined>(restored?.returnPage==='studio'?restored?.wizard?.project.id:undefined);
  const [wizardKey,setWizardKey]=useState(0),[items,setItems]=useState<Project[]>([]),[libraryError,setLibraryError]=useState('');
- const [draftSaving,setDraftSaving]=useState(false),[draftError,setDraftError]=useState(false);
+ const [,setDraftSaving]=useState(false),[draftError,setDraftError]=useState(false);
  const [paymentNotice,setPaymentNotice]=useState(()=>{const v=readSession<{userId:string;origin:string;credits:number;balance:number;confirmedAt:number}>('aiadcast.checkout-confirmed');return v?.userId===betaSession()?.user.id&&v?.origin===apiIdentity()&&Number.isFinite(v.confirmedAt)&&Date.now()-v.confirmedAt>=0&&Date.now()-v.confirmedAt<60000?v:undefined;});
  useEffect(()=>{
   if(!paymentNotice)return;
@@ -126,12 +126,12 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
 
  return <div className={`studio-shell ${(page==='editor'||page==='studio'&&!simpleStudio)?'editor-route':''}`}>
   <aside className="app-sidebar"><a href="#home" className="app-brand" aria-label={text("aiadcast 홈")}><Brand/><small>{language==='ko'?'내 브랜드의 광고 제작 파트너':'YOUR CREATIVE PARTNER'}</small></a><nav aria-label={text("주 메뉴")}>{navigation.map(([id,label,Icon])=><a href={'#'+id} onClick={id==='create'?createNavigation:undefined} key={id} aria-current={page===id?'page':undefined}><Icon size={19}/><span>{text(label)}</span>{id==='create'&&<span className="nav-plus">+</span>}</a>)}</nav><div className="sidebar-bottom"><div className="studio-mark"><ShieldCheck size={20}/><span>{text("당신의 상품.")}<br/><strong>{text("당신의 브랜드.")}</strong></span></div><span>aiadcast Studio<br/>by selluplabs</span></div></aside>
-  <div className="app-content"><AccountBar preserve={async()=>{await preserve();await saveProject(current);}}/><DemoNotice/><nav className="screen-history" aria-label={language==='ko'?'화면 이동':'Screen history'}><button disabled={!screenHistory.canBack} onClick={()=>screenHistory.back()}>{language==='ko'?'뒤로':'Back'}</button><button disabled={!screenHistory.canForward} onClick={()=>screenHistory.forward()}>{language==='ko'?'앞으로':'Forward'}</button></nav>{page==='guide'&&new URLSearchParams(location.search).get('support')==='1'&&<details className="account-drawer"><summary>{language==='ko'?'테스트 계정 · 서버 연결':'Test account & connection'}</summary><OfflineDemoControls preserve={preserve} beforeChange={async()=>{await preserve();await saveWorkspace(snapshot,'guest');}}/>{!offlineDemo()&&<TestConnection preserve={preserve} beforeChange={async()=>{await preserve();await saveWorkspace(snapshot,'guest');}}/>}{!offlineDemo()&&<BetaAccount current={current} onOpen={p=>open(p,true)}/>}</details>}
-   {page==='create'&&<p className="workspace-save-state" aria-live="polite">{draftSaving?(language==='ko'?'입력 내용 저장 중…':'Saving your draft…'):draftError?(language==='ko'?'입력 내용 저장 실패':'Draft could not be saved'):(language==='ko'?'입력 내용이 기기에 저장되었습니다.':'Draft saved on this device.')}</p>}
+  <div className="app-content"><WorkspaceHeader preserve={async()=>{await preserve();await saveProject(current);}} history={screenHistory}/><DemoNotice/>{page==='guide'&&new URLSearchParams(location.search).get('support')==='1'&&<details className="account-drawer"><summary>{language==='ko'?'테스트 계정 · 서버 연결':'Test account & connection'}</summary><OfflineDemoControls preserve={preserve} beforeChange={async()=>{await preserve();await saveWorkspace(snapshot,'guest');}}/>{!offlineDemo()&&<TestConnection preserve={preserve} beforeChange={async()=>{await preserve();await saveWorkspace(snapshot,'guest');}}/>}{!offlineDemo()&&<BetaAccount current={current} onOpen={p=>open(p,true)}/>}</details>}
+
    {draftError&&<p className="wizard-error" role="alert">{text('입력 내용을 기기에 보관하지 못했습니다. 저장 공간을 확인해주세요.')}</p>}
    {switchError&&<p className="wizard-error" role="alert">{switchError}</p>}
    {paymentNotice&&['create','studio','editor'].includes(page)&&<div className="connection-notice" role="status">{language==='ko'?`이용권 ${paymentNotice.credits}개 지급 확인 · 현재 잔액 ${paymentNotice.balance}개.`:`${paymentNotice.credits} credits confirmed · Balance ${paymentNotice.balance}.`}<button type="button" onClick={()=>{sessionStorage.removeItem('aiadcast.checkout-confirmed');setPaymentNotice(undefined);}}>{language==='ko'?'확인':'Dismiss'}</button></div>}
-   {(page!=='studio'||simpleStudio)&&page!=='editor'&&<header className="app-header"><a href="#home" className="mobile-brand" aria-label={text("aiadcast 홈")}><Brand/></a><span className="workspace-label">{language==='ko'?'내 상품과 서비스를 위한 광고 작업실':'SELLUPLABS / CREATIVE WORKSPACE'}</span><div className="app-header-actions"><LanguageSwitcher/><PricingDialog/>{betaSession()?.user.role==='admin'&&<a className="account-link" href="#admin">{language==='ko'?'관리자':'Admin'}</a>}<a className="account-link" href={betaSession()?"#credits":"#login"}>{betaSession()?(language==='ko'?'내 이용권':'My Credits'):(language==='ko'?'로그인':'Sign in')}</a></div></header>}
+
 
    <div hidden={page!=='home'} className="home-page app-page">
     <section className="premium-home"><h1>{language==='ko'?<><span>내 상품과 서비스를,</span><br/><em>프리미엄 광고로.</em></>:<>Your products and services.<br/><em>Premium ads.</em></>}</h1><p>{language==='ko'?<>사진과 설명을 넣으면,<br/>AI광고가 광고이미지와 문구를 만듭니다.</>:'Add photos and a description. AI creates your ad images and copy.'}</p><HomeShowcase enabled={page==='home'}/><button className="primary-action premium-start" onClick={()=>begin()}>{text('내 광고 만들기')}<ArrowUpRight size={21}/></button></section>
