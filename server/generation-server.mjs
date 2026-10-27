@@ -67,6 +67,7 @@ export function createGenerationHttpServer({ service, allowedOrigins = DEFAULT_O
         let body;
         inFlightBodies++;
         try { body = await readJson(req); } finally { inFlightBodies--; }
+        if (url.pathname === '/api/generations' && body?.request?.output?.exactText !== undefined) throw new ApiFailure('PAID_TRIAL_NOT_APPROVED',403);
         if (url.pathname === '/api/generations') { sendJson(res, 202, await service.create(body), origin); return; }
         if (route?.[2] === 'accept') { sendJson(res, 200, service.accept(route[1], body?.artifactId, body?.dimensionReview), origin); return; }
         if (route?.[2] === 'report') { sendJson(res, 200, service.reportDefect(route[1], body), origin); return; }

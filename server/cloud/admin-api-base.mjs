@@ -15,6 +15,13 @@ export class AdminApi {
         fail('USER_NOT_FOUND', 404); const u = await this.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id); if (!u)
         fail('USER_NOT_FOUND', 404); return u; }
     async audit(actor, action, target, details, id = randomUUID()) { await this.db.prepare('INSERT INTO admin_audit VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING').run(id, actor.id, action, target, JSON.stringify(details), this.now()); }
+    async exactTextTrial(actor) {
+        this.require(actor);
+        const owners = await this.db.prepare('SELECT user_id FROM email_identities WHERE email=?').all(this.ownerEmail ?? '');
+        if (actor.disabled || owners.length !== 1 || owners[0].user_id !== actor.id)
+            fail('EXACT_TEXT_TRIAL_FORBIDDEN', 403);
+        return { version: 2, preparation: true, generationEnabled: false, reason: 'PAID_TRIAL_NOT_APPROVED' };
+    }
     async octoberApproval(actor) {
         this.require(actor);
         const owner = await this.db.prepare('SELECT user_id FROM email_identities WHERE email=?').get(this.ownerEmail ?? '');

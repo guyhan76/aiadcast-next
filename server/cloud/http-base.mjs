@@ -86,7 +86,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
         try {
             const url = new URL(req.url, origin);
             if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
-                const path = url.pathname === '/' ? '/index.html' : url.pathname;
+                const path = ['/', '/exact-text-trial'].includes(url.pathname) ? '/index.html' : url.pathname;
                 const bytes = assets.get(path);
                 if (!bytes)
                     throw new ApiFailure('NOT_FOUND', 404);
@@ -214,6 +214,13 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
             }
             if (url.pathname.startsWith('/api/admin/')) {
                 admin.require(user);
+                if (url.pathname === '/api/admin/exact-text-trial') {
+                    const capability = await admin.exactTextTrial(user);
+                    if (req.method !== 'GET')
+                        throw new ApiFailure('PAID_TRIAL_NOT_APPROVED', 403);
+                    send(res, 200, capability, cors);
+                    return;
+                }
                 if (url.pathname === '/api/admin/defect-review' && req.method === 'POST') {
                     const body = await read(req, 8192), target = await store.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(body.userId);
                     if (!target)
@@ -337,6 +344,8 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
             if (req.method === 'POST' && ['/api/generations', '/api/assistant'].includes(url.pathname)) {
                 submissionStage('body_read');
                 const body = await read(req, 14100000);
+                if (url.pathname === '/api/generations' && body?.request?.output?.exactText !== undefined)
+                    throw new ApiFailure('PAID_TRIAL_NOT_APPROVED', 403);
                 submissionStage('service_initialization');
                 const s = await service(user);
                 submissionStage('generation_admission');

@@ -10,6 +10,12 @@ export class AdminApi {
  require(user){if(user.role!=='admin')fail('ADMIN_REQUIRED',403);}
  user(id){if(typeof id!=='string'||!/^[A-Za-z0-9_-]{8,100}$/.test(id))fail('USER_NOT_FOUND',404);const u=this.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(id);if(!u)fail('USER_NOT_FOUND',404);return u;}
  audit(actor,action,target,details,id=randomUUID()){this.db.prepare('INSERT INTO admin_audit VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING').run(id,actor.id,action,target,JSON.stringify(details),this.now());}
+ exactTextTrial(actor){
+  this.require(actor);
+  const owners=this.db.prepare('SELECT user_id FROM email_identities WHERE email=?').all(this.ownerEmail??'');
+  if(actor.disabled||owners.length!==1||owners[0].user_id!==actor.id)fail('EXACT_TEXT_TRIAL_FORBIDDEN',403);
+  return {version:2,preparation:true,generationEnabled:false,reason:'PAID_TRIAL_NOT_APPROVED'};
+ }
  octoberApproval(actor){
   this.require(actor);const owner=this.db.prepare('SELECT user_id FROM email_identities WHERE email=?').get(this.ownerEmail??'');
   const record=this.store.monthApproval(),eligible=owner?.user_id===actor.id&&this.store.budgetPeriod()==='2026-10';
