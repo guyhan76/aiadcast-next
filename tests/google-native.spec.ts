@@ -15,7 +15,7 @@ async function setup(page:Page,pending?:Record<string,unknown>){
 }
 test('Android bridge opens external Google once and fixed resume signal exchanges app-held proof',async({page})=>{
  const mock=await setup(page);await page.goto('/');const button=page.getByRole('button',{name:'Google로 계속하기'});await expect(button).toBeEnabled();await button.evaluate((b:HTMLButtonElement)=>{b.click();b.click();});await expect(page.getByRole('button',{name:'취소',exact:true})).toBeVisible();expect(mock.starts).toBe(1);expect(new URL(page.url()).hostname).toBe('127.0.0.1');
- const messages=await page.evaluate(()=>(window as any).nativeMessages);expect(messages.filter((m:any)=>m.type==='google-sign-in')).toHaveLength(1);expect(messages[0].url).not.toContain(proof);expect(messages[0].owner).toBe('guest');
+ const messages=await page.evaluate(()=>(window as any).nativeMessages);expect(messages.filter((m:any)=>m.type==='google-sign-in')).toHaveLength(1);expect(messages.find((m:any)=>m.type==='google-sign-in').url).not.toContain(proof);expect(messages.find((m:any)=>m.type==='google-sign-in').owner).toBe('guest');
  mock.approved=true;await page.evaluate(()=>window.dispatchEvent(new Event('aiadcast-google-return')));await expect(page.locator('.home-page')).toBeVisible();expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('aiadcast.beta-session')!).user.id)).toBe(session.user.id);expect(await page.evaluate(()=>(window as any).nativeMessages.some((m:any)=>m.type==='google-sign-in-clear'&&m.state==='s'.repeat(43)))).toBe(true);
 });
 test('Android cancellation ignores a late approved response and keeps login closed',async({page})=>{

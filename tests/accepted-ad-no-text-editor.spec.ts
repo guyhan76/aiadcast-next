@@ -22,5 +22,19 @@ for(const language of ['ko','en'] as const)test(`accepted ad hides text editor a
  const download=page.waitForEvent('download');await button.click();const result=await download,pixels=await sharp(await readFile((await result.path())!)).raw().toBuffer({resolveWithObject:true});expect([...pixels.data.subarray(0,3)]).toEqual([100,133,166]);
  const saved=await page.evaluate(({owner,id})=>new Promise<any>((resolve,reject)=>{const r=indexedDB.open('aiadcast-editor-'+owner,1);r.onsuccess=()=>{const db=r.result,q=db.transaction('projects').objectStore('projects').get(id);q.onsuccess=()=>{resolve(q.result);db.close();};q.onerror=()=>reject(q.error);};}),{owner,id:p.id});expect(saved.textEdit).toEqual(p.textEdit);expect(saved.generated).toEqual(p.generated);
  await page.reload();await expect(accepted).toBeVisible();await expect(accepted.getByRole('button',{name:language==='ko'?'이미지 저장 · 공유':'Save / share image',exact:true})).toBeEnabled();await expect(page.locator('.text-layer-section')).toHaveCount(0);
+ // Exercise the real result export path through the injected Android bridge, not a browser download.
+ await page.evaluate(()=>{(window as any).nativeExports=[];(window as any).AiadcastNative={postMessage(raw:string){(window as any).nativeExports.push(JSON.parse(raw));}};});
+ await page.addScriptTag({content:await readFile('native/android-download-bridge.js','utf8')});
+ await button.click();await expect.poll(()=>page.evaluate(()=>(window as any).nativeExports.filter((m:any)=>m.type==='export').length)).toBe(1);
+ const native=await page.evaluate(()=>(window as any).nativeExports.find((m:any)=>m.type==='export'));
+ expect(native.owner).toContain(owner);expect(native.mime).toBe('image/png');
+ expect(await sharp(Buffer.from(native.base64,'base64')).raw().toBuffer()).toEqual(pixels.data);
+ await button.click();expect(await page.evaluate(()=>(window as any).nativeExports.filter((m:any)=>m.type==='export').length)).toBe(1);
+ await page.evaluate(id=>window.dispatchEvent(new CustomEvent('aiadcast-native-export',{detail:{status:'cancelled',requestId:id}})),native.requestId);
+ await expect(page.getByText(language==='ko'?'저장을 취소했습니다.':'Save canceled.',{exact:true})).toBeVisible();
+ await button.click();await expect.poll(()=>page.evaluate(()=>(window as any).nativeExports.filter((m:any)=>m.type==='export').length)).toBe(2);
+ const retry=await page.evaluate(()=>(window as any).nativeExports.filter((m:any)=>m.type==='export')[1]);expect(retry.base64).toBe(native.base64);expect(retry.requestId).not.toBe(native.requestId);
+ await page.evaluate(id=>window.dispatchEvent(new CustomEvent('aiadcast-native-export',{detail:{status:'saved',requestId:id}})),retry.requestId);
+ await expect(page.getByText(language==='ko'?'이미지를 저장했습니다.':'Image saved.',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:language==='ko'?'입력 내용 수정':'Edit details',exact:true}).click();await expect(page.locator('.consumer-create')).toBeVisible();expect(writes).toBe(0);expect(recommendationRequests).toBe(0);
 });

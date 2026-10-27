@@ -39,7 +39,10 @@ import './campaign-cover.css';
 type Page='portfolio'|'home'|'create'|'projects'|'guide'|'studio'|'signup'|'login'|'credits'|'checkout'|'verify'|'pay'|'payment-return'|'checkout-return'|'admin'|'editor';
 const navigation=[['home','홈',Home],['create','광고 만들기',Plus],['projects','내 프로젝트',FolderOpen],['guide','사용 안내',BookOpen]] as const;
 function currentPage():Page {if(new URLSearchParams(location.search).get('checkout')==='return')return 'payment-return';const route=location.hash.slice(1).split('?')[0];return ['portfolio','home','create','projects','guide','studio','signup','login','credits','checkout','verify','pay','payment-return','checkout-return','admin','editor'].includes(route)?route as Page:'home';}
-export default function StudioApp(){return <GoogleGate><AuthenticatedStudioApp/></GoogleGate>;}
+export default function StudioApp(){
+ useEffect(()=>{const publish=()=>window.dispatchEvent(new CustomEvent('aiadcast-export-context',{detail:{owner:storageNamespace()}}));window.addEventListener('aiadcast-session-change',publish);return()=>window.removeEventListener('aiadcast-session-change',publish);},[]);
+ return <GoogleGate><AuthenticatedStudioApp/></GoogleGate>;
+}
 function AuthenticatedStudioApp(){
  const [route,setRoute]=useState(currentPage);
  useEffect(()=>{if(route!=='login'&&route!=='signup')clearLoginDestination();},[route]);
@@ -64,6 +67,7 @@ function WorkspaceLoader(){
 }
 function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  const [workspaceScope]=useState(storageNamespace);
+ useEffect(()=>{const publish=()=>window.dispatchEvent(new CustomEvent('aiadcast-export-context',{detail:{owner:storageNamespace()}}));publish();window.addEventListener('aiadcast-export-context-needed',publish);return()=>window.removeEventListener('aiadcast-export-context-needed',publish);},[workspaceScope]);
  const {language,text}=useUiLanguage();
  const priorPage=useRef<Page>(currentPage()),adminBack=useRef('#home'),creditsBack=useRef<Page>('home');
  const [page,setPage]=useState<Page>(currentPage),[seed,setSeed]=useState<Project>(()=>restored?.editor??({...newProject(),locale:language})),[current,setCurrent]=useState<Project>(seed),[editorKey,setEditorKey]=useState(0);

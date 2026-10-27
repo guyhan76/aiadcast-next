@@ -53,14 +53,15 @@ import java.util.concurrent.Executors;
 public final class MainActivity extends ComponentActivity {
     private static final String APP_ORIGIN = "https://appassets.androidplatform.net";
     private static final int PICK_FILE = 71;
-    private static final int SAVE_FILE = 72;
     private WebView webView;
     private ValueCallback<Uri[]> filePicker;
     private boolean filePickerMultiple;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
-    private File pendingFile;
-    private String pendingMime;
-    private String pendingFilename;
+    private ExportJournal exportJournal;
+    private volatile String exportOwner;
+    private ExportJournal.Entry activeExport;
+    private AlertDialog exportDialog;
+    private DeferredSave deferredSave;
     private String bridgeScript;
     private String bridgeSource;
     private volatile String apiOrigin;
@@ -128,6 +129,7 @@ public final class MainActivity extends ComponentActivity {
                     if (data != null && data.length() <= 8192) {
                         try {
                             JSONObject request = new JSONObject(data);
+                            if ("export-context".equals(request.optString("type"))) { exportContext(request.optString("owner")); return; }
                             if ("google-sign-in".equals(request.optString("type"))) { openGoogle(request); return; }
                             if ("google-sign-in-clear".equals(request.optString("type"))) { clearGoogle(request.optString("state")); return; }
                             if ("configure-test-server".equals(request.optString("type"))) {
@@ -325,52 +327,131 @@ public final class MainActivity extends ComponentActivity {
         return new WebResourceResponse("text/plain", "UTF-8", code, message, Collections.emptyMap(), new ByteArrayInputStream(message.getBytes(StandardCharsets.UTF_8)));
     }
 
+    private void exportContext(String owner) {
+        if (owner == null || owner.isEmpty() || owner.length() > 512 || owner.matches(".*[\\p{Cntrl}].*")) return;
+        String previous = exportOwner; exportOwner = owner;
+        if (!owner.equals(previous)) {
+            exportInProgress = false; activeExport = null;
+            if (exportDialog != null) { exportDialog.dismiss(); exportDialog = null; }
+        } else if (exportInProgress) return;
+        final DeferredSave result = deferredSave; deferredSave = null;
+        io.execute(() -> {
+            try {
+                journal().isolate(owner);
+                if (!owner.equals(exportOwner)) return;
+                if (result != null && journal().matches(result.code,owner)) { finishSave(result, owner); return; }
+                ExportJournal.Entry entry = journal().recover(owner, System.currentTimeMillis());
+                if (entry != null && !journal().writing(entry.id)) runOnUiThread(() -> {
+                    if (owner.equals(exportOwner) && !exportInProgress && !isDestroyed()) chooseExport(entry, true);
+                });
+            } catch (Exception invalid) { runOnUiThread(() -> { if(owner.equals(exportOwner)) emit("error", words("이전 저장 파일을 복구하지 못했습니다. 보관된 광고에서 다시 저장해주세요.", "Could not recover the export file. Save again from your preserved ad.")); }); }
+        });
+    }
+    private ExportJournal journal() throws java.io.IOException {
+        if (exportJournal == null) exportJournal = new ExportJournal(new File(getCacheDir(), "exports"), new File(getFilesDir(), "export-request-sequence"));
+        return exportJournal;
+    }
+    private void emitExport(String status, ExportJournal.Entry entry, String message) {
+        if (!entry.owner.equals(exportOwner) || webView == null || isDestroyed()) return;
+        webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('aiadcast-native-export',{detail:{status:"
+            + JSONObject.quote(status) + ",requestId:" + JSONObject.quote(entry.id) + ",message:" + JSONObject.quote(message) + "}}));", null);
+    }
     private void receiveExport(String message) {
-        if (exportInProgress) { toast(words("먼저 현재 파일의 저장 또는 공유를 마쳐주세요.", "Finish the current export first.")); return; }
-        if (message == null || message.length() > (ExportPolicy.MAX_BYTES * 4 / 3) + 2048) {
-            emit("error", words("파일이 너무 큽니다.", "The file is too large.")); return;
+        if (exportInProgress) { toast(words("현재 저장 또는 공유를 먼저 마쳐주세요.", "Finish the current export first.")); return; }
+        if (exportOwner == null || message == null || message.length() > (ExportPolicy.MAX_BYTES * 4 / 3) + 4096) {
+            emit("error", words("저장할 파일과 계정을 확인해주세요.", "Check the export file and account.")); return;
         }
+        final String owner = exportOwner;
         exportInProgress = true;
         io.execute(() -> {
             try {
                 JSONObject request = new JSONObject(message);
-                if (!"export".equals(request.optString("type"))) throw new IllegalArgumentException("Invalid operation");
-                String mime = request.getString("mime");
-                String filename = ExportPolicy.safeFilename(request.optString("filename"), mime);
-                byte[] bytes = Base64.decode(request.getString("base64"), Base64.NO_WRAP);
-                if (!ExportPolicy.validContent(bytes, mime)) throw new IllegalArgumentException("Invalid export file");
-                if ("application/json".equals(mime)) new JSONObject(new String(bytes, StandardCharsets.UTF_8));
-                File folder = new File(getCacheDir(), "exports");
-                if (!folder.exists() && !folder.mkdirs()) throw new IllegalStateException("Export directory unavailable");
-                File file = new File(folder, UUID.randomUUID() + "-" + filename);
-                try (FileOutputStream output = new FileOutputStream(file)) { output.write(bytes); }
-                runOnUiThread(() -> chooseExport(file, mime, filename));
-            } catch (Exception error) {
-                runOnUiThread(() -> { exportInProgress = false; emit("error", words("파일을 준비하지 못했습니다. 다시 시도해주세요.", "Could not prepare the file. Please try again.")); });
-            }
+                if (!"export".equals(request.optString("type")) || !owner.equals(request.optString("owner"))) throw new IllegalArgumentException();
+                if (!owner.equals(exportOwner)) return;
+                ExportJournal.Entry previous = journal().recover(owner,System.currentTimeMillis());
+                if (previous != null) { runOnUiThread(() -> chooseExport(previous,true)); return; }
+                String mime=request.getString("mime");
+                byte[] bytes=Base64.decode(request.getString("base64"),Base64.NO_WRAP);
+                if (!ExportPolicy.validContent(bytes,mime)) throw new IllegalArgumentException();
+                if ("application/json".equals(mime)) new JSONObject(new String(bytes,StandardCharsets.UTF_8));
+                ExportJournal.Entry entry=journal().prepare(request.getString("requestId"),owner,request.optString("filename"),mime,bytes,System.currentTimeMillis());
+                if (!owner.equals(exportOwner)) { journal().cancel(entry.id,true); return; }
+                runOnUiThread(() -> chooseExport(entry,false));
+            } catch (Exception invalid) { runOnUiThread(() -> { if(owner.equals(exportOwner)){ exportInProgress=false; emit("error",words("파일을 준비하지 못했습니다. 보관된 광고에서 다시 저장해주세요.","Could not prepare the file. Save again from your preserved ad.")); } }); }
         });
     }
-
-    private void chooseExport(File file, String mime, String filename) {
-        if (isFinishing() || isDestroyed()) { file.delete(); return; }
-        pendingFile = file; pendingMime = mime; pendingFilename = filename;
-        new AlertDialog.Builder(this).setTitle(words("광고 파일 내보내기", "Export your ad"))
-            .setItems(new String[]{words("파일로 저장", "Save to files"), words("다른 앱에 공유", "Share to another app")}, (dialog, which) -> {
-                if (which == 0) {
-                    Intent save = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(mime).putExtra(Intent.EXTRA_TITLE, filename);
-                    try { startActivityForResult(save, SAVE_FILE); }
-                    catch (ActivityNotFoundException error) { clearPending(true); emit("error", words("저장할 앱이 없습니다.", "No app can save this document.")); }
-                } else {
-                    Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".exports", file);
-                    Intent send = new Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM, uri)
-                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                    send.setClipData(ClipData.newUri(getContentResolver(), filename, uri));
-                    try { startActivity(Intent.createChooser(send, words("공유할 앱 선택", "Share with"))); emit("share-opened", words("공유할 앱에서 전송을 완료해주세요.", "Finish sharing in the selected app.")); }
-                    catch (ActivityNotFoundException error) { emit("error", words("공유할 앱이 없습니다.", "No app can share this file.")); }
-                    clearPending(false); // Receiving apps may still read the granted cache file.
-                }
+    private void chooseExport(ExportJournal.Entry entry, boolean restored) {
+        if (isFinishing() || isDestroyed() || !entry.owner.equals(exportOwner)) return;
+        if (exportDialog != null) return;
+        activeExport=entry;exportInProgress=true;
+        emitExport("requested",entry,words("저장 또는 공유를 선택해주세요.","Choose saving or sharing."));
+        exportDialog=new AlertDialog.Builder(this)
+            .setTitle(restored?words("이전 저장 작업 이어하기","Resume previous export"):words("광고 파일 내보내기","Export your ad"))
+            .setItems(new String[]{words("파일로 저장","Save to files"),words("다른 앱에 공유","Share to another app")},(dialog,which)->{
+                exportDialog=null;
+                io.execute(()->{
+                    try {
+                        if (!entry.owner.equals(exportOwner) || !journal().active(entry.id,entry.owner)) return;
+                        if(which==0){
+                            ExportJournal.Entry picking=journal().picking(entry.id,entry.owner,System.currentTimeMillis());
+                            runOnUiThread(()->{
+                                if(isDestroyed()||!entry.owner.equals(exportOwner))return;
+                                activeExport=picking;
+                                Intent save=new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(entry.mime).putExtra(Intent.EXTRA_TITLE,entry.filename);
+                                try {startActivityForResult(save,picking.code);}catch(ActivityNotFoundException error){exportFailure(entry);}
+                            });
+                        }else{
+                            File file=journal().file(entry);
+                            runOnUiThread(()->{
+                                if(isDestroyed()||!entry.owner.equals(exportOwner))return;
+                                try{
+                                    Uri uri=FileProvider.getUriForFile(this,getPackageName()+".exports",file);
+                                    Intent send=new Intent(Intent.ACTION_SEND).setType(entry.mime).putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                    send.setClipData(ClipData.newUri(getContentResolver(),entry.filename,uri));
+                                    startActivity(Intent.createChooser(send,words("공유할 앱 선택","Share with")));
+                                    io.execute(()->{try{journal().cancel(entry.id,false);}catch(Exception ignored){}});
+                                    exportInProgress=false;activeExport=null;
+                                    emitExport("share-opened",entry,words("공유할 앱에서 전송을 완료해주세요.","Finish sharing in the selected app."));
+                                }catch(Exception error){exportFailure(entry);}
+                            });
+                        }
+                    }catch(Exception error){runOnUiThread(()->exportFailure(entry));}
+                });
             })
-            .setOnCancelListener(dialog -> { clearPending(true); emit("cancelled", words("저장을 취소했습니다.", "Export cancelled.")); }).show();
+            .setOnCancelListener(dialog->{exportDialog=null;io.execute(()->{try{journal().cancel(entry.id,true);}catch(Exception ignored){}});exportInProgress=false;activeExport=null;emitExport("cancelled",entry,words("저장을 취소했습니다.","Export cancelled."));}).create();
+        exportDialog.show();
+    }
+    private void exportFailure(ExportJournal.Entry entry) {
+        if(!entry.owner.equals(exportOwner)||isDestroyed())return;
+        exportInProgress=false;activeExport=null;
+        emitExport("error",entry,words("저장하지 못했습니다. 다시 저장하면 이전 파일을 이어서 저장할 수 있습니다.","Could not save. Try saving again to resume the previous file."));
+    }
+    private static final class DeferredSave {
+        final int code,result;final Uri uri;
+        DeferredSave(int code,int result,Uri uri){this.code=code;this.result=result;this.uri=uri;}
+    }
+    private void finishSave(DeferredSave result,String owner) {
+        ExportJournal.Entry entry=null;
+        try {
+            if(!owner.equals(exportOwner)||!journal().matches(result.code,owner))return;
+            runOnUiThread(()->{if(owner.equals(exportOwner)&&exportDialog!=null){exportDialog.dismiss();exportDialog=null;}});
+            if(result.result!=RESULT_OK||result.uri==null){
+                entry=journal().recover(owner,System.currentTimeMillis());
+                if(entry!=null){journal().cancel(entry.id,true);final ExportJournal.Entry cancelled=entry;runOnUiThread(()->{exportInProgress=false;activeExport=null;emitExport("cancelled",cancelled,words("저장을 취소했습니다.","Export cancelled."));});}return;
+            }
+            entry=journal().claim(result.code,owner,System.currentTimeMillis());if(entry==null)return;
+            if(!"content".equals(result.uri.getScheme()))throw new java.io.IOException("Invalid picker destination");
+            if(isDestroyed()||!owner.equals(exportOwner)||!journal().active(entry.id,owner))throw new java.io.IOException("Export cancelled");
+            try(OutputStream output=getContentResolver().openOutputStream(result.uri,"wt")){
+                if(output==null)throw new java.io.IOException("Destination unavailable");
+                journal().copyTo(entry,output,()->!isDestroyed()&&owner.equals(exportOwner));
+            }
+            journal().finish(entry.id,true);
+            final ExportJournal.Entry saved=entry;runOnUiThread(()->{if(owner.equals(exportOwner)){exportInProgress=false;activeExport=null;emitExport("saved",saved,words("파일을 저장했습니다.","File saved."));}});
+        }catch(Exception error){
+            if(entry!=null){try{journal().finish(entry.id,false);}catch(Exception ignored){}final ExportJournal.Entry failed=entry;runOnUiThread(()->exportFailure(failed));}
+            else runOnUiThread(()->{if(owner.equals(exportOwner)){exportInProgress=false;emit("error",words("저장 파일을 확인하지 못했습니다. 보관된 광고에서 다시 저장해주세요.","Could not verify the export. Save again from your preserved ad."));}});
+        }
     }
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
@@ -392,39 +473,20 @@ public final class MainActivity extends ComponentActivity {
                 }
             }
             callback.onReceiveValue(selected);
-        } else if (request == SAVE_FILE && pendingFile != null) {
-            if (result != RESULT_OK || data == null || data.getData() == null) {
-                clearPending(true); emit("cancelled", words("저장을 취소했습니다.", "Export cancelled.")); return;
-            }
-            File source = pendingFile;
-            Uri destination = data.getData();
-            io.execute(() -> {
-                boolean saved = false;
-                try (InputStream input = new FileInputStream(source); OutputStream output = getContentResolver().openOutputStream(destination, "wt")) {
-                    if (output == null) throw new IllegalStateException("Destination unavailable");
-                    copyStream(input, output); saved = true;
-                } catch (Exception ignored) {}
-                boolean success = saved;
-                runOnUiThread(() -> {
-                    clearPending(true);
-                    emit(success ? "saved" : "error", success ? words("파일을 저장했습니다.", "File saved.") : words("저장하지 못했습니다. 저장 공간을 확인해주세요.", "Could not save. Check available storage."));
-                });
-            });
+        } else if (request >= 4096 && request < 65534) {
+            DeferredSave returned=new DeferredSave(request,result,data==null?null:data.getData());
+            if(exportOwner==null)deferredSave=returned;
+            else {final String owner=exportOwner;io.execute(()->finishSave(returned,owner));}
         }
     }
 
-    private void clearPending(boolean delete) {
-        if (delete && pendingFile != null) pendingFile.delete();
-        pendingFile = null; pendingFilename = null; pendingMime = null; exportInProgress = false;
-    }
     private static void copyStream(InputStream input, OutputStream output) throws java.io.IOException {
         byte[] buffer = new byte[16384];
         int count;
         while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
     }
     private void cleanOldExports() {
-        File[] files = new File(getCacheDir(), "exports").listFiles();
-        if (files != null) for (File file : files) if (file.isFile() && System.currentTimeMillis() - file.lastModified() > 24L * 60 * 60 * 1000) file.delete();
+        io.execute(()->{try{journal().clean(System.currentTimeMillis());}catch(Exception ignored){}});
     }
     private void emit(String status, String message) {
         if (webView == null || isDestroyed()) return;
@@ -440,6 +502,7 @@ public final class MainActivity extends ComponentActivity {
     }
     @Override protected void onDestroy() {
         if (filePicker != null) { filePicker.onReceiveValue(null); filePicker = null; }
+        if(exportDialog!=null){exportDialog.dismiss();exportDialog=null;}
         webView.destroy(); io.shutdown(); super.onDestroy();
     }
 }

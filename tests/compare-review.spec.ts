@@ -123,8 +123,8 @@ test('comparison PNG and evidence reach the native bridge with honest save state
  const dialog=page.getByRole('dialog',{name:'원본과 결과 비교'}),save=dialog.getByRole('button',{name:'비교 이미지 저장',exact:true}),status=dialog.locator('.comparison-export-status');
  const emit=async(status:string)=>page.evaluate(status=>window.dispatchEvent(new CustomEvent('aiadcast-native-export',{detail:{status}})),status);
  await save.click();await expect(save).toBeDisabled();await expect(status).toContainText('위치를 선택');
- await expect.poll(()=>page.evaluate(()=>(window as any).nativeMessages.length)).toBe(1);
- const png=await page.evaluate(()=>(window as any).nativeMessages[0]);
+ await expect.poll(()=>page.evaluate(()=>(window as any).nativeMessages.filter((m:any)=>m.type==='export').length)).toBe(1);
+ const png=await page.evaluate(()=>(window as any).nativeMessages.filter((m:any)=>m.type==='export')[0]);
  expect(png.mime).toBe('image/png');const meta=await sharp(Buffer.from(png.base64,'base64')).metadata();expect([meta.width,meta.height]).toEqual([1800,1600]);
  await emit('cancelled');await expect(status).toContainText('취소');await expect(save).toBeEnabled();
  await save.click();await expect(save).toBeDisabled();await expect(status).toContainText('위치를 선택');await emit('saved');await expect(status).toContainText('저장했습니다');await expect(save).toBeEnabled();
@@ -132,8 +132,8 @@ test('comparison PNG and evidence reach the native bridge with honest save state
  await save.click();await expect(save).toBeDisabled();await expect(status).toContainText('위치를 선택');await emit('error');await expect(dialog.getByRole('alert')).toContainText('저장하지 못했습니다');await expect(save).toBeEnabled();
  await dialog.locator('.proportion-review > summary').click();
  await dialog.getByRole('button',{name:'사진·규격·비교 기록 저장',exact:true}).click();
- await expect(status).toContainText('위치를 선택');await expect.poll(()=>page.evaluate(()=>(window as any).nativeMessages.length)).toBe(5);
- const json=await page.evaluate(()=>(window as any).nativeMessages[4]);expect(json.mime).toBe('application/json');
+ await expect(status).toContainText('위치를 선택');await expect.poll(()=>page.evaluate(()=>(window as any).nativeMessages.filter((m:any)=>m.type==='export').length)).toBe(5);
+ const json=await page.evaluate(()=>(window as any).nativeMessages.filter((m:any)=>m.type==='export')[4]);expect(json.mime).toBe('application/json');
  const evidence=JSON.parse(Buffer.from(json.base64,'base64').toString('utf8'));expect(evidence.status).toBe('unverified');expect(evidence.images.source.sha256).toBe(createHash('sha256').update(source).digest('hex'));
  expect(await status.evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;})).toBe(true);
  await emit('saved');await expect(status).toContainText('저장했습니다');await expect(save).toBeEnabled();
