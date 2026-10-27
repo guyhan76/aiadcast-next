@@ -11,7 +11,12 @@ export function exactAdText(input:{productName:string;copy?:{company?:string;des
  // Multiple unlabeled figures could be a comparison/discount; don't separate them.
  return {version:1,company,product,offers:offers.length===1?offers:[]};
 }
-export function exactTextSnapshot(p:{exactTextVersion?:1|2;format?:string;productName:string;copy:Record<string,{company:string;description:string}>;locale:string;footer?:{company?:boolean}}){
+// Automatic copy is a shortened display string. For new planned compositions,
+// extract offers from the supplied facts, not that lossy display copy.
+export function plannedTextInput(input:{productName:string;copy:{company?:string;description?:string};material?:string;copyMode?:string}){
+ return {productName:input.productName,copy:{...input.copy,description:input.copyMode==='ai'&&input.material?.trim()?input.material:input.copy.description}};
+}
+export function exactTextSnapshot(p:{exactTextVersion?:1|2;format?:string;productName:string;copy:Record<string,{company:string;description:string}>;locale:string;footer?:{company?:boolean};productProfile?:{material:string};campaign?:{creative?:{copyMode?:string}}}){
  const input={productName:p.productName,copy:{...p.copy[p.locale],company:p.footer?.company===false?'':p.copy[p.locale].company}};
- return p.exactTextVersion===2?plannedAdText(input,p.format??''):p.exactTextVersion===1?exactAdText(input):undefined;
+ return p.exactTextVersion===2?plannedAdText(plannedTextInput({...input,material:p.productProfile?.material,copyMode:p.campaign?.creative?.copyMode}),p.format??''):p.exactTextVersion===1?exactAdText(input):undefined;
 }

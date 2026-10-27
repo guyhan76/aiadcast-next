@@ -1,5 +1,5 @@
 import {plannedAdText} from '../src/planned-ad-text.ts';
-import {exactAdText} from '../src/exact-ad-text.ts';
+import {exactAdText,plannedTextInput} from '../src/exact-ad-text.ts';
 import {submissionStage} from './submission-observation.mjs';
 import {readinessMeasure} from './readiness-observation.mjs';
 import {generationMatchKey} from '../src/generation-match.ts';
@@ -71,7 +71,7 @@ export function normalizeGenerationRequest(value) {
   const normalized=boundedObject({ ...(textExample?{inputMode:'text-example'}:{}),version: 1, mode: value.mode, operation: expected, subjectType: value.subjectType, productName: value.productName, productProfile: value.productProfile ?? {}, brief: value.brief, campaign, direction: value.direction ?? {}, creativeDirection: value.creativeDirection ?? null, scene: value.scene ?? {}, specifications, attributes, target:{...marketingPlan.target,method:marketingPlan.method},contentType:campaign.contentType,marketingPlan,copy: value.copy ?? {}, source: value.source ?? null, references: value.references ?? [], output: { format: value.output.format, locale: value.output.locale, displayUnit:['mm','cm','inch'].includes(value.output.displayUnit)?value.output.displayUnit:'mm', showDimensions: value.subjectType!=='service'&&specifications.length>0&&value.output.showDimensions === true, showDimensionLines: value.subjectType!=='service'&&specifications.length>0&&value.output.showDimensions === true&&value.output.showDimensionLines === true } });
   if(compositionKey){let key;try{key=JSON.parse(compositionKey);}catch{}if(key?.exactText!==undefined&&value.output.exactText===undefined)fail('INVALID_EXACT_TEXT');}
   if(value.output.exactText!==undefined){
-    let expected,key;try{expected=value.output.exactText.version===2?plannedAdText({productName:normalized.productName,copy:normalized.copy},normalized.output.format):exactAdText({productName:normalized.productName,copy:normalized.copy});key=JSON.parse(compositionKey);}catch{fail('INVALID_EXACT_TEXT');}
+    let expected,key;try{expected=value.output.exactText.version===2?plannedAdText(plannedTextInput({productName:normalized.productName,copy:normalized.copy,material:normalized.productProfile.material,copyMode:normalized.campaign.creative?.copyMode}),normalized.output.format):exactAdText({productName:normalized.productName,copy:normalized.copy});key=JSON.parse(compositionKey);}catch{fail('INVALID_EXACT_TEXT');}
     if(value.mode!=='creative'||value.creativeDirection?.visual?.id!=='auto'||value.proportionControl||JSON.stringify(value.output.exactText)!==JSON.stringify(expected)||JSON.stringify(key?.exactText)!==JSON.stringify(expected))fail('INVALID_EXACT_TEXT');
     normalized.output.exactText=expected;
   }

@@ -6,7 +6,14 @@ export type PlannedAdText=Omit<ExactAdText,'version'>&{version:2;plan:{version:1
 // Deliberately conservative: variable placement, but only a flat reserved area is accepted.
 export function plannedAdText(input:Parameters<typeof exactAdText>[0],format:string):PlannedAdText{
  if(!isImageFormat(format))throw Error('INVALID_EXACT_TEXT');
- const {version:_,...text}=exactAdText(input),length=[text.company,text.product,...text.offers].join('').length;
+ const {version:_,...text}=exactAdText(input);
+ // Do not isolate one valid line from a price comparison, discount condition,
+ // malformed figure, or a second amount embedded in prose.
+ const description=input.copy?.description??'';
+ const amounts=description.match(/(?:[₩$€£]\s*\d[\d,.]*|\d[\d,.]*\s*(?:만원|원|KRW|USD|EUR|GBP))/gi)??[];
+ const offer=text.offers[0]??'',number=amounts[0]?.match(/\d[\d,.]*/)?.[0];
+ if(amounts.length!==1||/%|할인|discount|쿠폰/i.test(description.replace(offer,''))||!number||! /^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/.test(number))text.offers=[];
+ const length=[text.company,text.product,...text.offers].join('').length;
  if(!text.product&&!text.company&&!text.offers.length)throw Error('INVALID_EXACT_TEXT');
  const seed=[text.company,text.product,...text.offers].join('|');let hash=0;for(const ch of seed)hash=(Math.imul(hash,31)+ch.codePointAt(0)!)>>>0;
  const dimensions=getImageFormat(format),wide=dimensions.height>dimensions.width||length>90,id=wide?'upper-wide':hash%2?'upper-left':'upper-right';
