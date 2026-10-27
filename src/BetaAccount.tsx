@@ -17,7 +17,7 @@ export function SessionBoundary({children}:{children:ReactNode}){
     location.hash='login';setScope(identity());
    }
   });};
-  const update=(event:Event)=>{const route=(event as CustomEvent).detail?.returnPage;location.hash=['home','create','studio','editor','credits','checkout','checkout-return','login','signup'].includes(route)?route:'home';setScope(identity());if(betaSession())arm();else stop();};
+  const update=(event:Event)=>{const route=(event as CustomEvent).detail?.returnPage;if(route==='exact-text-trial'&&betaSession()){location.replace('/exact-text-trial');return;}location.hash=['home','create','studio','editor','credits','checkout','checkout-return','login','signup'].includes(route)?route:'home';setScope(identity());if(betaSession())arm();else stop();};
   window.addEventListener('aiadcast-session-change',update);arm();
   return()=>{stop();window.removeEventListener('aiadcast-session-change',update);};
  },[scope]);

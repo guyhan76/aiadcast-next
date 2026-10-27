@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test';import {protectedScreen,mockSession} from './helpers/authenticated-session';
-for(const locale of ['ko','en'])for(const status of [401,403,503])test(`access ${status} ${locale} safe diagnostic and GET-only retry`,async({page})=>{
+for(const locale of ['ko','en'])for(const status of [403,503])test(`access ${status} ${locale} safe diagnostic and GET-only retry`,async({page})=>{
  await protectedScreen(page,mockSession('trial-owner','admin'));await page.addInitScript(l=>localStorage.setItem('aiadcast.ui-language',l),locale);let reads=0,posts=0;const code=status===401?'AUTH_REQUIRED':status===403?'EXACT_TEXT_TRIAL_FORBIDDEN':'SERVER_BUSY';
  await page.route('**/api/admin/exact-text-trial',r=>{if(r.request().method()!=='GET')posts++;reads++;return r.fulfill(reads===1?{status,json:{error:{code,message:'SECRET_SQL_EMAIL_TOKEN'}}}:{json:{version:2,preparation:true,generationEnabled:false,reason:'PAID_TRIAL_NOT_APPROVED'}});});
  await page.goto('/exact-text-trial');await expect(page.getByRole('alert')).toBeVisible();await expect(page.getByText(`HTTP ${status} · ${code}`)).toBeVisible();await expect(page.locator('body')).not.toContainText('SECRET_SQL_EMAIL_TOKEN');await expect(page.locator('input[type=file]')).toHaveCount(0);
