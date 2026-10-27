@@ -23,7 +23,7 @@ import {AdminApi} from './admin-api.mjs';
 export const ANDROID_ORIGIN='https://appassets.androidplatform.net';
 export function providerGate(max=2){let active=0;return async task=>{if(active>=max)throw new ProviderFailure('PROVIDER_BUSY',{uncertain:false});active++;try{return await task();}finally{active--;}};}
 export function publicOrigin(value){const u=new URL(value);if(u.protocol!=='https:'||!u.hostname||u.username||u.password||u.search||u.hash||u.pathname!=='/')throw Error('HTTPS_ORIGIN_REQUIRED');return u.origin;}
-export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,recommendations,now=()=>Date.now(),extraOrigins=[],staticDirectory,accounts={},dimensionAnalysis=dimensionAnalysisService(),singleBox=singleBoxService()}) {
+export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,generationHistoryReader,recommendations,now=()=>Date.now(),extraOrigins=[],staticDirectory,accounts={},dimensionAnalysis=dimensionAnalysisService(),singleBox=singleBoxService()}) {
  const assets=new Map();
  if(staticDirectory){const scan=(folder,prefix='')=>{for(const item of readdirSync(folder,{withFileTypes:true})){const name=prefix+item.name;if(item.isDirectory())scan(join(folder,item.name),name+'/');else assets.set('/'+name,readFileSync(join(folder,item.name)));}};scan(staticDirectory);}
  const origin=publicOrigin(publicUrl),allowed=new Set([origin,ANDROID_ORIGIN,...extraOrigins.map(publicOrigin)]),services=new Map();
@@ -101,7 +101,8 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
     if(url.pathname==='/api/admin/dimension-evaluation'){if(req.method==='GET'){send(res,200,await dimensionAnalysis.status(user,url.searchParams.get('requestId')??undefined),cors);return;}if(req.method==='POST'){send(res,200,await dimensionAnalysis.analyze(await read(req,14_100_000),user),cors);return;}}
     if(req.method==='POST'&&['/api/admin/demo-support-preview','/api/admin/demo-support'].includes(url.pathname)){send(res,200,await demoSupport(admin,user,await read(req,2048),url.pathname==='/api/admin/demo-support'),cors);return;}
     if(req.method==='POST'&&url.pathname==='/api/admin/october-budget'){send(res,200,admin.activateOctoberBudget(user,await read(req,1024)),cors);return;}
-    if(req.method==='GET'&&url.pathname==='/api/admin/overview'){send(res,200,admin.overview(user),cors);return;}
+    if(req.method==='GET'&&url.pathname==='/api/admin/generations'){admin.require(user);if(!generationHistoryReader)throw new ApiFailure('ADMIN_HISTORY_UNAVAILABLE',503);send(res,200,await generationHistoryReader(user,url.search),cors);return;}
+    if(req.method==='GET'&&url.pathname==='/api/admin/overview'){send(res,200,admin.overview(user,{omitJobs:url.searchParams.get('jobs')==='none'}),cors);return;}
     if(req.method==='POST'&&['/api/admin/grants','/api/admin/allocations','/api/admin/test-ready','/api/admin/revoke'].includes(url.pathname)){
      const body=await read(req,2048);send(res,200,url.pathname.endsWith('/grants')?admin.grant(user,body):url.pathname.endsWith('/allocations')?admin.allocate(user,body):url.pathname.endsWith('/test-ready')?admin.prepareTest(user,body):admin.revoke(user,body),cors);return;
     }

@@ -30,15 +30,15 @@ export class AdminApi {
         await this.store.activateOctoberBudget(actor.id);
         return await this.octoberApproval(actor);
     }
-    async overview(actor) {
+    async overview(actor, options = {}) {
         this.require(actor);
         if (this.overviewReader)
-            return this.overviewReader(actor, this);
+            return this.overviewReader(actor, this, options);
         const members = await this.db.prepare('SELECT u.*,e.email,(SELECT COUNT(*) FROM projects p WHERE p.user_id=u.id) projects FROM users u LEFT JOIN email_identities e ON e.user_id=u.id ORDER BY u.id').all();
         const instances = await Promise.all(await Promise.all(members.map(async (u) => await this.service(u))));
         const jobs = [], users = await Promise.all(members.map(async (u) => {
             const s = await this.service(u), status = await s.status();
-            for (const j of (await s.history()).jobs)
+            for (const j of options.omitJobs ? [] : (await s.history()).jobs)
                 jobs.push({ id: j.id, userId: u.id, userLabel: u.label, state: j.state, createdAt: j.createdAt, mode: j.mode, model: j.model, outputFormat: j.outputFormat, errorCode: j.errorCode, costMicros: j.cost?.microUsd ?? null });
             return { id: u.id, label: u.label, email: u.email ?? null, role: u.role, disabled: Boolean(u.disabled), projects: u.projects, wallet: status.wallet, budget: status.budget, generation: status.generation };
         }));

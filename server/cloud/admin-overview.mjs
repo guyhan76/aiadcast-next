@@ -6,7 +6,7 @@ const fail=code=>{throw new ApiFailure(code,503);};
 const localUser='aiadcast-next-local-developer';
 // One consistent read-only snapshot; no per-account service/migration/recovery,
 // advisory write lock, expiry, asset downloads, or provider calls.
-export async function readAdminOverview({pool,guard=()=>{},actor,admin,enabled,providerConfigured,now=Date.now,maximumMembers=200}){
+export async function readAdminOverview({pool,guard=()=>{},actor,admin,enabled,providerConfigured,now=Date.now,maximumMembers=200,omitJobs=false}){
  if(actor?.role!=='admin')throw new ApiFailure('ADMIN_REQUIRED',403);
  guard();let client,timer,expired=false;
  const connection=pool.connect().then(c=>{if(expired){c.release();throw Error('ADMIN_READ_TIMEOUT');}return c;});
@@ -37,7 +37,7 @@ export async function readAdminOverview({pool,guard=()=>{},actor,admin,enabled,p
    (SELECT row_to_json(w) FROM ${schema}.wallets w WHERE user_id=$2) wallet,
    (SELECT row_to_json(w) FROM ${schema}.credit_wallets w WHERE user_id=$2) credits,
    (SELECT row_to_json(b) FROM ${schema}.budgets b WHERE period=$1) budget,
-   (SELECT COALESCE(json_agg(r),'[]') FROM (SELECT g.id,g.created_at,g.error_code,j.status,j.reason,g.request_json::json->>'mode' mode,g.request_json::json->'output'->>'format' format,g.metadata_json::json->>'model' model,g.metadata_json::json->'cost'->>'microUsd' cost FROM ${schema}.generation_records g JOIN ${schema}.jobs j ON j.id=g.id ORDER BY g.created_at DESC LIMIT 30) r) jobs`;});
+   ${omitJobs?"'[]'::json":`(SELECT COALESCE(json_agg(r),'[]') FROM (SELECT g.id,g.created_at,g.error_code,j.status,j.reason,g.request_json::json->>'mode' mode,g.request_json::json->'output'->>'format' format,g.metadata_json::json->>'model' model,g.metadata_json::json->'cost'->>'microUsd' cost FROM ${schema}.generation_records g JOIN ${schema}.jobs j ON j.id=g.id ORDER BY g.created_at DESC LIMIT 30) r)`} jobs`;});
   const summaries=new Map(selects.length?(await client.query(selects.join(' UNION ALL '),values)).rows.map(r=>[r.id,r]):[]);
   guard();await client.query('COMMIT');
   // Match the existing monthly allocation view; never change stored policy.

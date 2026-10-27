@@ -34,3 +34,6 @@ test('October read-only overview matches owner approval plus unchanged member te
  for(const [at,limit] of [[Date.UTC(2026,9,24,16),5000000],[Date.UTC(2026,9,31,23,59,59),100000000]]){now=at;const r=await readAdminOverview(args);assert.equal(r.users[0].budget.limitMicros,limit);assert.equal(r.users[1].budget.limitMicros,10000000);assert.equal(r.budget.limitMicros,limit+10000000);assert.equal(r.budget.allocatedMicros,limit+10000000);}
  now=Date.UTC(2026,10,1);const next=await readAdminOverview(args);assert.equal(next.users[0].budget.limitMicros,1000000);assert.equal(next.users[1].budget.limitMicros,0);assert.equal(next.budget.limitMicros,1000000);
 });
+test('compact overview excludes generation SQL rather than loading records hidden by the UI',async()=>{
+ const f=fixture(2);await readAdminOverview({...f.args,omitJobs:true});assert.ok(f.statements.some(s=>s.includes("'[]'::json jobs")));assert.ok(!f.statements.some(s=>s.includes('FROM "aiadcast_user_')&&s.includes('.generation_records')));
+});

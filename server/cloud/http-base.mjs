@@ -27,7 +27,7 @@ finally {
 } }; }
 export function publicOrigin(value) { const u = new URL(value); if (u.protocol !== 'https:' || !u.hostname || u.username || u.password || u.search || u.hash || u.pathname !== '/')
     throw Error('HTTPS_ORIGIN_REQUIRED'); return u.origin; }
-export async function createBetaServer({ store, publicUrl, serviceFactory, overviewReader, recommendations, now = () => Date.now(), extraOrigins = [], staticDirectory, accounts = {}, dimensionAnalysis = dimensionAnalysisService(), singleBox = singleBoxService() }) {
+export async function createBetaServer({ store, publicUrl, serviceFactory, overviewReader, generationHistoryReader, recommendations, now = () => Date.now(), extraOrigins = [], staticDirectory, accounts = {}, dimensionAnalysis = dimensionAnalysisService(), singleBox = singleBoxService() }) {
     const assets = new Map();
     if (staticDirectory) {
         const scan = (folder, prefix = '') => { for (const item of readdirSync(folder, { withFileTypes: true })) {
@@ -256,8 +256,15 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                     send(res, 200, await admin.activateOctoberBudget(user, await read(req, 1024)), cors);
                     return;
                 }
+                if (req.method === 'GET' && url.pathname === '/api/admin/generations') {
+                    admin.require(user);
+                    if (!generationHistoryReader)
+                        throw new ApiFailure('ADMIN_HISTORY_UNAVAILABLE', 503);
+                    send(res, 200, await generationHistoryReader(user, url.search), cors);
+                    return;
+                }
                 if (req.method === 'GET' && url.pathname === '/api/admin/overview') {
-                    send(res, 200, await admin.overview(user), cors);
+                    send(res, 200, await admin.overview(user, { omitJobs: url.searchParams.get('jobs') === 'none' }), cors);
                     return;
                 }
                 if (req.method === 'POST' && ['/api/admin/grants', '/api/admin/allocations', '/api/admin/test-ready', '/api/admin/revoke'].includes(url.pathname)) {

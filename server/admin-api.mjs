@@ -22,13 +22,13 @@ export class AdminApi {
   this.store.activateOctoberBudget(actor.id);
   return this.octoberApproval(actor);
  }
- overview(actor){
+ overview(actor,options={}){
   this.require(actor);
-  if(this.overviewReader)return this.overviewReader(actor,this);
+  if(this.overviewReader)return this.overviewReader(actor,this,options);
   const members=this.db.prepare('SELECT u.*,e.email,(SELECT COUNT(*) FROM projects p WHERE p.user_id=u.id) projects FROM users u LEFT JOIN email_identities e ON e.user_id=u.id ORDER BY u.rowid').all();
   const jobs=[],users=members.map(u=>{
    const s=this.service(u),status=s.status();
-   for(const j of s.history().jobs)jobs.push({id:j.id,userId:u.id,userLabel:u.label,state:j.state,createdAt:j.createdAt,mode:j.mode,model:j.model,outputFormat:j.outputFormat,errorCode:j.errorCode,costMicros:j.cost?.microUsd??null});
+   for(const j of options.omitJobs?[]:s.history().jobs)jobs.push({id:j.id,userId:u.id,userLabel:u.label,state:j.state,createdAt:j.createdAt,mode:j.mode,model:j.model,outputFormat:j.outputFormat,errorCode:j.errorCode,costMicros:j.cost?.microUsd??null});
    return {id:u.id,label:u.label,email:u.email??null,role:u.role,disabled:Boolean(u.disabled),projects:u.projects,wallet:status.wallet,budget:status.budget,generation:status.generation};
   });
   const orders=this.db.prepare('SELECT id,user_id,credits,amount,state,created FROM test_orders ORDER BY created DESC LIMIT 50').all().map(r=>({id:r.id,userId:r.user_id,credits:r.credits,amount:r.amount,state:r.state,created:r.created,test:true}));

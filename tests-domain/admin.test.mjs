@@ -51,3 +51,12 @@ test('member test preparation fails before credits or allocation when generation
  s.enabled=true;assert.throws(()=>admin.prepareTest(actor,{userId:id,requestId:'prepare-no-provider'}),/PROVIDER_NOT_CONFIGURED/);
  assert.equal(store.db.prepare('SELECT budget FROM users WHERE id=?').get(id).budget,0);assert.equal(s.wallet().available,0);
 });
+
+test('generation page HTTP route authenticates before reader and never initializes generation or expires ledgers',async t=>{
+ const {store,session,lifecycle}=setup(t);let reads=0;const expected={jobs:[],nextCursor:null};
+ const app=createBetaServer({store,publicUrl:origin,serviceFactory(){throw Error('NO_GENERATION_SERVICE');},generationHistoryReader:async(actor,search)=>{assert.equal(actor.role,'admin');assert.equal(search,'?days=7&state=accepted');reads++;return expected;}});
+ await new Promise(r=>app.server.listen(0,'127.0.0.1',r));lifecycle.closeServer=()=>app.close();
+ const member=store.login(store.provision({label:'Member',credits:0}).invite),url='http://127.0.0.1:'+app.server.address().port+'/api/admin/generations?days=7&state=accepted';
+ for(const [token,status] of [[null,401],[member.token,403],[session.token,200]]){const r=await fetch(url,{headers:{Origin:origin,...(token?{Authorization:'Bearer '+token}:{})}});assert.equal(r.status,status);if(status===200)assert.deepEqual(await r.json(),expected);}
+ assert.equal(reads,1);
+});
