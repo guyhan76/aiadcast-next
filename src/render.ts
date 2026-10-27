@@ -1,3 +1,4 @@
+import {paintPlannedAdText} from './planned-ad-text-render';
 import {paintExactAdText} from './exact-ad-text-render';
 import {exactTextSnapshot} from './exact-ad-text';
 import {manualRequested} from './manual-dimensions';
@@ -36,17 +37,17 @@ export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axi
  }
  if(hasCompleteAd(p)){
   const frame=completeAdPlacement(p),image=await loadImage(p.generated!.asset.data);
-  canvas.width=frame.width;canvas.height=frame.height;const ctx=canvas.getContext('2d')!;
+  canvas.width=frame.width;canvas.height=frame.height;const ctx=canvas.getContext('2d')!;let exactFrame={x:frame.x,y:frame.y,w:frame.w,h:frame.h};
   ctx.fillStyle=p.background.color;ctx.fillRect(0,0,frame.width,frame.height);
   if(isTextExample(p)){
    const label=p.locale==='ko'?'AI 예시 · 실제 상품 재현 아님':'AI example · Not an actual product reproduction';
    const band=Math.max(40,Math.round(frame.height*.035)),scale=Math.min(frame.width/image.naturalWidth,(frame.height-band)/image.naturalHeight),w=image.naturalWidth*scale,h=image.naturalHeight*scale;
-   ctx.drawImage(image,(frame.width-w)/2,(frame.height-band-h)/2,w,h);
+   exactFrame={x:(frame.width-w)/2,y:(frame.height-band-h)/2,w,h};ctx.drawImage(image,exactFrame.x,exactFrame.y,w,h);
    let size=Math.max(16,Math.round(frame.width*.028));await document.fonts.load(`500 ${size}px ${font}`,label);ctx.font=`500 ${size}px ${font}`;
    while(ctx.measureText(label).width>frame.width*.92&&size>10){size--;ctx.font=`500 ${size}px ${font}`;}
    ctx.fillStyle='#fff';ctx.fillRect(0,frame.height-band,frame.width,band);ctx.fillStyle='#222';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,frame.width/2,frame.height-band/2);
   }else ctx.drawImage(image,frame.x,frame.y,frame.w,frame.h);
-  const exact=exactTextSnapshot(p);if(exact&&hasUsableCreative(p)){try{await paintExactAdText(canvas,exact);}catch{return [p.locale==='ko'?'정확한 문구를 합성하지 못했습니다. 원본은 보관되며 자동 재생성하지 않습니다.':'Could not compose exact text. The original is preserved; no automatic regeneration.'];}}
+  const exact=exactTextSnapshot(p);if(exact&&hasUsableCreative(p)){try{if(exact.version===2)await paintPlannedAdText(canvas,exact,exactFrame);else await paintExactAdText(canvas,exact);}catch{return [p.locale==='ko'?'정확한 문구를 합성하지 못했습니다. 원본은 보관되며 자동 재생성하지 않습니다.':'Could not compose exact text. The original is preserved; no automatic regeneration.'];}}
   return hasUsableCreative(p)?[]:[p.locale==='ko'?'광고 정보가 변경되었습니다. 이전 문구가 포함된 이미지는 저장할 수 없습니다. 현재 정보로 새 시안을 요청해주세요.':'Ad details changed. The image still contains the previous copy. Request a new visual before exporting.'];
  }
  const layout=geometry(p);const {width,height,area,photo,summary,footerLine}=layout;const content=p.copy[p.locale];

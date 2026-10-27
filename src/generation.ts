@@ -47,6 +47,8 @@ export function newGenerationIssues(p:Project):string[]{
  return !p.product?['광고에 참고할 상품·공간 사진을 추가해주세요.']:generationIssues(p);
 }
 // Internal prototype only: no production form or automatic submission opts in.
+// Candidate v2 remains opt-in until actual reserved-area compliance is validated.
+export function plannedTextGenerationDraft(p:Project):Project{return p.exactTextVersion===2?p:{...p,exactTextVersion:2};}
 export function exactTextGenerationDraft(p:Project):Project{return p.exactTextVersion===1?p:{...p,exactTextVersion:1};}
 export function buildNewGenerationRequest(p:Project){
  p=photoGenerationDraft(p);const issues=newGenerationIssues(p);if(issues.length)throw Error(issues.join(' '));
@@ -103,7 +105,7 @@ export function buildGenerationRequest(p:Project) {
     campaign,creativeDirection:p.campaign?.creative?creativeContract(p):null,attributes:[...(p.productProfile.material?[{name:service?'서비스 내용':'소재',value:p.productProfile.material}]:[]),...campaign.attributes],
     marketingPlan,target:{...marketingPlan.target,method:marketingPlan.method},contentType:campaign.contentType,specificationContract:specificationContract(p),
     specifications:dimensionAxes(p.productProfile).map(axis=>({axis:axis==='width'&&p.productProfile.specType==='cylindrical'?'diameter':axis,value:p.dimensions[axis],unit:'mm'})),
-    output:{...(p.exactTextVersion===1?{exactText:exactTextSnapshot(p)}:{}),...(p.dimensionAnnotation?.method==='manual'&&p.dimensionAnnotation.mode!=='none'?{manualDimensionBase:true}:{}),format:p.format,width:format.width,height:format.height,locale:input.text.locale,displayUnit:p.dimensions.displayUnit??'mm',compositionKey:completeAdKey(p),showDimensions:(aiDimensionRequested(p)||!p.dimensionAnnotation||p.dimensionAnnotation.mode==='none')&&p.dimensions.visible&&dimensionAxes(p.productProfile).length>0,showDimensionLines:p.dimensionAnnotation?.method!=='manual'&&p.dimensions.visible&&(aiDimensionRequested(p)||p.dimensions.lines)&&dimensionAxes(p.productProfile).length>0},
+    output:{...([1,2].includes(p.exactTextVersion??0)?{exactText:exactTextSnapshot(p)}:{}),...(p.dimensionAnnotation?.method==='manual'&&p.dimensionAnnotation.mode!=='none'?{manualDimensionBase:true}:{}),format:p.format,width:format.width,height:format.height,locale:input.text.locale,displayUnit:p.dimensions.displayUnit??'mm',compositionKey:completeAdKey(p),showDimensions:(aiDimensionRequested(p)||!p.dimensionAnnotation||p.dimensionAnnotation.mode==='none')&&p.dimensions.visible&&dimensionAxes(p.productProfile).length>0,showDimensionLines:p.dimensionAnnotation?.method!=='manual'&&p.dimensions.visible&&(aiDimensionRequested(p)||p.dimensions.lines)&&dimensionAxes(p.productProfile).length>0},
     claims:{sameProduct:!creative&&!appearanceEdit&&!service&&!!p.product&&!boxProjectionActive(p),exactGeometry:false},
   };
 }

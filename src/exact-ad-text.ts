@@ -1,3 +1,4 @@
+import {plannedAdText} from './planned-ad-text.ts';
 // Only explicit input strings. Never infer a brand or a price from a category/image.
 export type ExactAdText={version:1;company:string;product:string;offers:string[]};
 export function exactAdText(input:{productName:string;copy?:{company?:string;description?:string}}):ExactAdText{
@@ -10,6 +11,7 @@ export function exactAdText(input:{productName:string;copy?:{company?:string;des
  // Multiple unlabeled figures could be a comparison/discount; don't separate them.
  return {version:1,company,product,offers:offers.length===1?offers:[]};
 }
-export function exactTextSnapshot(p:{exactTextVersion?:1;productName:string;copy:Record<string,{company:string;description:string}>;locale:string;footer?:{company?:boolean}}){
- return p.exactTextVersion===1?exactAdText({productName:p.productName,copy:{...p.copy[p.locale],company:p.footer?.company===false?'':p.copy[p.locale].company}}):undefined;
+export function exactTextSnapshot(p:{exactTextVersion?:1|2;format?:string;productName:string;copy:Record<string,{company:string;description:string}>;locale:string;footer?:{company?:boolean}}){
+ const input={productName:p.productName,copy:{...p.copy[p.locale],company:p.footer?.company===false?'':p.copy[p.locale].company}};
+ return p.exactTextVersion===2?plannedAdText(input,p.format??''):p.exactTextVersion===1?exactAdText(input):undefined;
 }
