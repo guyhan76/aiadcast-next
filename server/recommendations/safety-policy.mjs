@@ -14,9 +14,16 @@ export function validateRecommendationMeasurements(limits,measurement){
  return {withinConfiguredLimits:true,providerCostBoundVerified:false};
 }
 
+// Explicit account IDs only; no wildcard, role expansion, or default owner.
+export function validateRecommendationAllowlist(ids){
+ const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+ if(!Array.isArray(ids)||ids.length<1||ids.length>20||ids.some(id=>typeof id!=='string'||!uuid.test(id))||new Set(ids).size!==ids.length)throw Error('RECOMMENDATION_LIVE_POLICY_NOT_APPROVED');
+ return [...ids];
+}
 // Supplied only by a reviewed server deployment, never by an HTTP request.
 // No default model, token prices, reservation or commercial approval.
 export function validateServerRecommendationPolicy(p){
+ validateRecommendationAllowlist(p?.allowedOwnerIds);
  if(!p||p.reservationMicros!==20000||p.monthlyCapMicros!==500000||p.model!=='gpt-5.4-mini-2026-03-17'||p.inputAccounting!=='local-conservative-v1'||!Number.isSafeInteger(p.maxInputTokens)||p.maxInputTokens<1||p.maxInputTokens>8192||p.kind!=='approved-server-policy-v1'||p.customerPolicy!=='included-first-approved'||p.customerCharge!==0||typeof p.model!=='string'||!/^gpt-[a-z0-9.-]{1,80}$/.test(p.model)||!/^recommendation-v[0-9]+$/.test(p.promptVersion)||!Number.isSafeInteger(p.reservationMicros)||p.reservationMicros<1||!Number.isSafeInteger(p.monthlyCapMicros)||p.monthlyCapMicros<p.reservationMicros||!Number.isSafeInteger(p.maxOutputTokens)||p.maxOutputTokens<1||p.maxOutputTokens>1000||!p.pricing||['input','cached','output'].some(k=>!Number.isSafeInteger(p.pricing[k])||p.pricing[k]<0)||p.pricing.input<1||p.pricing.output<1||p.pricing.cached>p.pricing.input)throw Error('RECOMMENDATION_LIVE_POLICY_NOT_APPROVED');
  return structuredClone(p);
 }

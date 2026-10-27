@@ -1,11 +1,12 @@
 // Authenticated, tenant-scoped routes; production runtime remains disabled without policy.
-export function recommendationApi({authenticate,service,origin,extraOrigins=[],enabled=false,adminPolicy}){
+export function recommendationApi({authenticate,service,origin,extraOrigins=[],enabled=false,adminPolicy,isAccountAllowed=()=>true}){
  const send=(status,data)=>Response.json(status>=400&&typeof data?.error==='string'?{error:{code:data.error}}:data,{status,headers:{'Cache-Control':'no-store'}});
  return async request=>{
   if(!enabled)return send(503,{error:'RECOMMENDATIONS_DISABLED'});
   try{
    const user=await authenticate(request.headers.get('authorization'));
    if(!user||!user.id||user.disabled)return send(401,{error:'AUTH_REQUIRED'});
+   if(!isAccountAllowed(user.id))return send(503,{error:'RECOMMENDATIONS_DISABLED'});
    const context={userId:user.id},url=new URL(request.url);
    const get=/^\/api\/recommendations\/([A-Za-z0-9_-]{1,100})$/.exec(url.pathname);
    if(request.method==='GET'&&get)return send(200,await service.read(context,get[1]));

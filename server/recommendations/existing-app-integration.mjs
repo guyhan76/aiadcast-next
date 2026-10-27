@@ -7,9 +7,11 @@ import {savedRequestSnapshot} from './contracts.mjs';
 import {recommendationApi} from './api.mjs';
 // Uses existing authentication, private artifacts and authoritative image budgets.
 export function existingAppRecommendationApi({store,pool,storage,adapter,origin,enabled=false,executionMode,policy,reservationMicros=1000,outputProvenance='mock-ai',version='mock-v1/prompt-v1',extraOrigins=[]}){
- if(enabled)assertRecommendationExecution(executionMode,policy);
+ const approved=enabled?assertRecommendationExecution(executionMode,policy):undefined;
+ const allowedOwners=executionMode==='server'&&enabled?new Set(approved.allowedOwnerIds):null;
+ const isAccountAllowed=owner=>!allowedOwners||allowedOwners.has(owner);
  const services=new Map();
- async function serviceFor(owner){if(!enabled)throw Error('RECOMMENDATIONS_DISABLED');if(!services.has(owner))services.set(owner,(async()=>{
+ async function serviceFor(owner){if(!enabled||!isAccountAllowed(owner))throw Error('RECOMMENDATIONS_DISABLED');if(!services.has(owner))services.set(owner,(async()=>{
   const db=new PostgresDatabase(pool,cloudSchema(owner));
   const exists=await db.prepare("SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema=? AND table_name='generation_records') AS present").get(cloudSchema(owner));if(!exists.present)throw Error('NOT_FOUND');
   const period=()=>store.budgetPeriod(),limit=p=>store.effectiveBudget(owner,p);
@@ -26,5 +28,5 @@ export function existingAppRecommendationApi({store,pool,storage,adapter,origin,
   return service;
  })().catch(error=>{services.delete(owner);throw error;}));return services.get(owner);}
  const service={readForGeneration:async(context,id)=>(await serviceFor(context.userId)).readForGeneration(context,id),read:async(context,id)=>(await serviceFor(context.userId)).read(context,id),request:async(context,body)=>(await serviceFor(context.userId)).request(context,body)};
- return {handle:recommendationApi({enabled,origin,extraOrigins,service,adminPolicy:executionMode==='server'?{reservationMicros:policy.reservationMicros,monthlyCapMicros:policy.monthlyCapMicros}:undefined,authenticate:header=>store.authenticate(header)}),serviceFor};
+ return {handle:recommendationApi({enabled,origin,extraOrigins,service,isAccountAllowed,adminPolicy:executionMode==='server'?{reservationMicros:policy.reservationMicros,monthlyCapMicros:policy.monthlyCapMicros}:undefined,authenticate:header=>store.authenticate(header)}),serviceFor};
 }
