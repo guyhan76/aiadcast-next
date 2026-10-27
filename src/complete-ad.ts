@@ -1,3 +1,4 @@
+import {exactTextSnapshot} from './exact-ad-text.ts';
 import {aiDimensionRequested,projectAiDimensionKey} from './ai-dimension-display.ts';
 import type {Project} from './model.ts';
 import {dimensionAxes,specSummary} from './product.ts';
@@ -12,7 +13,7 @@ export function publicAdCopy(p:Project){
   dimensionText:p.dimensions.visible&&dimensionAxes(p.productProfile).length?specSummary(p.dimensions,p.productProfile):''};
 }
 export function completeAdKey(p:Project):string {
- return JSON.stringify({...(p.dimensionAnnotation?.method==='manual'&&p.dimensionAnnotation.mode!=='none'?{manualDimensionBase:true}:{}),...(aiDimensionRequested(p)?{aiDimensionInputKey:projectAiDimensionKey(p)}:{}),locale:p.locale,productName:p.productName,copy:publicAdCopy(p),attributes:p.campaign?.attributes??[],...(p.campaign?.creative?.copyMode?{copyMode:p.campaign.creative.copyMode}:{}),dimensionLines:p.dimensions.visible&&dimensionAxes(p.productProfile).length>0&&p.dimensions.lines});
+ return JSON.stringify({...(p.exactTextVersion===1?{exactText:exactTextSnapshot(p)}:{}),...(p.dimensionAnnotation?.method==='manual'&&p.dimensionAnnotation.mode!=='none'?{manualDimensionBase:true}:{}),...(aiDimensionRequested(p)?{aiDimensionInputKey:projectAiDimensionKey(p)}:{}),locale:p.locale,productName:p.productName,copy:publicAdCopy(p),attributes:p.campaign?.attributes??[],...(p.campaign?.creative?.copyMode?{copyMode:p.campaign.creative.copyMode}:{}),dimensionLines:p.dimensions.visible&&dimensionAxes(p.productProfile).length>0&&p.dimensions.lines});
 }
 export function hasCompleteAd(p:Project):boolean {
  return p.generation.mode==='creative'&&p.generated?.composition==='complete-ad'&&p.generated.role==='creative';

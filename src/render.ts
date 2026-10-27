@@ -1,3 +1,5 @@
+import {paintExactAdText} from './exact-ad-text-render';
+import {exactTextSnapshot} from './exact-ad-text';
 import {manualRequested} from './manual-dimensions';
 import {paintManualDimensions} from './manual-dimension-render';
 import {isTextExample,textExampleGeometryError} from './generation-input';
@@ -44,6 +46,7 @@ export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axi
    while(ctx.measureText(label).width>frame.width*.92&&size>10){size--;ctx.font=`500 ${size}px ${font}`;}
    ctx.fillStyle='#fff';ctx.fillRect(0,frame.height-band,frame.width,band);ctx.fillStyle='#222';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,frame.width/2,frame.height-band/2);
   }else ctx.drawImage(image,frame.x,frame.y,frame.w,frame.h);
+  const exact=exactTextSnapshot(p);if(exact&&hasUsableCreative(p)){try{await paintExactAdText(canvas,exact);}catch{return [p.locale==='ko'?'정확한 문구를 합성하지 못했습니다. 원본은 보관되며 자동 재생성하지 않습니다.':'Could not compose exact text. The original is preserved; no automatic regeneration.'];}}
   return hasUsableCreative(p)?[]:[p.locale==='ko'?'광고 정보가 변경되었습니다. 이전 문구가 포함된 이미지는 저장할 수 없습니다. 현재 정보로 새 시안을 요청해주세요.':'Ad details changed. The image still contains the previous copy. Request a new visual before exporting.'];
  }
  const layout=geometry(p);const {width,height,area,photo,summary,footerLine}=layout;const content=p.copy[p.locale];
