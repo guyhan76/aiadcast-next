@@ -1,4 +1,5 @@
 import test from 'node:test';
+import pg from 'pg';
 import assert from 'node:assert/strict';
 import {pgPool} from './helpers/recommendation-pg-pool.mjs';
 import {readAdminGenerationPage} from '../server/cloud/admin-generation-page.mjs';
@@ -16,7 +17,7 @@ test('bounded SQL cursor pages across owners, old history and equal timestamps; 
    await pool.engine.query(`INSERT INTO "${s}".jobs VALUES($1,$2,$3)`,['job-'+String(i).padStart(3,'0'),i===0?'accepted':i===1?'released':'ready',i===1?'customer_rejected':null]);
   }
  }
- const statements=[],wrapped={async connect(){const c=await pool.connect();return {release:()=>c.release(),query(sql,args){statements.push(sql);assert.doesNotMatch(sql,/\b(INSERT|UPDATE|DELETE|CREATE|ALTER|expire)\b/i);return c.query(sql,args);}};}};
+ const statements=[],wrapped={async connect(){const c=await pool.connect();return {release:()=>c.release(),async query(sql,args){statements.push(sql);assert.doesNotMatch(sql,/\b(INSERT|UPDATE|DELETE|CREATE|ALTER|expire)\b/i);const result=await c.query(sql,args);if(sql.includes('array_agg')){assert.match(sql,/array_agg\(c\.relname::text\)/);for(const row of result.rows){const oid=sql.includes('c.relname::text')?1009:1003;row.tables=pg.types.getTypeParser(oid)('{'+row.tables.join(',')+'}');assert.ok(Array.isArray(row.tables));}}return result;}};}};
  const options={pool:wrapped,actor:{id:a,role:'admin'},now:()=>Date.UTC(2026,9,27)};
  let cursor='',seen=[];do{const page=await readAdminGenerationPage({...options,search:new URLSearchParams({cursor}).toString()});assert.ok(page.jobs.length<=10);seen.push(...page.jobs.map(j=>j.userLabel+j.id));cursor=page.nextCursor;}while(cursor);
  assert.equal(seen.length,72);assert.equal(new Set(seen).size,72);assert.ok(seen.includes('Adminjob-035'));

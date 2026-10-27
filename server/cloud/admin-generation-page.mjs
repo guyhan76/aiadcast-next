@@ -11,7 +11,7 @@ export async function readAdminGenerationPage({pool,actor,search='',guard=()=>{}
   await client.query("SET LOCAL statement_timeout='2500ms'; SET LOCAL lock_timeout='750ms'; SET LOCAL idle_in_transaction_session_timeout='8000ms'");
   const members=(await client.query('SELECT id,label FROM aiadcast_accounts.users ORDER BY id LIMIT 201')).rows;
   if(members.length>200)throw new ApiFailure('ADMIN_OVERVIEW_MEMBER_LIMIT',503);
-  const catalog=await client.query("SELECT n.nspname,array_agg(c.relname) tables FROM pg_catalog.pg_namespace n JOIN pg_catalog.pg_class c ON c.relnamespace=n.oid WHERE n.nspname=ANY($1::text[]) AND c.relname IN ('generation_records','jobs') GROUP BY n.nspname",[members.map(u=>cloudSchema(u.id))]);
+  const catalog=await client.query("SELECT n.nspname,array_agg(c.relname::text) tables FROM pg_catalog.pg_namespace n JOIN pg_catalog.pg_class c ON c.relnamespace=n.oid WHERE n.nspname=ANY($1::text[]) AND c.relname IN ('generation_records','jobs') GROUP BY n.nspname",[members.map(u=>cloudSchema(u.id))]);
   const schemas=new Map(catalog.rows.map(r=>[r.nspname,r.tables]));
   const args=[filter.since,filter.state,filter.cursor?.[0]??null,filter.cursor?.[1]??null,filter.cursor?.[2]??null],selects=[];
   for(const u of members){const schema=cloudSchema(u.id),tables=schemas.get(schema);if(!tables)continue;if(tables.length!==2)throw new ApiFailure('ADMIN_OVERVIEW_INCOMPLETE',503);
