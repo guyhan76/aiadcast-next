@@ -29,7 +29,7 @@ test.describe('Independent Korean and English interface',()=>{
   await wizard.getByLabel(/^(Product name|Service name)$/,{exact:true}).fill('Studio Bloom');
   await wizard.getByRole('textbox',{name:'Description',exact:true}).fill('Small-group yoga classes');
 
-  await wizard.getByText('More ratios · Copy language',{exact:true}).click();
+
   await expect(wizard.getByRole('combobox',{name:'Ad copy language',exact:true})).toHaveValue('en');
   await wizard.getByRole('combobox',{name:'Ad copy language',exact:true}).selectOption('ko');
   await page.getByRole('combobox',{name:'App language',exact:true}).selectOption('ko');

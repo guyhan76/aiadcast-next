@@ -1,0 +1,21 @@
+import {test,expect} from '@playwright/test';
+import {mockSession,protectedScreen} from './helpers/authenticated-session';
+for(const lang of ['ko','en'] as const)test('direct ratio and copy-language choices preserve input '+lang,async({page})=>{
+ await protectedScreen(page,mockSession('format-owner'));
+ await page.addInitScript(l=>localStorage.setItem('aiadcast.ui-language',l),lang);
+ let posts=0;page.on('request',r=>{if(r.url().includes('/api/')&&r.method()==='POST')posts++;});
+ await page.goto('/#create');
+ const form=page.locator('.consumer-create'),ratio=form.getByRole('combobox',{name:lang==='ko'?'출력 비율':'Output ratio',exact:true}),language=form.getByRole('combobox',{name:lang==='ko'?'광고 문구 언어':'Ad copy language',exact:true}),note=form.getByRole('textbox',{name:lang==='ko'?'추가 요청':'Additional requests',exact:true});
+ await expect(form).toBeVisible({timeout:15000});
+ await expect(ratio).toBeVisible();await expect(language).toBeVisible();
+ expect(await ratio.locator('option').evaluateAll(xs=>xs.map(x=>(x as HTMLOptionElement).value))).toEqual(['1:1','4:5','3:4','9:16','2:3','16:9','1.91:1']);
+ await expect(form.locator('.ratio-options,[data-order="8"] details')).toHaveCount(0);
+ await expect(language).toHaveValue(lang);await expect(note).toHaveValue('');
+ await expect(note).toHaveAttribute('placeholder',lang==='ko'?/브랜드와 가격을 강조/:/Highlight the brand and price/);
+ await ratio.selectOption('16:9');await language.selectOption('ko');await note.fill('Keep my own instructions.');
+ await page.goto('/#projects');await expect(page.locator('.projects-page')).toBeVisible();await page.goto('/#create');
+ await expect(ratio).toHaveValue('16:9');await expect(language).toHaveValue('ko');await expect(note).toHaveValue('Keep my own instructions.');
+ await note.fill('');await page.goto('/#projects');await expect(page.locator('.projects-page')).toBeVisible();await page.reload();await page.goto('/#create');
+ await expect(note).toHaveValue('');await expect(ratio).toHaveValue('16:9');await expect(language).toHaveValue('ko');expect(posts).toBe(0);
+ await page.screenshot({path:test.info().outputPath('direct-format-controls.png'),fullPage:true});
+});

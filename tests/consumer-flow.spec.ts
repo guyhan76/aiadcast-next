@@ -243,7 +243,7 @@ for(const adLocale of ['ko','en'])for(const ui of ['ko','en'])test(`result analy
  const state=await mocks(page),form=await details(page,false);
  await form.getByLabel('산업 선택').selectOption('fashion');await form.getByLabel('상품명',{exact:true}).fill('ACME');
  await form.getByLabel('참조사진 추가').setInputFiles({name:'shirt.png',mimeType:'image/png',buffer:first});
- await form.getByText('다른 비율·문구 언어',{exact:true}).click();await form.getByRole('combobox',{name:/^광고 문구 언어/}).selectOption(adLocale);
+ await form.getByRole('combobox',{name:/^광고 문구 언어/}).selectOption(adLocale);
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();const result=page.locator('.simple-ad-result');await expect(result.locator('.generation-ad-preview')).toBeVisible();
  const stored=JSON.stringify(state.job.marketingPlan);
  await page.getByRole('combobox',{name:'앱 언어',exact:true}).selectOption(ui);
