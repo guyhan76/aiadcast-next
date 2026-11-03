@@ -1,4 +1,5 @@
 import {test,expect,type Page} from '@playwright/test';
+import {openWorkspaceMenu} from './helpers/workspace-menu';
 const account={token:'a'.repeat(43),expires:Date.now()+86400000,user:{id:'google-user-123',label:'member@example.com',role:'member'}};
 async function setup(page:Page,{signed=false,enabled=true}={}){
  let starts=0,finishes=0;await page.context().route('**/*',r=>{const u=new URL(r.request().url());if(u.hostname!=='127.0.0.1')return r.abort();if(u.pathname.startsWith('/api/'))return r.fulfill({status:503,json:{error:{code:'UNMOCKED'}}});return r.continue();});
@@ -26,7 +27,7 @@ async function seedCallback(page:Page,state='s'.repeat(43)){
 }
 test('verified callback enters home; logout and a fresh Google sign-in return to the same account',async({page})=>{
  const state=await setup(page);await seedCallback(page);await page.goto('/?google=1&state='+ 's'.repeat(43)+'&code=mock-code');await expect(page.locator('.home-page')).toBeVisible();expect(state.finishes()).toBe(1);await expect(page).toHaveURL(/#home$/);
- page.on('dialog',d=>d.accept());await page.getByRole('button',{name:'로그아웃',exact:true}).click();await expect(page.getByRole('button',{name:'Google로 계속하기',exact:true})).toBeVisible();expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();
+ page.on('dialog',d=>d.accept());await openWorkspaceMenu(page);await page.getByRole('button',{name:'로그아웃',exact:true}).click();await expect(page.getByRole('button',{name:'Google로 계속하기',exact:true})).toBeVisible();expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();
  await page.goto('/?google=1&state='+ 's'.repeat(43)+'&code=fresh-code');await expect(page.locator('.home-page')).toBeVisible();expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('aiadcast.beta-session')!).user.id)).toBe(account.user.id);
 });
 test('valid existing session opens home; mismatched callback never calls token exchange',async({page})=>{
