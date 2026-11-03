@@ -18,7 +18,7 @@ import {betaSession,storageNamespace} from './beta-session';
 import {EmailAccountPage,CheckoutPage,VerifyEmailPage,PaymentBrowserPage} from './AccountPages';
 import {ProjectLibrary,UsageGuide} from './LibraryGuide';
 import './simple-pages.css';
-import {HomeShowcase} from './HomeShowcase';
+import {CreationHome} from './CreationHome';
 import {PortfolioPage} from './PortfolioPage';
 import {BetaAccount} from './BetaAccount';
 import {AccountBar} from './AccountBar';
@@ -26,7 +26,7 @@ import {WorkspaceHeader} from './WorkspaceHeader';
 import {TestConnection} from './TestConnection';
 import {useUiLanguage} from './ui-language';
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
-import {ArrowUpRight,BookOpen,FolderOpen,Home,Plus,ShieldCheck} from 'lucide-react';
+import {BookOpen,FolderOpen,Home,Plus,ShieldCheck} from 'lucide-react';
 import Editor from './App';
 import {SimpleAdResult} from './SimpleAdResult';
 import {CreateCampaign} from './CreateCampaign';
@@ -134,7 +134,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
 
 
    <div hidden={page!=='home'} className="home-page app-page">
-    <section className="premium-home"><h1>{language==='ko'?<><span>내 상품과 서비스를,</span><br/><em>프리미엄 광고로.</em></>:<>Your products and services.<br/><em>Premium ads.</em></>}</h1><p>{language==='ko'?<>사진과 설명을 넣으면,<br/>AI광고가 광고이미지와 문구를 만듭니다.</>:'Add photos and a description. AI creates your ad images and copy.'}</p><HomeShowcase enabled={page==='home'}/><button className="primary-action premium-start" onClick={()=>begin()}>{text('내 광고 만들기')}<ArrowUpRight size={21}/></button></section>
+    <CreationHome onCreate={()=>{if(wizard&&returnPage==='create'){setGenerationIntent(undefined);go('create');}else void begin();}}/>
    </div>
    {page==='portfolio'&&<div className="app-page"><PortfolioPage/></div>}
    <div hidden={page!=='create'} className="app-page"><CreateCampaign active={page==='create'} key={wizardKey} onReady={ready} draft={wizardSeed} onDraft={setWizard}/></div>
