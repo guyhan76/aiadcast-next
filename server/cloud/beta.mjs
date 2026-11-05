@@ -1,3 +1,4 @@
+import {readGenerationHistory} from './generation-history.mjs';
 import {readAdminGenerationPage} from './admin-generation-page.mjs';
 import {recommendationRuntime} from '../recommendations/runtime.mjs';
 import {submissionStage} from '../submission-observation.mjs';
@@ -59,6 +60,7 @@ export class CloudBetaStore extends BetaStore {
  }
 }
 export class CloudGenerationService extends GenerationService {
+ async history(projectId){return readGenerationHistory(this,projectId);}
  async create(body){
   submissionStage('admission_queue');
   // The local implementation has synchronous admission. Cloud reads yield: serialize
