@@ -7,8 +7,8 @@ import {dimensionLabel,dimensionUnit} from '../src/dimension-units.ts';
 import {imageSkillBrief} from '../src/image-skills.ts';
 
 // Pinned, opt-in development adapter. No model discovery or automatic upgrades.
-export const IMAGE_MODEL = 'gpt-image-2.5-sunburst';
-export const IMAGE_REVISION = 'gpt-image-2.5-sunburst/aiadcast-images-v15-service-reference/2026-10-15';
+export const IMAGE_MODEL = 'gpt-image-2.6-sunburst';
+export const IMAGE_REVISION = 'gpt-image-2.6-sunburst/aiadcast-images-v15-service-reference/2026-11-05';
 export const PRICE_VERSION = 'openai-direct-images-2026-10-10';
 export const GENERATION_SIZES = Object.freeze({
   '1:1': '1024x1024', '4:5': '1024x1280', '3:4': '960x1280',
