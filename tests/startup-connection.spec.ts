@@ -54,11 +54,16 @@ test('a late old-account response cannot replace the new session',async({page},i
 test('logout cancels scheduled retry without reviving the old session',async({page})=>{
  const {state}=await setup(page);await page.clock.install({time:Date.now()});await page.goto('/');await expect.poll(()=>state.reads).toBe(1);
  await page.evaluate(()=>{sessionStorage.removeItem('aiadcast.beta-session');window.dispatchEvent(new CustomEvent('aiadcast-session-change',{detail:{returnPage:'login'}}));});
- await page.clock.fastForward(60000);await expect(page.getByRole('button',{name:'Google로 계속하기',exact:true})).toBeEnabled();expect(state.reads).toBe(1);expect(state.writes).toBe(0);
+ // Let the fresh guest capability response settle before advancing all timers.
+ await expect(page.getByRole('button',{name:'Google로 계속하기',exact:true})).toBeEnabled();await page.clock.fastForward(60000);await expect(page.getByRole('button',{name:'Google로 계속하기',exact:true})).toBeEnabled();expect(state.reads).toBe(1);expect(state.writes).toBe(0);
 });
 test('back forward and reload retain the route without replaying generation',async({page})=>{
  const {state}=await setup(page);await page.clock.install({time:Date.now()});await page.goto('/#create');await expect.poll(()=>state.reads).toBe(1);
  await page.evaluate(()=>{location.hash='projects';});await page.goBack();await expect(page).toHaveURL(/#create$/);await page.goForward();await expect(page).toHaveURL(/#projects$/);
  state.mode='ok';await page.clock.fastForward(1100);await expect(page.locator('.projects-page')).toBeVisible();expect(state.reads).toBe(2);
  await page.reload();await expect(page.locator('.projects-page')).toBeVisible();expect(state.reads).toBe(3);expect(state.writes).toBe(0);
+});
+test('background or offline time cannot renew the initial connection deadline',async({page})=>{
+ const {state}=await setup(page);await page.clock.install({time:Date.now()});await page.addInitScript(()=>Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>false}));await page.goto('/');await expect.poll(()=>state.reads).toBe(1);await expect(page.getByRole('button',{name:'다시 연결',exact:true})).toBeEnabled();await page.clock.fastForward(51000);state.mode='ok';
+ await page.evaluate(()=>{Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>true});window.dispatchEvent(new Event('online'));});await expect(page.getByRole('alert')).toHaveText('연결이 지연되고 있습니다. 다시 연결해주세요.');expect(state.reads).toBe(1);await page.getByRole('button',{name:'다시 연결',exact:true}).click();await expect(page.locator('.home-page')).toBeVisible();expect(state.reads).toBe(2);expect(state.writes).toBe(0);
 });

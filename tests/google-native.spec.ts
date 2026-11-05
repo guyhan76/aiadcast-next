@@ -54,3 +54,71 @@ for(const language of ['en','ko'])test(`Chrome launch failure clears pending pro
  mock.hold=Promise.resolve();await button.click();await expect.poll(()=>mock.starts).toBe(2);
  release();await expect(page.locator('.home-page')).toHaveCount(0);
 });
+
+for(const language of ['ko','en'])test(`return during an in-flight pending poll drains once without a second click (${language})`,async({page},info)=>{
+ const m=await setup(page);await page.addInitScript(l=>localStorage.setItem('aiadcast.ui-language',l),language);
+ await page.clock.install({time:Date.now()});let count=0,active=0,max=0,release!:()=>void;
+ await page.route('**/api/auth/google/native-poll',async r=>{count++;active++;max=Math.max(max,active);if(count===1)await new Promise<void>(x=>release=x);active--;await r.fulfill({json:count===1?{state:'pending'}:{state:'verified',session}});});
+ await page.goto('/');await page.getByRole('button',{name:language==='ko'?'Google로 계속하기':'Continue with Google',exact:true}).click();await expect.poll(()=>count).toBe(1);
+ await expect(page.getByRole('status')).toHaveText(language==='ko'?'Google에서 계정을 선택한 뒤 앱으로 돌아와 주세요.':'Choose your account in Google, then return to the app.');
+ await page.evaluate(()=>{for(let i=0;i<8;i++){window.dispatchEvent(new Event('aiadcast-google-return'));window.dispatchEvent(new Event('focus'));}});
+ await expect(page.getByRole('status')).toHaveText(language==='ko'?'로그인을 확인하고 있어요':'Finishing sign-in…');
+ await expect(page.getByRole('button',{name:language==='ko'?'취소':'Cancel',exact:true})).toBeVisible();await page.screenshot({path:info.outputPath('native-return-checking.png')});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);release();await page.clock.runFor(30);await expect(page.locator('.home-page')).toBeVisible();expect(count).toBe(2);expect(max).toBe(1);expect(m.starts).toBe(1);
+});
+for(const status of [503,429])test(`temporary ${status} preserves proof and automatically recovers`,async({page})=>{
+ const m=await setup(page);await page.clock.install({time:Date.now()});let count=0;
+ await page.route('**/api/auth/google/native-poll',r=>{count++;return count===1?r.fulfill({status,json:{error:{code:'TEMPORARY'}}}):r.fulfill({json:{state:'verified',session}});});
+ await page.goto('/');await page.getByRole('button',{name:'Google로 계속하기',exact:true}).click();await expect.poll(()=>count).toBe(1);await expect(page.getByRole('alert')).toHaveCount(0);
+ expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('aiadcast.google-flow')!).state)).toBe(state);await page.clock.runFor(3100);await expect(page.locator('.home-page')).toBeVisible();expect(count).toBe(2);expect(m.starts).toBe(1);
+});
+test('three transient errors pause and manual status retry keeps the same proof',async({page})=>{
+ const m=await setup(page);await page.clock.install({time:Date.now()});let count=0,ok=false;
+ await page.route('**/api/auth/google/native-poll',r=>{count++;expect(r.request().postDataJSON()).toEqual({state,proof});return ok?r.fulfill({json:{state:'verified',session}}):r.abort('failed');});
+ await page.goto('/');await page.getByRole('button',{name:'Google로 계속하기',exact:true}).click();await expect.poll(()=>count).toBe(1);await page.clock.runFor(3100);await expect.poll(()=>count).toBe(2);await page.clock.runFor(6100);await expect.poll(()=>count).toBe(3);
+ const retry=page.getByRole('button',{name:'로그인 다시 확인',exact:true});await expect(retry).toBeVisible();await page.evaluate(()=>{for(let i=0;i<5;i++)window.dispatchEvent(new Event('focus'));});await page.clock.fastForward(20000);expect(count).toBe(3);expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.google-flow'))).not.toBeNull();
+ ok=true;await retry.evaluate((b:HTMLButtonElement)=>{b.click();b.click();});await expect(page.locator('.home-page')).toBeVisible();expect(count).toBe(4);expect(m.starts).toBe(1);
+});
+for(const status of [401,403])test(`definitive ${status} terminates without automatic authentication retry`,async({page})=>{
+ const m=await setup(page);await page.clock.install({time:Date.now()});let count=0;
+ await page.route('**/api/auth/google/native-poll',r=>{count++;return r.fulfill({status,json:{error:{code:status===401?'AUTH_REQUIRED':'FORBIDDEN'}}});});
+ await page.goto('/');await page.getByRole('button',{name:'Google로 계속하기',exact:true}).click();await expect(page.getByRole('alert')).toBeVisible();await page.clock.fastForward(60000);expect(count).toBe(1);expect(m.starts).toBe(1);expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.google-flow'))).toBeNull();
+});
+test('pending flow stops at total wait limit without clearing valid proof or silently restarting',async({page})=>{
+ const m=await setup(page);await page.clock.install({time:Date.now()});await page.goto('/');await page.getByRole('button',{name:'Google로 계속하기',exact:true}).click();await expect.poll(()=>m.polls).toBe(1);await page.clock.fastForward(120001);await expect(page.getByRole('button',{name:'로그인 다시 확인',exact:true})).toBeVisible();const n=m.polls;await page.clock.fastForward(60000);expect(m.polls).toBe(n);expect(m.starts).toBe(1);expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.google-flow'))).not.toBeNull();
+});
+test('expired proof cannot accept a late verified response',async({page})=>{
+ const now=Date.now();const m=await setup(page,{state,proof,expires:now+10000,origin,owner:'guest',native:true});let release!:()=>void;m.hold=new Promise(r=>release=r);m.approved=true;await page.clock.install({time:now});await page.goto('/');await expect.poll(()=>m.polls).toBe(1);await page.clock.fastForward(10001);release();await expect(page.getByRole('alert')).toBeVisible();expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();
+});
+for(const boundary of ['logout','origin','route'])test(`late native response cannot cross ${boundary} boundary`,async({page})=>{
+ const m=await setup(page);let release!:()=>void;m.hold=new Promise(r=>release=r);m.approved=true;await page.goto('/');await page.getByRole('button',{name:'Google로 계속하기',exact:true}).click();await expect.poll(()=>m.polls).toBe(1);
+ await page.evaluate(boundary=>{if(boundary==='logout')window.dispatchEvent(new CustomEvent('aiadcast-session-change',{detail:{returnPage:'login'}}));else if(boundary==='origin')(window as any).__AIADCAST_API_ORIGIN__='https://different.example.com';else location.hash='account-recovery';},boundary);
+ release();await expect(page.locator('.home-page')).toHaveCount(0);await page.waitForTimeout(100);expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();
+});
+
+test('stalled native poll times out then recovers once without restarting Google',async({page})=>{
+ const m=await setup(page);await page.clock.install({time:Date.now()});let count=0,release!:()=>void;
+ await page.route('**/api/auth/google/native-poll',async r=>{count++;if(count===1){await new Promise<void>(x=>release=x);return r.fulfill({json:{state:'pending'}});}return r.fulfill({json:{state:'verified',session}});});
+ await page.goto('/');await page.getByRole('button',{name:'Google로 계속하기',exact:true}).click();await expect.poll(()=>count).toBe(1);await page.clock.fastForward(15001);await page.clock.runFor(3100);await expect(page.locator('.home-page')).toBeVisible();release();expect(m.starts).toBe(1);expect(count).toBe(2);
+});
+test('offline return resumes only existing proof after online',async({page})=>{
+ const m=await setup(page);await page.clock.install({time:Date.now()});await page.goto('/');await page.getByRole('button',{name:'Google로 계속하기',exact:true}).click();await expect.poll(()=>m.polls).toBe(1);
+ await page.evaluate(()=>{Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>false});window.dispatchEvent(new Event('aiadcast-google-return'));});await page.clock.runFor(3100);expect(m.polls).toBe(1);m.approved=true;
+ await page.evaluate(()=>{Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>true});window.dispatchEvent(new Event('online'));});await expect(page.locator('.home-page')).toBeVisible();expect(m.starts).toBe(1);expect(m.polls).toBe(2);
+});
+test('late Google start after navigating back cannot open external authentication',async({page})=>{
+ await setup(page);let release!:()=>void,starts=0;
+ await page.route('**/api/auth/google/start',async r=>{starts++;await new Promise<void>(x=>release=x);return r.fulfill({json:{state,proof,expires:Date.now()+600000,url:'https://accounts.google.com/o/oauth2/v2/auth?state='+state}});});
+ await page.goto('/');await page.getByRole('button',{name:'Google로 계속하기',exact:true}).click();await expect.poll(()=>starts).toBe(1);await page.evaluate(()=>location.hash='account-recovery');release();await page.waitForTimeout(100);expect(await page.evaluate(()=>(window as any).nativeMessages.filter((m:any)=>m.type==='google-sign-in'))).toHaveLength(0);
+});
+
+test('late native approval cannot replace a newly selected account',async({page})=>{
+ const m=await setup(page);let release!:()=>void;m.hold=new Promise(r=>release=r);m.approved=true;
+ await page.goto('/');await page.getByRole('button',{name:'Google로 계속하기',exact:true}).click();await expect.poll(()=>m.polls).toBe(1);
+ const other={...session,token:'b'.repeat(43),origin,user:{...session.user,id:'other-owner-123'}};
+ await page.route('**/api/auth/session',r=>r.fulfill({json:{user:other.user}}));await page.evaluate(other=>{sessionStorage.setItem('aiadcast.beta-session',JSON.stringify(other));window.dispatchEvent(new CustomEvent('aiadcast-session-change',{detail:{returnPage:'home'}}));},other);
+ await expect(page.locator('.home-page')).toBeVisible();release();await page.waitForTimeout(100);expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('aiadcast.beta-session')!).user.id)).toBe(other.user.id);
+});
+test('malformed verified session is rejected without a new OAuth exchange',async({page})=>{
+ const m=await setup(page);await page.route('**/api/auth/google/native-poll',r=>r.fulfill({json:{state:'verified',session:{...session,expires:0}}}));await page.goto('/');await page.getByRole('button',{name:'Google로 계속하기',exact:true}).click();await expect(page.getByRole('alert')).toBeVisible();expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();expect(m.starts).toBe(1);
+});
