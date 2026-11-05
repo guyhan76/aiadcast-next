@@ -379,14 +379,19 @@ for(const admin of [false,true])test(`pending cloud generation survives a lost d
 });
 
 test('cloud result upload failure remains uncertain through status, retry and restart without another provider call',async t=>{
- const s=await setup(t),a=await s.member('Storage failure',1_000_000,3),body=generation();
- const put=s.app.storage.put.bind(s.app.storage);let uploads=0;
- s.app.storage.put=async(...args)=>{if(++uploads===2)throw Error('fixture result upload lost');return put(...args);};
- // Source is saved before dispatch; the second upload is the generated result.
+ // A distinct output is essential: identical source/output hashes correctly reuse
+ // the verified original and never perform a second upload.
+ const output=await sharp({create:{width:8,height:8,channels:4,background:'#123456'}}).png().toBuffer();
+ const outputHash=hashBytes(output);let calls=0,failedUploads=0;
+ const adapter={generate:async()=>{calls++;return {bytes:output,mime:'image/png',width:8,height:8,sha256:outputHash,role:'background',usage,cost:imageUsageCost(usage),model:IMAGE_MODEL,revision:IMAGE_REVISION,providerRequestId:'fixture-provider'};}};
+ const s=await setup(t,{adapter}),a=await s.member('Storage failure',1_000_000,3),body=generation();
+ const put=s.app.storage.put.bind(s.app.storage);
+ s.app.storage.put=async(userId,name,...args)=>{if(name===outputHash+'.png'){failedUploads++;throw Error('fixture result upload lost');}return put(userId,name,...args);};
  const made=await s.call('/api/generations',{token:a.token,body});assert.equal(made.status,202);await s.restart();
+ assert.equal(failedUploads,1,'the generated-result upload fault must actually fire');
  const job=(await s.call('/api/generations/'+made.data.job.id,{token:a.token})).data.job;
- assert.equal(job.state,'uncertain');assert.equal(job.artifact,null);assert.equal(s.calls(),1);
- assert.equal((await s.call('/api/generations',{token:a.token,body:{...body,requestId:randomUUID()}})).data.job.id,job.id);assert.equal(s.calls(),1);
+ assert.equal(job.state,'uncertain');assert.equal(job.artifact,null);assert.equal(calls,1);
+ assert.equal((await s.call('/api/generations',{token:a.token,body:{...body,requestId:randomUUID()}})).data.job.id,job.id);assert.equal(calls,1);
  const status=(await s.call('/api/status',{token:a.token})).data;assert.equal(status.wallet.available,3);assert.equal(status.budget.heldMicros,500000);
 });
 
@@ -434,12 +439,23 @@ test('cloud request-key lookup is authenticated, tenant/project bound, restart d
 });
 test('cloud transport diagnosis: client abort during source persistence does not cancel or duplicate provider work',async t=>{
  const s=await setup(t),a=await s.member('Client disconnect',1_000_000,3),body=generation();
- const logs=[],info=console.info;console.info=line=>{try{const value=JSON.parse(line);if(value.event==='generation_submission')logs.push(value);}catch{}};t.after(()=>{console.info=info;});
+ // Observe this HTTP connection directly. Production telemetry intentionally
+ // samples at most 20 requests/minute and is not a reliable test barrier.
+ let disconnected;
+ const closed=new Promise(resolve=>disconnected=resolve);
+ s.app.server.prependOnceListener('request',(req,res)=>{
+  assert.equal(req.url,'/api/generations');
+  res.once('close',()=>disconnected({finished:res.writableFinished}));
+ });
  let entered,release,first=true;const waiting=new Promise(r=>entered=r),gate=new Promise(r=>release=r),put=s.app.storage.put.bind(s.app.storage);
  s.app.storage.put=async(...args)=>{if(first){first=false;entered();await gate;}return put(...args);};
  const controller=new AbortController();
  const pending=fetch('http://127.0.0.1:'+s.app.server.address().port+'/api/generations',{method:'POST',signal:controller.signal,headers:{Origin:origin,Authorization:'Bearer '+a.token,'Content-Type':'application/json','X-Aiadcast-Client':'local-studio'},body:JSON.stringify(body)});
- await waiting;const missing=await s.call(`/api/generation-requests/${body.requestId}?projectId=${body.projectId}`,{token:a.token});assert.equal(missing.data.state,'not-recorded');assert.equal(s.calls(),0);controller.abort();await assert.rejects(pending,e=>e.name==='AbortError');await new Promise(r=>setTimeout(r,30));assert.equal(logs.find(x=>x.outcome==='disconnected')?.stage,'original_persistence');release();
+ await waiting;const missing=await s.call(`/api/generation-requests/${body.requestId}?projectId=${body.projectId}`,{token:a.token});assert.equal(missing.data.state,'not-recorded');assert.equal(s.calls(),0);controller.abort();await assert.rejects(pending,e=>e.name==='AbortError');let timer;
+ try{
+  const connection=await Promise.race([closed,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('server did not observe disconnect')),5000);})]);
+  assert.equal(connection.finished,false);assert.equal(s.calls(),0,'source persistence is still gated');
+ }finally{clearTimeout(timer);release();}
  let job;for(let i=0;i<100;i++){job=(await s.call('/api/generations?projectId='+body.projectId,{token:a.token})).data.jobs[0];if(job?.state==='ready')break;await new Promise(r=>setTimeout(r,10));}
  assert.equal(job.state,'ready');assert.ok(job.artifactId);assert.equal(s.calls(),1);
  const retry=await s.call('/api/generations',{token:a.token,body});assert.equal(retry.data.job.id,job.id);assert.equal(s.calls(),1);
