@@ -235,6 +235,11 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                     send(res, 200, url.pathname === '/api/admin/defect-evidence' ? await (await service(target)).defectEvidence(url.searchParams.get('jobId')) : { reports: await (await service(target)).db.prepare('SELECT * FROM defect_reports ORDER BY created_at DESC LIMIT 100').all() }, cors);
                     return;
                 }
+                if (req.method === 'POST' && ['/api/admin/single-box-evaluation', '/api/admin/dimension-evaluation'].includes(url.pathname)) {
+                    const s = await service(user);
+                    if (await s.supplierBudget(s.period(), 0))
+                        throw new ApiFailure('CUMULATIVE_BUDGET_TRIAL_DISABLED', 409);
+                }
                 if (url.pathname === '/api/admin/single-box-evaluation') {
                     if (req.method === 'GET') {
                         send(res, 200, await singleBox.status(user, url.searchParams.get('requestId') ?? undefined), cors);

@@ -1,3 +1,4 @@
+import {readExternalSupplierBudget} from '../external-supplier-budget.mjs';
 import {readGenerationHistory} from './generation-history.mjs';
 import {readAdminGenerationPage} from './admin-generation-page.mjs';
 import {recommendationRuntime} from '../recommendations/runtime.mjs';
@@ -115,6 +116,7 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
    instance?.assert();const db=await readinessMeasure('schema_setup',()=>new PostgresDatabase(pool,cloudSchema(user.id),{guard}).initialize());
    const s=new CloudGenerationService();s.storage=storage;s.cloudUser=user.id;
    await readinessMeasure('generation_initialize',()=>s.initialize({db,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:config.enabled,assistantEnabled:config.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter),adapter:{generate:options=>{instance?.assert();return gate(()=>adapter.generate(options));}},assistantAdapter:options=>{instance?.assert();return gate(()=>assistCopy({...options,apiKey:config.key}));}}));
+   s.ledger.externalBudget=()=>readExternalSupplierBudget(db,user.id);
    await readinessMeasure('table_protection',()=>db.protectTables());return s;
   }});
   await accountsDb.exec(readFileSync(new URL('./bootstrap-owner.sql',import.meta.url),'utf8'));

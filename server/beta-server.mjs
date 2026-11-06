@@ -98,6 +98,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
      if(!target)throw new ApiFailure('USER_NOT_FOUND',404);
      send(res,200,url.pathname==='/api/admin/defect-evidence'?service(target).defectEvidence(url.searchParams.get('jobId')):{reports:service(target).db.prepare('SELECT * FROM defect_reports ORDER BY created_at DESC LIMIT 100').all()},cors);return;
     }
+    if(req.method==='POST'&&['/api/admin/single-box-evaluation','/api/admin/dimension-evaluation'].includes(url.pathname)){const s=service(user);if(s.supplierBudget(s.period(),0))throw new ApiFailure('CUMULATIVE_BUDGET_TRIAL_DISABLED',409);}
     if(url.pathname==='/api/admin/single-box-evaluation'){if(req.method==='GET'){send(res,200,await singleBox.status(user,url.searchParams.get('requestId')??undefined),cors);return;}if(req.method==='POST'){send(res,200,await singleBox.analyze(await read(req,14100000),user),cors);return;}}
     if(url.pathname==='/api/admin/dimension-evaluation'){if(req.method==='GET'){send(res,200,await dimensionAnalysis.status(user,url.searchParams.get('requestId')??undefined),cors);return;}if(req.method==='POST'){send(res,200,await dimensionAnalysis.analyze(await read(req,14_100_000),user),cors);return;}}
     if(req.method==='POST'&&['/api/admin/demo-support-preview','/api/admin/demo-support'].includes(url.pathname)){send(res,200,await demoSupport(admin,user,await read(req,2048),url.pathname==='/api/admin/demo-support'),cors);return;}

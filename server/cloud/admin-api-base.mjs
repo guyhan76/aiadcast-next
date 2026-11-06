@@ -84,6 +84,8 @@ export class AdminApi {
         if (!Number.isSafeInteger(micros) || micros < user.budget || micros > this.store.cap)
             fail('INVALID_ALLOCATION');
         const s = await this.service(user);
+        if (await s.supplierBudget(s.period(), user.budget))
+            fail('CUMULATIVE_BUDGET_MANAGED', 409);
         await this.store.setAllocation(user.id, micros);
         await s.increaseBudget(micros);
         await this.audit(actor, 'allocation-increase', user.id, { fromMicros: user.budget, toMicros: micros });

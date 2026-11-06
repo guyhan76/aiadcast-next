@@ -1,6 +1,7 @@
 // Local server-domain reference. Never import into the browser or expose these
 // methods directly as HTTP handlers. Authentication, store receipt verification,
 // provider callbacks and artifact quality checks belong to trusted server adapters.
+import {cumulativeBudgetView} from './cumulative-budget.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 
@@ -169,6 +170,23 @@ export class BillingLedger {
     });
   }
   // USD micro-units (1 USD = 1,000,000); these are NEVER customer credits.
+  supplierBudget(period, monthlyLimit) {
+    const policy=this.db.prepare('SELECT * FROM supplier_budget_policy WHERE id=1').get();
+    if(!policy)return null;
+    const totals=this.db.prepare('SELECT COALESCE(SUM(spent_micros),0) spent,COALESCE(SUM(held_micros),0) held FROM budgets').get();
+    const external=this.externalBudget?this.externalBudget():{spent:0,held:0};
+    totals.spent+=external.spent;totals.held+=external.held;
+    const view=cumulativeBudgetView(policy,totals,{ownerId:this.budgetOwner,isAdmin:this.budgetAdmin,now:this.now()});
+    const current=this.budget(period);
+    return {...view,monthlyLimitMicros:(current?.spent_micros??0)+(current?.held_micros??0)+view.availableMicros};
+  }
+  reserveSupplierBudget(period, amount, monthlyLimit) {
+    // Caller holds the existing ledger transaction / PostgreSQL advisory lock.
+    const policy=this.supplierBudget(period,monthlyLimit);
+    if(!policy)return monthlyLimit;
+    if(policy.availableMicros<amount)throw Error('Provider budget unavailable');
+    return policy.monthlyLimitMicros;
+  }
   beginAttempt({ jobId, attemptId, period, maximumMicros, limitMicros, periodScoped=false }) {
     [attemptId, period].forEach(identifier); integer(maximumMicros); integer(limitMicros);
     return this.transaction(() => {
@@ -181,8 +199,10 @@ export class BillingLedger {
       if (!['reserved','running'].includes(job.status) || job.expires_at <= this.now()) throw Error('Job is not dispatchable');
       if (this.db.prepare("SELECT id FROM attempts WHERE job_id=? AND status IN ('pending','uncertain','completed')").get(jobId)) throw Error('Reconcile existing attempt; do not generate again');
       if (this.db.prepare('SELECT count(*) n FROM attempts WHERE job_id=?').get(jobId).n >= 2) throw Error('Retry limit reached');
+      const cumulative=this.supplierBudget(period,limitMicros);
+      limitMicros=this.reserveSupplierBudget(period,maximumMicros,limitMicros);
       this.db.prepare('INSERT INTO budgets(period,limit_micros) VALUES (?,?) ON CONFLICT DO NOTHING').run(period, limitMicros);
-      if(periodScoped){if(period!==new Date(this.now()).toISOString().slice(0,7))throw Error('BUDGET_PERIOD_CHANGED');this.db.prepare('UPDATE budgets SET limit_micros=? WHERE period=?').run(limitMicros,period);}
+      if(periodScoped||cumulative){if(period!==new Date(this.now()).toISOString().slice(0,7))throw Error('BUDGET_PERIOD_CHANGED');this.db.prepare('UPDATE budgets SET limit_micros=? WHERE period=?').run(limitMicros,period);}
       const held = this.db.prepare('UPDATE budgets SET held_micros=held_micros+? WHERE period=? AND limit_micros=? AND spent_micros+held_micros+?<=limit_micros').run(maximumMicros, period, limitMicros, maximumMicros);
       if (held.changes !== 1) throw Error('Provider budget unavailable');
       this.db.prepare('INSERT INTO attempts(id,job_id,period,maximum_micros,status) VALUES (?,?,?,?,?)').run(attemptId, jobId, period, maximumMicros, 'pending');

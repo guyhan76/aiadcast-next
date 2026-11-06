@@ -1,3 +1,5 @@
+import {readExternalSupplierBudget} from '../external-supplier-budget.mjs';
+import {BillingLedger} from '../cloud/billing-base.mjs';
 import {assertRecommendationExecution} from './safety-policy.mjs';
 import {PostgresDatabase,cloudSchema} from '../cloud/postgres.mjs';
 import {CloudGenerationService} from '../cloud/beta.mjs';
@@ -15,7 +17,13 @@ export function existingAppRecommendationApi({store,pool,storage,adapter,origin,
   const db=new PostgresDatabase(pool,cloudSchema(owner));
   const exists=await db.prepare("SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema=? AND table_name='generation_records') AS present").get(cloudSchema(owner));if(!exists.present)throw Error('NOT_FOUND');
   const period=()=>store.budgetPeriod(),limit=p=>store.effectiveBudget(owner,p);
-  const sharedBudget=new ExistingImageBudget({db,owner,period,limit,recommendationCap:policy?.monthlyCapMicros});
+  const sharedBudget=new ExistingImageBudget({db,owner,period,limit,recommendationCap:policy?.monthlyCapMicros,cumulativeBudget:async(p,cap)=>{
+   const present=await db.prepare("SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema=? AND table_name='supplier_budget_policy') AS present").get(cloudSchema(owner));
+   if(!present.present)return null;
+   const user=await store.db.prepare('SELECT role,disabled FROM users WHERE id=?').get(owner);
+   const ledger=Object.assign(new BillingLedger(),{db,now:Date.now,externalBudget:()=>readExternalSupplierBudget(db,owner),budgetOwner:owner,budgetAdmin:user?.role==='admin'&&!user.disabled});
+   return ledger.supplierBudget(p,cap);
+  }});
   const service=await new PostgresRecommendationService().initialize(db,{enabled,executionMode,policy,outputProvenance,version,sharedBudget,adapter,reservationMicros,budgetMicros:0,resolveOwnedImage:async(userId,generationId)=>{
    if(userId!==owner)throw Error('NOT_FOUND');
    // The schema is chosen exclusively from the authenticated account ID.

@@ -37,3 +37,10 @@ test('October read-only overview matches owner approval plus unchanged member te
 test('compact overview excludes generation SQL rather than loading records hidden by the UI',async()=>{
  const f=fixture(2);await readAdminOverview({...f.args,omitJobs:true});assert.ok(f.statements.some(s=>s.includes("'[]'::json jobs")));assert.ok(!f.statements.some(s=>s.includes('FROM "aiadcast_user_')&&s.includes('.generation_records')));
 });
+
+test('cumulative member readiness uses all months while global summary remains monthly; invalid owner fails closed',async()=>{
+ const f=fixture(2),connect=f.args.pool.connect.bind(f.args.pool);let wrongOwner=false;
+ f.args.pool.connect=async()=>{const client=await connect(),query=client.query.bind(client);client.query=async(sql,args)=>{if(sql.includes("to_regclass('aiadcast_accounts.dimension_analysis_calls')"))return {rows:[{present:true}]};const r=await query(sql,args);if(sql.includes('pg_catalog.pg_namespace'))for(const row of r.rows)row.tables.push('supplier_budget_policy');if(sql.includes('row_to_json(w)')){r.rows[0].supplier_policy={id:1,owner_id:wrongOwner?id(1):id(0),limit_micros:100000000,history_mode:'all-history',excluded_spent_micros:0,activated_at:1};r.rows[0].supplier_totals={spent:99500001,held:0};}return r;};return client;};
+ const view=await readAdminOverview(f.args);assert.equal(view.users[0].generation.reason,'BUDGET_NOT_AVAILABLE');assert.equal(view.users[0].supplierBudget.availableMicros,499999);assert.equal(view.users[0].budget.spentMicros,10);assert.equal(view.users[1].supplierBudget,undefined);assert.equal(view.budget.spentMicros,20);
+ wrongOwner=true;await assert.rejects(readAdminOverview(f.args),e=>e.code==='ADMIN_OVERVIEW_UNAVAILABLE');
+});
