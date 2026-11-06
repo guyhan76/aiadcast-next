@@ -1,3 +1,5 @@
+import {externalSupplierTotals} from '../external-supplier-budget.mjs';
+import {cumulativeBudgetView} from '../cumulative-budget.mjs';
 import {correctedOctoberOwnerLimit} from '../october-admin-budget.mjs';
 import {IMAGE_MODEL} from '../openai-image-adapter.mjs';
 import {ApiFailure} from '../generation-service.mjs';
@@ -37,8 +39,16 @@ export async function readAdminOverview({pool,guard=()=>{},actor,admin,enabled,p
    (SELECT row_to_json(w) FROM ${schema}.wallets w WHERE user_id=$2) wallet,
    (SELECT row_to_json(w) FROM ${schema}.credit_wallets w WHERE user_id=$2) credits,
    (SELECT row_to_json(b) FROM ${schema}.budgets b WHERE period=$1) budget,
+   ${existing.get(cloudSchema(u.id)).includes('supplier_budget_policy')?`(SELECT row_to_json(p) FROM ${schema}.supplier_budget_policy p WHERE id=1)`:'NULL::json'} supplier_policy,
+   ${existing.get(cloudSchema(u.id)).includes('supplier_budget_policy')?`(SELECT json_build_object('spent',COALESCE(SUM(spent_micros),0),'held',COALESCE(SUM(held_micros),0)) FROM ${schema}.budgets)`:'NULL::json'} supplier_totals,
    ${omitJobs?"'[]'::json":`(SELECT COALESCE(json_agg(r),'[]') FROM (SELECT g.id,g.created_at,g.error_code,j.status,j.reason,g.request_json::json->>'mode' mode,g.request_json::json->'output'->>'format' format,g.metadata_json::json->>'model' model,g.metadata_json::json->'cost'->>'microUsd' cost FROM ${schema}.generation_records g JOIN ${schema}.jobs j ON j.id=g.id ORDER BY g.created_at DESC LIMIT 30) r)`} jobs`;});
   const summaries=new Map(selects.length?(await client.query(selects.join(' UNION ALL '),values)).rows.map(r=>[r.id,r]):[]);
+  let externalRows=[];
+  if([...summaries.values()].some(s=>s.supplier_policy)){
+   const inventory=await client.query("SELECT to_regclass('aiadcast_accounts.dimension_analysis_calls') IS NOT NULL AS present");
+   if(!inventory.rows[0]?.present)fail('ADMIN_OVERVIEW_INCOMPLETE');
+   externalRows=(await client.query("SELECT id,actor_id,state,hold,actual FROM aiadcast_accounts.dimension_analysis_calls WHERE actor_id=ANY($1::text[]) OR actor_id IS NULL OR actor_id !~ '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'",[members.filter(u=>summaries.get(u.id)?.supplier_policy).map(u=>u.id)])).rows;
+  }
   guard();await client.query('COMMIT');
   // Match the existing monthly allocation view; never change stored policy.
   const demo=period==='2026-10'&&timestamp>=Date.UTC(2026,9,19)&&members.some(u=>u.id==='a3c39e4d-8621-4f0d-9021-2621a8cecdee'&&u.role==='member'&&!u.disabled&&u.email==='guyhan76@gmail.com')&&members.filter(u=>u.email==='guyhan76@gmail.com').length===1;
@@ -55,9 +65,12 @@ export async function readAdminOverview({pool,guard=()=>{},actor,admin,enabled,p
    if(s&&!s.wallet)fail('ADMIN_OVERVIEW_INCOMPLETE');
    const wallet={...(s?.wallet??{available:u.credits,reserved:0}),credits:s?.credits??{available:0,reserved:0},kind:u.role==='admin'?'admin-test-unlimited':'test-credits',...(u.role==='admin'?{unlimited:true}:{})};
    const spent=s?.budget?.spent_micros??0,held=s?.budget?.held_micros??0;
-   const reason=!enabled?'GENERATION_DISABLED':!providerConfigured?'PROVIDER_NOT_CONFIGURED':limit<500000||limit-spent-held<500000?'BUDGET_NOT_AVAILABLE':u.role!=='admin'&&wallet.available<1&&wallet.credits.available<10?'NO_TEST_CREDITS':null;
+   const external=s?.supplier_policy?externalSupplierTotals(externalRows,u.id):{spent:0,held:0};
+   const totals=s?.supplier_policy?{spent:s.supplier_totals.spent+external.spent,held:s.supplier_totals.held+external.held}:null;
+   const cumulative=cumulativeBudgetView(s?.supplier_policy,totals,{ownerId:u.id,isAdmin:u.role==='admin'&&!u.disabled,now:timestamp});
+   const reason=!enabled?'GENERATION_DISABLED':!providerConfigured?'PROVIDER_NOT_CONFIGURED':(cumulative?.availableMicros??(limit-spent-held))<500000?'BUDGET_NOT_AVAILABLE':u.role!=='admin'&&wallet.available<1&&wallet.credits.available<10?'NO_TEST_CREDITS':null;
    for(const j of s?.jobs??[])jobs.push({id:j.id,userId:u.id,userLabel:u.label,state:j.error_code==='PROVIDER_UNCERTAIN'?'uncertain':j.error_code?'failed':j.status==='released'?(j.reason==='customer_rejected'?'rejected':'expired'):j.status==='reserved'?'running':j.status,createdAt:new Date(Number(j.created_at)).toISOString(),mode:j.mode,model:j.model??IMAGE_MODEL,outputFormat:j.format,errorCode:j.error_code,costMicros:j.cost==null?null:Number(j.cost)});
-   return {id:u.id,label:u.label,email:u.email,role:u.role,disabled:Boolean(u.disabled),projects:Number(u.projects),wallet,budget:{limitMicros:limit,spentMicros:spent,heldMicros:held},generation:{enabled:reason===null,reason},ledgerInitialized:!!s};
+   return {id:u.id,label:u.label,email:u.email,role:u.role,disabled:Boolean(u.disabled),projects:Number(u.projects),wallet,budget:{limitMicros:limit,spentMicros:spent,heldMicros:held},...(cumulative?{supplierBudget:cumulative}:{}),generation:{enabled:reason===null,reason},ledgerInitialized:!!s};
   });
   const allocated=users.reduce((n,u)=>n+u.budget.limitMicros,0),baselineCap=approval?.total_micros??admin.store.cap;
   const owner=members.find(u=>u.email===admin.ownerEmail);

@@ -211,23 +211,28 @@ export class GenerationService {
       return this.db.prepare('SELECT * FROM defect_reports WHERE id=?').get(report.id);
     });
   }
+  supplierBudget(period,limit){
+    this.ledger.budgetOwner=this.cloudUser;this.ledger.budgetAdmin=this.adminTestUnlimited===true;
+    return this.ledger.supplierBudget(period,limit);
+  }
   budgetLimit(period){
     if(period!==this.period())fail('BUDGET_PERIOD_CHANGED',409);
     const value=this.budgetForPeriod?this.budgetForPeriod(period):this.budgetMicros;
     if(!Number.isSafeInteger(value)||value<0||value>100000000)fail('INVALID_DEVELOPMENT_BUDGET');
     if(period!==this.period())fail('BUDGET_PERIOD_CHANGED',409);
-    return value;
+    return this.supplierBudget(period,value)?.monthlyLimitMicros??value;
   }
   status() {
     readinessMeasure('expiry',()=>this.ledger.expire());
     const period=this.period(),limit=readinessMeasure('budget',()=>this.budgetLimit(period)),budget = readinessMeasure('budget',()=>this.ledger.budget(period));
-    const available = limit - (budget?.spent_micros ?? 0) - (budget?.held_micros ?? 0);
+    const cumulative=this.supplierBudget(period,limit);
+    const available = cumulative?.availableMicros ?? (limit - (budget?.spent_micros ?? 0) - (budget?.held_micros ?? 0));
     // Request-local only: expire first, then use one wallet read for reason/quote/body.
     // Admission still obtains a fresh quote and rechecks it inside its transaction.
     const wallet=readinessMeasure('wallet',()=>this.wallet());
-    const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : limit < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : !this.adminTestUnlimited && wallet.available < 1 && wallet.credits.available < 10 ? 'NO_TEST_CREDITS' : null;
-    const assistantReason = !this.assistantEnabled ? 'ASSISTANT_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : this.budgetMicros-(budget?.spent_micros??0)-(budget?.held_micros??0) < TEXT_MAX_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : null;
-    return { mode: 'local-development', commercialReady: false, generation: { creditQuote:this.creditQuote(wallet), enabled: reason === null, exactAdText:false, plannedAdText:false, manualDimensionOverlay:true, aiDimensionDisplay: true, photoPurposes: true, textExamples: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet, budget: { currency: 'USD', period, limitMicros: limit, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
+    const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : (cumulative?.limitMicros??limit) < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : !this.adminTestUnlimited && wallet.available < 1 && wallet.credits.available < 10 ? 'NO_TEST_CREDITS' : null;
+    const assistantReason = !this.assistantEnabled ? 'ASSISTANT_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : (cumulative?.availableMicros??(this.budgetMicros-(budget?.spent_micros??0)-(budget?.held_micros??0))) < TEXT_MAX_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : null;
+    return { mode: 'local-development', commercialReady: false, generation: { creditQuote:this.creditQuote(wallet), enabled: reason === null, exactAdText:false, plannedAdText:false, manualDimensionOverlay:true, aiDimensionDisplay: true, photoPurposes: true, textExamples: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet, budget: { currency: 'USD', period, limitMicros: limit, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false, ...(cumulative?{scope:cumulative.scope,historyMode:cumulative.historyMode,activatedAt:cumulative.activatedAt,limitMicros:cumulative.limitMicros,spentMicros:cumulative.spentMicros,heldMicros:cumulative.heldMicros,availableMicros:cumulative.availableMicros}:{}) }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
   }
   storeAsset(asset) {
     this.db.prepare('INSERT INTO generation_assets VALUES (?,?,?,?,?) ON CONFLICT(hash) DO NOTHING').run(asset.sha256, asset.mime, asset.width, asset.height, asset.bytes);
@@ -417,9 +422,10 @@ export class GenerationService {
     const period = this.period();
     try {
       this.ledger.transaction(() => {
-        const limit=Math.min(this.budgetMicros,this.budgetLimit(period));
-        this.db.prepare('INSERT INTO budgets(period,limit_micros) VALUES (?,?) ON CONFLICT DO NOTHING').run(period, this.budgetMicros);
-        if(this.budgetForPeriod){if(period!==this.period())throw Error('BUDGET_PERIOD_CHANGED');this.db.prepare('UPDATE budgets SET limit_micros=? WHERE period=?').run(limit,period);}
+        const imageLimit=this.budgetLimit(period),cumulative=this.supplierBudget(period,imageLimit);
+        const limit=this.ledger.reserveSupplierBudget(period,TEXT_MAX_HOLD_MICROS,cumulative?imageLimit:Math.min(this.budgetMicros,imageLimit));
+        this.db.prepare('INSERT INTO budgets(period,limit_micros) VALUES (?,?) ON CONFLICT DO NOTHING').run(period, limit);
+        if(this.budgetForPeriod||cumulative){if(period!==this.period())throw Error('BUDGET_PERIOD_CHANGED');this.db.prepare('UPDATE budgets SET limit_micros=? WHERE period=?').run(limit,period);}
         // October image approval never enlarges the text assistant allowance.
         const held = this.db.prepare('UPDATE budgets SET held_micros=held_micros+? WHERE period=? AND limit_micros>=? AND spent_micros+held_micros+?<=?').run(TEXT_MAX_HOLD_MICROS, period, limit, TEXT_MAX_HOLD_MICROS, limit);
         if (held.changes !== 1) throw Error();
