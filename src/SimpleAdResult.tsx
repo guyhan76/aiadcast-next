@@ -47,7 +47,10 @@ function GeneratedSimpleAdResult({project,change,onEdit,onCreativeDraft,onNewPro
   const check=()=>{if(!current())throw new DOMException('Export cancelled','AbortError');};
   try{
    let blob:Blob;
-   if(original){
+   // Edited copies retain their server PNG bytes on save/re-download.
+   // A later explicit overlay edit is a separate rendered output, not byte preservation.
+   const preserveEdited=!!p.generated!.editParent&&!p.textEdit&&!p.exactTextVersion&&(!p.dimensionAnnotation||p.dimensionAnnotation.mode==='none')&&!aiDimensionRequested(p);
+   if(original||preserveEdited){
     const response=await fetch(p.generated!.asset.data,{signal});check();blob=await response.blob();check();
    }else{
     const errors=exportErrors(p,manualBaseExport(p));if(errors.length)throw Error(errors.join(' '));

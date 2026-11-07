@@ -1,5 +1,6 @@
 import sharp from 'sharp';
 import {hashBytes,parseSourceAsset,validateImage,ProviderFailure} from './openai-image-adapter.mjs';
+const preparedCapabilities=new WeakMap();
 const MAX_MASK=4_000_000-1,MAX_PIXELS=8294400;
 export async function prepareSelectiveEdit(original,mask){
  const source=await parseSourceAsset({...original,data:original?.dataUrl});
@@ -45,11 +46,13 @@ export function selectiveCanvasPlan(width,height){
 }
 export function validateSelectiveOriginal({model,source,mask}){
  if(!SELECTIVE_EDIT_MODELS.has(model))throw new ProviderFailure('UNSUPPORTED_EDIT_MODEL',{uncertain:false});
- const plan=selectiveCanvasPlan(source?.width,source?.height);
+ const w=source?.width,h=source?.height;
+ if(!Number.isSafeInteger(w)||!Number.isSafeInteger(h)||w<=0||h<=0||w*h>MAX_PIXELS)throw new ProviderFailure('UNSUPPORTED_EDIT_SIZE',{uncertain:false});
+ let plan;try{plan=selectiveCanvasPlan(w,h);}catch{if(!Buffer.isBuffer(source?.bytes))throw new ProviderFailure('UNSUPPORTED_EDIT_SIZE',{uncertain:false});plan=null;}
  if(source?.mime!=='image/png'||mask?.mime!=='image/png'||mask.width!==source.width||mask.height!==source.height||mask.bytes.length>=4_000_000)throw new ProviderFailure('INVALID_EDIT_MASK',{uncertain:false});
  return plan;
 }
-export async function prepareSelectiveProviderInput({model,source,mask}){
+async function padSelectiveProviderInput({model,source,mask}){
  const plan=validateSelectiveOriginal({model,source,mask}),{width,height,canvasWidth,canvasHeight,left,top}=plan;
  const padded=[];
  for(const input of [source,mask]){
@@ -70,4 +73,71 @@ export async function cropSelectiveProviderResult(bytes,plan){
  for(let y=0;y<plan.height;y++){const offset=((y+plan.top)*plan.canvasWidth+plan.left)*4;raw.copy(cropped,y*plan.width*4,offset,offset+plan.width*4);}
  const output=await sharp(cropped,{raw:{width:plan.width,height:plan.height,channels:4}}).png().toBuffer();
  return {...await validateImage(output,'image/png'),bytes:output};
+}
+
+// The caller cannot supply ROI coordinates. Derive them from the entire validated
+// binary mask and bind them to immutable source/mask bytes before admission.
+async function checkedPixels(asset,mask=false){
+ const meta=await validateImage(asset?.bytes,'image/png',{maximumPixels:MAX_PIXELS,maximumBytes:mask?MAX_MASK:10*1024*1024});
+ if(asset.mime!=='image/png'||meta.width!==asset.width||meta.height!==asset.height||hashBytes(asset.bytes)!==asset.sha256)throw new ProviderFailure('INVALID_EDIT_SOURCE',{uncertain:false});
+ return sharp(asset.bytes,{limitInputPixels:MAX_PIXELS}).ensureAlpha().raw().toBuffer();
+}
+export async function prepareSelectiveProviderInput({model,source,mask}){
+ source={...source,bytes:Buffer.isBuffer(source?.bytes)?Buffer.from(source.bytes):source?.bytes};
+ mask={...mask,bytes:Buffer.isBuffer(mask?.bytes)?Buffer.from(mask.bytes):mask?.bytes};
+ const fullPlan=validateSelectiveOriginal({model,source,mask});
+ const a=await checkedPixels(source),m=await checkedPixels(mask,true);
+ let x0=source.width,y0=source.height,x1=-1,y1=-1;
+ for(let y=0;y<source.height;y++)for(let x=0;x<source.width;x++){
+  const alpha=m[(y*source.width+x)*4+3];
+  if(alpha!==0&&alpha!==255)throw new ProviderFailure('INVALID_EDIT_MASK',{uncertain:false});
+  if(alpha===0){x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y);}
+ }
+ if(x1<0)throw new ProviderFailure('EMPTY_EDIT_MASK',{uncertain:false});
+ let roi=null,input={source,mask};
+ if(!fullPlan){
+  // One supported canvas must contain ALL selected pixels. No tiling/fallback.
+  const selected=selectiveCanvasPlan(x1-x0+1,y1-y0+1);
+  const width=Math.min(source.width,selected.canvasWidth),height=Math.min(source.height,selected.canvasHeight);
+  const x=Math.max(0,Math.min(source.width-width,Math.floor((x0+x1+1-width)/2)));
+  const y=Math.max(0,Math.min(source.height-height,Math.floor((y0+y1+1-height)/2)));
+  roi=Object.freeze({x,y,width,height,originalWidth:source.width,originalHeight:source.height});
+  const parts=[];
+  for(const raw of [a,m]){
+   const crop=Buffer.alloc(width*height*4);
+   for(let row=0;row<height;row++){const start=((y+row)*source.width+x)*4;raw.copy(crop,row*width*4,start,start+width*4);}
+   const bytes=await sharp(crop,{raw:{width,height,channels:4}}).png().toBuffer();
+   parts.push({...await validateImage(bytes,'image/png'),bytes});
+  }
+  input={source:parts[0],mask:parts[1]};
+ }
+ const padded=await padSelectiveProviderInput({model,...input});
+ Object.freeze(padded.plan);
+ const binding=Object.freeze({version:1,model,sourceHash:hashBytes(source.bytes),maskHash:hashBytes(mask.bytes),originalWidth:source.width,originalHeight:source.height,roi,plan:padded.plan,providerSourceHash:hashBytes(padded.source.bytes),providerMaskHash:hashBytes(padded.mask.bytes)});
+ const prepared=Object.freeze({...padded,source:Object.freeze(padded.source),mask:Object.freeze(padded.mask),roi,binding,bindingHash:hashBytes(Buffer.from(JSON.stringify(binding)))});
+ preparedCapabilities.set(prepared,JSON.stringify(binding));return prepared;
+}
+export function sameSelectiveBinding(a,b){
+ return a?.bindingHash===b.bindingHash&&JSON.stringify(a?.binding)===JSON.stringify(b.binding)&&JSON.stringify(a?.plan)===JSON.stringify(b.plan)&&JSON.stringify(a?.roi)===JSON.stringify(b.roi)&&Buffer.isBuffer(a?.source?.bytes)&&Buffer.isBuffer(a?.mask?.bytes)&&hashBytes(a.source.bytes)===b.binding.providerSourceHash&&hashBytes(a.mask.bytes)===b.binding.providerMaskHash;
+}
+export async function restoreSelectiveProviderResult(bytes,prepared,source,mask){
+ // Re-derive coordinates instead of trusting a serialized/caller-mutated plan.
+ const expected=await prepareSelectiveProviderInput({model:prepared?.binding?.model,source,mask});
+ if(!sameSelectiveBinding(prepared,expected))throw new ProviderFailure('INVALID_EDIT_SOURCE',{uncertain:false});
+ const cropped=await cropSelectiveProviderResult(bytes,expected.plan);
+ if(!expected.roi)return cropped;
+ const a=await checkedPixels(source),m=await checkedPixels(mask,true),b=await sharp(cropped.bytes).ensureAlpha().raw().toBuffer();
+ const {x,y,width,height}=expected.roi;
+ for(let row=0;row<height;row++)for(let col=0;col<width;col++){
+  const dest=((y+row)*source.width+x+col)*4,start=(row*width+col)*4;
+  if(m[dest+3]===0)b.copy(a,dest,start,start+4);
+ }
+ const output=await sharp(a,{raw:{width:source.width,height:source.height,channels:4}}).png().toBuffer();
+ return {...await validateImage(output,'image/png',{maximumPixels:MAX_PIXELS}),bytes:output};
+}
+
+export function verifyPreparedSelectiveInput(prepared,source,mask,model){
+ const serialized=preparedCapabilities.get(prepared);
+ if(!serialized||source.mime!=='image/png'||mask.mime!=='image/png'||source.sha256!==prepared.binding.sourceHash||mask.sha256!==prepared.binding.maskHash||hashBytes(Buffer.from(serialized))!==prepared.bindingHash||serialized!==JSON.stringify(prepared.binding)||prepared.source.mime!=='image/png'||prepared.mask.mime!=='image/png'||prepared.source.width!==prepared.plan.canvasWidth||prepared.source.height!==prepared.plan.canvasHeight||prepared.mask.width!==prepared.plan.canvasWidth||prepared.mask.height!==prepared.plan.canvasHeight||prepared.binding.model!==model||prepared.binding.sourceHash!==hashBytes(source.bytes)||prepared.binding.maskHash!==hashBytes(mask.bytes)||source.width!==prepared.binding.originalWidth||source.height!==prepared.binding.originalHeight||mask.width!==source.width||mask.height!==source.height||!sameSelectiveBinding(prepared,prepared))throw new ProviderFailure('INVALID_EDIT_SOURCE',{uncertain:false});
+ return Object.freeze({...prepared,source:Object.freeze({...prepared.source,bytes:Buffer.from(prepared.source.bytes)}),mask:Object.freeze({...prepared.mask,bytes:Buffer.from(prepared.mask.bytes)})});
 }

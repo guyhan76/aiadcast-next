@@ -1,0 +1,31 @@
+# Lossless ROI preparation (disabled development candidate)
+
+Base source: 73eb07f72184725bee4951c290709dc9b2438bda. No provider call, production ledger write, deployment or feature enablement belongs to this change.
+
+## Geometry and identity
+
+Small sources retain the existing whole-image padding contract. A larger decoded PNG (at most8,294,400 pixels and10MiB, mask strictly below4,000,000 bytes) uses the bounding rectangle of **all** alpha-zero mask pixels. Exactly one1024x1024,1024x1536 or1536x1024 canvas must contain that selection. Otherwise admission rejects; there is no tiling, resizing or extra request. A clamped integer ROI includes all selected pixels and nearby context. Narrow images can require both ROI extraction and opaque protected padding.
+
+Source/mask hashes, original dimensions, ROI, padding and provider image hashes are bound in a versioned immutable preparation. No external coordinates are accepted. Raw RGBA tuples preserve hidden RGB. Returned dimensions must match the standard canvas. The result is cropped to the same ROI and only alpha-zero pixels are copied back into the unchanged full-size source. The final original-coordinate composite remains in the service. Uploaded bytes are not overwritten.
+
+A private in-process WeakMap identifies precomputed preparations. The adapter synchronously validates their binding, source hashes and nested metadata, then captures detached buffers. It does not asynchronously prepare again between a one-shot dispatch gate and fetch. Serialized/copied preparations are not dispatch capabilities. Provider-output restoration failure is uncertain, never a proven zero-cost failure. This remains geometry preparation, not a replacement for the existing owner/job/request ID/budget/attempt checks.
+
+## User-provided export versus server artifact
+
+`experiments/selective-quality-once/user-provided-source.mjs` is local preparation only. It validates bytes against an explicit owner/Library/file/hash/size preparation approval record and labels provenance `user-provided-export`, with server artifact relation `unverified` and `dispatchAuthorized:false`. Operator approval metadata is **not authentication**. There is no HTTP upload route, storage insertion, synthetic flag, forged successful job, paid runner or new approval represented by this function.
+
+The supplied1080x1920 export differs from the864x1536 server artifact. The parent's PNG verification is external evidence; this executor did not materialize or inspect that real shoe file. Fixtures are synthetic. Never substitute the export hash for an existing job hash. The released/rejected source remains ineligible. Existing synthetic trial ID/attempt and consumed dispatch evidence remain unchanged.
+
+Before a new trial: obtain verified local bytes; confirm user-approved source provenance separately from server lineage; display and approve the original-coordinate mask and movement instruction; freeze the source/mask/ROI/prompt manifest and distinct new trial/attempt; implement/review the narrowly authorized real-source handoff without weakening normal ownership; reread shared cumulative budget and reserve through the same ledger. No trial is currently authorized to dispatch. Previous cost is a reference, not a ceiling. Existing unknown holds stay intact.
+
+## Download preservation
+
+The selective editor saves/downloads the verified result bytes directly. Reopening an edited project now also bypasses complete-ad resampling when no later explicit text/dimension overlay was requested. Download bytes then retain their original dimensions and hash. Explicit later overlay/render operations are separate outputs and do not carry an outside-mask byte-preservation claim. This does not establish the ancestry of a separately supplied exported file.
+
+## Review and checks
+
+Independent reviewer identified async preparation after the dispatch gate and mutable prepared data/post-response zero-cost classification risks. Fixed with synchronous capability validation/detached buffers and uncertain post-response failures. A final source/mask MIME/hash metadata pre-call gap was also fixed and four mutations assert POST0. Final independent review found no further major blocker in the reviewed geometry/adapter path. Regression coverage includes nonzero hidden RGB under alpha0, corners, edge/padding combinations, malformed/oversized masks, mismatched source/plan, request count and user provenance refusal.
+
+Focused final geometry/service suites:47 passed plus1 additional normal-service large-ROI concurrent duplicate integration case passed. Isolated PostgreSQL17 plus connector/one-shot/preflight tests:68 passed,0 skipped; dedicated network-none ephemeral container stopped/removed. Typecheck, web build, cloud consistency and isolation pass. Final fixed-build browser suite:26 passed. Tests cover64x64 and1080x1920 exact-byte save/reopen/re-download, alongside normal owner/cancel/unknown flows. The initial large-fixture assertions exceeded5s (24 pass/2 timeouts); an explicit20s result wait and targeted rerun passed before the final26-case run. This changes test waiting only, not production timeouts. Real Android, real shoe quality and production activation remain untested. Full domain was not rerun in this increment; prior unrelated consumer-campaign baseline failure remains documented in selective-image-edit-development.md.
+
+Memory is bounded by existing input/pixel limits but peak RSS and maximum-concurrency load on the production free instance are not established. Repeated validation/decoding has a cost; activation requires resource profiling. Both selectiveEditingEnabled and selectiveEditReady remain false. No image, credential, evidence archive or environment file is included in source control.

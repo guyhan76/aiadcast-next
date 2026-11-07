@@ -1,4 +1,4 @@
-import {selectiveEditForm,validateSelectiveOriginal,prepareSelectiveProviderInput,cropSelectiveProviderResult} from './selective-image-edit.mjs';
+import {selectiveEditForm,validateSelectiveOriginal,prepareSelectiveProviderInput,restoreSelectiveProviderResult,verifyPreparedSelectiveInput} from './selective-image-edit.mjs';
 import {providerHttpError,safeProviderEnum} from './provider-http-error.mjs';
 import {preparePlanarSource,requestPlanarRatio,controlPlanarResult} from './planar-proportion.mjs';
 import { createHash } from 'node:crypto';
@@ -197,7 +197,9 @@ export class OpenAIImageAdapter {
   prepareSelectiveInput(input){return prepareSelectiveProviderInput({...input,model:IMAGE_MODEL});}
   async editRegion({source,mask,prompt,attemptId,providerInput}) {
     if(!this.selectiveEditReady)throw new ProviderFailure('REGION_EDIT_NOT_AVAILABLE',{uncertain:false});
-    const prepared=providerInput??await this.prepareSelectiveInput({source,mask});
+    source={...source,bytes:Buffer.isBuffer(source?.bytes)?Buffer.from(source.bytes):source?.bytes};
+    mask={...mask,bytes:Buffer.isBuffer(mask?.bytes)?Buffer.from(mask.bytes):mask?.bytes};
+    const prepared=providerInput?verifyPreparedSelectiveInput(providerInput,source,mask,IMAGE_MODEL):await this.prepareSelectiveInput({source,mask});
     const body=selectiveEditForm({model:IMAGE_MODEL,source:prepared.source,mask:prepared.mask,prompt});
     if(!this.apiKey)throw new ProviderFailure('PROVIDER_NOT_CONFIGURED',{uncertain:false});
     let response;try{response=await this.fetchImpl('https://api.openai.com/v1/images/edits',{method:'POST',headers:{Authorization:`Bearer ${this.apiKey}`,'X-Client-Request-Id':attemptId},body,redirect:'error',signal:AbortSignal.timeout(this.timeoutMs)});}catch{throw new ProviderFailure('PROVIDER_UNCERTAIN');}
@@ -206,7 +208,7 @@ export class OpenAIImageAdapter {
     if(result.data?.length!==1||typeof raw!=='string'||!/^[A-Za-z0-9+/]+={0,2}$/.test(raw))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
     const bytes=Buffer.from(raw,'base64');if(bytes.toString('base64')!==raw)throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
     let meta;try{meta=await validateImage(bytes,'image/png',{maximumPixels:8294400,maximumBytes:MAX_GENERATED_IMAGE_BYTES});}catch{throw new ProviderFailure('PROVIDER_INVALID_IMAGE');}
-    const cropped=await cropSelectiveProviderResult(bytes,prepared.plan);
+    let cropped;try{cropped=await restoreSelectiveProviderResult(bytes,prepared,source,mask);}catch{throw new ProviderFailure('PROVIDER_INVALID_IMAGE',{uncertain:true});}
     return {...cropped,usage:result.usage??null,cost:imageUsageCost(result.usage),model:IMAGE_MODEL,revision:IMAGE_REVISION,role:'creative',composition:'complete-ad'};
   }
   async generate(options) {
