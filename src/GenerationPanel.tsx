@@ -43,7 +43,9 @@ function updatedWallet(status:ApiStatus|null,wallet:ApiStatus['wallet']){
  return {...status,wallet,generation:{...status.generation,...(old?{creditQuote:{unit,amount:wallet.unlimited?0:unit==='legacy-ticket'?1:10,policy:unit==='legacy-ticket'?'legacy-accept-v1':'delivered-2026-10-18'} as const}:{})}};
 }
 function recoveryInputKey(p:Project){try{return JSON.stringify(buildGenerationRequest(p));}catch{return null;}}
+function creationInputKey(p:Project){try{return JSON.stringify(buildNewGenerationRequest(p));}catch{return null;}}
 type Pending={projectId:string;requestId:string;key:string;jobId?:string;recovered?:boolean;inputKey?:string;submissionFailure?:SubmissionDiagnostic;submittedAt?:string};
+type CreateIntent=Readonly<{id:string;projectId:string;input:string|null;owner:string;expires:number}>;
 type JobResponse={job:GenerationJob;wallet:ApiStatus['wallet']};
 type AdPreview={source:Project;composed:Project;dataUrl:string;errors:string[];jobId:string};
 export function GenerationPanel({project,change,simple=false,onEditInputs,onCreativeDraft,autoRequest,onAutoHandled,onGenerationStarted}:{project:Project;change:(fn:(p:Project)=>Project)=>void;simple?:boolean;onEditInputs?:()=>void;onCreativeDraft?:()=>Promise<void>;autoRequest?:string;onAutoHandled?:()=>void;onGenerationStarted?:()=>void}){
@@ -62,16 +64,18 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
  const [statusError,setStatusError]=useState(''),[checking,setChecking]=useState(false),[checked,setChecked]=useState<{at:string;same:boolean}>();const statusRequest=useRef<AbortController|null>(null),statusFingerprint=useRef('');const autoHandled=useRef('');
  const latest=useRef(project);latest.current=project;const alive=useRef(true);const pending=useRef<Pending|null>(null);const storageKey=(storageNamespace()==='guest'?'':storageNamespace()+':')+`aiadcast.pending-generation.${project.id}`;
  const generationEpoch=useRef(0);
- const queuedClick=useRef<{id:string;projectId:string;input:string|null;owner:string;expires:number;readinessFailed:boolean}|null>(null);
+ const queuedClick=useRef<(CreateIntent&{readinessFailed:boolean;retries:number})|null>(null);
+ const preparingClick=useRef<CreateIntent|null>(null);const [preparing,setPreparing]=useState(false);
  const intentCallback=useRef(onAutoHandled);intentCallback.current=onAutoHandled;
- const cancelQueuedClick=()=>{if(queuedClick.current){autoHandled.current=queuedClick.current.id;queuedClick.current=null;intentCallback.current?.();}};
+ const cancelQueuedClick=()=>{if(queuedClick.current){autoHandled.current=queuedClick.current.id;queuedClick.current=null;intentCallback.current?.();}if(preparingClick.current&&!generationRequest.current){preparingClick.current=null;generationEpoch.current++;dispatching.current=false;setBusy(false);setPreparing(false);}};
  useEffect(()=>()=>{generationEpoch.current++;dispatching.current=false;},[project.id,storageKey]);
  // Stop local preparation on backgrounding; an already dispatched request
  // retains its identity and recovery path instead of being resent.
  useEffect(()=>{
-  const hidden=()=>{if(document.visibilityState==='hidden'&&!generationRequest.current){generationEpoch.current++;dispatching.current=false;setBusy(false);cancelQueuedClick();}};
-  document.addEventListener('visibilitychange',hidden);
-  return()=>document.removeEventListener('visibilitychange',hidden);
+  const stop=()=>{if(!generationRequest.current){generationEpoch.current++;dispatching.current=false;setBusy(false);cancelQueuedClick();}};
+  const hidden=()=>{if(document.visibilityState==='hidden')stop();};
+  document.addEventListener('visibilitychange',hidden);window.addEventListener('pagehide',stop);
+  return()=>{document.removeEventListener('visibilitychange',hidden);window.removeEventListener('pagehide',stop);};
  },[]);
  const [creditConsent,setCreditConsent]=useState(false),[defect,setDefect]=useState('');
  const [enlarged,setEnlarged]=useState(false);
@@ -213,7 +217,9 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
   })();
   return()=>{cancelled=true;};
  },[project,job?.id,job?.artifactId,!!job?.artifact,compatible]);
- const queuedIntent=!!autoRequest&&autoHandled.current!==autoRequest&&!statusError&&!recoveryError;
+ const admission=useRef({enabled:false,recovered:false,blocked:true,jobId:undefined as string|undefined,quote:undefined as string|undefined});
+ admission.current={enabled:status?.generation.enabled===true,recovered:recoveryChecked,blocked:!!recoveryError||recovering||!!active,jobId:job?.id,quote:JSON.stringify(status?.generation.creditQuote)};
+ const queuedIntent=!!autoRequest&&autoHandled.current!==autoRequest&&!recoveryError;
  const revealedPreview=useRef('');
  useEffect(()=>{if(!preview||preview.errors.length||!compatible||preview.source!==project||preview.jobId!==job?.id||revealedPreview.current===preview.jobId)return;revealedPreview.current=preview.jobId;const frame=requestAnimationFrame(()=>document.querySelector('.generation-ad-preview')?.scrollIntoView({block:'start',behavior:'smooth'}));return()=>cancelAnimationFrame(frame);},[preview,compatible,project,job?.id]);
  const previewReady=!!preview&&preview.source===project&&preview.jobId===job?.id&&!preview.errors.length;
@@ -221,7 +227,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
  // never persisted, and a read cannot manufacture an intent after cancellation.
  useEffect(()=>{
   if(!autoRequest||autoHandled.current===autoRequest)return;
-  queuedClick.current={id:autoRequest,projectId:latest.current.id,input:recoveryInputKey(latest.current),owner:storageNamespace(),expires:Date.now()+60000,readinessFailed:false};
+  queuedClick.current={id:autoRequest,projectId:latest.current.id,input:creationInputKey(latest.current),owner:storageNamespace(),expires:Date.now()+60000,readinessFailed:false,retries:0};
   const cancel=()=>cancelQueuedClick(),hidden=()=>{if(document.visibilityState==='hidden')cancel();};
   const timer=setTimeout(cancel,60000);
   document.addEventListener('visibilitychange',hidden);window.addEventListener('pagehide',cancel);
@@ -229,11 +235,13 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
  },[autoRequest]);
  useEffect(()=>{
   const click=queuedClick.current;if(!click||click.id!==autoRequest||autoHandled.current===autoRequest)return;
-  if(click.projectId!==project.id||click.owner!==storageNamespace()||click.input!==recoveryInputKey(project)||Date.now()>=click.expires||document.visibilityState==='hidden'||recoveryError){cancelQueuedClick();return;}
+  if(click.projectId!==project.id||click.owner!==storageNamespace()||click.input!==creationInputKey(project)||Date.now()>=click.expires||document.visibilityState==='hidden'||recoveryError){cancelQueuedClick();return;}
   if(statusError){
    click.readinessFailed=true;
-   if(!['STATUS_TIMEOUT','CONNECTION_UNAVAILABLE','INTERNAL_ERROR','SERVICE_UNAVAILABLE'].includes(statusError))cancelQueuedClick();
-   return;
+   if(!['STATUS_TIMEOUT','CONNECTION_UNAVAILABLE','INTERNAL_ERROR','SERVICE_UNAVAILABLE'].includes(statusError)||pending.current||job||click.retries>=2){cancelQueuedClick();return;}
+   if(!recoveryChecked||checking)return;
+   const retry=setTimeout(()=>{if(queuedClick.current!==click)return;if(Date.now()>=click.expires||click.owner!==storageNamespace()||click.projectId!==latest.current.id||click.input!==creationInputKey(latest.current)||document.visibilityState!=='visible'){cancelQueuedClick();return;}click.retries++;void refresh(true);},1000);
+   return()=>clearTimeout(retry);
   }
   if(!recoveryChecked||!status)return;
   // After a failed readiness check, any pre-existing request belongs to recovery,
@@ -242,9 +250,9 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
   if(pending.current&&!job&&resumableRequestId!==pending.current.requestId)return;
   cancelQueuedClick();
   if(status.generation.creditQuote?.unit==='credit-v2')return;
-  if(status.generation.enabled&&!active)void start();
- },[autoRequest,status,statusError,project,job?.id,job?.state,recoveryChecked,recoveryError,active,resumableRequestId]);
- async function start(){
+  if(status.generation.enabled&&!active)void start(click);
+ },[autoRequest,status,statusError,project,job?.id,job?.state,recoveryChecked,recoveryError,checking,active,resumableRequestId]);
+ async function start(intent?:CreateIntent){
   if(dispatching.current||!recoveryChecked||!status?.generation.enabled)return;
   if(busy||active||pending.current&&!job&&resumableRequestId!==pending.current.requestId)return;
   onGenerationStarted?.();
@@ -258,12 +266,20 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
   if(latest.current.generation.dimensionBased&&!status?.generation.dimensionVariants){setError(t('서버가 규격 기반 생성을 지원하지 않습니다. 옵션을 끄거나 서버 업데이트를 확인해주세요.','The server does not support dimension-based generation. Turn it off or check the server update.'));return;}
   if(latest.current.generation.planarSourceHash&&!status?.generation.planarControl){setError(t('서버가 규격 기반 평면 생성을 지원하지 않습니다. 옵션을 끄거나 서버 업데이트를 확인해주세요.','The server does not support planar dimension control. Turn it off or check the server update.'));return;}
   const snapshot=latest.current,epoch=generationEpoch.current;if(busy||active||pending.current&&!job&&resumableRequestId!==pending.current.requestId)return;
+  const priorRequest=pending.current?.requestId,priorJob=job?.id,quote=JSON.stringify(status?.generation.creditQuote);
+  const click:CreateIntent=Object.freeze(intent?{id:intent.id,projectId:intent.projectId,input:intent.input,owner:intent.owner,expires:intent.expires}:{id:crypto.randomUUID(),projectId:snapshot.id,input:creationInputKey(snapshot),owner:storageNamespace(),expires:Date.now()+60000});
+  const valid=()=>admission.current.quote===quote&&admission.current.enabled&&admission.current.recovered&&!admission.current.blocked&&admission.current.jobId===priorJob&&pending.current?.requestId===priorRequest&&alive.current&&generationEpoch.current===epoch&&latest.current===snapshot&&click.projectId===latest.current.id&&click.owner===storageNamespace()&&click.input===creationInputKey(latest.current)&&Date.now()<click.expires&&document.visibilityState==='visible';
+  if(!valid())return;
+  preparingClick.current=click;setPreparing(true);
+  const preparationTimer=setTimeout(()=>{if(preparingClick.current===click)cancelQueuedClick();},Math.max(0,click.expires-Date.now()));
   dispatching.current=true;setSubmissionFailure(undefined);setBusy(true);setError('');setNotice('');setReviewed(false);
   try{
    if(snapshot.dimensionAnnotation?.method==='manual'&&snapshot.dimensionAnnotation.mode!=='none'&&!status?.generation.manualDimensionOverlay){setError(t('치수선 합성을 지원하는 서버 업데이트가 필요합니다. 생성은 요청하지 않았습니다.','A server update is needed for dimension overlays. No generation was requested.'));return;}
    if(snapshot.dimensionAnnotation?.method!=='manual'&&!aiDimensionRequested(snapshot)&&snapshot.dimensionAnnotation?.mode&&snapshot.dimensionAnnotation.mode!=='none'){const capability=await apiRequest<{available:boolean}>('/api/dimension-analysis');if(!capability.available){setError(t('선택한 사진 규격 표시를 완성할 수 없어 새 AI 생성을 요청하지 않았습니다. 규격 표시 경로가 준비된 뒤 다시 진행해주세요. 입력 내용은 보관했습니다.','No new AI generation was requested because the selected photo dimensions cannot be completed. Continue when dimension placement is available. Your inputs are preserved.'));return;}}
    if(status?.generation.creditQuote?.unit==='credit-v2'&&!creditConsent)return;
-   const exact=exactTextSnapshot(snapshot);if(exact?.version===2){const format=getImageFormat(snapshot.format);await preflightPlannedAdText(exact,format.width,format.height);if(!alive.current||generationEpoch.current!==epoch||latest.current!==snapshot)return;}const measured=await preflightProportions(snapshot);if(measured?.status==='mismatch')throw Error('PROPORTION_MISMATCH');if(latest.current!==snapshot)throw Error('STALE_PROJECT');const request=buildNewGenerationRequest(snapshot);await saveProject(snapshot);if(!alive.current||generationEpoch.current!==epoch||latest.current!==snapshot)return;const record={projectId:snapshot.id,requestId:resumableRequestId&&pending.current?.requestId===resumableRequestId?resumableRequestId:crypto.randomUUID(),key:generatedCompatibilityKey(snapshot),inputKey:JSON.stringify(request),submittedAt:new Date().toISOString()};remember(record);setResumableRequestId(null);setJob(null);
+   const exact=exactTextSnapshot(snapshot);if(exact?.version===2){const format=getImageFormat(snapshot.format);await preflightPlannedAdText(exact,format.width,format.height);if(!valid()||preparingClick.current!==click)return;}const measured=await preflightProportions(snapshot);if(measured?.status==='mismatch')throw Error('PROPORTION_MISMATCH');if(!valid()||preparingClick.current!==click)return;const request=buildNewGenerationRequest(snapshot);await saveProject(snapshot);if(!valid()||preparingClick.current!==click)return;const record={projectId:snapshot.id,requestId:resumableRequestId&&pending.current?.requestId===resumableRequestId?resumableRequestId:crypto.randomUUID(),key:generatedCompatibilityKey(snapshot),inputKey:JSON.stringify(request),submittedAt:new Date().toISOString()};remember(record);setResumableRequestId(null);setJob(null);
+   // No await between the final intent check and handing the one request to fetch.
+   preparingClick.current=null;setPreparing(false);clearTimeout(preparationTimer);
    const controller=new AbortController();generationRequest.current=controller;const timeout=setTimeout(()=>controller.abort(),30000);
    let result:JobResponse;let responseStatus:number|null=null;
    try{
@@ -277,7 +293,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
     throw e;
    }finally{clearTimeout(timeout);if(generationRequest.current===controller)generationRequest.current=null;}
    if(!alive.current||generationEpoch.current!==epoch||latest.current.id!==snapshot.id)return;if(result.job.projectId!==snapshot.id||!result.job.id)throw Error('INVALID_HISTORY');setCreditConsent(false);setRecoveryError('');setPollStopped(false);remember({...record,jobId:result.job.id});setJob(result.job);setStatus(s=>updatedWallet(s,result.wallet));
-  }catch(e){if(alive.current&&generationEpoch.current===epoch&&latest.current.id===snapshot.id){if(!resumableRequestId&&e instanceof ApiRequestFailure&&['INVALID_MANUAL_DIMENSIONS','STORAGE_CAPACITY_UNAVAILABLE','CREDIT_QUOTE_CHANGED','INVALID_AI_DIMENSION_DISPLAY','AI_DIMENSION_DISPLAY_UNAVAILABLE','INVALID_TEXT_EXAMPLE','TEXT_EXAMPLE_PHOTOS_NOT_ALLOWED','TEXT_EXAMPLE_UNSUPPORTED_GEOMETRY','PLANAR_SOURCE_UNCONFIRMED','INVALID_PLANAR_CONTROL','INVALID_DIMENSION_PLAN','INVALID_REQUEST','INVALID_SPECIFICATIONS','REGION_EDIT_NOT_AVAILABLE','SOURCE_MISMATCH','INVALID_IMAGE','SOURCE_REQUIRED','GENERATION_DISABLED','PROVIDER_NOT_CONFIGURED','BUDGET_NOT_AVAILABLE','NO_TEST_CREDITS','GENERATION_ALREADY_RUNNING','REVIEW_REQUIRED_AFTER_REJECTIONS','JSON_REQUIRED','REQUEST_TOO_LARGE','CLIENT_HEADER_REQUIRED','ORIGIN_NOT_ALLOWED','LOCAL_ACCESS_ONLY','TOO_MANY_REQUESTS'].includes(e.code))remember(null);if(pending.current&&!pending.current.jobId){setError('');void recover(true);}else failure(e);}}finally{if(generationEpoch.current===epoch){dispatching.current=false;if(alive.current)setBusy(false);}}
+  }catch(e){if(alive.current&&generationEpoch.current===epoch&&latest.current.id===snapshot.id){if(!resumableRequestId&&e instanceof ApiRequestFailure&&['INVALID_MANUAL_DIMENSIONS','STORAGE_CAPACITY_UNAVAILABLE','CREDIT_QUOTE_CHANGED','INVALID_AI_DIMENSION_DISPLAY','AI_DIMENSION_DISPLAY_UNAVAILABLE','INVALID_TEXT_EXAMPLE','TEXT_EXAMPLE_PHOTOS_NOT_ALLOWED','TEXT_EXAMPLE_UNSUPPORTED_GEOMETRY','PLANAR_SOURCE_UNCONFIRMED','INVALID_PLANAR_CONTROL','INVALID_DIMENSION_PLAN','INVALID_REQUEST','INVALID_SPECIFICATIONS','REGION_EDIT_NOT_AVAILABLE','SOURCE_MISMATCH','INVALID_IMAGE','SOURCE_REQUIRED','GENERATION_DISABLED','PROVIDER_NOT_CONFIGURED','BUDGET_NOT_AVAILABLE','NO_TEST_CREDITS','GENERATION_ALREADY_RUNNING','REVIEW_REQUIRED_AFTER_REJECTIONS','JSON_REQUIRED','REQUEST_TOO_LARGE','CLIENT_HEADER_REQUIRED','ORIGIN_NOT_ALLOWED','LOCAL_ACCESS_ONLY','TOO_MANY_REQUESTS'].includes(e.code))remember(null);if(pending.current&&!pending.current.jobId){setError('');void recover(true);}else failure(e);}}finally{clearTimeout(preparationTimer);if(preparingClick.current===click){preparingClick.current=null;setPreparing(false);}if(generationEpoch.current===epoch){dispatching.current=false;if(alive.current)setBusy(false);}}
  }
  async function accept(){
   if(!job||!compatible||!reviewed||!previewReady||busy)return;setBusy(true);setError('');
@@ -314,7 +330,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
  const reason=status?.generation.reason;
  const blocked=statusError==='AUTH_REQUIRED'?t('이미지를 생성하려면 로그인해주세요. 입력한 광고 정보는 보관했습니다.','Sign in to generate your image. Your ad details are kept.'):statusError==='STATUS_TIMEOUT'?t('생성 준비 상태를 15초 안에 확인하지 못했습니다. 다시 확인해주세요.','Could not check generation readiness within 15 seconds. Please check again.'):statusError?t('서버 상태를 확인하지 못했습니다. 다시 확인해주세요.','Could not check the server. Please retry.'):reason==='BUDGET_NOT_AVAILABLE'?t('생성 예산이 부족합니다. 관리자에게 확인해주세요. 추가 결제로 해결되지 않습니다.','Generation budget is unavailable. Contact your administrator; another purchase will not resolve this.'):reason==='NO_TEST_CREDITS'?(betaSession()?.user.role==='admin'?t('관리자 무제한 테스트를 적용하려면 서버 업데이트가 필요합니다.','The server needs an update to enable unlimited administrator tests.'):t('생성 이용권이 부족합니다. 내 이용권을 확인해주세요.','You need a generation credit. Check your credits.')):reason==='PROVIDER_NOT_CONFIGURED'?t('이미지 생성 연결을 준비 중입니다. 관리자 설정이 필요합니다.','Image generation needs administrator configuration.'):status&&!status.generation.enabled?t('현재 이미지 생성을 사용할 수 없습니다. 관리자에게 문의해주세요.','Image generation is unavailable. Contact your administrator.'):t('생성 준비 상태를 확인하고 있습니다…','Checking generation readiness…');
  const creating=simple&&!applied&&!offline&&!error&&!recoveryError&&!pollStopped&&(queuedIntent||!job&&(busy||recovering&&!!(pending.current?.submittedAt||pending.current?.submissionFailure))||job?.state==='running'||!!job?.artifact&&['ready','accepted'].includes(job.state)&&compatible&&!preview&&!previewError);
- const progressText=t('광고 이미지를 만들고 있어요','Creating your ad image');
+ const progressText=queuedIntent||preparing?t('생성 준비 상태를 확인하고 있어요','Checking readiness for your ad'):t('광고 이미지를 만들고 있어요','Creating your ad image');
  const labels:Record<GenerationJob['state'],string>={running:simple?t('광고 시안을 제작하고 있습니다. 잠시만 기다려 주세요.','We are creating your ad. Please wait.'):t('시안 제작 중','Creating your visual'),ready:t('결과를 확인해주세요','Review your result'),accepted:t('사용 확정한 시안','Accepted visual'),rejected:job?.creditCaptured?t('반려 · 자동 복원 없음','Rejected · no automatic refund'):t('반려 · 이용권 복원','Rejected · credit restored'),failed:t('실패 · 이용권 복원','Failed · credit restored'),uncertain:t('결과 미확인 · 이용권 복원','Result unconfirmed · credit restored'),expired:t('검토 만료 · 이용권 복원','Review expired · credit restored'),refunded:t('이용권 복원됨','Credit restored')};
  return <section className={`generation-panel${simple?' generation-simple':''}`}  aria-label={offlineDemo()?t('기기 내 체험 합성','Local demo composition'):t('AI 광고 제작','AI ad generation')}>
   {!simple&&<div className="generation-heading"><div><span className="eyebrow">{demo?'LOCAL DEMO':'AI CREATIVE'}</span><h2>{t('내 광고의 다음 시안.','Your next creative.')}</h2></div><button onClick={()=>void refresh()} disabled={busy||checking}><RefreshCw size={16}/>{t('연결 상태 확인','Refresh connection')}</button></div>}
@@ -327,7 +343,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
   {!simple&&<p>{demo?t('체험 시안은 기기에서 사진과 준비된 배경을 합성합니다. 새로운 AI 연출·품질이나 실물 3D 복원 시험은 아닙니다.','Demo visuals compose photos with prepared backgrounds on this device. This does not test new AI direction, quality or physical 3D reconstruction.'):project.generation.mode==='original'?t('원본 사진은 유지하고 새로운 배경을 요청합니다. 사진 안에 있는 배경은 자동 제거되지 않습니다.','Keep your original photo and request a new backdrop. Any background inside the original photo stays in place.'):t('참고 사진과 광고 방향으로 새로운 시안을 요청합니다. 상품의 형태·색상은 원본과 달라질 수 있습니다.','Create a new visual from your reference and direction. Product shape and color may differ from the original.')}</p>}
   {adminUnlimited&&<p className="admin-test-mode" role="note">{t('관리자 · 이용권 차감 없음','Administrator · No credits used')}</p>}
   {!simple&&<div className="generation-status"><span>{demo?t('서버 없는 체험 합성','Offline demo composition'):status?.generation.enabled?t('생성 테스트 연결됨','Generation test connected'):t('생성 테스트 준비 중','Generation test pending')}</span>{status&&<span>{adminUnlimited?t('관리자 무제한 테스트','Unlimited administrator tests'):<>{t('테스트 이용권','Test credits')} {status.wallet.available} · {t('처리 중','Reserved')} {status.wallet.reserved}</>}</span>}</div>}
-  {simple&&!creating&&!queuedIntent&&!status?.generation.enabled&&!reviewAvailable&&!applied&&<div className="simple-generation-block"><p role="status">{blocked}</p>{statusError==='AUTH_REQUIRED'?<a className="primary-action" href="#login">{t('로그인하고 생성하기','Sign in to generate')}</a>:<button type="button" disabled={checking} onClick={()=>void refresh()}>{checking?t('확인 중…','Checking…'):t('다시 확인','Check again')}</button>}{betaSession()?.user.role==='admin'&&reason&&<a href="#admin">{t('관리자 설정 확인','Check administrator settings')}</a>}</div>}
+  {simple&&!creating&&!queuedIntent&&!status?.generation.enabled&&!reviewAvailable&&!applied&&<div className="simple-generation-block"><p role="status">{blocked}</p>{statusError==='AUTH_REQUIRED'?<a className="primary-action" href="#login">{t('로그인하고 생성하기','Sign in to generate')}</a>:<button type="button" disabled={checking} onClick={()=>void refresh()}>{checking?t('확인 중…','Checking…'):t('상태만 다시 확인','Check status only')}</button>}{betaSession()?.user.role==='admin'&&reason&&<a href="#admin">{t('관리자 설정 확인','Check administrator settings')}</a>}</div>}
   {!simple&&<p role="status" aria-label={t('생성 상태 조회','Generation status check')}>{checking?t('서버에서 생성 가능 상태를 확인 중입니다…','Checking generation readiness with the server…'):statusError?t('상태 조회 실패 · 다시 확인할 수 있습니다.','Status check failed · You can retry.'):checked?<>{t('상태 확인 완료','Status checked')} · <time dateTime={checked.at}>{new Date(checked.at).toLocaleTimeString()}</time> · {checked.same?t('변경 없음','No change'):t('최신 상태 반영','Latest status loaded')}{!status?.generation.enabled&&t(' · 아직 생성할 수 없습니다. 아래 안내를 확인해주세요.',' · Generation is still unavailable. Check the guidance.')}</>:t('아직 조회하지 않았습니다.','Not checked yet.')}</p>}
   {isTextExample(project)&&<p role="note">{t('AI 예시 · 실제 상품 재현 아님. 저장 이미지에도 예시 표시가 포함됩니다.','AI example · Not an actual product reproduction. The saved image also includes this label.')}</p>}
   {referenceBlocked&&<div className="simple-generation-block"><p role="alert">{t('디자인 참고 사진을 사용하려면 서버 업데이트가 필요합니다. 관리자에게 문의해주세요.','Design references need a server update. Please contact your administrator.')}</p><button type="button" disabled={checking} onClick={()=>void refresh()}>{checking?t('확인 중…','Checking…'):t('다시 확인','Check again')}</button></div>}
@@ -336,7 +352,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
   {!creating&&!recoveryChecked&&!recoveryError&&!pending.current&&!job&&<p role="status">{t('이전 생성 요청을 확인 중입니다. 확인 후 생성할 수 있습니다.','Checking previous requests before allowing generation.')}</p>}
   {status?.generation.creditQuote?.unit==='credit-v2'&&<div className="generation-hint"><p>{t('신규 크레딧 잔액','New credit balance')}: {status.wallet.credits?.available??0} · {t('예약 중','Reserved')}: {status.wallet.credits?.reserved??0}. {t('생성·재생성 1회 10크레딧. 정상 결과 제공 시 차감하며 단순 취향 반려·미확인은 환급하지 않습니다. 오류는 신고 후 확인하여 복원합니다.','10 credits per generation or regeneration, charged on delivery. Preference rejection or no review does not refund. Report defects for review and restoration.')}</p><label><input type="checkbox" checked={creditConsent} disabled={busy||active} onChange={e=>setCreditConsent(e.target.checked)}/>{t('이번 생성 10크레딧 차감을 확인했습니다.','I confirm the 10-credit charge for this generation.')}</label></div>}
   {(!queuedIntent)&&!creating&&!(simple&&(busy||recovering||job?.state==='running'))&&!applied&&!(simple&&(hasUsableCreative(project)||hasUsableOriginal(project)))&&(!simple||status?.generation.enabled&&!(job?.state==='ready'&&compatible)&&job?.state!=='uncertain')&&<button className="generate-button" disabled={!recoveryChecked||!status?.generation.enabled||status.generation.creditQuote?.unit==='credit-v2'&&!creditConsent||referenceBlocked||busy||active||issues.length>0||!!pending.current&&!job&&resumableRequestId!==pending.current.requestId} onClick={()=>void start()}><Sparkles size={17}/>{job?.state==='ready'&&!revisedReady?t('생성 완료 · 결과 확인','Generation complete · Review result'):pollStopped?t('결과 확인 필요','Check existing result'):job?.state==='running'?t('시안 제작 중…','Creating your visual…'):recovering?t('기존 요청 확인 중…','Checking existing request…'):status?.generation.creditQuote?.unit==='credit-v2'?t('광고 생성 · 10크레딧','Generate ad · 10 credits'):simple?(busy?t('생성 준비 중…','Preparing…'):active?t('광고 생성·확인 중','Creating or reviewing'):adminUnlimited?(job?.state==='accepted'?t('같은 상품으로 다른 시안 만들기','Create another design for this product'):t('광고 생성','Generate ad')):job?.state==='accepted'?t('같은 상품으로 다른 시안 만들기','Create another design for this product'):t('광고 생성 · 1개','Generate ad · 1 credit')):busy?t('처리 중…','Working…'):adminUnlimited?t('관리자 테스트 생성 · 차감 없음','Admin test · No credits used'):demo?t('체험 시안 만들기 · 1개','Compose demo visual · 1 credit'):project.generation.mode==='original'?t('AI 배경 요청 · 1개','Create backdrop · 1 credit'):t('AI 새 시안 요청 · 1개','Create visual · 1 credit')}</button>}
-  {autoRequest&&autoHandled.current!==autoRequest&&!busy&&!job&&<button type="button" className="generation-enlarge" onClick={cancelQueuedClick}>{t('생성 준비 취소','Cancel preparation')}</button>}
+  {((autoRequest&&autoHandled.current!==autoRequest&&!busy&&!job)||!!preparingClick.current&&!generationRequest.current)&&<button type="button" className="generation-enlarge" onClick={cancelQueuedClick}>{t('생성 준비 취소','Cancel preparation')}</button>}
   {!simple&&queuedIntent&&<p className="generation-intent-status" role="status">{t('광고 생성을 준비하고 있습니다. 확인이 끝나면 자동으로 이어집니다.','Preparing your ad. Generation continues when checks finish.')}</p>}
   {submissionFailure&&!job&&<div className="submission-failure">{!simple&&<p role="status">{t('접수 확인이 늦어지고 있습니다. 같은 요청의 처리 상태를 확인 중이며 다시 생성하지 않습니다.','Submission confirmation is delayed. Checking the same request without generating again.')}</p>}<details><summary>{t('접수 확인 상세','Submission details')}</summary><p>POST /api/generations · {submissionFailure.status===null?t('HTTP 응답 없음','No HTTP response'):`HTTP ${submissionFailure.status}`} · {submissionFailure.code}</p><time dateTime={submissionFailure.at}>{submissionFailure.at}</time></details></div>}
   {recoveryError&&<p role="alert">{recoveryError}</p>}
