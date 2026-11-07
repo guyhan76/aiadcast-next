@@ -64,3 +64,16 @@ test('precomputed source or mask hash/mime metadata mismatch rejects before POST
  for(const key of ['source','mask'])for(const change of [{sha256:'0'.repeat(64)},{mime:'image/jpeg'}])await assert.rejects(adapter.editRegion({...f,[key]:{...f[key],...change},providerInput:p,prompt:'mock'}),/INVALID_EDIT_SOURCE/);
  assert.equal(calls,0);
 });
+test('disjoint upper trouser and rear-leg regions share one portrait ROI while text holes and front product stay exact',async()=>{
+ // Synthetic coordinates only: NOT a mask or registration for the user's shoe PNG.
+ const w=1080,h=1920,raw=Buffer.alloc(w*h*4);for(let i=0;i<raw.length;i++)raw[i]=(i*19)%256;raw[3]=0;
+ const mr=Buffer.alloc(raw.length,255);
+ const inRect=(x,y,r)=>x>=r[0]&&y>=r[1]&&x<r[2]&&y<r[3];
+ const rear=[100,400,350,1450],upper=[900,0,1000,250],text=[100,600,300,700],front=[500,1250,1070,1750];
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++)if((inRect(x,y,rear)||inRect(x,y,upper))&&!inRect(x,y,text)&&!inRect(x,y,front))mr[(y*w+x)*4+3]=0;
+ const source=await png(raw,w,h),mask=await png(mr,w,h),p=await prepareSelectiveProviderInput({model,source,mask});
+ assert.equal(p.plan.canvasWidth,1024);assert.equal(p.plan.canvasHeight,1536);assert.equal(p.roi.y,0);
+ const generated=await png(Buffer.alloc(1024*1536*4,77),1024,1536),result=await restoreSelectiveProviderResult(generated.bytes,p,source,mask),actual=await sharp(result.bytes).ensureAlpha().raw().toBuffer();
+ let changed=0;for(let i=0;i<raw.length;i+=4){if(mr[i+3]===0){assert.deepEqual(actual.subarray(i,i+4),Buffer.from([77,77,77,77]));changed++;}else assert.deepEqual(actual.subarray(i,i+4),raw.subarray(i,i+4));}
+ assert.equal(changed,267500);assert.equal(result.width,1080);assert.equal(result.height,1920);assert.equal(hashBytes(source.bytes),source.sha256);
+});
