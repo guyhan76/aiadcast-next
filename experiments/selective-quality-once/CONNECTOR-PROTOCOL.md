@@ -1,0 +1,40 @@
+# SQL connector feasibility — NOT ready for operational execution
+
+2026-11-07. Injection-only local prototype. This turn made no production connection, reservation, settlement, provider call or schema change. Existing source HEAD e5093009965fbd91f1206ba9f5d268fad1c601b9 is unchanged.
+
+## Established evidence
+
+Prior read-only probe on authenticated Supabase project sxpzbfapbizlmsuqlrfu returned read_only=on and transaction-local marker in a single BEGIN/SELECT/ROLLBACK payload at 12:48:33.643448 UTC. It did NOT prove write commit acknowledgements or exactly-once transport.
+
+Each mutation SQL is one explicit BEGIN/COMMIT payload with existing shared advisory lock; never split across calls. Fixed synthetic owner/job/attempt, all-history budget, external analysis costs and holds are preserved. No pg.Pool emulation, schema changes or credentials. No production executor is wired.
+
+Known cost settlement is now independent of terminal delivery: expired/released jobs do not revive, their pending cost settles once, unchanged retries do not double-count. Already settled attempts with a changed late cost fail closed, matching BillingLedger.settleAttempt; do not manufacture a correction or subtract another job's hold. Customer release/expiry does not reclaim the supplier hold in BillingLedger. Corrupt or independently modified per-attempt hold accounting cannot be reconstructed from aggregate budgets; require reconciliation rather than infer a new hold.
+
+connector-once.mjs strictly parses the observed MCP envelope, generates a fresh nonce internally, requires the original newly-claimed response plus separate committed-state inspection, consumes an exclusive fsynced local marker, then performs a final inspection before dispatch. Lost/malformed original response stops before any recovery. No persisted receipt reload or permission restoration. Exceptions after dispatch are uncertain with no retry. The execution callback is injected; no real API transport exists here. A local marker is not an environment-loss backup.
+
+## Final tests
+
+Command: AIADCAST_SELECTIVE_PG_SOCKET=/tmp/aiadcast-selective-pg-socket node --experimental-strip-types --test --test-concurrency=1 tests-domain/selective-connector-ledger.test.mjs tests-domain/selective-quality-once.test.mjs
+
+25 passed, 0 failed/skipped (17 connector plus 8 existing runner), isolated cached PostgreSQL17, network none, Unix socket only. Includes concurrent independent connections, response loss, restart, uncertainty, malformed/foreign/old responses, nonce mismatch, marker failure, cancellation during marker await, late cost, replay and budget preservation. The former expired-cost defect-reproduction test now asserts corrected successful settlement without revival.
+
+An initial combined parallel-file run failed 14 tests from shared fixture user primary-key collisions; a fresh isolated DB and file serialization resolved it. In-test multi-connection races remain concurrent. No test was removed. Syntax and diff checks passed. Independent reviewer /root/selective_review re-read the final marker->inspection change and confirmed the fix; reviewer did not execute tests.
+
+## Remaining operational blockers
+
+- Management API Beta contract does not establish write acknowledgement, retry or independent committed-session visibility. Actual response parser is tested against observed read-only envelope plus mock, not production mutation responses. A SELECT before COMMIT is not proof of successful commit. Ambiguous responses stop permanently; never infer permission from later reads.
+- Final DB read and external HTTP call are not atomic. Cancellation/owner changes immediately after final inspection remain possible. Do not claim zero-race execution. Establish a reviewed dispatch lease/state protocol or controlled single-writer trial window before use; this turn does not authorize operational controls.
+- Existing persisted costs conflicting with later evidence need explicit reconciliation. No automatic cost adjustment is implemented or permitted.
+- Result/usage evidence and reviewed settlement must be orchestrated separately; no end-to-end operational connector runner is enabled.
+
+No operational execution plan is approved by these tests. The existing one-call trial remains unused. The four protocol source/test/documentation files are intended for the approved private development branch only; no deployment or secret movement.
+
+## Concrete writer and contract analysis (preservation review)
+
+- Actual observed execute_sql envelope is a text result containing rows; it has no transaction ID, COMMIT command tag, or documented assertion that this payload committed before the response was returned. Multi-statement SELECT/COMMIT return shape and independent-request visibility have only been tested with local pg, not the hosted connector. A successful string is insufficient. An authorized connector write/commit plus a separate read of a harmless isolated marker would provide empirical evidence, not an exactly-once guarantee; no such production write was performed or requested here. No extra credentials are necessary. Whether hosted connector retries a whole SQL payload is unspecified; fixed DB job identity makes a second claim return newly_claimed=false.
+- Existing normal expiry writer: server/cloud/generation-base.mjs:153 status() invokes ledger.expire(); billing-base.mjs:178 selects all unexpired-policy jobs whose expires_at <= now and status is reserved/running/uncertain/ready, then releases uncaptured jobs. It includes the synthetic job even without generation_records. This changes customer job state, NOT the provider hold or attempt. The synthetic expiry is 24 hours after claim and orchestration allows only 10 seconds; ordinary expiry is therefore not reachable in the normal immediate run. Clock discontinuity or resumption beyond that window must remain fail-closed.
+- Ordinary reject at generation-base.mjs:467 requires job() and ready/rejected. job():175-180 requires generation_records, absent for this synthetic fixture. It cannot normally cancel this running synthetic trial. Restart recovery at lines65-74 joins generation_records and likewise excludes it. Thus the mocked terminal transition is a defensive test, not evidence that ordinary user rejection can race this trial. Direct ledger.release (billing-base.mjs:152) could affect it if separately invoked with its owner/ID; no normal synthetic cancellation endpoint is currently implemented.
+- Nonatomic DB/HTTP alone does not imply duplicate calls: fresh nonce, fixed persistent job, original receipt and consumed marker prevent normal replay. The actual unresolved loss case is provider response arriving then process loss before durable usage/result evidence and settlement. The reservation must remain uncertain; never replay or zero it. connectorOnce deliberately does not yet compose the existing evidence store and settlement protocol. This integration can be implemented locally without schema/permission changes, but its hosted transport precondition remains unverified, so further operational integration is paused.
+- Any strict guarantee against arbitrary concurrent operator mutation/owner disabling at the dispatch instant requires a defined operational policy or server-side lease honored by those writers; a local last-read cannot provide it. No such operational changes are authorized or proposed as implicitly necessary for ordinary expiry/reject in the 10-second synthetic run.
+
+Read-only preflight regression: 5 passed separately. No live connection or provider call. No real crash/hosted transport fault injection was performed. Further local development cannot prove the missing hosted COMMIT/result contract. Smallest next step is to establish the connector's documented full-payload completion/result semantics with the provider; alternatively separately authorize a narrowly scoped, nonfinancial isolated commit/read probe, with an exact target and cleanup policy reviewed first. Neither requires paid image calls; no probe writes are currently authorized.
