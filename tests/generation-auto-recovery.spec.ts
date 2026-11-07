@@ -16,11 +16,12 @@ async function setup(page:Page,language:'ko'|'en'='ko',admin=false){
  const pending={jobId:'existing-job',requestId:'original-request',key:generatedCompatibilityKey(p),inputKey:JSON.stringify(buildGenerationRequest(p))};
  const wallet={available:3,reserved:1,kind:admin?'admin-test-unlimited':'test',...(admin?{unlimited:true,credits:{available:100,reserved:0}}:{})};
  const job={id:pending.jobId,projectId:p.id,requestId:pending.requestId,state:'ready',mode:'creative',sourceHash:hash,createdAt:'2026-10-25T00:00:00.000Z',model:'mock',artifactId:hash,artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+bytes.toString('base64'),width:12,height:12,role:'creative'},errorCode:null,composition:'complete-ad',compositionKey:completeAdKey(p),requestFingerprint:createHash('sha256').update(generationMatchKey(buildGenerationRequest(p))).digest('hex')};
- const state={statusFailure:0,generationEnabled:true,creditV2:false,recommendationRequests:0,statusReads:0,holdStatus:false,reads:0,historyReads:0,writes:0,failures:0,errorStatus:503,network:false,hold:false,job,historyJobs:null as null|typeof job[],lookup:'unsupported',lookupReads:0,posted:[] as any[],postConflict:false,postNetwork:false,postError:0,postHold:false,postInvalid:false};
+ const state={acceptPosts:0,rejectPosts:0,rejectFailure:false,rejectHold:false,rejectInvalid:false,statusFailure:0,generationEnabled:true,creditV2:false,recommendationRequests:0,statusReads:0,holdStatus:false,reads:0,historyReads:0,writes:0,failures:0,errorStatus:503,network:false,hold:false,job,historyJobs:null as null|typeof job[],lookup:'unsupported',lookupReads:0,posted:[] as any[],postConflict:false,postNetwork:false,postError:0,postHold:false,postInvalid:false};
  await page.route('**/api/**',async r=>{
  const path=new URL(r.request().url()).pathname;if(['/api/auth/session','/api/account/capabilities'].includes(path))return r.fallback();if(path.includes('/recommendations')){state.recommendationRequests++;return r.fulfill({status:503,json:{error:{code:'RECOMMENDATIONS_DISABLED'}}});}if(r.request().method()!=='GET')state.writes++;
  if(path==='/api/status'){state.statusReads++;while(state.holdStatus&&!page.isClosed())await new Promise(resolve=>setTimeout(resolve,20));if(state.statusFailure)return r.fulfill({status:state.statusFailure,json:{error:{code:state.statusFailure===401?'AUTH_REQUIRED':'INTERNAL_ERROR'}}});return r.fulfill({json:{generation:{enabled:state.generationEnabled,reason:state.generationEnabled?null:'BUDGET_NOT_AVAILABLE',model:'mock',photoPurposes:true,...(state.creditV2?{creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}}:admin?{creditQuote:{unit:'legacy-ticket',amount:0,policy:'legacy-accept-v1'}}:{})},wallet:state.creditV2?{...wallet,credits:{available:100,reserved:0}}:wallet,budget:{limitMicros:5000000,spentMicros:0,heldMicros:500000}}});}
- if(path.endsWith('/accept')){state.job={...state.job,state:'accepted'};return r.fulfill({json:{job:state.job,wallet}});}
+ if(path.endsWith('/accept')){state.acceptPosts++;state.job={...state.job,state:'accepted'};return r.fulfill({json:{job:state.job,wallet}});}
+ if(path.endsWith('/reject')){state.rejectPosts++;while(state.rejectHold&&!page.isClosed())await new Promise(resolve=>setTimeout(resolve,20));if(state.rejectFailure)return r.fulfill({status:503,json:{error:{code:'INTERNAL_ERROR'}}});if(!state.rejectInvalid)state.job={...state.job,state:'rejected'};return r.fulfill({json:{job:state.job,wallet}});}
  if(path.startsWith('/api/generation-requests/')){state.lookupReads++;if(state.lookup==='unsupported')return r.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});return r.fulfill({json:{version:1,requestId:decodeURIComponent(path.split('/').at(-1)!),projectId:state.lookup==='wrong-project'?'wrong-project':p.id,state:state.lookup==='found'?'found':'not-recorded',jobId:state.lookup==='found'?job.id:null}});}
  if(path==='/api/generations'&&r.request().method()==='POST'){state.posted.push(r.request().postDataJSON());while(state.postHold&&!page.isClosed())await new Promise(resolve=>setTimeout(resolve,20));if(state.postInvalid)return r.fulfill({status:202,json:{job:null,wallet}});if(state.postNetwork)return r.abort('failed');if(state.postError)return r.fulfill({status:state.postError,json:{error:{code:state.postError===409?'CREDIT_RESERVATION_FAILED':'INTERNAL_ERROR'}}});if(state.postConflict){state.lookup='found';return r.fulfill({status:409,json:{error:{code:'IDEMPOTENCY_CONFLICT'}}});}return r.fulfill({status:202,json:{job:state.job,wallet}});}
  if(path.startsWith('/api/generations')){const attempt=path==='/api/generations'?++state.historyReads:++state.reads;const responseJob=state.job;while(state.hold&&!page.isClosed())await new Promise(resolve=>setTimeout(resolve,20));
@@ -267,7 +268,7 @@ for(const language of ['ko','en'] as const)for(const clientTimeout of [26000,300
  s.state.job=completed;for(let i=0;i<10&&!await page.locator('.generation-ad-preview').count();i++){await page.clock.fastForward(1001);await new Promise(resolve=>setTimeout(resolve,30));}
  await expect(page.locator('.generation-ad-preview')).toBeVisible();await expect(page.locator('.generation-progress')).toHaveCount(0);
  await expect(page.locator('.submission-failure')).toHaveCount(0);expect(s.state.posted).toHaveLength(1);expect(s.state.reads).toBeGreaterThan(0);
- await page.reload();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.posted).toHaveLength(1);await page.locator('.generation-review input').check();await page.locator('.generation-review-actions button').first().click();const save=page.locator('.accepted-ad > .primary-action');await expect(save).toBeEnabled();const download=page.waitForEvent('download');await save.click();expect((await download).suggestedFilename()).toMatch(/\.png$/);expect(s.state.posted).toHaveLength(1);expect(s.state.recommendationRequests).toBe(0);await expect(page.locator('.marketing-analysis,.ai-recommendation,.marketing-keywords')).toHaveCount(0);
+ await page.reload();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.posted).toHaveLength(1);await expect(page.getByRole('button',{name:'사용 확정',exact:true})).toBeEnabled();await page.locator('.generation-review-actions button').first().click();const save=page.locator('.accepted-ad > .primary-action');await expect(save).toBeEnabled();const download=page.waitForEvent('download');await save.click();expect((await download).suggestedFilename()).toMatch(/\.png$/);expect(s.state.posted).toHaveLength(1);expect(s.state.recommendationRequests).toBe(0);await expect(page.locator('.marketing-analysis,.ai-recommendation,.marketing-keywords')).toHaveCount(0);
 });
 test('unresolved admission stops bounded reads, preserves key and permits only recovery after reopening',async({page})=>{
  const s=await setup(page,'ko',true);s.state.historyJobs=[];s.state.lookup='not-recorded';
@@ -380,4 +381,42 @@ for(const gate of ['budget','auth','credits'] as const)test(`automatic readiness
  if(gate==='auth')await expect(page).toHaveURL(/#login$/);
  if(gate==='credits'){await expect(page.getByRole('checkbox',{name:'이번 생성 10크레딧 차감을 확인했습니다.',exact:true})).not.toBeChecked();await expect(page.locator('.generate-button')).toBeDisabled();}
  await page.waitForTimeout(200);expect(s.state.posted).toHaveLength(0);expect(s.state.writes).toBe(0);
+});
+
+
+for(const language of ['ko','en'] as const)test(`simple review has only two decisions and accepts without a checkbox (${language})`,async({page})=>{
+ const s=await setup(page,language,true),panel=await s.open();
+ const accept=panel.getByRole('button',{name:language==='ko'?'사용 확정':'Accept',exact:true});
+ await expect(accept).toBeEnabled();
+ await expect(panel.locator('.generation-checklist,.generation-review')).toHaveCount(0);
+ await expect(panel.locator('.generation-review-actions button')).toHaveText(language==='ko'?['사용 확정','시안 반려']:['Accept','Reject visual']);
+ await expect(page.locator('.new-product-action,.result-back')).toHaveCount(0);
+ const boxes=await panel.locator('.generation-review-actions button').evaluateAll(nodes=>nodes.map(node=>{const r=node.getBoundingClientRect();return {top:r.top,height:r.height,width:r.width,scrollWidth:node.scrollWidth,clientWidth:node.clientWidth};}));
+ expect(boxes[0].top).toBe(boxes[1].top);expect(boxes.every(b=>b.height>=48&&b.scrollWidth<=b.clientWidth)).toBe(true);
+ await accept.click();await expect(page.locator('.accepted-ad')).toBeVisible();expect(s.state.acceptPosts).toBe(1);expect(s.state.posted).toHaveLength(0);
+});
+for(const language of ['ko','en'] as const)test(`simple rejection returns directly to retained inputs and photos (${language})`,async({page})=>{
+ const s=await setup(page,language,true),panel=await s.open();await expect(panel.locator('.generation-ad-preview')).toBeVisible();
+ await panel.getByRole('button',{name:language==='ko'?'시안 반려':'Reject visual',exact:true}).click();
+ await expect(page).toHaveURL(/#create$/);await expect(page.locator('dialog[open]')).toHaveCount(0);
+ const name=page.getByRole('textbox',{name:language==='ko'?'상품명':'Product name',exact:true});
+ await expect(name).toHaveValue(s.p.productName);await expect(page.getByRole('textbox',{name:language==='ko'?'상세설명':'Description',exact:true})).toHaveValue(s.p.productProfile.material);
+ await expect(page.getByRole('img',{name:language==='ko'?'참조사진 1':'Reference 1',exact:true})).toHaveAttribute('src',s.p.product!.data);
+ expect(await page.evaluate(({owner,id})=>localStorage.getItem(owner+':aiadcast.pending-generation.'+id),{owner:s.owner,id:s.p.id})).toBeNull();
+ await expect.poll(()=>page.evaluate(async owner=>new Promise<any>((resolve,reject)=>{const r=indexedDB.open('aiadcast-workspace-drafts',1);r.onsuccess=()=>{const db=r.result,q=db.transaction('drafts').objectStore('drafts').get(owner);q.onsuccess=()=>{db.close();resolve(q.result?.wizard?.project);};q.onerror=()=>reject(q.error);};}),s.owner)).toMatchObject({id:s.p.id,productName:s.p.productName,product:{data:s.p.product!.data}});
+ await page.reload();await expect(name).toHaveValue(s.p.productName);await expect(page.getByRole('img',{name:language==='ko'?'참조사진 1':'Reference 1',exact:true})).toHaveAttribute('src',s.p.product!.data);
+ expect(s.state.rejectPosts).toBe(1);expect(s.state.acceptPosts).toBe(0);expect(s.state.posted).toHaveLength(0);
+});
+test('simple rejection waits for confirmation, blocks repeated clicks and retains the preview on failure',async({page})=>{
+ const s=await setup(page,'ko',true),panel=await s.open();await expect(panel.locator('.generation-ad-preview')).toBeVisible();s.state.rejectHold=true;s.state.rejectFailure=true;
+ const reject=panel.getByRole('button',{name:'시안 반려',exact:true});await reject.click();await expect.poll(()=>s.state.rejectPosts).toBe(1);
+ await expect(reject).toBeDisabled();await expect(panel.getByRole('button',{name:'사용 확정',exact:true})).toBeDisabled();await reject.evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click();});expect(s.state.rejectPosts).toBe(1);await expect(page).toHaveURL(/#studio$/);
+ s.state.rejectHold=false;await expect(panel.getByRole('alert')).toBeVisible();await expect(reject).toBeEnabled();await expect(panel.locator('.generation-ad-preview')).toBeVisible();
+ expect(await page.evaluate(({owner,id})=>localStorage.getItem(owner+':aiadcast.pending-generation.'+id),{owner:s.owner,id:s.p.id})).not.toBeNull();
+ s.state.rejectFailure=false;await reject.click();await expect(page).toHaveURL(/#create$/);expect(s.state.rejectPosts).toBe(2);expect(s.state.posted).toHaveLength(0);
+});
+test('simple rejection requires a matching confirmed rejected job before navigation',async({page})=>{
+ const s=await setup(page,'ko',true),panel=await s.open();await expect(panel.locator('.generation-ad-preview')).toBeVisible();s.state.rejectInvalid=true;
+ await panel.getByRole('button',{name:'시안 반려',exact:true}).click();await expect(panel.getByRole('alert')).toBeVisible();await expect(page).toHaveURL(/#studio$/);await expect(panel.locator('.generation-ad-preview')).toBeVisible();
+ expect(await page.evaluate(({owner,id})=>localStorage.getItem(owner+':aiadcast.pending-generation.'+id),{owner:s.owner,id:s.p.id})).not.toBeNull();expect(s.state.posted).toHaveLength(0);
 });

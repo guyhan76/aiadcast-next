@@ -16,7 +16,7 @@ test('without a server: signup, failed/canceled/successful checkout, review, rej
  await page.goto('/#editor');await page.locator('.editor-details>summary').click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'product.png',mimeType:'image/png',buffer:photo});await page.getByRole('textbox',{name:'상품·서비스명',exact:true}).fill('시험 상품');await page.getByRole('combobox',{name:'출력 비율',exact:true}).selectOption('4:5');
 
  const panel=page.getByRole('region',{name:'기기 내 체험 합성',exact:true});await expect(panel).toContainText('신규 크레딧 잔액: 100');await panel.getByRole('checkbox',{name:'이번 생성 10크레딧 차감을 확인했습니다.'}).check();await panel.getByRole('button',{name:'광고 생성 · 10크레딧',exact:true}).click();await expect(panel).toContainText('신규 크레딧 잔액: 90');await panel.getByRole('button',{name:'반려 · 자동 복원 없음',exact:true}).click();await expect(panel).toContainText('신규 크레딧 잔액: 90');
- await panel.getByRole('checkbox',{name:'이번 생성 10크레딧 차감을 확인했습니다.'}).check();await panel.getByRole('button',{name:'광고 생성 · 10크레딧',exact:true}).click();await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await panel.getByRole('button',{name:'사용 확정 · 추가 차감 없음',exact:true}).click();await expect(panel).toContainText('신규 크레딧 잔액: 80');
+ await panel.getByRole('checkbox',{name:'이번 생성 10크레딧 차감을 확인했습니다.'}).check();await panel.getByRole('button',{name:'광고 생성 · 10크레딧',exact:true}).click();await expect(panel.getByRole('button',{name:/^(사용 확정|Accept)$/})).toBeEnabled();await panel.getByRole('button',{name:'사용 확정',exact:true}).click();await expect(panel).toContainText('신규 크레딧 잔액: 80');
  const downloaded=page.waitForEvent('download');await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();const download=await downloaded;const path=await download.path();const metadata=await sharp(await fs.readFile(path!)).metadata();expect(metadata.width).toBe(1080);expect(metadata.height).toBe(1350);
  await panel.getByRole('button',{name:'저장한 시안 다시 적용',exact:true}).click();await expect(panel).toContainText('신규 크레딧 잔액: 80');
  for(const width of [320,390,768]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
@@ -49,3 +49,4 @@ test('offline demo validates issued sessions and cannot use a forged token for a
  await page.reload();await expect(page.locator('#account-email')).toBeVisible();expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();
  expect(calls).toEqual([]);
 });
+

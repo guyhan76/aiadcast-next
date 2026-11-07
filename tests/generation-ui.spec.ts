@@ -54,8 +54,8 @@ test('restored original background review preserves source bytes and accepted re
  await page.evaluate(({id,requestId,key})=>localStorage.setItem('protected-generation-ui:aiadcast.pending-generation.'+id,JSON.stringify({projectId:id,jobId:'generation_fixture_1',requestId,key})),{id:original.id,requestId,key:generatedCompatibilityKey(original)});
  page.on('dialog',d=>d.accept());await restoreOwnedWorkspace(page,original,'protected-generation-ui','editor');await page.locator('.editor-details>summary').click();
  await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();
- const accept=panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true});await expect(accept).toBeDisabled();
- await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await accept.click();
+ const accept=panel.getByRole('button',{name:'사용 확정',exact:true});await expect(accept).toBeEnabled();
+ await expect(panel.getByRole('button',{name:'사용 확정',exact:true})).toBeEnabled();await accept.click();
  await expect(panel.getByText('사용 확정한 시안',{exact:true})).toBeVisible();
  const saved=await backup(page);
  expect(Buffer.from(saved.product.data.split(',')[1],'base64')).toEqual(originalBytes);expect(saved.product.sha256).toBe(hash(originalBytes));
@@ -71,8 +71,8 @@ test('accepted creative enables PNG with generated pixels while preserving the o
  await page.getByRole('radio',{name:'새로운 광고 이미지 만들기',exact:true}).check();
  await expect(page.getByRole('button',{name:'AI 시안 확인 후 저장',exact:true})).toBeDisabled();
  await panel.getByRole('button',{name:'AI 새 시안 요청 · 1개',exact:true}).click();
- await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
- await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+ await expect(panel.getByRole('button',{name:'사용 확정',exact:true})).toBeEnabled();
+ await panel.getByRole('button',{name:'사용 확정',exact:true}).click();
  const exportButton=page.getByRole('button',{name:'PNG 내보내기',exact:true});await expect(exportButton).toBeEnabled();
  const event=page.waitForEvent('download');await exportButton.click();const bytes=await readFile((await (await event).path())!);
  const pixel=await sharp(bytes).extract({left:540,top:1010,width:1,height:1}).removeAlpha().raw().toBuffer();expect([...pixel]).toEqual([25,91,200]);
@@ -83,10 +83,10 @@ test('accepted creative enables PNG with generated pixels while preserving the o
 test('changing the source while reviewing makes the old visual inapplicable',async({page})=>{
  const {state,panel}=await mockApi(page);
  await panel.locator('.generate-button').click();
- await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
+ await expect(panel.getByRole('button',{name:'사용 확정',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'1 사진 삭제',exact:true}).click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles({name:'different.png',mimeType:'image/png',buffer:replacementBytes});
  await expect(panel.getByRole('alert')).toContainText('원래 정보를 복원하거나 시안을 반려');
- await expect(panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true})).toBeDisabled();
+ await expect(panel.getByRole('button',{name:'사용 확정',exact:true})).toBeDisabled();
  const saved=await backup(page);expect(saved.product.sha256).toBe(hash(replacementBytes));expect(saved.generated).toBeUndefined();expect(state.acceptPosts).toBe(0);
 });
 
@@ -95,14 +95,14 @@ test('a lost POST response is recovered through requestIds without another gener
  await panel.locator('.generate-button').click();
  await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();
  expect(state.historyReads).toBe(2);expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(0);
- await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+ await expect(panel.getByRole('button',{name:'사용 확정',exact:true})).toBeEnabled();await panel.getByRole('button',{name:'사용 확정',exact:true}).click();
  await expect(panel.getByText('사용 확정한 시안',{exact:true})).toBeVisible();expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(1);
 });
 
 test('rejecting a ready visual restores the test credit without applying the artifact',async({page})=>{
  const {state,panel}=await mockApi(page);
  await panel.locator('.generate-button').click();await expect(panel.locator('.generation-status')).toContainText('테스트 이용권 9');
- await panel.getByRole('button',{name:'반려 · 이용권 복원',exact:true}).click();
+ await panel.getByRole('button',{name:'시안 반려',exact:true}).click();
  await expect(panel.getByText('반려 · 이용권 복원',{exact:true})).toBeVisible();await expect(panel.locator('.generation-status')).toContainText('테스트 이용권 10');
  await expect(panel.locator('.generate-button')).toBeEnabled();
  const saved=await backup(page);expect(saved.generated).toBeUndefined();expect(saved.background.image).toBeNull();expect(state.rejectPosts).toBe(1);expect(state.acceptPosts).toBe(0);
@@ -112,8 +112,8 @@ test('artifact hash mismatch is detected before accepting a charge',async({page}
  const {state,panel}=await mockApi(page,{corruptArtifact:true});
  await panel.locator('.generate-button').click();
  await expect(panel.getByRole('alert')).toContainText('파일 검증에 실패');
- await expect(panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true})).toBeDisabled();
- await expect(panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true})).toBeDisabled();
+ await expect(panel.locator('.generation-review')).toHaveCount(0);
+ await expect(panel.getByRole('button',{name:'사용 확정',exact:true})).toBeDisabled();
  expect(state.acceptPosts).toBe(0);expect(state.generationPosts).toBe(1);expect((await backup(page)).generated).toBeUndefined();
 });
 
@@ -130,7 +130,7 @@ test('complete ad preview is composed before charging and matches PNG after loca
  expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(0);
  const spec=panel.getByRole('checkbox',{name:'광고에 규격 표시',exact:false});await spec.uncheck();await expect(preview).not.toHaveAttribute('src',first!);
  await spec.check();await expect(preview).toHaveAttribute('src',first!);expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(0);
- await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+ await expect(panel.getByRole('button',{name:'사용 확정',exact:true})).toBeEnabled();await panel.getByRole('button',{name:'사용 확정',exact:true}).click();
  const saved=await backup(page);expect(saved.copy.ko.description).toContain('10개 19,800원');expect(saved.copy.ko.contact).toBe('010-5635-6211');
  const event=page.waitForEvent('download');await page.getByRole('button',{name:'PNG 내보내기',exact:true}).click();const bytes=await readFile((await(await event).path())!);
  expect(bytes).toEqual(Buffer.from(first!.split(',')[1],'base64'));expect(state.acceptPosts).toBe(1);expect(state.generationPosts).toBe(1);
@@ -146,8 +146,8 @@ test('result shows and exports the generation plan, retaining it after product n
  await expect(summary.locator('.marketing-keywords li')).toHaveText(state.lastBody!.request.marketingPlan.keywords);
  await expect(summary.locator('.marketing-channels li')).toHaveText(['인스타그램','유튜브','홈페이지','블로그','포스터','광고브로셔']);
  expect(state.lastBody!.request.marketingPlan.channels).toContain('youtube');
- await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
- await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+ await expect(panel.getByRole('button',{name:'사용 확정',exact:true})).toBeEnabled();
+ await panel.getByRole('button',{name:'사용 확정',exact:true}).click();
  const saved=await backup(page);expect(saved.generated.marketingPlan).toEqual(state.lastBody!.request.marketingPlan);
  const originalName=saved.generated.marketingPlan.input.name;saved.productName='변경 후 상품명';
  // Import validates image hashes asynchronously and then opens a confirmation dialog.
@@ -169,3 +169,4 @@ test('result shows and exports the generation plan, retaining it after product n
  await page.setViewportSize({width:390,height:844});await publishing.locator('.marketing-summary').screenshot({path:'/tmp/aiadcast-patent-summary.png'});
  expect(state.generationPosts).toBe(1);expect(state.acceptPosts).toBe(1);
 });
+

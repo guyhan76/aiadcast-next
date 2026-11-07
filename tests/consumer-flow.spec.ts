@@ -42,7 +42,7 @@ test('eight inputs submit actual generation request once and a complete accepted
  await expect(result.locator('.marketing-analysis,.ai-recommendation')).toHaveCount(0);expect(state.recommendationRequests).toBe(0);
  expect(state.posts).toBe(1);expect(state.body.references).toHaveLength(1);expect(state.body.request.copy.title).toBe('보내는 마음까지, 든든하게.');expect(state.body.request.creativeDirection.copyMode).toBe('manual');expect(state.body.request.output.format).toBe('9:16');expect(state.body.request.output.showDimensions).toBe(true);expect(state.body.request.specifications.map((s:any)=>s.value)).toEqual(['340','250','210']);
  await expect(result.locator('.automatic-proportion')).toHaveCount(0);await expect(result.locator('.editor-details')).toHaveCount(0);
- await result.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await result.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+ await expect(result.getByRole('button',{name:/^(사용 확정|Accept)$/})).toBeEnabled();await result.getByRole('button',{name:'사용 확정',exact:true}).click();
  await expect(result.locator('.marketing-summary,.ai-recommendation')).toHaveCount(0);expect(state.recommendationRequests).toBe(0);
  const save=result.getByRole('button',{name:'이미지 저장 · 공유',exact:true});await expect(save).toBeEnabled();const pending=page.waitForEvent('download');await save.click();expect((await pending).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
  await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('textbox',{name:'광고 제목',exact:true})).toHaveValue('보내는 마음까지, 든든하게.');
@@ -83,7 +83,7 @@ test('photo-backed creative request preserves source and reaches review and down
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();const result=page.locator('.simple-ad-result');
  await expect(result.locator('.generation-ad-preview')).toBeVisible();expect(state.body.request.mode).toBe('creative');expect(state.body.source.sha256).toBe(createHash('sha256').update(first).digest('hex'));expect(state.body.request.copy.title).toBe('확정 문구');
  await expect(page.locator('.editor-container')).toHaveCount(0);
- await result.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await result.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+ await expect(result.getByRole('button',{name:/^(사용 확정|Accept)$/})).toBeEnabled();await result.getByRole('button',{name:'사용 확정',exact:true}).click();
  const save=result.getByRole('button',{name:'이미지 저장 · 공유',exact:true});await expect(save).toBeEnabled();
  const download=page.waitForEvent('download');await save.click();expect((await download).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.posts).toBe(1);
  await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('button',{name:'실사 그대로 사용',exact:true})).toHaveCount(0);await expect(form.locator('.reference-item')).toHaveCount(1);await expect(form.getByRole('textbox',{name:'광고 설명',exact:true})).toHaveValue('');
@@ -154,8 +154,8 @@ test('server-confirmed administrator at zero credits can review and save without
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();
  await expect(page.getByText('관리자 · 이용권 차감 없음',{exact:true})).toBeVisible();
  await expect(page.locator('.generation-ad-preview')).toBeVisible();
- await page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
- await page.getByRole('button',{name:'사용 확정 · 이용권 차감 없음',exact:true}).click();
+ await expect(page.getByRole('button',{name:/^(사용 확정|Accept)$/})).toBeEnabled();
+ await page.getByRole('button',{name:'사용 확정',exact:true}).click();
  await expect(page.getByRole('button',{name:'이미지 저장 · 공유',exact:true})).toBeEnabled();
  expect(state.posts).toBe(1);expect(state.accepts).toBe(1);expect(state.job.creditCost).toBe(0);
  await expect(page.locator('.simple-ad-result')).not.toContainText('API 비용');expect(state.recommendationRequests).toBe(0);
@@ -184,7 +184,7 @@ test('new credits require explicit ten-credit confirmation before auto creation 
  await panel.getByRole('button',{name:'광고 생성 · 10크레딧'}).click();
  await expect(panel.getByText(/신규 크레딧 잔액: 20/)).toBeVisible();expect(state.posts).toBe(1);expect(state.body.creditQuote).toEqual({unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'});
  await expect(panel.getByRole('button',{name:'반려 · 자동 복원 없음'})).toBeVisible();
- await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await panel.getByRole('button',{name:'사용 확정 · 추가 차감 없음'}).click();
+ await expect(panel.getByRole('button',{name:/^(사용 확정|Accept)$/})).toBeEnabled();await panel.getByRole('button',{name:'사용 확정'}).click();
  await expect.poll(()=>state.accepts).toBe(1);expect(state.posts).toBe(1);
  await expect(page.locator('.accepted-ad').getByRole('button',{name:'이미지 저장 · 공유',exact:true})).toBeEnabled();expect(state.recommendationRequests).toBe(0);
 });
@@ -192,7 +192,7 @@ test('English photo creation reviews and saves a complete ad without duplicate r
  const state=await mocks(page);await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','en'));await page.goto('/#create');const form=page.locator('.consumer-create');
  await form.getByLabel('Choose an industry').selectOption('lodging');await form.getByRole('textbox',{name:'Service name',exact:true}).fill('Forest stay');await form.getByRole('textbox',{name:'Description',exact:true}).fill('Quiet rooms surrounded by trees');await form.locator('input[type=file]').first().setInputFiles({name:'room.png',mimeType:'image/png',buffer:first});await expect(form.locator('.reference-item img')).toBeVisible();await form.getByRole('button',{name:'Generate ad',exact:true}).click();
  const result=page.locator('.simple-ad-result');await expect(result.locator('.generation-ad-preview')).toBeVisible();expect(state.posts).toBe(1);expect(state.body.request.output.locale).toBe('en');expect(state.body.request.output.showDimensions).toBe(false);
- await result.getByRole('checkbox',{name:'I reviewed the product, material structure, dimensions, price and copy.',exact:true}).check();await result.getByRole('button',{name:'Accept · use 1 credit',exact:true}).click();await expect(result.locator('.accepted-ad')).toBeVisible();const pending=page.waitForEvent('download');await result.getByRole('button',{name:'Save / share image',exact:true}).click();expect(await sharp((await(await pending).path())!).metadata()).toMatchObject({format:'png',width:1080,height:1920});expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
+ await expect(result.getByRole('button',{name:/^(사용 확정|Accept)$/})).toBeEnabled();await result.getByRole('button',{name:'Accept',exact:true}).click();await expect(result.locator('.accepted-ad')).toBeVisible();const pending=page.waitForEvent('download');await result.getByRole('button',{name:'Save / share image',exact:true}).click();expect(await sharp((await(await pending).path())!).metadata()).toMatchObject({format:'png',width:1080,height:1920});expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
 });
 
 for(const admin of [true,false])test(`edited unaccepted result generates a fresh request for ${admin?'admin':'member'}`,async({page})=>{
@@ -295,3 +295,4 @@ for(const language of ['ko','en'] as const)test(`storage preflight rejection is 
  await page.getByRole('button',{name:ko?'입력 내용 수정':'Edit details',exact:true}).click();
  await expect(form.getByRole('textbox',{name:ko?'상세설명':'Description',exact:true})).toHaveValue('Cotton hoodie');await expect(form.locator('.reference-item')).toHaveCount(1);expect(posts).toBe(1);
 });
+
