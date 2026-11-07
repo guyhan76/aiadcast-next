@@ -19,7 +19,7 @@ import {offlineDemo} from './demo-mode';
 import {parseMarketingPlan} from './marketing-plan';
 import {storageNamespace} from './beta-session';
 import {useEffect,useRef,useState} from 'react';
-import {Check,RefreshCw,Sparkles,X} from 'lucide-react';
+import {RefreshCw,Sparkles} from 'lucide-react';
 import type {Project} from './model';
 import {buildGenerationRequest,buildNewGenerationRequest,photoGenerationDraft,newGenerationIssues} from './generation';
 import {generatedCompatibilityKey,projectWithGenerated} from './generated';
@@ -48,12 +48,14 @@ type Pending={projectId:string;requestId:string;key:string;jobId?:string;recover
 type CreateIntent=Readonly<{id:string;projectId:string;input:string|null;owner:string;expires:number}>;
 type JobResponse={job:GenerationJob;wallet:ApiStatus['wallet']};
 type AdPreview={source:Project;composed:Project;dataUrl:string;errors:string[];jobId:string};
-export function GenerationPanel({project,change,simple=false,onEditInputs,onCreativeDraft,autoRequest,onAutoHandled,onGenerationStarted}:{project:Project;change:(fn:(p:Project)=>Project)=>void;simple?:boolean;onEditInputs?:()=>void;onCreativeDraft?:()=>Promise<void>;autoRequest?:string;onAutoHandled?:()=>void;onGenerationStarted?:()=>void}){
- const {t,text,language}=useUiLanguage();const [status,setStatus]=useState<ApiStatus|null>(null),[job,setJob]=useState<GenerationJob|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[reviewed,setReviewed]=useState(false);
+export function GenerationPanel({project,change,simple=false,onEditInputs,onCreativeDraft,autoRequest,onAutoHandled,onGenerationStarted,onReviewChange}:{project:Project;change:(fn:(p:Project)=>Project)=>void;simple?:boolean;onEditInputs?:()=>void;onCreativeDraft?:()=>Promise<void>;autoRequest?:string;onAutoHandled?:()=>void;onGenerationStarted?:()=>void;onReviewChange?:(reviewing:boolean)=>void}){
+ const {t,text,language}=useUiLanguage();const [status,setStatus]=useState<ApiStatus|null>(null),[job,setJob]=useState<GenerationJob|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  useEffect(()=>{if(job)onGenerationStarted?.();},[job?.id,onGenerationStarted]);
  useEffect(()=>{setUnacceptedPreview(job?.state==='ready');return()=>setUnacceptedPreview(false);},[job?.state]);
+ useEffect(()=>{onReviewChange?.(job?.state==='ready');return()=>onReviewChange?.(false);},[job?.state,onReviewChange]);
  const [offline,setOffline]=useState(()=>!navigator.onLine);
  useEffect(()=>{const update=()=>setOffline(!navigator.onLine);window.addEventListener('online',update);window.addEventListener('offline',update);return()=>{window.removeEventListener('online',update);window.removeEventListener('offline',update);};},[]);
+ const decisionPending=useRef(false);
  const dispatching=useRef(false),generationRequest=useRef<AbortController|null>(null);
  const [recoveryChecked,setRecoveryChecked]=useState(false),[recoveryError,setRecoveryError]=useState('');
  const [submissionFailure,setSubmissionFailure]=useState<SubmissionDiagnostic|undefined>();
@@ -191,7 +193,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
  const issues=newGenerationIssues(project);const active=job?.state==='running'||job?.state==='ready'&&!revisedReady||job?.state==='uncertain';
  useEffect(()=>{
   if(previewRef.current?.source===project&&previewRef.current.jobId===job?.id&&compatible&&job?.artifact)return;
-  let cancelled=false;setReviewed(false);setEnlarged(false);setPreviewError('');if(!compatible||!job?.artifact||previewRef.current?.jobId!==job.id){setPreview(null);previewRef.current=null;}
+  let cancelled=false;setEnlarged(false);setPreviewError('');if(!compatible||!job?.artifact||previewRef.current?.jobId!==job.id){setPreview(null);previewRef.current=null;}
   if(!job?.artifact||!compatible)return;
   const currentJob=job;
   void (async()=>{
@@ -272,7 +274,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
   if(!valid())return;
   preparingClick.current=click;setPreparing(true);
   const preparationTimer=setTimeout(()=>{if(preparingClick.current===click)cancelQueuedClick();},Math.max(0,click.expires-Date.now()));
-  dispatching.current=true;setSubmissionFailure(undefined);setBusy(true);setError('');setNotice('');setReviewed(false);
+  dispatching.current=true;setSubmissionFailure(undefined);setBusy(true);setError('');setNotice('');
   try{
    if(snapshot.dimensionAnnotation?.method==='manual'&&snapshot.dimensionAnnotation.mode!=='none'&&!status?.generation.manualDimensionOverlay){setError(t('치수선 합성을 지원하는 서버 업데이트가 필요합니다. 생성은 요청하지 않았습니다.','A server update is needed for dimension overlays. No generation was requested.'));return;}
    if(snapshot.dimensionAnnotation?.method!=='manual'&&!aiDimensionRequested(snapshot)&&snapshot.dimensionAnnotation?.mode&&snapshot.dimensionAnnotation.mode!=='none'){const capability=await apiRequest<{available:boolean}>('/api/dimension-analysis');if(!capability.available){setError(t('선택한 사진 규격 표시를 완성할 수 없어 새 AI 생성을 요청하지 않았습니다. 규격 표시 경로가 준비된 뒤 다시 진행해주세요. 입력 내용은 보관했습니다.','No new AI generation was requested because the selected photo dimensions cannot be completed. Continue when dimension placement is available. Your inputs are preserved.'));return;}}
@@ -296,9 +298,9 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
   }catch(e){if(alive.current&&generationEpoch.current===epoch&&latest.current.id===snapshot.id){if(!resumableRequestId&&e instanceof ApiRequestFailure&&['INVALID_MANUAL_DIMENSIONS','STORAGE_CAPACITY_UNAVAILABLE','CREDIT_QUOTE_CHANGED','INVALID_AI_DIMENSION_DISPLAY','AI_DIMENSION_DISPLAY_UNAVAILABLE','INVALID_TEXT_EXAMPLE','TEXT_EXAMPLE_PHOTOS_NOT_ALLOWED','TEXT_EXAMPLE_UNSUPPORTED_GEOMETRY','PLANAR_SOURCE_UNCONFIRMED','INVALID_PLANAR_CONTROL','INVALID_DIMENSION_PLAN','INVALID_REQUEST','INVALID_SPECIFICATIONS','REGION_EDIT_NOT_AVAILABLE','SOURCE_MISMATCH','INVALID_IMAGE','SOURCE_REQUIRED','GENERATION_DISABLED','PROVIDER_NOT_CONFIGURED','BUDGET_NOT_AVAILABLE','NO_TEST_CREDITS','GENERATION_ALREADY_RUNNING','REVIEW_REQUIRED_AFTER_REJECTIONS','JSON_REQUIRED','REQUEST_TOO_LARGE','CLIENT_HEADER_REQUIRED','ORIGIN_NOT_ALLOWED','LOCAL_ACCESS_ONLY','TOO_MANY_REQUESTS'].includes(e.code))remember(null);if(pending.current&&!pending.current.jobId){setError('');void recover(true);}else failure(e);}}finally{clearTimeout(preparationTimer);if(preparingClick.current===click){preparingClick.current=null;setPreparing(false);}if(generationEpoch.current===epoch){dispatching.current=false;if(alive.current)setBusy(false);}}
  }
  async function accept(){
-  if(!job||!compatible||!reviewed||!previewReady||busy)return;setBusy(true);setError('');
+  if(!job||!compatible||!previewReady||busy||decisionPending.current)return;decisionPending.current=true;setBusy(true);setError('');
   try{
-   // The fully rendered, hash-verified ad must be reviewed before accepting a charge.
+   // Clicking Accept confirms the fully rendered, hash-verified ad.
    const reviewedAd=previewRef.current,record=pending.current;if(!reviewedAd||reviewedAd.source!==latest.current||reviewedAd.errors.length||!record||record.key!==generatedCompatibilityKey(latest.current))throw Error('STALE_PROJECT');
    const dimensionReview:AiDimensionReview|undefined=job.dimensionDisplay?{inputHash:job.dimensionDisplay.inputHash,artifactHash:job.artifactId!,values:true,axes:true,complete:true}:undefined;
    const result=job.state==='accepted'?await apiRequest<JobResponse>(`/api/generations/${encodeURIComponent(job.id)}`):await apiRequest<JobResponse>(`/api/generations/${job.id}/accept`,{artifactId:job.artifactId,...(dimensionReview?{dimensionReview}:{})});
@@ -315,9 +317,22 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
    const applied={...reviewedAd,composed,source:composed};previewRef.current=applied;setPreview(applied);
    change(p=>p!==reviewedAd.source?p:composed);
    setJob(result.job);setStatus(s=>updatedWallet(s,result.wallet));setNotice(manualBaseExport(composed)?t('치수선 없는 광고를 적용했습니다. 입력 규격과 기존 위치 정보는 보관됩니다.','Ad applied without added dimension lines. Measurements and existing positions are preserved.'):t('확인한 광고를 적용했습니다. PNG로 저장할 수 있습니다.','Your reviewed ad is applied and ready to save as PNG.'));
-  }catch(e){failure(e);}finally{if(alive.current)setBusy(false);}
+  }catch(e){failure(e);}finally{decisionPending.current=false;if(alive.current)setBusy(false);}
  }
- async function reject(){if(!job||busy)return;setBusy(true);try{const result=await apiRequest<JobResponse>(`/api/generations/${job.id}/reject`,{});if(!alive.current)return;setJob(result.job);setStatus(s=>updatedWallet(s,result.wallet));setCreditConsent(false);remember(null);setReviewed(false);setNotice(job.creditCaptured?t('결과를 반려했습니다. 이미 제공된 결과의 크레딧은 자동 복원하지 않습니다.','Result rejected. Delivered credits are not automatically refunded.'):job.creditPolicy==='admin-unlimited'&&job.creditCost===0?t('관리자 테스트 시안을 반려했습니다. 이용권 변동은 없습니다.','Administrator test rejected. No credit balance changed.'):t('시안을 반려하고 테스트 이용권을 복원했습니다.','The visual was rejected and the test credit was restored.'));}catch(e){failure(e);}finally{if(alive.current)setBusy(false);}}
+ async function reject(){
+  if(!job||job.state!=='ready'||busy||decisionPending.current)return;
+  decisionPending.current=true;setBusy(true);setError('');
+  try{
+   const result=await apiRequest<JobResponse>(`/api/generations/${job.id}/reject`,{});
+   if(!alive.current)return;
+   if(result.job.id!==job.id||result.job.projectId!==project.id||result.job.state!=='rejected')throw Error('INVALID_HISTORY');
+   setJob(result.job);setStatus(s=>updatedWallet(s,result.wallet));setCreditConsent(false);remember(null);
+   // The confirmed rejection can leave immediately, without the pending-preview dialog.
+   setUnacceptedPreview(false);
+   setNotice(job.creditCaptured?t('결과를 반려했습니다. 이미 제공된 결과의 크레딧은 자동 복원하지 않습니다.','Result rejected. Delivered credits are not automatically refunded.'):job.creditPolicy==='admin-unlimited'&&job.creditCost===0?t('관리자 테스트 시안을 반려했습니다. 이용권 변동은 없습니다.','Administrator test rejected. No credit balance changed.'):t('시안을 반려하고 테스트 이용권을 복원했습니다.','The visual was rejected and the test credit was restored.'));
+   onEditInputs?.();
+  }catch(e){failure(e);}finally{decisionPending.current=false;if(alive.current)setBusy(false);}
+ }
  async function creativeDraft(){
   if(!onCreativeDraft||busy||active||job?.state==='uncertain'||pending.current&&!job)return;
   setBusy(true);setError('');
@@ -369,15 +384,16 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
    {!simple&&!!dimensionAxes(project.productProfile).length&&<label className="generation-spec-toggle"><input type="checkbox" checked={project.dimensions.visible} disabled={busy} onChange={e=>change(p=>({...p,dimensions:{...p.dimensions,visible:e.target.checked}}))}/>{t('광고에 규격 표시','Show dimensions on ad')}<small>{specSummary(project.dimensions,project.productProfile)}</small></label>}
    <button type="button" className="generation-enlarge" disabled={!previewReady} onClick={()=>setEnlarged(true)}>{t('확대 검수','Inspect enlarged visual')}</button>{!simple&&<small>{complete?t('완성 이미지에 문구가 포함되어 있습니다. 문구·규격 표시·연락처 변경은 새 생성에 반영됩니다. 기존 이미지의 글자는 직접 바뀌지 않습니다.','The finished image includes its copy. Copy, dimension-display or contact changes require a new visual; existing lettering does not change directly.'):t('문구나 규격 표시를 수정하면 같은 사진으로 광고를 다시 합성합니다. 추가 AI 호출과 이용권 차감은 없습니다.','Copy or dimension-display edits recompose the same photo without another AI request or credit charge.')}</small>}
    {!simple&&<details className="generation-raw-photo"><summary>{complete?t('생성된 광고 원본 보기','View the generated ad'):t('AI 사진 원본 보기','View the AI photograph')}</summary><img src={job.artifact.dataUrl} alt={complete?t('생성된 완성 광고','Generated finished ad'):t('문구 합성 전 AI 사진','AI photograph before copy composition')}/></details>}
-   <details className="generation-checklist"><summary>{t('검수 항목','Review checklist')}</summary><ul><li>{t('비율: 원본과 본체·손잡이·부속품의 크기 및 원근 비교','Proportions: compare body, handle, parts and perspective with the source')}</li><li>{t('티끌: 로고 주변·네 모서리의 점, 선, 글자 잔상과 깨진 윤곽 확인','Stray marks: inspect logos and all corners for dots, strokes, letter fragments and broken outlines')}</li><li>{t('규격: 입력한 가로·세로·높이와 단위, 출력 비율 확인. 치수 표기만으로 실제 형상이 검증되지는 않습니다.','Dimensions: check supplied axes, units and output ratio. Correct labels alone do not verify physical geometry.')}</li><li>{t('최종 문구: 회사명·연락처·상품명·규격·가격의 오타, 겹침과 잘림 확인','Final copy: check names, contacts, dimensions and prices for typos, overlap and cropping')}</li></ul>{!isTextExample(project)&&project.product&&<img src={project.product.data} alt={t('검수용 원본 사진','Original photo for review')}/>}</details></>}
+   </>}
 
    {preview?.composed.generated?.planarReport&&<PlanarResult report={preview.composed.generated.planarReport} original={preview.composed.generated.planarOriginal}/>}
-   {(job.state==='ready'||job.state==='accepted')&&<>{!compatible&&<p role="alert">{revisedReady?t('입력이 바뀌었습니다. 새 광고를 생성할 수 있으며 이전 결과와 차감 내역은 유지됩니다.','Details changed. You can generate a new ad; the previous result and charges are preserved.'):t('사진·상품 설정 또는 완성 광고의 문구·규격 표시·연락처가 바뀌었습니다. 원래 정보를 복원하거나 시안을 반려한 뒤 현재 정보로 새로 생성해주세요.','The photo, product settings or finished ad copy, dimension display or contacts changed. Restore the original details, or reject the visual and generate with the current details.')}</p>}{preview&&manualBaseExport(preview.composed)&&<p role="status">{t('치수선 없는 광고입니다. 입력 규격은 보관됩니다.','Ad without added dimension lines. Your measurements are preserved.')}</p>}<label className="generation-review"><input type="checkbox" checked={reviewed} disabled={!compatible||!previewReady} onChange={e=>setReviewed(e.target.checked)}/>{t('상품·재질 구조·규격·가격·문구를 확인했습니다.','I reviewed the product, material structure, dimensions, price and copy.')}</label><div className="generation-review-actions"><button disabled={busy||!reviewed||!compatible||!previewReady} onClick={()=>void accept()}><Check size={16}/>{job.state==='accepted'?t('저장한 시안 다시 적용','Reapply accepted visual'):job.creditCaptured?t('사용 확정 · 추가 차감 없음','Accept · no extra charge'):exemptJob?t('사용 확정 · 이용권 차감 없음','Accept · No credits used'):t('사용 확정 · 1개 차감','Accept · use 1 credit')}</button>{job.state==='ready'&&<button disabled={busy} onClick={()=>void reject()}><X size={16}/>{job.creditCaptured?t('반려 · 자동 복원 없음','Reject · no automatic refund'):exemptJob?t('시안 반려','Reject visual'):t('반려 · 이용권 복원','Reject · restore credit')}</button>}</div></>}
+   {(job.state==='ready'||job.state==='accepted')&&<>{!compatible&&<p role="alert">{revisedReady?t('입력이 바뀌었습니다. 새 광고를 생성할 수 있으며 이전 결과와 차감 내역은 유지됩니다.','Details changed. You can generate a new ad; the previous result and charges are preserved.'):t('사진·상품 설정 또는 완성 광고의 문구·규격 표시·연락처가 바뀌었습니다. 원래 정보를 복원하거나 시안을 반려한 뒤 현재 정보로 새로 생성해주세요.','The photo, product settings or finished ad copy, dimension display or contacts changed. Restore the original details, or reject the visual and generate with the current details.')}</p>}{preview&&manualBaseExport(preview.composed)&&<p role="status">{t('치수선 없는 광고입니다. 입력 규격은 보관됩니다.','Ad without added dimension lines. Your measurements are preserved.')}</p>}<div className="generation-review-actions"><button disabled={busy||!compatible||!previewReady} onClick={()=>void accept()}>{job.state==='accepted'?t('저장한 시안 다시 적용','Reapply accepted visual'):t('사용 확정','Accept')}</button>{job.state==='ready'&&<button disabled={busy} onClick={()=>void reject()}>{t('시안 반려','Reject visual')}</button>}</div></>}
    {job.state==='uncertain'&&<p>{t('결과를 확인하지 못했습니다. 기존 결과를 다시 확인해주세요. 중복 생성을 막기 위해 새 요청은 보내지 않습니다.','The result is unconfirmed. Check the existing result again. No new request will be sent to avoid duplicate generation.')}</p>}
   </div>}
   {enlarged&&previewReady&&<ImageReview label={t('시안 확대 검수','Enlarged visual inspection')} onClose={()=>setEnlarged(false)}><img src={preview!.dataUrl} alt={t('광고 전체 확대 검수','Inspect the complete ad')}/></ImageReview>}
   {error&&<p role="alert" className="generation-error">{error}</p>}{notice&&!creating&&!queuedIntent&&!recoveryError&&(!submissionFailure||recovering)&&<p role="status" className="generation-notice">{notice}</p>}
  </section>;
 }
+
 
 

@@ -34,7 +34,7 @@ async function setup(page:Page,{available=true,fail=false,delay=false,missing=fa
  await restoreOwnedWorkspace(page,draft,'protected-dimension-annotation');
  await page.locator('.new-ad-options>summary').click();await page.locator('.generate-button').click();
  if(reviewOnly||mode!=='none'&&(!available||missing))return {counts:()=>({generations,analyses}),release:()=>release?.(),recover:()=>{fail=false;}};
- await page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await page.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();await expect(page.locator('.accepted-ad')).toBeVisible();
+ await expect(page.getByRole('button',{name:/^(사용 확정|Accept)$/})).toBeEnabled();await page.getByRole('button',{name:'사용 확정',exact:true}).click();await expect(page.locator('.accepted-ad')).toBeVisible();
  return {counts:()=>({generations,analyses}),release:()=>release?.(),recover:()=>{fail=false;}};
 }
 async function png(page:Page,original=false){const event=page.waitForEvent('download');await page.getByRole('button',{name:original?'원본 광고 저장 · 사진 규격 표시 없음':'이미지 저장 · 공유',exact:true}).click();const file=await event;return readFile((await file.path())!);}
@@ -75,7 +75,7 @@ test('pre-generation inset intent restores and automatically composes photo pixe
 test('pre-generation annotation unavailability prevents the paid generation dispatch',async({page})=>{
  const state=await setup(page,{mode:'inset',available:false});
  await expect(page.getByRole('alert')).toContainText('새 AI 생성을 요청하지 않았습니다');
- await expect(page.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'사용 확정',exact:true})).toHaveCount(0);
  expect(state.counts()).toEqual({generations:0,analyses:0});
  await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();
  await expect(page.getByRole('radio',{name:'같은 제품 작은 사진에 표시',exact:true})).toBeChecked();await reloadDraft(page);
@@ -85,10 +85,10 @@ test('pre-generation annotation unavailability prevents the paid generation disp
 test('missing geometry cannot be accepted as a completed annotated ad and reload does not retry analysis',async({page})=>{
  const state=await setup(page,{mode:'inset',missing:true}),panel=page.getByRole('region',{name:'광고 안 규격 표시'});
  await expect(panel).toContainText('자동 배치를 완료하지 못했습니다');
- await expect(page.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true})).toBeDisabled();
+ await expect(page.getByRole('button',{name:'사용 확정',exact:true})).toBeDisabled();
  await expect(page.locator('.generation-preview-label')).toContainText('규격 표시 미완료');
  await expect(page.locator('.generation-ad-preview')).toBeVisible();await expect(page.locator('.accepted-ad')).toHaveCount(0);
- page.once('dialog',d=>d.accept());await page.reload();await page.locator('.new-ad-options>summary').click();await expect(page.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true})).toBeDisabled();expect(state.counts()).toEqual({generations:1,analyses:1});
+ page.once('dialog',d=>d.accept());await page.reload();await page.locator('.new-ad-options>summary').click();await expect(page.getByRole('button',{name:'사용 확정',exact:true})).toBeDisabled();expect(state.counts()).toEqual({generations:1,analyses:1});
 });
 
 // This verifies annotation delivery in the real review/export path, not reconstruction of fixture geometry.
@@ -96,9 +96,10 @@ test('500x350x200 direct labels are composed before acceptance and exported from
  await page.addInitScript(()=>{const original=CanvasRenderingContext2D.prototype.fillText;(window as any).__dimensionText=[];CanvasRenderingContext2D.prototype.fillText=function(text:string,...args:any[]){(window as any).__dimensionText.push(text);return (original as any).call(this,text,...args);};});
  const state=await setup(page,{mode:'main',reviewOnly:true,dimensions:['500','350','200']});
  await expect(page.getByRole('button',{name:'위치 수정',exact:true})).toBeVisible();
- await expect(page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:/^(사용 확정|Accept)$/})).toBeEnabled();
  const painted=await page.evaluate(()=>(window as any).__dimensionText);for(const value of ['500 mm','350 mm','200 mm'])expect(painted).toContain(value);
  const reviewed=await page.locator('.generation-ad-preview').getAttribute('src');await page.locator('.generation-result').screenshot({path:info.outputPath('500x350x200-direct-review-mock.png')});
- await page.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();await page.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+ await expect(page.getByRole('button',{name:/^(사용 확정|Accept)$/})).toBeEnabled();await page.getByRole('button',{name:'사용 확정',exact:true}).click();
  const exported=await png(page);expect(exported.equals(Buffer.from(reviewed!.split(',')[1],'base64'))).toBe(true);expect(state.counts()).toEqual({generations:1,analyses:1});await writeFile(info.outputPath('500x350x200-direct-labels-mock.png'),exported);
 });
+

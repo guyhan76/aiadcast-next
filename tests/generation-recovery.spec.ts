@@ -55,8 +55,8 @@ test('a definite validation rejection clears pending state so a corrected reques
 test('a lost second response hides the old accepted job and recovers only the matching request',async({page})=>{
  const {panel,state}=await recoveryApi(page,'lose-second');
  const create=panel.locator('.generate-button');
- await create.click();await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
- await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+ await create.click();await expect(panel.getByRole('button',{name:/^(사용 확정|Accept)$/})).toBeEnabled();
+ await panel.getByRole('button',{name:'사용 확정',exact:true}).click();
  await expect(panel.getByText('사용 확정한 시안',{exact:true})).toBeVisible();expect(state.acceptedIds).toEqual(['recovery_job_1']);
  const readsBefore=state.historyReads;await create.click();
  await expect(panel.getByText('결과를 확인해주세요',{exact:true})).toBeVisible();
@@ -64,10 +64,11 @@ test('a lost second response hides the old accepted job and recovers only the ma
  await expect(panel.getByRole('button',{name:'저장한 시안 다시 적용',exact:true})).toHaveCount(0);
  expect(state.historyReads).toBe(readsBefore+1);expect(state.readIds).toEqual(['recovery_job_2']);
  expect(state.posts).toBe(2);expect(state.acceptedIds).toEqual(['recovery_job_1']);
- await panel.getByRole('checkbox',{name:'상품·재질 구조·규격·가격·문구를 확인했습니다.',exact:true}).check();
- await panel.getByRole('button',{name:'사용 확정 · 1개 차감',exact:true}).click();
+ await expect(panel.getByRole('button',{name:/^(사용 확정|Accept)$/})).toBeEnabled();
+ await panel.getByRole('button',{name:'사용 확정',exact:true}).click();
  await expect(panel.getByText('사용 확정한 시안',{exact:true})).toBeVisible();expect(state.acceptedIds).toEqual(['recovery_job_1','recovery_job_2']);
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'프로젝트 백업',exact:true}).click();
  const saved=JSON.parse(await readFile((await (await download).path())!,'utf8'));expect(saved.generated.jobId).toBe('recovery_job_2');
  expect(state.posts).toBe(2);
 });
+

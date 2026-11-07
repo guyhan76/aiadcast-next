@@ -36,8 +36,8 @@ for(const language of ['ko','en'] as const)for(const mode of ['main','inset'] as
  await expect(page.locator('.generation-ad-preview')).toBeVisible();await expect.poll(()=>state.posts).toBe(1);
  await expect(page.locator('.manual-dimension-panel')).toHaveCount(0);
  expect(state.request.output.manualDimensionBase).toBe(true);expect(state.request.output.showDimensions).toBe(false);expect(state.request.output.showDimensionLines).toBe(false);expect(state.request.dimensionDisplay).toBeUndefined();
- await page.getByRole('checkbox',{name:ko?'상품·재질 구조·규격·가격·문구를 확인했습니다.':'I reviewed the product, material structure, dimensions, price and copy.',exact:true}).check();
- await page.getByRole('button',{name:ko?'사용 확정 · 1개 차감':'Accept · use 1 credit',exact:true}).click();
+ await expect(page.getByRole('button',{name:/^(사용 확정|Accept)$/})).toBeEnabled();
+ await page.getByRole('button',{name:ko?'사용 확정':'Accept',exact:true}).click();
  await expect(page.locator('.accepted-ad')).toBeVisible();
  const saved=await restoreConfirmedAnnotation(page,owner,mode);
  const png=await download(page,language);const canvas=await page.locator('.accepted-ad canvas').evaluate((c:HTMLCanvasElement)=>c.toDataURL('image/png'));expect(png.equals(Buffer.from(canvas.split(',')[1],'base64'))).toBe(true);expect(png.equals(bytes)).toBe(false);
@@ -53,24 +53,25 @@ test('unsupported server blocks manual base before generation and leaves the dra
 for(const language of ['ko','en'] as const)test(`lost response to manual export then edited request stays distinct (${language})`,async({page},info)=>{
  const {state}=await setup(page,language,'main',true,true);const ko=language==='ko';
  await expect(page.locator('.generation-ad-preview')).toBeVisible();await expect(page.locator('.manual-dimension-panel')).toHaveCount(0);expect(state.posts).toBe(1);expect(state.reads).toBeGreaterThan(0);
- await page.getByRole('checkbox',{name:ko?'상품·재질 구조·규격·가격·문구를 확인했습니다.':'I reviewed the product, material structure, dimensions, price and copy.',exact:true}).check();
- await page.getByRole('button',{name:ko?'사용 확정 · 1개 차감':'Accept · use 1 credit',exact:true}).click();const save=page.getByRole('button',{name:ko?'치수선 없이 저장 · 공유':'Save / share without dimension lines',exact:true});const capture=async()=>{const event=page.waitForEvent('download');await save.click();return readFile((await(await event).path())!);};const exported=await capture();await reloadDraft(page);expect((await capture()).equals(exported)).toBe(true);
+ await expect(page.getByRole('button',{name:/^(사용 확정|Accept)$/})).toBeEnabled();
+ await page.getByRole('button',{name:ko?'사용 확정':'Accept',exact:true}).click();const save=page.getByRole('button',{name:ko?'치수선 없이 저장 · 공유':'Save / share without dimension lines',exact:true});const capture=async()=>{const event=page.waitForEvent('download');await save.click();return readFile((await(await event).path())!);};const exported=await capture();await reloadDraft(page);expect((await capture()).equals(exported)).toBe(true);
  const originalJob=structuredClone(state.jobs[0]);await page.getByRole('button',{name:ko?'입력 내용 수정':'Edit details',exact:true}).click();const form=page.locator('.consumer-create');await expect(form).toBeVisible();
  await form.getByRole('textbox',{name:ko?'상세설명':'Description',exact:true}).fill('Changed factual material for a distinct request');
  await form.getByRole('button',{name:ko?'광고 생성':'Generate ad',exact:true}).click();await expect.poll(()=>state.posts).toBe(2);await expect(page.locator('.manual-dimension-panel')).toHaveCount(0);
  expect(state.requests[1].requestId).not.toBe(state.requests[0].requestId);expect(state.requests[1].request.productProfile.material).not.toBe(state.requests[0].request.productProfile.material);
  expect(state.jobs[0]).toEqual(originalJob);expect(state.jobs[0].state).toBe('accepted');expect(state.jobs[1].id).not.toBe(originalJob.id);expect(state.analysis).toBe(0);
- await expect(page.getByRole('button',{name:ko?'사용 확정 · 1개 차감':'Accept · use 1 credit',exact:true})).toBeDisabled();expect(state.accepts).toBe(1);
+ await expect(page.getByRole('button',{name:ko?'사용 확정':'Accept',exact:true})).toBeDisabled();expect(state.accepts).toBe(1);
 });
 
 for(const language of ['ko','en'] as const)for(const mode of ['main','inset'] as const)test(`optional dimensions allow explicit original export without endpoints (${language}, ${mode})`,async({page},info)=>{
  const {state}=await setup(page,language,mode);const ko=language==='ko';const panel=page.locator('.manual-dimension-panel');await expect(panel).toHaveCount(0);
  await expect(page.getByRole('slider')).toHaveCount(0);
- await page.getByRole('checkbox',{name:ko?'상품·재질 구조·규격·가격·문구를 확인했습니다.':'I reviewed the product, material structure, dimensions, price and copy.',exact:true}).check();
- await page.getByRole('button',{name:ko?'사용 확정 · 1개 차감':'Accept · use 1 credit',exact:true}).click();await expect(page.locator('.accepted-ad')).toBeVisible();
+ await expect(page.getByRole('button',{name:/^(사용 확정|Accept)$/})).toBeEnabled();
+ await page.getByRole('button',{name:ko?'사용 확정':'Accept',exact:true}).click();await expect(page.locator('.accepted-ad')).toBeVisible();
  const save=page.getByRole('button',{name:ko?'치수선 없이 저장 · 공유':'Save / share without dimension lines',exact:true});await expect(save).toBeEnabled();
  const capture=async()=>{const event=page.waitForEvent('download');await save.click();const file=await event;expect(file.suggestedFilename()).toContain('without-dimension-lines');return readFile((await file.path())!);};
  const png=await capture();const expected=await page.locator('.accepted-ad canvas').evaluate(async(c:HTMLCanvasElement,source)=>{const original=new Image();original.src=source;await original.decode();const output=document.createElement('canvas');output.width=c.width;output.height=c.height;output.getContext('2d')!.drawImage(original,0,0,c.width,c.height);return output.toDataURL('image/png');},'data:image/png;base64,'+bytes.toString('base64'));expect(png.equals(Buffer.from(expected.split(',')[1],'base64'))).toBe(true);
  await reloadDraft(page);expect((await capture()).equals(png)).toBe(true);expect(state.posts).toBe(1);expect(state.accepts).toBe(1);expect(state.analysis).toBe(0);
  for(const width of [320,390,768]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);await page.locator('.accepted-ad').screenshot({path:info.outputPath(`optional-${language}-${mode}-${width}.png`)});}
 });
+
