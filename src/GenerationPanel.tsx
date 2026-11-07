@@ -62,7 +62,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
  const [statusError,setStatusError]=useState(''),[checking,setChecking]=useState(false),[checked,setChecked]=useState<{at:string;same:boolean}>();const statusRequest=useRef<AbortController|null>(null),statusFingerprint=useRef('');const autoHandled=useRef('');
  const latest=useRef(project);latest.current=project;const alive=useRef(true);const pending=useRef<Pending|null>(null);const storageKey=(storageNamespace()==='guest'?'':storageNamespace()+':')+`aiadcast.pending-generation.${project.id}`;
  const generationEpoch=useRef(0);
- const queuedClick=useRef<{id:string;input:string|null;owner:string;expires:number;readinessFailed:boolean}|null>(null);
+ const queuedClick=useRef<{id:string;projectId:string;input:string|null;owner:string;expires:number;readinessFailed:boolean}|null>(null);
  const intentCallback=useRef(onAutoHandled);intentCallback.current=onAutoHandled;
  const cancelQueuedClick=()=>{if(queuedClick.current){autoHandled.current=queuedClick.current.id;queuedClick.current=null;intentCallback.current?.();}};
  useEffect(()=>()=>{generationEpoch.current++;dispatching.current=false;},[project.id,storageKey]);
@@ -221,15 +221,15 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
  // never persisted, and a read cannot manufacture an intent after cancellation.
  useEffect(()=>{
   if(!autoRequest||autoHandled.current===autoRequest)return;
-  queuedClick.current={id:autoRequest,input:recoveryInputKey(latest.current),owner:storageNamespace(),expires:Date.now()+60000,readinessFailed:false};
+  queuedClick.current={id:autoRequest,projectId:latest.current.id,input:recoveryInputKey(latest.current),owner:storageNamespace(),expires:Date.now()+60000,readinessFailed:false};
   const cancel=()=>cancelQueuedClick(),hidden=()=>{if(document.visibilityState==='hidden')cancel();};
   const timer=setTimeout(cancel,60000);
   document.addEventListener('visibilitychange',hidden);window.addEventListener('pagehide',cancel);
   return()=>{clearTimeout(timer);document.removeEventListener('visibilitychange',hidden);window.removeEventListener('pagehide',cancel);if(queuedClick.current?.id===autoRequest)queuedClick.current=null;};
- },[autoRequest,storageKey]);
+ },[autoRequest]);
  useEffect(()=>{
   const click=queuedClick.current;if(!click||click.id!==autoRequest||autoHandled.current===autoRequest)return;
-  if(click.owner!==storageNamespace()||click.input!==recoveryInputKey(project)||Date.now()>=click.expires||document.visibilityState==='hidden'||recoveryError){cancelQueuedClick();return;}
+  if(click.projectId!==project.id||click.owner!==storageNamespace()||click.input!==recoveryInputKey(project)||Date.now()>=click.expires||document.visibilityState==='hidden'||recoveryError){cancelQueuedClick();return;}
   if(statusError){
    click.readinessFailed=true;
    if(!['STATUS_TIMEOUT','CONNECTION_UNAVAILABLE','INTERNAL_ERROR','SERVICE_UNAVAILABLE'].includes(statusError))cancelQueuedClick();
