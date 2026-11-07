@@ -1,7 +1,7 @@
 // Transport-independent, injection-only prototype. No network or credentials here.
 import {randomBytes} from 'node:crypto';
 import {mkdir,open} from 'node:fs/promises';
-import {claimSql,inspectSql,dispatchReceipt,commitProofSql} from './connector-ledger.mjs';
+import {ledgerProtocol} from './connector-ledger.mjs';
 import {TRIAL_ID} from './runner.mjs';
 
 // Accept only the observed MCP envelope, never execute or interpret surrounding prose.
@@ -23,15 +23,16 @@ export function parseRows(reply){
  if(!Array.isArray(rows)||rows.length!==1||!rows[0]||typeof rows[0]!=='object'||Array.isArray(rows[0]))throw Error('INVALID_CONNECTOR_RESPONSE');
  return rows;
 }
-export async function consumeLocalOnce(directory){
+export async function consumeLocalOnce(directory,profile='synthetic'){
  await mkdir(directory,{recursive:true,mode:0o700});
- const f=await open(`${directory}/${TRIAL_ID}.dispatch-consumed`,'wx',0o600);
+ const f=await open(`${directory}/${ledgerProtocol(profile).trialId}.dispatch-consumed`,'wx',0o600);
  try{await f.writeFile('Consumed before dispatch. Never delete to retry.\n');await f.sync();}finally{await f.close();}
  const d=await open(directory,'r');try{await d.sync();}finally{await d.close();}
 }
 // execute must issue separate requests; inspect must observe a committed transaction.
 // No settlement is implicit. Caller preserves result/usage then performs reviewed settlement.
-export async function connectorOnce({execute,dispatch,consume,hash,now=Date.now,monotonic=()=>performance.now(),windowMs=10000}){
+export async function connectorOnce({execute,dispatch,consume,hash,now=Date.now,monotonic=()=>performance.now(),windowMs=10000,profile='synthetic'}){
+ const {trialId,claimSql,inspectSql,dispatchReceipt,commitProofSql}=ledgerProtocol(profile);
  if(![10000,180000].includes(windowMs))throw Error('INVALID_EXECUTION_WINDOW');
  const token=randomBytes(16).toString('hex'),started=now(),monoStarted=monotonic();
  const expired=()=>now()-started<0||now()-started>windowMs||monotonic()-monoStarted<0||monotonic()-monoStarted>windowMs;
@@ -40,7 +41,7 @@ export async function connectorOnce({execute,dispatch,consume,hash,now=Date.now,
  try{
   receipt=parseRows(await execute(claimSql(hash,token)));
   // Lost/malformed/replayed claim response stops BEFORE read/recovery.
-  if(receipt[0].newly_claimed!==true||receipt[0].nonce!==token||receipt[0].trial_id!==TRIAL_ID)return {status:'stopped'};
+  if(receipt[0].newly_claimed!==true||receipt[0].nonce!==token||receipt[0].trial_id!==trialId)return {status:'stopped'};
   const proof=parseRows(await execute(commitProofSql(receipt[0].writer_xid,token)))[0];
   if(proof.writer_xid!==receipt[0].writer_xid||proof.nonce!==token||proof.commit_status!=='committed')return {status:'stopped'};
   inspection=parseRows(await execute(inspectSql()));

@@ -1,12 +1,15 @@
 // Dedicated SQL-tool protocol, NOT a pg.Pool implementation. No tool invocation on import.
 import {OWNER,TRIAL_ID} from './runner.mjs';
 export const PROJECT='sxpzbfapbizlmsuqlrfu';
-const S='aiadcast_user_'+OWNER.replaceAll('-',''),J=TRIAL_ID,A=J+'-attempt1',R='synthetic-fixture/2.6-high-png/quality-once-v1';
+export const USER_TRIAL_ID='user-export-shoe-selective-20261107-v1';
+export function ledgerProtocol(profile='synthetic'){
+ if(!['synthetic','user-export-shoe'].includes(profile))throw Error('INVALID_TRIAL_PROFILE');
+ const S='aiadcast_user_'+OWNER.replaceAll('-',''),J=profile==='synthetic'?TRIAL_ID:USER_TRIAL_ID,A=J+'-attempt1',R=profile==='synthetic'?'synthetic-fixture/2.6-high-png/quality-once-v1':'user-provided-export/2.6-high-png/roi-shoe-v1',claimPrefix=profile==='synthetic'?'synthetic-claim:':'user-export-claim:';
 const hex=v=>{if(!/^[a-f0-9]{64}$/.test(v??''))throw Error('INVALID_DIGEST');return v;};
 const nonce=v=>{if(!/^[a-f0-9]{32}$/.test(v??''))throw Error('INVALID_NONCE');return v;};
 const transaction=body=>`BEGIN; SET LOCAL statement_timeout='5000ms'; SET LOCAL lock_timeout='1000ms'; SELECT pg_advisory_xact_lock(hashtext('aiadcast-next-budget-transactions-v1')); ${body} COMMIT;`;
 const checkOwner=`IF NOT EXISTS(SELECT 1 FROM aiadcast_accounts.users WHERE id='${OWNER}' AND role='admin' AND disabled=0) THEN RAISE EXCEPTION 'OWNER_INVALID'; END IF;`;
-export function claimSql(hash,token){hex(hash);nonce(token);return transaction(`
+function claimSql(hash,token){hex(hash);nonce(token);return transaction(`
 SELECT set_config('aiadcast_trial.receipt','false',true);
 DO $trial$ DECLARE p record; old record; used bigint; held bigint; extused bigint; extheld bigint; current_used bigint; current_held bigint; lim bigint; v_period text:=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM'); nowms bigint:=floor(extract(epoch FROM clock_timestamp())*1000); BEGIN
 ${checkOwner}
@@ -35,14 +38,14 @@ UPDATE ${S}.budgets SET limit_micros=lim,held_micros=held_micros+500000 WHERE bu
 IF NOT FOUND THEN RAISE EXCEPTION 'RESERVATION_FAILED'; END IF;
 INSERT INTO ${S}.attempts(id,job_id,period,maximum_micros,status) VALUES('${A}','${J}',v_period,500000,'pending');
 UPDATE ${S}.jobs SET status='running' WHERE id='${J}';
-INSERT INTO ${S}.credit_events VALUES('dispatch-claim:${J}','${OWNER}','${J}','synthetic-claim:${token}',1);
+INSERT INTO ${S}.credit_events VALUES('dispatch-claim:${J}','${OWNER}','${J}','${claimPrefix}${token}',1);
 PERFORM set_config('aiadcast_trial.receipt','true',true);
 END $trial$;
 SELECT '${J}' AS trial_id,'${token}' AS nonce,current_setting('aiadcast_trial.receipt')::boolean AS newly_claimed,pg_current_xact_id()::text AS writer_xid,(extract(epoch FROM clock_timestamp())*1000)::bigint AS server_issued_at;`);}
-export function inspectSql(){return `BEGIN TRANSACTION READ ONLY; SELECT (SELECT role='admin' AND disabled=0 FROM aiadcast_accounts.users WHERE id='${OWNER}') AS owner_active_admin,j.id AS trial_id,j.request_hash,j.model_revision,j.user_id,j.status AS job_status,j.expires_at,(extract(epoch FROM clock_timestamp())*1000)::bigint AS observed_at,a.id AS attempt_id,a.status AS attempt_status,a.actual_micros,a.maximum_micros,e.kind AS claim FROM ${S}.jobs j LEFT JOIN ${S}.attempts a ON a.job_id=j.id LEFT JOIN ${S}.credit_events e ON e.event_key='dispatch-claim:${J}' WHERE j.id='${J}'; ROLLBACK;`;}
-export function settleSql({hash,token,cost=null,artifact=null}){hex(hash);nonce(token);if(cost!==null&&(!Number.isSafeInteger(cost)||cost<0||cost>1e9))throw Error('INVALID_COST');if(artifact!==null)hex(artifact);if(cost===null&&artifact!==null)throw Error('UNKNOWN_COST_ARTIFACT');return transaction(`DO $trial$ DECLARE a record; j record; BEGIN
+function inspectSql(){return `BEGIN TRANSACTION READ ONLY; SELECT (SELECT role='admin' AND disabled=0 FROM aiadcast_accounts.users WHERE id='${OWNER}') AS owner_active_admin,j.id AS trial_id,j.request_hash,j.model_revision,j.user_id,j.status AS job_status,j.expires_at,(extract(epoch FROM clock_timestamp())*1000)::bigint AS observed_at,a.id AS attempt_id,a.status AS attempt_status,a.actual_micros,a.maximum_micros,e.kind AS claim FROM ${S}.jobs j LEFT JOIN ${S}.attempts a ON a.job_id=j.id LEFT JOIN ${S}.credit_events e ON e.event_key='dispatch-claim:${J}' WHERE j.id='${J}'; ROLLBACK;`;}
+function settleSql({hash,token,cost=null,artifact=null}){hex(hash);nonce(token);if(cost!==null&&(!Number.isSafeInteger(cost)||cost<0||cost>1e9))throw Error('INVALID_COST');if(artifact!==null)hex(artifact);if(cost===null&&artifact!==null)throw Error('UNKNOWN_COST_ARTIFACT');return transaction(`DO $trial$ DECLARE a record; j record; BEGIN
 SELECT * INTO j FROM ${S}.jobs WHERE id='${J}';
-IF j.id IS NULL OR j.user_id<>'${OWNER}' OR j.request_hash<>'${hash}' OR j.model_revision<>'${R}' OR NOT EXISTS(SELECT 1 FROM ${S}.admin_test_jobs WHERE job_id='${J}') OR NOT EXISTS(SELECT 1 FROM ${S}.credit_events WHERE event_key='dispatch-claim:${J}' AND kind='synthetic-claim:${token}' AND user_id='${OWNER}' AND job_id='${J}') THEN RAISE EXCEPTION 'CLAIM_MISMATCH'; END IF;
+IF j.id IS NULL OR j.user_id<>'${OWNER}' OR j.request_hash<>'${hash}' OR j.model_revision<>'${R}' OR NOT EXISTS(SELECT 1 FROM ${S}.admin_test_jobs WHERE job_id='${J}') OR NOT EXISTS(SELECT 1 FROM ${S}.credit_events WHERE event_key='dispatch-claim:${J}' AND kind='${claimPrefix}${token}' AND user_id='${OWNER}' AND job_id='${J}') THEN RAISE EXCEPTION 'CLAIM_MISMATCH'; END IF;
 SELECT * INTO a FROM ${S}.attempts WHERE id='${A}' AND job_id='${J}';
 IF a.id IS NULL OR a.maximum_micros<>500000 THEN RAISE EXCEPTION 'ATTEMPT_MISMATCH'; END IF;
 ${cost===null?`IF a.status IN ('pending','uncertain') THEN UPDATE ${S}.attempts SET status='uncertain' WHERE id='${A}'; UPDATE ${S}.jobs SET status='uncertain' WHERE id='${J}' AND status IN ('running','reserved'); END IF;`:`
@@ -57,11 +60,15 @@ ${artifact?`IF j.status IN ('reserved','running','uncertain','ready') AND j.expi
 END $trial$; SELECT '${J}' AS trial_id,'settled' AS acknowledgement,pg_current_xact_id()::text AS writer_xid;`);}
 // A claim response is permission to continue only in that uninterrupted run.
 // Lost/denied/malformed result is STOP, never infer dispatch permission from inspect.
-export function dispatchReceipt(rows,{hash,token},inspection){hex(hash);nonce(token);if(rows?.length!==1||rows[0].trial_id!==J||rows[0].nonce!==token||rows[0].newly_claimed!==true)return false;
- const r=inspection?.[0];return inspection?.length===1&&r.owner_active_admin===true&&r.trial_id===J&&r.request_hash===hash&&r.user_id===OWNER&&r.model_revision===R&&r.job_status==='running'&&Number(r.expires_at)>Number(r.observed_at)&&r.attempt_id===A&&r.attempt_status==='pending'&&Number(r.maximum_micros)===500000&&r.claim==='synthetic-claim:'+token;
+function dispatchReceipt(rows,{hash,token},inspection){hex(hash);nonce(token);if(rows?.length!==1||rows[0].trial_id!==J||rows[0].nonce!==token||rows[0].newly_claimed!==true)return false;
+ const r=inspection?.[0];return inspection?.length===1&&r.owner_active_admin===true&&r.trial_id===J&&r.request_hash===hash&&r.user_id===OWNER&&r.model_revision===R&&r.job_status==='running'&&Number(r.expires_at)>Number(r.observed_at)&&r.attempt_id===A&&r.attempt_status==='pending'&&Number(r.maximum_micros)===500000&&r.claim===claimPrefix+token;
 }
 
-export function commitProofSql(xid,token){
+function commitProofSql(xid,token){
  if(typeof xid!=='string'||! /^[1-9][0-9]{0,19}$/.test(xid)||BigInt(xid)>18446744073709551615n)throw Error('INVALID_WRITER_XID');nonce(token);
  return `BEGIN TRANSACTION READ ONLY; SELECT '${xid}' AS writer_xid,'${token}' AS nonce,pg_xact_status('${xid}'::xid8) AS commit_status; ROLLBACK;`;
 }
+
+ return Object.freeze({trialId:J,owner:OWNER,revision:R,claimPrefix,claimSql,inspectSql,settleSql,dispatchReceipt,commitProofSql});
+}
+export const {claimSql,inspectSql,settleSql,dispatchReceipt,commitProofSql}=ledgerProtocol();
