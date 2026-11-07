@@ -12,3 +12,4 @@
 @media(prefers-reduced-motion:reduce){.generation-spinner{animation:none}}
 
 .generation-review-actions>button{min-width:0;min-height:52px;padding:12px 8px;font:inherit;font-size:16px;line-height:1.25;white-space:nowrap}
+.generation-review-actions>button:only-child{grid-column:1/-1}
