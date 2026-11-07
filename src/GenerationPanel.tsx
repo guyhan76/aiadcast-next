@@ -62,7 +62,17 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
  const [statusError,setStatusError]=useState(''),[checking,setChecking]=useState(false),[checked,setChecked]=useState<{at:string;same:boolean}>();const statusRequest=useRef<AbortController|null>(null),statusFingerprint=useRef('');const autoHandled=useRef('');
  const latest=useRef(project);latest.current=project;const alive=useRef(true);const pending=useRef<Pending|null>(null);const storageKey=(storageNamespace()==='guest'?'':storageNamespace()+':')+`aiadcast.pending-generation.${project.id}`;
  const generationEpoch=useRef(0);
+ const queuedClick=useRef<{id:string;input:string|null;owner:string;expires:number;readinessFailed:boolean}|null>(null);
+ const intentCallback=useRef(onAutoHandled);intentCallback.current=onAutoHandled;
+ const cancelQueuedClick=()=>{if(queuedClick.current){autoHandled.current=queuedClick.current.id;queuedClick.current=null;intentCallback.current?.();}};
  useEffect(()=>()=>{generationEpoch.current++;dispatching.current=false;},[project.id,storageKey]);
+ // Stop local preparation on backgrounding; an already dispatched request
+ // retains its identity and recovery path instead of being resent.
+ useEffect(()=>{
+  const hidden=()=>{if(document.visibilityState==='hidden'&&!generationRequest.current){generationEpoch.current++;dispatching.current=false;setBusy(false);cancelQueuedClick();}};
+  document.addEventListener('visibilitychange',hidden);
+  return()=>document.removeEventListener('visibilitychange',hidden);
+ },[]);
  const [creditConsent,setCreditConsent]=useState(false),[defect,setDefect]=useState('');
  const [enlarged,setEnlarged]=useState(false);
  const [preview,setPreview]=useState<AdPreview|null>(null),[previewError,setPreviewError]=useState('');
@@ -207,12 +217,33 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
  const revealedPreview=useRef('');
  useEffect(()=>{if(!preview||preview.errors.length||!compatible||preview.source!==project||preview.jobId!==job?.id||revealedPreview.current===preview.jobId)return;revealedPreview.current=preview.jobId;const frame=requestAnimationFrame(()=>document.querySelector('.generation-ad-preview')?.scrollIntoView({block:'start',behavior:'smooth'}));return()=>cancelAnimationFrame(frame);},[preview,compatible,project,job?.id]);
  const previewReady=!!preview&&preview.source===project&&preview.jobId===job?.id&&!preview.errors.length;
- // A failed readiness check ends the queued click even if recovery is still pending.
- // A later read-only refresh must not revive that abandoned paid intent.
- useEffect(()=>{if(statusError&&autoRequest&&autoHandled.current!==autoRequest){autoHandled.current=autoRequest;onAutoHandled?.();}},[statusError,autoRequest,onAutoHandled]);
- // A form click is an explicit, in-memory intent. Consume it before dispatch,
- // including a same-key resumption; recovery alone never creates this intent.
- useEffect(()=>{if(!recoveryChecked||!autoRequest||autoHandled.current===autoRequest||(!status&&!statusError)||(!!pending.current&&!job&&resumableRequestId!==pending.current.requestId))return;autoHandled.current=autoRequest;onAutoHandled?.();if(status?.generation.creditQuote?.unit==='credit-v2')return;if(status?.generation.enabled&&!active)void start();},[autoRequest,status,statusError,job?.id,job?.state,recoveryChecked,active,resumableRequestId]);
+ // Keep only the current foreground click for a bounded readiness retry. It is
+ // never persisted, and a read cannot manufacture an intent after cancellation.
+ useEffect(()=>{
+  if(!autoRequest||autoHandled.current===autoRequest)return;
+  queuedClick.current={id:autoRequest,input:recoveryInputKey(latest.current),owner:storageNamespace(),expires:Date.now()+60000,readinessFailed:false};
+  const cancel=()=>cancelQueuedClick(),hidden=()=>{if(document.visibilityState==='hidden')cancel();};
+  const timer=setTimeout(cancel,60000);
+  document.addEventListener('visibilitychange',hidden);window.addEventListener('pagehide',cancel);
+  return()=>{clearTimeout(timer);document.removeEventListener('visibilitychange',hidden);window.removeEventListener('pagehide',cancel);if(queuedClick.current?.id===autoRequest)queuedClick.current=null;};
+ },[autoRequest,storageKey]);
+ useEffect(()=>{
+  const click=queuedClick.current;if(!click||click.id!==autoRequest||autoHandled.current===autoRequest)return;
+  if(click.owner!==storageNamespace()||click.input!==recoveryInputKey(project)||Date.now()>=click.expires||document.visibilityState==='hidden'||recoveryError){cancelQueuedClick();return;}
+  if(statusError){
+   click.readinessFailed=true;
+   if(!['STATUS_TIMEOUT','CONNECTION_UNAVAILABLE','INTERNAL_ERROR','SERVICE_UNAVAILABLE'].includes(statusError))cancelQueuedClick();
+   return;
+  }
+  if(!recoveryChecked||!status)return;
+  // After a failed readiness check, any pre-existing request belongs to recovery,
+  // even if a lookup offers resubmission. Never revive it as a new paid intent.
+  if(click.readinessFailed&&(pending.current||job)){cancelQueuedClick();return;}
+  if(pending.current&&!job&&resumableRequestId!==pending.current.requestId)return;
+  cancelQueuedClick();
+  if(status.generation.creditQuote?.unit==='credit-v2')return;
+  if(status.generation.enabled&&!active)void start();
+ },[autoRequest,status,statusError,project,job?.id,job?.state,recoveryChecked,recoveryError,active,resumableRequestId]);
  async function start(){
   if(dispatching.current||!recoveryChecked||!status?.generation.enabled)return;
   if(busy||active||pending.current&&!job&&resumableRequestId!==pending.current.requestId)return;
@@ -305,6 +336,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
   {!creating&&!recoveryChecked&&!recoveryError&&!pending.current&&!job&&<p role="status">{t('이전 생성 요청을 확인 중입니다. 확인 후 생성할 수 있습니다.','Checking previous requests before allowing generation.')}</p>}
   {status?.generation.creditQuote?.unit==='credit-v2'&&<div className="generation-hint"><p>{t('신규 크레딧 잔액','New credit balance')}: {status.wallet.credits?.available??0} · {t('예약 중','Reserved')}: {status.wallet.credits?.reserved??0}. {t('생성·재생성 1회 10크레딧. 정상 결과 제공 시 차감하며 단순 취향 반려·미확인은 환급하지 않습니다. 오류는 신고 후 확인하여 복원합니다.','10 credits per generation or regeneration, charged on delivery. Preference rejection or no review does not refund. Report defects for review and restoration.')}</p><label><input type="checkbox" checked={creditConsent} disabled={busy||active} onChange={e=>setCreditConsent(e.target.checked)}/>{t('이번 생성 10크레딧 차감을 확인했습니다.','I confirm the 10-credit charge for this generation.')}</label></div>}
   {(!queuedIntent)&&!creating&&!(simple&&(busy||recovering||job?.state==='running'))&&!applied&&!(simple&&(hasUsableCreative(project)||hasUsableOriginal(project)))&&(!simple||status?.generation.enabled&&!(job?.state==='ready'&&compatible)&&job?.state!=='uncertain')&&<button className="generate-button" disabled={!recoveryChecked||!status?.generation.enabled||status.generation.creditQuote?.unit==='credit-v2'&&!creditConsent||referenceBlocked||busy||active||issues.length>0||!!pending.current&&!job&&resumableRequestId!==pending.current.requestId} onClick={()=>void start()}><Sparkles size={17}/>{job?.state==='ready'&&!revisedReady?t('생성 완료 · 결과 확인','Generation complete · Review result'):pollStopped?t('결과 확인 필요','Check existing result'):job?.state==='running'?t('시안 제작 중…','Creating your visual…'):recovering?t('기존 요청 확인 중…','Checking existing request…'):status?.generation.creditQuote?.unit==='credit-v2'?t('광고 생성 · 10크레딧','Generate ad · 10 credits'):simple?(busy?t('생성 준비 중…','Preparing…'):active?t('광고 생성·확인 중','Creating or reviewing'):adminUnlimited?(job?.state==='accepted'?t('같은 상품으로 다른 시안 만들기','Create another design for this product'):t('광고 생성','Generate ad')):job?.state==='accepted'?t('같은 상품으로 다른 시안 만들기','Create another design for this product'):t('광고 생성 · 1개','Generate ad · 1 credit')):busy?t('처리 중…','Working…'):adminUnlimited?t('관리자 테스트 생성 · 차감 없음','Admin test · No credits used'):demo?t('체험 시안 만들기 · 1개','Compose demo visual · 1 credit'):project.generation.mode==='original'?t('AI 배경 요청 · 1개','Create backdrop · 1 credit'):t('AI 새 시안 요청 · 1개','Create visual · 1 credit')}</button>}
+  {autoRequest&&autoHandled.current!==autoRequest&&!busy&&!job&&<button type="button" className="generation-enlarge" onClick={cancelQueuedClick}>{t('생성 준비 취소','Cancel preparation')}</button>}
   {!simple&&queuedIntent&&<p className="generation-intent-status" role="status">{t('광고 생성을 준비하고 있습니다. 확인이 끝나면 자동으로 이어집니다.','Preparing your ad. Generation continues when checks finish.')}</p>}
   {submissionFailure&&!job&&<div className="submission-failure">{!simple&&<p role="status">{t('접수 확인이 늦어지고 있습니다. 같은 요청의 처리 상태를 확인 중이며 다시 생성하지 않습니다.','Submission confirmation is delayed. Checking the same request without generating again.')}</p>}<details><summary>{t('접수 확인 상세','Submission details')}</summary><p>POST /api/generations · {submissionFailure.status===null?t('HTTP 응답 없음','No HTTP response'):`HTTP ${submissionFailure.status}`} · {submissionFailure.code}</p><time dateTime={submissionFailure.at}>{submissionFailure.at}</time></details></div>}
   {recoveryError&&<p role="alert">{recoveryError}</p>}

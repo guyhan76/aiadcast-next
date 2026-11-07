@@ -18,7 +18,7 @@ async function setup(page:Page,language:'ko'|'en'='ko',admin=false){
  const job={id:pending.jobId,projectId:p.id,requestId:pending.requestId,state:'ready',mode:'creative',sourceHash:hash,createdAt:'2026-10-25T00:00:00.000Z',model:'mock',artifactId:hash,artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+bytes.toString('base64'),width:12,height:12,role:'creative'},errorCode:null,composition:'complete-ad',compositionKey:completeAdKey(p),requestFingerprint:createHash('sha256').update(generationMatchKey(buildGenerationRequest(p))).digest('hex')};
  const state={recommendationRequests:0,statusReads:0,holdStatus:false,reads:0,historyReads:0,writes:0,failures:0,errorStatus:503,network:false,hold:false,job,historyJobs:null as null|typeof job[],lookup:'unsupported',lookupReads:0,posted:[] as any[],postConflict:false,postNetwork:false,postError:0,postHold:false,postInvalid:false};
  await page.route('**/api/**',async r=>{
- const path=new URL(r.request().url()).pathname;if(path==='/api/auth/session')return r.fallback();if(path.includes('/recommendations')){state.recommendationRequests++;return r.fulfill({status:503,json:{error:{code:'RECOMMENDATIONS_DISABLED'}}});}if(r.request().method()!=='GET')state.writes++;
+ const path=new URL(r.request().url()).pathname;if(['/api/auth/session','/api/account/capabilities'].includes(path))return r.fallback();if(path.includes('/recommendations')){state.recommendationRequests++;return r.fulfill({status:503,json:{error:{code:'RECOMMENDATIONS_DISABLED'}}});}if(r.request().method()!=='GET')state.writes++;
  if(path==='/api/status'){state.statusReads++;while(state.holdStatus&&!page.isClosed())await new Promise(resolve=>setTimeout(resolve,20));return r.fulfill({json:{generation:{enabled:true,model:'mock',photoPurposes:true,...(admin?{creditQuote:{unit:'legacy-ticket',amount:0,policy:'legacy-accept-v1'}}:{})},wallet,budget:{limitMicros:5000000,spentMicros:0,heldMicros:500000}}});}
  if(path.endsWith('/accept')){state.job={...state.job,state:'accepted'};return r.fulfill({json:{job:state.job,wallet}});}
  if(path.startsWith('/api/generation-requests/')){state.lookupReads++;if(state.lookup==='unsupported')return r.fulfill({status:404,json:{error:{code:'NOT_FOUND'}}});return r.fulfill({json:{version:1,requestId:decodeURIComponent(path.split('/').at(-1)!),projectId:state.lookup==='wrong-project'?'wrong-project':p.id,state:state.lookup==='found'?'found':'not-recorded',jobId:state.lookup==='found'?job.id:null}});}
@@ -96,7 +96,7 @@ test('a failed form dispatch consumes intent and missing lookup cannot automatic
  const s=await setup(page);s.state.historyJobs=[];s.state.lookup='not-recorded';s.state.postNetwork=true;const {jobId,...pending}=s.pending;
  await restoreOwnedWorkspace(page,s.p,s.owner,'studio',pending);await expect.poll(()=>s.state.lookupReads).toBe(1);
  await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await page.locator('.consumer-create').getByRole('button',{name:'광고 생성',exact:true}).click();
- await expect.poll(()=>s.state.lookupReads).toBeGreaterThanOrEqual(3);await expect(page.locator('.generate-button')).toBeDisabled();expect(s.state.posted).toHaveLength(1);expect(s.state.posted[0].requestId).toBe(s.pending.requestId);
+ await expect.poll(()=>s.state.lookupReads).toBeGreaterThanOrEqual(3);await expect(page.locator('.generate-button:enabled')).toHaveCount(0);await expect(page.locator('.generation-progress')).toBeVisible();expect(s.state.posted).toHaveLength(1);expect(s.state.posted[0].requestId).toBe(s.pending.requestId);
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.reload();await expect.poll(()=>s.state.lookupReads).toBeGreaterThanOrEqual(4);expect(s.state.posted).toHaveLength(1);
 });
 for(const language of ['ko','en'] as const)test(`unrecorded pending request waits for an explicit click and keeps its original key (${language})`,async({page})=>{
@@ -172,16 +172,15 @@ test('leaving while explicit form intent waits for lookup cancels it across back
  await page.getByRole('link',{name:'aiadcast 홈',exact:true}).click();await expect(page).toHaveURL(/#home$/);s.state.hold=false;await page.goBack();await expect(page).toHaveURL(/#studio$/);await expect.poll(()=>s.state.lookupReads).toBeGreaterThanOrEqual(2);await expect(page.locator('.generate-button')).toBeEnabled();expect(s.state.posted).toHaveLength(0);
 });
 
-for(const language of ['ko','en'] as const)for(const delayedRecovery of [false,true])test(`readiness timeout cancels queued intent even with delayed recovery (${language}, ${delayedRecovery})`,async({page})=>{
- const s=await setup(page,language);s.state.historyJobs=[];await restoreOwnedWorkspace(page,s.p,s.owner,'studio');await expect.poll(()=>s.state.historyReads).toBe(1);
+for(const language of ['ko','en'] as const)for(const [elapsed,delayedRecovery] of [[16000,false],[16000,true],[30000,false],[45000,false]] as const)test(`readiness timeout retains current click through explicit retry (${language}, ${elapsed}, ${delayedRecovery})`,async({page})=>{
+ const s=await setup(page,language);s.state.historyJobs=[];await restoreOwnedWorkspace(page,s.p,s.owner,'studio');await expect.poll(()=>s.state.historyReads).toBeGreaterThan(0);
  await page.getByRole('button',{name:language==='ko'?'입력 내용 수정':'Edit details',exact:true}).click();
  await page.clock.install();s.state.holdStatus=true;s.state.hold=delayedRecovery;const before=s.state.statusReads;
- await page.locator('.consumer-create').getByRole('button',{name:language==='ko'?'광고 생성':'Generate ad',exact:true}).click();await expect.poll(()=>s.state.statusReads).toBeGreaterThan(before);await page.clock.fastForward(16000);
+ await page.locator('.consumer-create').getByRole('button',{name:language==='ko'?'광고 생성':'Generate ad',exact:true}).click();await expect.poll(()=>s.state.statusReads).toBeGreaterThan(before);await page.clock.fastForward(elapsed);
  await expect(page.getByText(language==='ko'?'생성 준비 상태를 15초 안에 확인하지 못했습니다. 다시 확인해주세요.':'Could not check generation readiness within 15 seconds. Please check again.',{exact:true})).toBeVisible();
  expect(s.state.posted).toHaveLength(0);s.state.hold=false;s.state.holdStatus=false;
  const retry=page.getByRole('button',{name:language==='ko'?'다시 확인':'Check again',exact:true});await retry.evaluate((b:HTMLButtonElement)=>{b.click();b.click();});
- await expect(page.locator('.generate-button')).toBeEnabled();await page.clock.fastForward(2000);expect(s.state.posted).toHaveLength(0);
- await page.locator('.generate-button').click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.posted).toHaveLength(1);
+ await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.posted).toHaveLength(1);
  await page.reload();await expect.poll(()=>s.state.reads).toBeGreaterThan(0);expect(s.state.posted).toHaveLength(1);
 });
 
@@ -224,7 +223,7 @@ for(const failure of ['timeout','invalid'] as const)test(`submission ${failure} 
  s.state.lookup='found';s.state.job.requestId=s.state.posted[0].requestId;await page.reload();await expect(page.locator('.generation-ad-preview')).toBeVisible();await expect(page.locator('.submission-failure')).toHaveCount(0);expect(s.state.posted).toHaveLength(1);
 });
 
-test('leaving after a form click while local preparation is pending cannot dispatch later',async({page})=>{
+for(const exit of ['leave','pause'] as const)test(`${exit} after a form click while local preparation is pending cannot dispatch later`,async({page})=>{
  const s=await setup(page,'ko',true);s.state.historyJobs=[];
  await restoreOwnedWorkspace(page,s.p,s.owner,'studio');await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();
  await page.evaluate(()=>{
@@ -241,7 +240,8 @@ test('leaving after a form click while local preparation is pending cannot dispa
  });
  await page.locator('.consumer-create').getByRole('button',{name:'광고 생성',exact:true}).click();
  await expect.poll(()=>page.evaluate(()=>(window as any).releasePreparation.length)).toBeGreaterThan(0);
- await page.getByRole('link',{name:'aiadcast 홈',exact:true}).click();await expect(page).toHaveURL(/#home$/);
+ if(exit==='leave'){await page.getByRole('link',{name:'aiadcast 홈',exact:true}).click();await expect(page).toHaveURL(/#home$/);}
+ else await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'));Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.dispatchEvent(new Event('visibilitychange'));});
  await page.evaluate(()=>{for(const release of (window as any).releasePreparation)release();});
  await page.waitForTimeout(250);expect(s.state.posted).toHaveLength(0);
 });
@@ -309,4 +309,30 @@ for(const language of ['ko','en'] as const)test(`single progress stops on offlin
 });
 test('legacy timed-out marker has the same progress and never starts a POST on reopen',async({page})=>{
  const s=await setup(page,'ko',true);s.state.historyJobs=[];s.state.lookup='not-recorded';const {jobId,...pending}=s.pending;await restoreOwnedWorkspace(page,s.p,s.owner,'studio',{...pending,submissionFailure:{status:null,code:'SUBMISSION_TIMEOUT',at:'2026-10-26T00:00:00.000Z'}});await expect.poll(()=>s.state.lookupReads).toBeGreaterThan(0);await expect(page.locator('.generation-progress')).toHaveText('광고 이미지를 만들고 있어요');await expect(page.locator('.generation-panel [role="status"]')).toHaveCount(1);expect(s.state.posted).toHaveLength(0);
+});
+
+for(const end of ['cancel','hidden','leave','expired','account','edit'] as const)test(`readiness retry cannot revive ${end} intent`,async({page})=>{
+ const s=await setup(page,'ko',true);s.state.historyJobs=[];
+ await restoreOwnedWorkspace(page,s.p,s.owner,'studio');await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();
+ await page.clock.install();s.state.holdStatus=true;
+ await page.locator('.consumer-create').getByRole('button',{name:'광고 생성',exact:true}).click();
+ await expect(page.getByRole('button',{name:'생성 준비 취소',exact:true})).toBeVisible();
+ await page.clock.fastForward(16000);expect(s.state.posted).toHaveLength(0);
+ if(end==='cancel')await page.getByRole('button',{name:'생성 준비 취소',exact:true}).click();
+ if(end==='hidden')await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'));Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.dispatchEvent(new Event('visibilitychange'));window.dispatchEvent(new Event('focus'));});
+ if(end==='leave'){await page.getByRole('link',{name:'aiadcast 홈',exact:true}).click();await page.goBack();}
+ if(end==='edit'){await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await page.getByLabel('상품명',{exact:true}).fill('새 상품');}
+ if(end==='expired')await page.clock.fastForward(45000);
+ if(end==='account'){const other=mockSession('other-readiness-owner','admin','b');await authenticatedSession(page,other,{seed:false});await page.evaluate(session=>{sessionStorage.setItem('aiadcast.beta-session',JSON.stringify(session));window.dispatchEvent(new CustomEvent('aiadcast-session-change',{detail:{returnPage:'home'}}));},other);}
+ s.state.holdStatus=false;
+ const retry=page.getByRole('button',{name:'다시 확인',exact:true});if(await retry.count())await retry.click();
+ await page.waitForTimeout(300);expect(s.state.posted).toHaveLength(0);
+});
+
+test('readiness retry with a prior unrecorded key never resubmits automatically',async({page})=>{
+ const s=await setup(page,'ko',true);s.state.historyJobs=[];s.state.lookup='not-recorded';const {jobId,...pending}=s.pending;
+ await restoreOwnedWorkspace(page,s.p,s.owner,'studio',pending);await expect.poll(()=>s.state.lookupReads).toBeGreaterThan(0);await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();
+ await page.clock.install();s.state.holdStatus=true;await page.locator('.consumer-create').getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByRole('button',{name:'생성 준비 취소',exact:true})).toBeVisible();await page.clock.fastForward(16000);
+ s.state.holdStatus=false;await page.getByRole('button',{name:'다시 확인',exact:true}).click();await expect(page.locator('.generate-button')).toBeEnabled();expect(s.state.posted).toHaveLength(0);
+ expect(await page.evaluate(({owner,id})=>JSON.parse(localStorage.getItem(owner+':aiadcast.pending-generation.'+id)!).requestId,{owner:s.owner,id:s.p.id})).toBe(pending.requestId);
 });
