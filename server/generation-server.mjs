@@ -56,6 +56,8 @@ export function createGenerationHttpServer({ service, allowedOrigins = DEFAULT_O
       }
       const url = new URL(req.url, ownOrigin);
       if (req.method === 'GET' && url.pathname === '/api/status') { sendJson(res, 200, service.status(), origin); return; }
+      const selectiveLookup=/^\/api\/selective-edits\/requests\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
+      if(req.method==='GET'&&selectiveLookup){sendJson(res,200,service.selectiveRequestStatus(selectiveLookup[1],url.searchParams.get('sourceJobId')),origin);return;}
       if (req.method === 'GET' && url.pathname === '/api/generations') { sendJson(res, 200, service.history(url.searchParams.has('projectId') ? url.searchParams.get('projectId') : undefined), origin); return; }
       const requestLookup = /^\/api\/generation-requests\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
       if (req.method === 'GET' && requestLookup) { sendJson(res, 200, service.requestStatus(requestLookup[1],url.searchParams.get('projectId')), origin); return; }
@@ -68,6 +70,7 @@ export function createGenerationHttpServer({ service, allowedOrigins = DEFAULT_O
         inFlightBodies++;
         try { body = await readJson(req); } finally { inFlightBodies--; }
         if (url.pathname === '/api/generations' && body?.request?.output?.exactText !== undefined) throw new ApiFailure('PAID_TRIAL_NOT_APPROVED',403);
+        if (url.pathname === '/api/selective-edits') { sendJson(res,202,await service.createSelectiveEdit(body),origin);return; }
         if (url.pathname === '/api/generations') { sendJson(res, 202, await service.create(body), origin); return; }
         if (route?.[2] === 'accept') { sendJson(res, 200, service.accept(route[1], body?.artifactId, body?.dimensionReview), origin); return; }
         if (route?.[2] === 'report') { sendJson(res, 200, service.reportDefect(route[1], body), origin); return; }

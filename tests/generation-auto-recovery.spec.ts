@@ -268,7 +268,7 @@ for(const language of ['ko','en'] as const)for(const clientTimeout of [26000,300
  s.state.job=completed;for(let i=0;i<10&&!await page.locator('.generation-ad-preview').count();i++){await page.clock.fastForward(1001);await new Promise(resolve=>setTimeout(resolve,30));}
  await expect(page.locator('.generation-ad-preview')).toBeVisible();await expect(page.locator('.generation-progress')).toHaveCount(0);
  await expect(page.locator('.submission-failure')).toHaveCount(0);expect(s.state.posted).toHaveLength(1);expect(s.state.reads).toBeGreaterThan(0);
- await page.reload();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.posted).toHaveLength(1);await expect(page.getByRole('button',{name:'사용 확정',exact:true})).toBeEnabled();await page.locator('.generation-review-actions button').first().click();const save=page.locator('.accepted-ad > .primary-action');await expect(save).toBeEnabled();const download=page.waitForEvent('download');await save.click();expect((await download).suggestedFilename()).toMatch(/\.png$/);expect(s.state.posted).toHaveLength(1);expect(s.state.recommendationRequests).toBe(0);await expect(page.locator('.marketing-analysis,.ai-recommendation,.marketing-keywords')).toHaveCount(0);
+ await page.reload();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(s.state.posted).toHaveLength(1);await expect(page.getByRole('button',{name:language==='ko'?'사용 확정':'Accept',exact:true})).toBeEnabled();await page.locator('.generation-review-actions button').first().click();const save=page.locator('.accepted-ad > .primary-action');await expect(save).toBeEnabled();const download=page.waitForEvent('download');await save.click();expect((await download).suggestedFilename()).toMatch(/\.png$/);expect(s.state.posted).toHaveLength(1);expect(s.state.recommendationRequests).toBe(0);await expect(page.locator('.marketing-analysis,.ai-recommendation,.marketing-keywords')).toHaveCount(0);
 });
 test('unresolved admission stops bounded reads, preserves key and permits only recovery after reopening',async({page})=>{
  const s=await setup(page,'ko',true);s.state.historyJobs=[];s.state.lookup='not-recorded';
@@ -384,15 +384,15 @@ for(const gate of ['budget','auth','credits'] as const)test(`automatic readiness
 });
 
 
-for(const language of ['ko','en'] as const)test(`simple review has only two decisions and accepts without a checkbox (${language})`,async({page})=>{
+for(const language of ['ko','en'] as const)test(`simple review exposes three actions and accepts without a checkbox (${language})`,async({page})=>{
  const s=await setup(page,language,true),panel=await s.open();
  const accept=panel.getByRole('button',{name:language==='ko'?'사용 확정':'Accept',exact:true});
  await expect(accept).toBeEnabled();
  await expect(panel.locator('.generation-checklist,.generation-review')).toHaveCount(0);
- await expect(panel.locator('.generation-review-actions button')).toHaveText(language==='ko'?['사용 확정','시안 반려']:['Accept','Reject visual']);
+ await expect(panel.locator('.generation-review-actions button')).toHaveText(language==='ko'?['사용 확정','부분 수정 · 준비 중','시안 반려']:['Accept','Edit selected area · Coming soon','Reject visual']);
  await expect(page.locator('.new-product-action,.result-back')).toHaveCount(0);
  const boxes=await panel.locator('.generation-review-actions button').evaluateAll(nodes=>nodes.map(node=>{const r=node.getBoundingClientRect();return {top:r.top,height:r.height,width:r.width,scrollWidth:node.scrollWidth,clientWidth:node.clientWidth};}));
- expect(boxes[0].top).toBe(boxes[1].top);expect(boxes.every(b=>b.height>=48&&b.scrollWidth<=b.clientWidth)).toBe(true);
+ expect(boxes.every(b=>b.height>=48&&b.scrollWidth<=b.clientWidth)).toBe(true);
  await accept.click();await expect(page.locator('.accepted-ad')).toBeVisible();expect(s.state.acceptPosts).toBe(1);expect(s.state.posted).toHaveLength(0);
 });
 for(const language of ['ko','en'] as const)test(`simple rejection returns directly to retained inputs and photos (${language})`,async({page})=>{
