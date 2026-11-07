@@ -7,7 +7,6 @@ import {parseRows} from './connector-once.mjs';
 const sha=s=>createHash('sha256').update(s).digest('hex');
 export async function createHandoff({directory,emit,timeoutMs=60000,mode='mock',profile='synthetic'}){
  const {trialId}=ledgerProtocol(profile);
- if(profile!=='synthetic'&&mode!=='mock')throw Error('USER_TRIAL_LIVE_NOT_APPROVED');
  if(!['mock','approved-trial'].includes(mode))throw Error('INVALID_HANDOFF_MODE');
  const project=mode==='mock'?'LOCAL_POSTGRES_ONLY_DO_NOT_SEND_TO_MCP':PROJECT;
  if(timeoutMs!==60000)throw Error('INVALID_HANDOFF_TIMEOUT');

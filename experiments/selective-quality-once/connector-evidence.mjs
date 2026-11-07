@@ -68,7 +68,7 @@ async function reconcileEvidence({directory,execute}){
  try{
   const after=parseRows(await execute(inspectSql()))[0];
   if(after.trial_id!==TRIAL_ID||after.claim!==claimPrefix+r.token||after.user_id!==OWNER||after.request_hash!==r.hash)return {state:'settlement-uncertain'};
-  if(r.cost!==null&&!await provenSettlement(directory,execute,r))return {state:'settlement-uncertain'};
+  if(!await provenSettlement(directory,execute,r))return {state:'settlement-uncertain'};
   return {state:r.cost===null?(after.attempt_status==='uncertain'?'unknown-hold-retained':'settlement-uncertain'):(after.attempt_status==='completed'&&Number(after.actual_micros)===r.cost?'settled':'settlement-uncertain')};
  }catch{return {state:'settlement-uncertain'};}
 }

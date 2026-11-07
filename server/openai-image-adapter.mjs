@@ -205,6 +205,13 @@ export class OpenAIImageAdapter {
     let response;try{response=await this.fetchImpl('https://api.openai.com/v1/images/edits',{method:'POST',headers:{Authorization:`Bearer ${this.apiKey}`,'X-Client-Request-Id':attemptId},body,redirect:'error',signal:AbortSignal.timeout(this.timeoutMs)});}catch{throw new ProviderFailure('PROVIDER_UNCERTAIN');}
     if(!response.ok){const e=await providerHttpError(response);throw new ProviderFailure(e.code,{uncertain:![400,401,403,404,413,422,429].includes(response.status),providerStatus:response.status});}
     const result=await responseJsonLimited(response),raw=result?.data?.[0]?.b64_json;
+    const observedCost=imageUsageCost(result?.usage);
+    if(observedCost&&typeof this.onSelectiveUsage==='function'){
+      // Opt-in operator evidence hook; expose validated numeric usage only, no
+      // provider body, headers or credentials. Fail closed if durable storage fails.
+      const usage={input_tokens:observedCost.inputTextTokens+observedCost.inputImageTokens,input_tokens_details:{text_tokens:observedCost.inputTextTokens,image_tokens:observedCost.inputImageTokens},output_tokens:observedCost.outputTokens};
+      await this.onSelectiveUsage({usage,cost:observedCost});
+    }
     if(result.data?.length!==1||typeof raw!=='string'||!/^[A-Za-z0-9+/]+={0,2}$/.test(raw))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
     const bytes=Buffer.from(raw,'base64');if(bytes.toString('base64')!==raw)throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
     let meta;try{meta=await validateImage(bytes,'image/png',{maximumPixels:8294400,maximumBytes:MAX_GENERATED_IMAGE_BYTES});}catch{throw new ProviderFailure('PROVIDER_INVALID_IMAGE');}
