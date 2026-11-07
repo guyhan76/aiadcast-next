@@ -75,3 +75,13 @@ ROLLBACK;
 ```
 
 Only exact nonce/XID and committed pass. Null, in progress, aborted, malformed or lost response stops; do not issue a second writer request. No cleanup row exists; XID allocation cannot be undone and is ordinary small DB transaction overhead. Requires existing query privilege and EXECUTE only, no new grants. No provider/image charge; database resource consumption is nonzero and plan-dependent, not a guaranteed billing quote. No customer budget/hold/credits change. This checks hosted transaction completion observation, NOT application-row visibility or a universal exactly-once transport promise. A real claim still requires all identity/budget/one-shot gates. No canary was run this turn.
+
+## Hosted canary parser correction and read-only confirmation
+
+The single authorized writer canary returned nonce 0610751fb7b577983bdc1e40f488eff4 / XID8644. The old parser failed because the warning prose mentions the same opening delimiter. No writer retry or provider call occurred. The original response remains unchanged outside git at /workspace/selective-trial-evidence/connector-canary-20261107/result.json (SHA256 213fc675db5361651189750cded2b9a2ca63c7095c0e6ed87c3d755b85f2e5f6). The source fixture contains exactly its response object, no secrets.
+
+Parser now recognizes standalone delimiter lines only, allows the exact observed warning prefix/suffix or a bare body, and rejects duplicates, malformed/mismatched delimiters, unknown prose, extra JSON/data, multiple/invalid rows, isError and unexpected content. It never executes warning prose. Caller separately checks exact nonce and XID. Independent reviewer verified original-response fixture equality and independently ran all nine parser tests successfully.
+
+After offline original-response verification, one separately authorized READ ONLY query inspected existing XID8644 and returned committed with the exact nonce. The corrected parser and caller assertions verified it. No new writer XID was requested, no application/ledger/DDL/permissions changed, no provider call. The proof response is preserved outside git as readonly-proof.json in the same evidence directory. This proves this canary's completion only, not a perpetual connector guarantee or a successful image trial.
+
+Final regression: 51 passed, 0 failed/skipped, --test-concurrency=1 across selective-connector-parser, selective-connector-ledger, selective-quality-once and selective-quality-preflight. Includes 9 parser tests plus previous42. Isolated PostgreSQL container stopped. Paid one-image trial remains unused. Parser changes remain local pending preservation instruction.
