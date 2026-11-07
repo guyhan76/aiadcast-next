@@ -73,9 +73,9 @@ export async function reconcileEvidence({directory,execute}){
 }
 // Bridge only a completed in-memory one-shot outcome to durable evidence.
 // Never receives a dispatch callback; a failed archive is not a reason to regenerate.
-export async function archiveOutcome({outcome,directory,hash,execute}){
+export async function archiveOutcome({outcome,directory,hash,execute,providerRequestId=null}){
  if(!['responded','uncertain'].includes(outcome?.status))return {state:'not-dispatched'};
- try{await recordResponse({directory,hash,token:outcome.token,result:outcome.status==='responded'?outcome.result:null});}
+ try{await recordResponse({directory,hash,token:outcome.token,result:outcome.status==='responded'?outcome.result:null,providerRequestId});}
  catch{return {state:'archive-incomplete-hold-retained'};}
  return reconcileEvidence({directory,execute});
 }

@@ -38,8 +38,8 @@ UPDATE ${S}.jobs SET status='running' WHERE id='${J}';
 INSERT INTO ${S}.credit_events VALUES('dispatch-claim:${J}','${OWNER}','${J}','synthetic-claim:${token}',1);
 PERFORM set_config('aiadcast_trial.receipt','true',true);
 END $trial$;
-SELECT '${J}' AS trial_id,'${token}' AS nonce,current_setting('aiadcast_trial.receipt')::boolean AS newly_claimed,pg_current_xact_id()::text AS writer_xid;`);}
-export function inspectSql(){return `BEGIN TRANSACTION READ ONLY; SELECT j.id AS trial_id,j.request_hash,j.model_revision,j.user_id,j.status AS job_status,j.expires_at,(extract(epoch FROM clock_timestamp())*1000)::bigint AS observed_at,a.id AS attempt_id,a.status AS attempt_status,a.actual_micros,a.maximum_micros,e.kind AS claim FROM ${S}.jobs j LEFT JOIN ${S}.attempts a ON a.job_id=j.id LEFT JOIN ${S}.credit_events e ON e.event_key='dispatch-claim:${J}' WHERE j.id='${J}'; ROLLBACK;`;}
+SELECT '${J}' AS trial_id,'${token}' AS nonce,current_setting('aiadcast_trial.receipt')::boolean AS newly_claimed,pg_current_xact_id()::text AS writer_xid,(extract(epoch FROM clock_timestamp())*1000)::bigint AS server_issued_at;`);}
+export function inspectSql(){return `BEGIN TRANSACTION READ ONLY; SELECT (SELECT role='admin' AND disabled=0 FROM aiadcast_accounts.users WHERE id='${OWNER}') AS owner_active_admin,j.id AS trial_id,j.request_hash,j.model_revision,j.user_id,j.status AS job_status,j.expires_at,(extract(epoch FROM clock_timestamp())*1000)::bigint AS observed_at,a.id AS attempt_id,a.status AS attempt_status,a.actual_micros,a.maximum_micros,e.kind AS claim FROM ${S}.jobs j LEFT JOIN ${S}.attempts a ON a.job_id=j.id LEFT JOIN ${S}.credit_events e ON e.event_key='dispatch-claim:${J}' WHERE j.id='${J}'; ROLLBACK;`;}
 export function settleSql({hash,token,cost=null,artifact=null}){hex(hash);nonce(token);if(cost!==null&&(!Number.isSafeInteger(cost)||cost<0||cost>1e9))throw Error('INVALID_COST');if(artifact!==null)hex(artifact);if(cost===null&&artifact!==null)throw Error('UNKNOWN_COST_ARTIFACT');return transaction(`DO $trial$ DECLARE a record; j record; BEGIN
 SELECT * INTO j FROM ${S}.jobs WHERE id='${J}';
 IF j.id IS NULL OR j.user_id<>'${OWNER}' OR j.request_hash<>'${hash}' OR j.model_revision<>'${R}' OR NOT EXISTS(SELECT 1 FROM ${S}.admin_test_jobs WHERE job_id='${J}') OR NOT EXISTS(SELECT 1 FROM ${S}.credit_events WHERE event_key='dispatch-claim:${J}' AND kind='synthetic-claim:${token}' AND user_id='${OWNER}' AND job_id='${J}') THEN RAISE EXCEPTION 'CLAIM_MISMATCH'; END IF;
@@ -58,7 +58,7 @@ END $trial$; SELECT '${J}' AS trial_id,'settled' AS acknowledgement,pg_current_x
 // A claim response is permission to continue only in that uninterrupted run.
 // Lost/denied/malformed result is STOP, never infer dispatch permission from inspect.
 export function dispatchReceipt(rows,{hash,token},inspection){hex(hash);nonce(token);if(rows?.length!==1||rows[0].trial_id!==J||rows[0].nonce!==token||rows[0].newly_claimed!==true)return false;
- const r=inspection?.[0];return inspection?.length===1&&r.trial_id===J&&r.request_hash===hash&&r.user_id===OWNER&&r.model_revision===R&&r.job_status==='running'&&Number(r.expires_at)>Number(r.observed_at)&&r.attempt_id===A&&r.attempt_status==='pending'&&Number(r.maximum_micros)===500000&&r.claim==='synthetic-claim:'+token;
+ const r=inspection?.[0];return inspection?.length===1&&r.owner_active_admin===true&&r.trial_id===J&&r.request_hash===hash&&r.user_id===OWNER&&r.model_revision===R&&r.job_status==='running'&&Number(r.expires_at)>Number(r.observed_at)&&r.attempt_id===A&&r.attempt_status==='pending'&&Number(r.maximum_micros)===500000&&r.claim==='synthetic-claim:'+token;
 }
 
 export function commitProofSql(xid,token){

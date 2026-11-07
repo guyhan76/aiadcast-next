@@ -31,8 +31,11 @@ export async function consumeLocalOnce(directory){
 }
 // execute must issue separate requests; inspect must observe a committed transaction.
 // No settlement is implicit. Caller preserves result/usage then performs reviewed settlement.
-export async function connectorOnce({execute,dispatch,consume,hash,now=Date.now}){
- const token=randomBytes(16).toString('hex'),started=now();
+export async function connectorOnce({execute,dispatch,consume,hash,now=Date.now,monotonic=()=>performance.now(),windowMs=10000}){
+ if(![10000,180000].includes(windowMs))throw Error('INVALID_EXECUTION_WINDOW');
+ const token=randomBytes(16).toString('hex'),started=now(),monoStarted=monotonic();
+ const expired=()=>now()-started<0||now()-started>windowMs||monotonic()-monoStarted<0||monotonic()-monoStarted>windowMs;
+ const validServerTime=rows=>windowMs===10000||(Number.isSafeInteger(Number(receipt?.[0]?.server_issued_at))&&Number.isSafeInteger(Number(rows?.[0]?.observed_at))&&Number(rows[0].observed_at)>=Number(receipt[0].server_issued_at)&&Number(rows[0].observed_at)-Number(receipt[0].server_issued_at)<=windowMs);
  let receipt,inspection;
  try{
   receipt=parseRows(await execute(claimSql(hash,token)));
@@ -41,10 +44,10 @@ export async function connectorOnce({execute,dispatch,consume,hash,now=Date.now}
   const proof=parseRows(await execute(commitProofSql(receipt[0].writer_xid,token)))[0];
   if(proof.writer_xid!==receipt[0].writer_xid||proof.nonce!==token||proof.commit_status!=='committed')return {status:'stopped'};
   inspection=parseRows(await execute(inspectSql()));
-  if(now()-started<0||now()-started>10000||!dispatchReceipt(receipt,{hash,token},inspection))return {status:'stopped'};
+  if(expired()||!validServerTime(inspection)||!dispatchReceipt(receipt,{hash,token},inspection))return {status:'stopped'};
   await consume(); // exclusive durable marker; failure permanently stops this invocation
   inspection=parseRows(await execute(inspectSql()));
-  if(now()-started<0||now()-started>10000||!dispatchReceipt(receipt,{hash,token},inspection))return {status:'stopped'};
+  if(expired()||!validServerTime(inspection)||!dispatchReceipt(receipt,{hash,token},inspection))return {status:'stopped'};
  }catch{return {status:'stopped'};}
  try{return {status:'responded',token,result:await dispatch()};}
  catch{return {status:'uncertain',token};} // Never retry, including definite transport errors.
