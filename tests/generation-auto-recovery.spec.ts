@@ -320,7 +320,7 @@ for(const end of ['cancel','hidden','leave','expired','account','edit'] as const
  await page.clock.fastForward(16000);expect(s.state.posted).toHaveLength(0);
  if(end==='cancel')await page.getByRole('button',{name:'생성 준비 취소',exact:true}).click();
  if(end==='hidden')await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'));Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.dispatchEvent(new Event('visibilitychange'));window.dispatchEvent(new Event('focus'));});
- if(end==='leave'){await page.getByRole('link',{name:'aiadcast 홈',exact:true}).click();await page.goBack();}
+ if(end==='leave'){await page.getByRole('link',{name:'aiadcast 홈',exact:true}).click();await expect(page.locator('.creation-home')).toBeVisible();const reads=s.state.statusReads;await page.goBack();await expect.poll(()=>s.state.statusReads).toBeGreaterThan(reads);await page.clock.fastForward(16000);await expect(page.getByRole('button',{name:'상태만 다시 확인',exact:true})).toBeVisible();}
  if(end==='edit'){await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await page.getByLabel('상품명',{exact:true}).fill('새 상품');}
  if(end==='expired')await page.clock.fastForward(45000);
  if(end==='account'){const other=mockSession('other-readiness-owner','admin','b');await authenticatedSession(page,other,{seed:false});await page.evaluate(session=>{sessionStorage.setItem('aiadcast.beta-session',JSON.stringify(session));window.dispatchEvent(new CustomEvent('aiadcast-session-change',{detail:{returnPage:'home'}}));},other);}
