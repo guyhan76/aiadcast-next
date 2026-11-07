@@ -1,7 +1,7 @@
 // Transport-independent, injection-only prototype. No network or credentials here.
 import {randomBytes} from 'node:crypto';
 import {mkdir,open} from 'node:fs/promises';
-import {claimSql,inspectSql,dispatchReceipt} from './connector-ledger.mjs';
+import {claimSql,inspectSql,dispatchReceipt,commitProofSql} from './connector-ledger.mjs';
 import {TRIAL_ID} from './runner.mjs';
 
 // Accept only the observed MCP envelope, never execute or interpret surrounding prose.
@@ -30,6 +30,8 @@ export async function connectorOnce({execute,dispatch,consume,hash,now=Date.now}
   receipt=parseRows(await execute(claimSql(hash,token)));
   // Lost/malformed/replayed claim response stops BEFORE read/recovery.
   if(receipt[0].newly_claimed!==true||receipt[0].nonce!==token||receipt[0].trial_id!==TRIAL_ID)return {status:'stopped'};
+  const proof=parseRows(await execute(commitProofSql(receipt[0].writer_xid,token)))[0];
+  if(proof.writer_xid!==receipt[0].writer_xid||proof.nonce!==token||proof.commit_status!=='committed')return {status:'stopped'};
   inspection=parseRows(await execute(inspectSql()));
   if(now()-started<0||now()-started>10000||!dispatchReceipt(receipt,{hash,token},inspection))return {status:'stopped'};
   await consume(); // exclusive durable marker; failure permanently stops this invocation

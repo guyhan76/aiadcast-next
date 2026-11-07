@@ -38,7 +38,7 @@ UPDATE ${S}.jobs SET status='running' WHERE id='${J}';
 INSERT INTO ${S}.credit_events VALUES('dispatch-claim:${J}','${OWNER}','${J}','synthetic-claim:${token}',1);
 PERFORM set_config('aiadcast_trial.receipt','true',true);
 END $trial$;
-SELECT '${J}' AS trial_id,'${token}' AS nonce,current_setting('aiadcast_trial.receipt')::boolean AS newly_claimed;`);}
+SELECT '${J}' AS trial_id,'${token}' AS nonce,current_setting('aiadcast_trial.receipt')::boolean AS newly_claimed,pg_current_xact_id()::text AS writer_xid;`);}
 export function inspectSql(){return `BEGIN TRANSACTION READ ONLY; SELECT j.id AS trial_id,j.request_hash,j.model_revision,j.user_id,j.status AS job_status,j.expires_at,(extract(epoch FROM clock_timestamp())*1000)::bigint AS observed_at,a.id AS attempt_id,a.status AS attempt_status,a.actual_micros,a.maximum_micros,e.kind AS claim FROM ${S}.jobs j LEFT JOIN ${S}.attempts a ON a.job_id=j.id LEFT JOIN ${S}.credit_events e ON e.event_key='dispatch-claim:${J}' WHERE j.id='${J}'; ROLLBACK;`;}
 export function settleSql({hash,token,cost=null,artifact=null}){hex(hash);nonce(token);if(cost!==null&&(!Number.isSafeInteger(cost)||cost<0||cost>1e9))throw Error('INVALID_COST');if(artifact!==null)hex(artifact);if(cost===null&&artifact!==null)throw Error('UNKNOWN_COST_ARTIFACT');return transaction(`DO $trial$ DECLARE a record; j record; BEGIN
 SELECT * INTO j FROM ${S}.jobs WHERE id='${J}';
@@ -54,9 +54,14 @@ UPDATE ${S}.budgets SET held_micros=held_micros-a.maximum_micros,spent_micros=sp
 IF NOT FOUND THEN RAISE EXCEPTION 'HOLD_MISSING'; END IF;
 UPDATE ${S}.attempts SET status='completed',actual_micros=${cost} WHERE id='${A}';
 ${artifact?`IF j.status IN ('reserved','running','uncertain','ready') AND j.expires_at>extract(epoch FROM clock_timestamp())*1000 THEN UPDATE ${S}.jobs SET status='ready',artifact_id='${artifact}' WHERE id='${J}'; ELSIF j.status IN ('reserved','running','uncertain','ready') THEN UPDATE ${S}.jobs SET status='released',reason='preview_expired' WHERE id='${J}'; INSERT INTO ${S}.credit_events VALUES('release:${J}','${OWNER}','${J}','admin-test-release',1) ON CONFLICT DO NOTHING; END IF;`:`IF j.status IN ('reserved','running','uncertain','ready') THEN UPDATE ${S}.jobs SET status='released',reason='system_error' WHERE id='${J}'; INSERT INTO ${S}.credit_events VALUES('release:${J}','${OWNER}','${J}','admin-test-release',1) ON CONFLICT DO NOTHING; END IF;`}`}
-END $trial$; SELECT '${J}' AS trial_id,'settled' AS acknowledgement;`);}
+END $trial$; SELECT '${J}' AS trial_id,'settled' AS acknowledgement,pg_current_xact_id()::text AS writer_xid;`);}
 // A claim response is permission to continue only in that uninterrupted run.
 // Lost/denied/malformed result is STOP, never infer dispatch permission from inspect.
 export function dispatchReceipt(rows,{hash,token},inspection){hex(hash);nonce(token);if(rows?.length!==1||rows[0].trial_id!==J||rows[0].nonce!==token||rows[0].newly_claimed!==true)return false;
  const r=inspection?.[0];return inspection?.length===1&&r.trial_id===J&&r.request_hash===hash&&r.user_id===OWNER&&r.model_revision===R&&r.job_status==='running'&&Number(r.expires_at)>Number(r.observed_at)&&r.attempt_id===A&&r.attempt_status==='pending'&&Number(r.maximum_micros)===500000&&r.claim==='synthetic-claim:'+token;
+}
+
+export function commitProofSql(xid,token){
+ if(typeof xid!=='string'||! /^[1-9][0-9]{0,19}$/.test(xid)||BigInt(xid)>18446744073709551615n)throw Error('INVALID_WRITER_XID');nonce(token);
+ return `BEGIN TRANSACTION READ ONLY; SELECT '${xid}' AS writer_xid,'${token}' AS nonce,pg_xact_status('${xid}'::xid8) AS commit_status; ROLLBACK;`;
 }
