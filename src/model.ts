@@ -1,3 +1,4 @@
+import {parseResultSet,type ResultSet,imageCounts} from './result-set.ts';
 import {parseTextEdit,type TextEdit} from './text-layers.ts';
 import {aiDimensionReviewError} from './ai-dimension-display.ts';
 import {isTextExample,textExampleGeometryError} from './generation-input.ts';
@@ -32,6 +33,7 @@ export type Asset = {name:string;data:string;width:number;height:number;sha256:s
 export type Copy = {title:string;description:string;company:string;contact:string;website:string;email?:string};
 export type FooterField = 'company'|'contact'|'email'|'website';
 export type Project = {
+ requestedImageCount?:number;resultSet?:ResultSet;
  exactTextVersion?:1|2;textEdit?:TextEdit;version:1;id:string;name:string;updatedAt:string;locale:Locale;format:ImageFormat;
  product:Asset|null;references?:Asset[];referenceRoles?:Record<string,PhotoRole>;footer?:Record<FooterField,boolean>;presentation?:'campaign';productName:string;productProfile:ProductProfile;generation:GenerationSettings;scale:number;
  background:{color:string;image:Asset|null};ink:'dark'|'light';
@@ -85,6 +87,10 @@ export async function importProject(raw:unknown):Promise<Project> {
  if(r.proportionViews!==undefined){const v=r.proportionViews;if(!v||typeof v.confirmed!=='boolean'||!v.views||Array.isArray(v.views)||Object.keys(v.views).length>10||(v.resultView!==undefined&&!['unconfirmed','front','side','top','perspective'].includes(v.resultView))||Object.entries(v.views).some(([hash,view])=>!referenceAssets(p).some(a=>a.sha256===hash)||!['unconfirmed','front','side','top','perspective'].includes(view)))throw Error('사진 촬영면 정보를 확인해주세요.');p.proportionViews={confirmed:v.confirmed,views:{...v.views},...(v.resultView?{resultView:v.resultView}:{})};}
  if(r.footer!==undefined){if(!r.footer||typeof r.footer!=='object'||['company','contact','email','website'].some(k=>typeof r.footer![k as FooterField]!=='boolean'))throw Error('하단 표시 설정을 확인해주세요.');p.footer={company:r.footer.company,contact:r.footer.contact,email:r.footer.email,website:r.footer.website};}
  if(r.presentation==='campaign')p.presentation='campaign';
+ if(r.requestedImageCount!==undefined){if(!imageCounts.includes(r.requestedImageCount as typeof imageCounts[number]))throw Error('INVALID_IMAGE_COUNT');p.requestedImageCount=r.requestedImageCount;}
+ // Imports create a new local identity. Validate the old membership but do not
+ // attach a standalone imported copy to another project's result collection.
+ parseResultSet(r.resultSet,r.id);
  for(const lang of ['ko','en'] as const)if(r.copy[lang].email!==undefined)p.copy[lang].email=string(r.copy[lang].email,100);
  if(r.dimensions.displayUnit!==undefined){if(!['cm','mm','inch'].includes(r.dimensions.displayUnit))throw Error('규격 단위를 확인해주세요.');p.dimensions.displayUnit=r.dimensions.displayUnit;}
  p.dimensions.visible=r.dimensions.visible;p.dimensions.lines=r.dimensions.lines;p.conversation=parseConversation(r.conversation);p.generated=await parseGenerated(r.generated,asset);p.boxProjection=parseBoxProjection(r.boxProjection);p.publishing=parsePublishing(r.publishing);p.dimensionAnnotation=parseAnnotation(r.dimensionAnnotation);p.dimensionControl=parseDimensionControl(r.dimensionControl);p.textEdit=await parseTextEdit(r.textEdit,asset);if(r.exactTextVersion!==undefined){if(r.exactTextVersion!==1&&r.exactTextVersion!==2)throw Error('INVALID_EXACT_TEXT');p.exactTextVersion=r.exactTextVersion;}return p;

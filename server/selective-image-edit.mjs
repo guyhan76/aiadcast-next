@@ -14,16 +14,34 @@ export async function prepareSelectiveEdit(original,mask){
  const meta=await validateImage(bytes,'image/png',{maximumPixels:MAX_PIXELS});
  return {source:{...meta,bytes},mask:selected,selectedPixels:count};
 }
-export async function compositeSelectiveEdit(original,mask,generated){
+export async function compositeSelectiveEdit(original,mask,generated,sourceArtifactHash=original.sha256){
  // Never resize or recolor the original. Copy complete RGBA tuples only where alpha=0.
  const meta=await validateImage(generated.bytes,'image/png',{maximumPixels:MAX_PIXELS,maximumBytes:16000000});
  if(meta.width!==original.width||meta.height!==original.height)throw new ProviderFailure('PROVIDER_INVALID_IMAGE');
- const [a,b,m]=await Promise.all([original.bytes,generated.bytes,mask.bytes].map(bytes=>sharp(bytes).ensureAlpha().raw().toBuffer()));
- for(let i=0;i<a.length;i+=4)if(m[i+3]===0)b.copy(a,i,i,i+4);
- const bytes=await sharp(a,{raw:{width:original.width,height:original.height,channels:4}}).png().toBuffer();
+ let a,m;try{[a,m]=await Promise.all([checkedPixels(original),checkedPixels(mask,true)]);}catch{throw new ProviderFailure('EDIT_PRESERVATION_FAILED');}
+ if(mask.width!==original.width||mask.height!==original.height)throw new ProviderFailure('EDIT_PRESERVATION_FAILED');
+ const b=await sharp(generated.bytes).ensureAlpha().raw().toBuffer(),merged=Buffer.from(a);
+ for(let i=0;i<a.length;i+=4){if(m[i+3]!==0&&m[i+3]!==255)throw new ProviderFailure('EDIT_PRESERVATION_FAILED');if(m[i+3]===0)b.copy(merged,i,i,i+4);}
+ const bytes=await sharp(merged,{raw:{width:original.width,height:original.height,channels:4}}).png().toBuffer();
  // Keep the existing client/source parser contract; never resize to hide overflow.
  try{await validateImage(bytes,'image/png',{maximumPixels:MAX_PIXELS});}catch{throw new ProviderFailure('PROVIDER_INVALID_IMAGE');}
- return {...generated,bytes,mime:'image/png',width:original.width,height:original.height,sha256:hashBytes(bytes),role:'creative',composition:'complete-ad'};
+ const decoded=await sharp(bytes).ensureAlpha().raw().toBuffer();
+ const preservation=inspectSelectivePixels(a,m,decoded,original.width,original.height);
+ return {...generated,bytes,mime:'image/png',width:original.width,height:original.height,sha256:hashBytes(bytes),role:'creative',composition:'complete-ad',preservation:{version:1,sourceHash:sourceArtifactHash,maskHash:mask.sha256,resultHash:hashBytes(bytes),...preservation,semanticQuality:'not-assessed'}};
+}
+
+// Inspect the encoded output, not just the merge loop. Hidden RGB under alpha=0
+// is part of the contract. Any outside change makes the output ineligible.
+export function inspectSelectivePixels(source,mask,result,width,height){
+ if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<1||height<1||width*height>MAX_PIXELS||[source,mask,result].some(p=>p.length!==width*height*4))throw new ProviderFailure('EDIT_PRESERVATION_FAILED');
+ let selectedPixels=0,changedSelectedPixels=0,changedOutsidePixels=0,x0=width,y0=height,x1=-1,y1=-1;
+ for(let i=0;i<source.length;i+=4){
+  const selected=mask[i+3]===0;if(!selected&&mask[i+3]!==255)throw new ProviderFailure('EDIT_PRESERVATION_FAILED');
+  const changed=source[i]!==result[i]||source[i+1]!==result[i+1]||source[i+2]!==result[i+2]||source[i+3]!==result[i+3];
+  if(selected){selectedPixels++;if(changed)changedSelectedPixels++;const x=i/4%width,y=Math.floor(i/4/width);x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y);}else if(changed)changedOutsidePixels++;
+ }
+ if(!selectedPixels||changedOutsidePixels)throw new ProviderFailure('EDIT_PRESERVATION_FAILED');
+ return {width,height,selectedPixels,changedSelectedPixels,changedOutsidePixels,bounds:{x:x0,y:y0,width:x1-x0+1,height:y1-y0+1}};
 }
 // Model and reservation approval remain a server-side release gate. No automatic model fallback.
 export const SELECTIVE_EDIT_MODELS=new Set(['gpt-image-2.6-sunburst','gpt-image-2.5-sunburst','gpt-image-2.5-sunburst-2026-09-08']);
@@ -34,8 +52,12 @@ export function validateSelectiveEditContract({model,source,mask}){
 }
 export function selectiveEditForm({model,source,mask,prompt}){
  validateSelectiveEditContract({model,source,mask});
- const body=new FormData();body.set('model',model);body.set('n','1');body.set('quality','high');body.set('size',`${source.width}x${source.height}`);body.set('output_format','png');body.set('prompt',prompt);
+ const body=new FormData();body.set('model',model);body.set('n','1');body.set('quality','high');body.set('size',`${source.width}x${source.height}`);body.set('output_format','png');body.set('prompt',selectiveEditPrompt(prompt));
  body.set('image',new Blob([source.bytes],{type:'image/png'}),'original.png');body.set('mask',new Blob([mask.bytes],{type:'image/png'}),'mask.png');return body;
+}
+
+export function selectiveEditPrompt(instruction){
+ return `LOCAL EDIT OF THE EXACT SUPPLIED ORIGINAL. Edit only the transparent mask pixels. The opaque pixels are immutable context. Do not recompose, crop, zoom, rotate, resize or move the camera. Keep object scale, silhouette, pose, ground contact, perspective and lighting unless the requested local edit explicitly changes that feature INSIDE the selected area. A logo/color/blemish edit must not move a foot, leg or product. Do not mirror a logo onto another side or invent unseen product details. Preserve the supplied left/right product differences. For a requested limb edit, maintain one coherent joint chain and the original surrounding pose; do not add limbs or duplicate products. Match boundary texture and lighting to the original, not to a newly imagined scene. Never stretch the product to fill the mask. Mask bounds are not new object bounds. The caller composites only selected pixels; changed scenery outside the selection will be discarded. This instruction is not a guarantee of anatomical or product accuracy.\nUser's requested local change:\n${instruction}`;
 }
 
 export function selectiveCanvasPlan(width,height){
