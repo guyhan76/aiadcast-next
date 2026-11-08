@@ -21,6 +21,7 @@ async function storedProjects(page:Page,owner:string){
 
 for(const count of imageCounts)test(`${count} saved ads edit only the selected image and retain every original`,async({page},info)=>{
  const owner='result-set-'+count;await protectedScreen(page,mockSession(owner,'admin'));
+ await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
  const source=await sharp({create:{width:64,height:64,channels:4,background:'#eeeeee'}}).png().toBuffer();
  const p=starterProject('other');p.productName='스니커즈';p.productProfile.material='흰색 스니커즈 · 62,760원';
  p.product={name:'product.png',sha256:hash(source),data:'data:image/png;base64,'+source.toString('base64'),width:64,height:64};
