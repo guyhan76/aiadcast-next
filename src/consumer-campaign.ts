@@ -22,6 +22,9 @@ export function prepareCampaign(project:Project):Project{
  // Convert only the explicitly submitted new request, never the restored draft/result.
  const annotation=project.dimensionAnnotation;
  project=withoutDimensionReshape(project.generation.mode==='creative'?{...project,dimensionAnnotation:{method:'ai',mode:annotation?.mode??'none',snapshot:''},dimensions:{...project.dimensions,visible:!!annotation&&annotation.mode!=='none',lines:!!annotation&&annotation.mode!=='none'}}:project);
+ return campaignContent(project);
+}
+function campaignContent(project:Project):Project{
  const automatic=creativeSettings(project).copyMode==='ai';
  return {...project,name:project.productName+(project.locale==='ko'?' 광고':' ad'),presentation:'campaign',generation:{...project.generation,brief:project.generation.mode==='creative'&&!project.generation.brief.trim()?finishedAdBrief:project.generation.brief},updatedAt:new Date().toISOString(),copy:{...project.copy,[project.locale]:{...project.copy[project.locale],...(automatic?creativeCopy(project):{})}}};
 }
@@ -30,5 +33,8 @@ export function prepareCampaign(project:Project):Project{
 // charge. The old project/result and all source bytes stay intact.
 export function creativeCampaignDraft(project:Project):Project{
  const {generated:_generated,resultSet:_resultSet,background,publishing:_publishing,...source}=project;
- return prepareCampaign({...source,id:crypto.randomUUID(),generation:{mode:'creative',brief:project.generation.brief,...(isTextExample(project)?{inputMode:'text-example',photoMode:project.generation.photoMode}:{})},background:{...background,image:null}});
+ // Opening an editable draft is not submission: retain every dimension input
+ // and display choice, but do not reuse placement evidence from the old result.
+ const a=source.dimensionAnnotation;
+ return campaignContent({...source,id:crypto.randomUUID(),dimensionAnnotation:a?{method:a.method,mode:a.mode,snapshot:''}:undefined,generation:{mode:'creative',brief:project.generation.brief,...(isTextExample(project)?{inputMode:'text-example',photoMode:project.generation.photoMode}:{})},background:{...background,image:null}});
 }

@@ -6,6 +6,30 @@ on:
 permissions:
   contents: read
 jobs:
+  selective-edit-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Selected-image editing browser checks (mock provider)
+        run: |
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(node --input-type=module -e "import {chromium} from '@playwright/test'; process.stdout.write(chromium.executablePath())")"
+          npx playwright test tests/selective-image-edit.spec.ts --workers=2 --trace retain-on-failure
+      - name: Upload partial-edit browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selective-edit-browser-evidence
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
   verify:
     runs-on: ubuntu-latest
     steps:
