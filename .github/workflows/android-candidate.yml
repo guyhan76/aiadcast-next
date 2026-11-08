@@ -27,6 +27,8 @@ jobs:
           java-version: '21'
       - name: Prepare Android SDK
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"'
+      - name: Prepare verified Gradle with inherited network settings
+        run: python3 native/prepare-gradle-ci.py
       - run: npm ci --no-audit --no-fund
       - run: npm run build
       - run: node scripts/check-web-build.mjs --require-commit
@@ -43,7 +45,9 @@ jobs:
           if [[ -n "$KEYSTORE_BASE64" && -n "$STORE_PASSWORD" ]]; then
             umask 077
             printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/aiadcast-demo.jks"
-            echo "AIADCAST_DEMO_KEYSTORE=$RUNNER_TEMP/aiadcast-demo.jks" >> "$GITHUB_ENV"
+            export AIADCAST_DEMO_KEYSTORE="$RUNNER_TEMP/aiadcast-demo.jks"
+            echo "AIADCAST_DEMO_KEYSTORE=$AIADCAST_DEMO_KEYSTORE" >> "$GITHUB_ENV"
+            python3 native/check-demo-signing.py
             echo 'available=true' >> "$GITHUB_OUTPUT"
           else
             echo 'available=false' >> "$GITHUB_OUTPUT"
@@ -59,7 +63,7 @@ jobs:
           cd android
           unsigned=()
           if [[ "$SIGNING_AVAILABLE" != true ]]; then unsigned=(-PAIADCAST_UNSIGNED_DEMO=true); fi
-          ./gradlew --no-daemon testDemoUnitTest lintDemo assembleDemo "${unsigned[@]}"
+          "$AIADCAST_GRADLE" --no-daemon testDemoUnitTest lintDemo assembleDemo "${unsigned[@]}"
       - name: Verify candidate identity and signing state
         env:
           SIGNING_AVAILABLE: ${{ steps.signing.outputs.available }}

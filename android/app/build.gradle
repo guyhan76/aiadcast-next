@@ -32,7 +32,7 @@ android {
             def keyPath = providers.environmentVariable('AIADCAST_DEMO_KEYSTORE').orNull
             if (keyPath) storeFile file(keyPath)
             storePassword providers.environmentVariable('AIADCAST_DEMO_STORE_PASSWORD').orNull
-            keyAlias 'aiadcast-demo'
+            keyAlias providers.environmentVariable('AIADCAST_DEMO_KEY_ALIAS').getOrElse('aiadcast-demo')
             keyPassword providers.environmentVariable('AIADCAST_DEMO_STORE_PASSWORD').orNull
         }
     }
