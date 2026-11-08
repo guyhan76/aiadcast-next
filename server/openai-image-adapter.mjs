@@ -195,12 +195,12 @@ export class OpenAIImageAdapter {
   }
   validateSelectiveInput(input){validateSelectiveOriginal({...input,model:IMAGE_MODEL});}
   prepareSelectiveInput(input){return prepareSelectiveProviderInput({...input,model:IMAGE_MODEL});}
-  async editRegion({source,mask,prompt,attemptId,providerInput}) {
+  async editRegion({source,mask,prompt,attemptId,providerInput,references=[]}) {
     if(!this.selectiveEditReady)throw new ProviderFailure('REGION_EDIT_NOT_AVAILABLE',{uncertain:false});
     source={...source,bytes:Buffer.isBuffer(source?.bytes)?Buffer.from(source.bytes):source?.bytes};
     mask={...mask,bytes:Buffer.isBuffer(mask?.bytes)?Buffer.from(mask.bytes):mask?.bytes};
-    const prepared=providerInput?verifyPreparedSelectiveInput(providerInput,source,mask,IMAGE_MODEL):await this.prepareSelectiveInput({source,mask});
-    const body=selectiveEditForm({model:IMAGE_MODEL,source:prepared.source,mask:prepared.mask,prompt});
+    const prepared=providerInput?verifyPreparedSelectiveInput(providerInput,source,mask,IMAGE_MODEL,references):await this.prepareSelectiveInput({source,mask,references});
+    const body=selectiveEditForm({model:IMAGE_MODEL,source:prepared.source,mask:prepared.mask,prompt,references:prepared.references});
     if(!this.apiKey)throw new ProviderFailure('PROVIDER_NOT_CONFIGURED',{uncertain:false});
     let response;try{response=await this.fetchImpl('https://api.openai.com/v1/images/edits',{method:'POST',headers:{Authorization:`Bearer ${this.apiKey}`,'X-Client-Request-Id':attemptId},body,redirect:'error',signal:AbortSignal.timeout(this.timeoutMs)});}catch{throw new ProviderFailure('PROVIDER_UNCERTAIN');}
     if(!response.ok){const e=await providerHttpError(response);throw new ProviderFailure(e.code,{uncertain:![400,401,403,404,413,422,429].includes(response.status),providerStatus:response.status});}

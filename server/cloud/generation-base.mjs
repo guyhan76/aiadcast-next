@@ -222,6 +222,46 @@ export class GenerationService {
             fail('REQUEST_PROJECT_MISMATCH', 409);
         return { state: 'found', jobId: job.id, projectId: job.projectId };
     }
+    async selectiveProductReferences(request, sourceHash) {
+        // Derive evidence only from this tenant's immutable job history. The edit
+        // client cannot add arbitrary URLs, hashes or another project's photographs.
+        const visited = new Set();
+        while (request.selectiveEdit && !Array.isArray(request.selectiveEdit.productReferences)) {
+            const id = request.selectiveEdit.sourceJobId;
+            if (!identifier(id) || visited.has(id) || visited.size >= 32)
+                fail('INVALID_EDIT_SOURCE', 409);
+            visited.add(id);
+            const row = await this.db.prepare('SELECT request_json FROM generation_records WHERE id=?').get(id);
+            if (!row)
+                fail('INVALID_EDIT_SOURCE', 409);
+            request = JSON.parse(row.request_json);
+        }
+        const descriptors = request.selectiveEdit?.productReferences ?? [request.source, ...request.references ?? []].filter(r => r && (r.purpose ?? 'subject') === 'subject');
+        if (!Array.isArray(descriptors) || descriptors.length > 10)
+            fail('INVALID_EDIT_SOURCE', 409);
+        const references = [], seen = new Set([sourceHash]);
+        for (const descriptor of descriptors) {
+            if (!descriptor || !/^[a-f0-9]{64}$/.test(descriptor.sha256))
+                fail('INVALID_EDIT_SOURCE', 409);
+            if (seen.has(descriptor.sha256))
+                continue;
+            seen.add(descriptor.sha256);
+            const saved = await this.asset(descriptor.sha256);
+            if (!saved)
+                fail('INVALID_EDIT_SOURCE', 409);
+            let ref;
+            try {
+                ref = await parseSourceAsset({ ...saved, data: saved.dataUrl });
+            }
+            catch {
+                fail('INVALID_EDIT_SOURCE', 409);
+            }
+            references.push(ref);
+        }
+        if (references.reduce((n, r) => n + r.bytes.length, 0) > 10 * 1024 * 1024)
+            fail('INVALID_EDIT_SOURCE', 409);
+        return references;
+    }
     async createSelectiveEdit(body) {
         if (!this.selectiveEditingEnabled || this.adapter?.selectiveEditReady !== true)
             fail('REGION_EDIT_NOT_AVAILABLE', 503);
@@ -238,6 +278,7 @@ export class GenerationService {
         catch (error) {
             fail(error.message, 400);
         }
+        prepared.references = await this.selectiveProductReferences(request, prepared.source.sha256);
         let providerInput;
         try {
             this.adapter.validateSelectiveInput?.(prepared);
@@ -263,7 +304,7 @@ export class GenerationService {
         if (region) {
             if (!this.selectiveEditingEnabled || this.adapter?.selectiveEditReady !== true)
                 fail('REGION_EDIT_NOT_AVAILABLE', 503);
-            request.selectiveEdit = { version: 1, sourceJobId: region.sourceJobId, sourceProjectId: region.sourceProjectId, sourceHash: region.sourceHash, maskHash: region.mask.sha256, prompt: region.prompt };
+            request.selectiveEdit = { version: 1, sourceJobId: region.sourceJobId, sourceProjectId: region.sourceProjectId, sourceHash: region.sourceHash, maskHash: region.mask.sha256, prompt: region.prompt, productReferences: region.references.map(({ sha256, width, height }) => ({ sha256, width, height, purpose: 'subject' })) };
         }
         if (request.inputMode === 'text-example' && (body.source != null || (body.references ?? []).length))
             fail('TEXT_EXAMPLE_PHOTOS_NOT_ALLOWED');
@@ -334,7 +375,7 @@ export class GenerationService {
         if ((quote.unit === 'credit-v2' || body.creditQuote) && (!body.creditQuote || body.creditQuote.unit !== quote.unit || body.creditQuote.amount !== quote.amount || body.creditQuote.policy !== quote.policy))
             fail('CREDIT_QUOTE_CHANGED', 409);
         submissionStage('storage_capacity');
-        await this.assertOutputCapacity(request, region ? [...all, region.mask] : all);
+        await this.assertOutputCapacity(request, region ? [...all, region.mask, ...region.references] : all);
         const id = randomUUID();
         const createdAt = this.now();
         submissionStage('original_persistence');
