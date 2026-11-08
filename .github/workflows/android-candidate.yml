@@ -1,0 +1,101 @@
+name: Android update candidate
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - android/**
+      - native/**
+      - src/**
+      - .github/workflows/android-candidate.yml
+permissions:
+  contents: read
+jobs:
+  android-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Prepare Android SDK
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: node scripts/check-web-build.mjs --require-commit
+      - run: node native/test-android-bridge.mjs
+      - run: node native/prepare-android.mjs
+      - name: Configure existing signing identity if available
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.AIADCAST_DEMO_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.AIADCAST_DEMO_STORE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$KEYSTORE_BASE64" && -n "$STORE_PASSWORD" ]]; then
+            umask 077
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/aiadcast-demo.jks"
+            echo "AIADCAST_DEMO_KEYSTORE=$RUNNER_TEMP/aiadcast-demo.jks" >> "$GITHUB_ENV"
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo 'Existing signing credentials unavailable: compile an unsigned inspection candidate only.'
+          fi
+      - name: Native tests, lint and APK assembly
+        env:
+          SIGNING_AVAILABLE: ${{ steps.signing.outputs.available }}
+          AIADCAST_DEMO_STORE_PASSWORD: ${{ secrets.AIADCAST_DEMO_STORE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd android
+          unsigned=()
+          if [[ "$SIGNING_AVAILABLE" != true ]]; then unsigned=(-PAIADCAST_UNSIGNED_DEMO=true); fi
+          ./gradlew --no-daemon testDemoUnitTest lintDemo assembleDemo "${unsigned[@]}"
+      - name: Verify candidate identity and signing state
+        env:
+          SIGNING_AVAILABLE: ${{ steps.signing.outputs.available }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release/android-candidate
+          apk=android/app/build/outputs/apk/demo/app-demo-unsigned.apk
+          label=unsigned-inspection-only
+          if [[ "$SIGNING_AVAILABLE" == true ]]; then
+            apk=android/app/build/outputs/apk/demo/app-demo.apk
+            label=signed-candidate
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" > release/android-candidate/signature.txt
+            # Keep the existing demo identity; never replace it with a new/debug key.
+            grep -qi '576ead9f546b2d227250323d688c9087b0e206bf101b8560a9922b1ee793b638' release/android-candidate/signature.txt
+          else
+            if "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$apk" >/dev/null 2>&1; then
+              echo 'Unexpected signing identity on unsigned candidate' >&2; exit 1
+            fi
+          fi
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" > release/android-candidate/package.txt
+          grep -q "name='com.selluplabs.aiadcast.next.demo' versionCode='83' versionName='0.2.81-demo'" release/android-candidate/package.txt
+          cp "$apk" "release/android-candidate/aiadcast-0.2.81-demo-code83-$label.apk"
+          sha256sum "release/android-candidate/aiadcast-0.2.81-demo-code83-$label.apk" > release/android-candidate/SHA256SUMS.txt
+          cp android/app/src/main/assets/native-build.json release/android-candidate/
+          printf 'Source: %s\nPackage: com.selluplabs.aiadcast.next.demo\nVersion: 0.2.81-demo (83)\nSigning: %s\nDeployment: not performed\nLive AI editing: not validated\n' "$(git rev-parse HEAD)" "$label" | tee release/android-candidate/status.txt
+          cat release/android-candidate/status.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload APK candidate and Android reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: aiadcast-android-0.2.81-code83-candidate
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+          path: |
+            release/android-candidate/
+            android/app/build/reports/tests/testDemoUnitTest/
+            android/app/build/reports/lint-results-demo.html
