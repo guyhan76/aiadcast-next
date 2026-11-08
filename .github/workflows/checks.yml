@@ -6,6 +6,36 @@ on:
 permissions:
   contents: read
 jobs:
+  selective-edit-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        volumes:
+          - /tmp/aiadcast-selective-pg-socket:/var/run/postgresql
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Real PostgreSQL selective-edit and cost-ledger checks (mock provider)
+        env:
+          AIADCAST_SELECTIVE_PG_SOCKET: /tmp/aiadcast-selective-pg-socket
+        run: >-
+          node --experimental-strip-types --test --test-concurrency=1
+          tests-domain/selective-edit-real-postgres.test.mjs
+          tests-domain/selective-quality-once.test.mjs
+          tests-domain/selective-connector-ledger.test.mjs
   selective-edit-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 15
