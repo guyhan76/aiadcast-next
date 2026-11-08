@@ -12,6 +12,9 @@ import {restoreOwnedWorkspace} from './helpers/owned-workspace';
 
 const hash=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const date='2026-11-08T00:00:00.000Z';
+test.afterEach(async({page},info)=>{
+ if(info.status!==info.expectedStatus)console.log('Result-set browser diagnostics',JSON.stringify({url:page.url(),status:await page.getByRole('status').allTextContents(),alerts:await page.getByRole('alert').allTextContents()}));
+});
 async function storedProjects(page:Page,owner:string){
  return page.evaluate(async owner=>{
   const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('aiadcast-editor-'+owner,1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
@@ -37,7 +40,7 @@ for(const count of imageCounts)test(`${count} saved ads edit only the selected i
  await page.route('**/api/**',async route=>{
   const request=route.request(),path=new URL(request.url()).pathname;
   if(['/api/auth/session','/api/account/capabilities'].includes(path))return route.fallback();
-  if(path==='/api/status')return route.fulfill({json:{generation:{enabled:true,selectiveEdit:true,selectiveEditProofVersion:1,creditQuote:{unit:'legacy-ticket',amount:0,policy:'legacy-accept-v1'}},wallet:{available:3,reserved:0,kind:'admin-test-unlimited',unlimited:true},budget:{limitMicros:100000000,spentMicros:0,heldMicros:0}}});
+  if(path==='/api/status')return route.fulfill({json:{generation:{enabled:true,selectiveEdit:true,selectiveEditProofVersion:1,creditQuote:{unit:'legacy-ticket',amount:0,policy:'legacy-accept-v1'}},wallet:{available:3,reserved:0,kind:'admin-test-unlimited',unlimited:true,credits:{available:100,reserved:0}},budget:{limitMicros:100000000,spentMicros:0,heldMicros:0}}});
   if(path==='/api/selective-edits'){
    const b=request.postDataJSON();posts.push(b);const selected=jobs.get(b.sourceJobId);
    if(!selected)return route.fulfill({status:400,json:{error:{code:'INVALID_EDIT_SOURCE'}}});
