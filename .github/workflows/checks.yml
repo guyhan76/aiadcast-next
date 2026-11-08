@@ -21,7 +21,7 @@ jobs:
       - name: Selected-image editing browser checks (mock provider)
         run: |
           export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(node --input-type=module -e "import {chromium} from '@playwright/test'; process.stdout.write(chromium.executablePath())")"
-          npx playwright test tests/selective-image-edit.spec.ts --workers=2 --trace retain-on-failure
+          npx playwright test tests/selective-image-edit.spec.ts tests/result-set.spec.ts --workers=2 --trace retain-on-failure
       - name: Upload partial-edit browser evidence
         if: always()
         uses: actions/upload-artifact@v4
