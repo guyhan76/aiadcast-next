@@ -45,7 +45,7 @@ for(const language of ['ko','en'] as const)test(`search categories in ${language
  await search.press('Enter');expect(state.posts).toBe(0);await expect(page).toHaveURL(/#create$/);
  await choice.selectOption('shoes');await expect(search).toHaveValue('');
  await search.fill('no-such-category-xyz');await expect(choice).toHaveValue('shoes');
- await expect(form.getByRole('status')).toContainText(language==='ko'?'검색 결과가 없습니다':'No matches');
+ await expect(form.locator('[data-order="1"]').getByRole('status')).toContainText(language==='ko'?'검색 결과가 없습니다':'No matches');
  await form.getByRole('button',{name:language==='ko'?'검색 지우기':'Clear search'}).click();
  await expect(choice.locator('option')).toHaveCount(49);
  await reloadDraft(page);await expect(choice).toHaveValue('shoes');
