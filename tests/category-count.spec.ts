@@ -78,6 +78,9 @@ for(const count of [1,2,4,6,8,10])test(`section 9 dispatches exactly ${count} di
  expect(new Set(state.bodies.map(body=>body.requestId)).size).toBe(count);
  for(const body of state.bodies){expect(body.request.productProfile.category).toBe('boxes');expect(body.source.sha256).toBe(createHash('sha256').update(first).digest('hex'));}
  expect(state.accepts).toBe(0);
+ // A ready, unaccepted preview deliberately warns before leaving. Exercise the
+ // real browser confirmation so reload recovery is tested rather than blocked.
+ page.once('dialog',async dialog=>{expect(dialog.type()).toBe('beforeunload');await dialog.accept();});
  await page.reload();await expect(page.locator('.generation-ad-preview')).toBeVisible();
  expect(state.posts).toBe(count);expect(state.accepts).toBe(0);
 });
