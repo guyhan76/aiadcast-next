@@ -1,0 +1,30 @@
+name: Copy verified Preview APK for direct delivery
+on:
+  push:
+    branches: [delivery/preview-0.2.82]
+    paths: [.github/workflows/apk-delivery.yml]
+permissions:
+  contents: read
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Download the already signed release without rebuilding
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p delivery
+          gh release download preview-0.2.82-code84-ecdba7b51955 --repo "$GH_REPO" --pattern 'aiadcast-0.2.82-preview-code84-signed-candidate.apk' --dir delivery
+          cd delivery
+          echo '81e0822301810be75241280881da0040083baaa2ece66ba73d30add93baffd50  aiadcast-0.2.82-preview-code84-signed-candidate.apk' | sha256sum --check
+          mv aiadcast-0.2.82-preview-code84-signed-candidate.apk aiadcast-preview-0.2.82.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aiadcast-preview-0.2.82-direct-download
+          path: delivery/aiadcast-preview-0.2.82.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
