@@ -1,3 +1,4 @@
+import {selectConsumerIndustry} from './helpers/industry';
 import {test,expect} from '@playwright/test';
 import {protectedScreen,mockSession} from './helpers/authenticated-session';
 // This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
@@ -6,7 +7,7 @@ import {reloadDraft} from './helpers/workspace';
 
 for(const service of [false,true])test(`example guides preserve ${service?'service':'product'} inputs through keyboard toggles, mode changes and reload`,async({page},info)=>{
  let generationPosts=0;await page.route('**/api/**',r=>{if(new URL(r.request().url()).pathname==='/api/auth/session')return r.fallback();if(r.request().method()==='POST'&&r.request().url().includes('/generations'))generationPosts++;return r.fallback();});
- await page.goto('/#create');const form=page.locator('.consumer-create');await form.getByLabel('산업 선택').selectOption(service?'lodging':'other');
+ await page.goto('/#create');const form=page.locator('.consumer-create');await selectConsumerIndustry(form,service?'lodging':'other');
  const name=form.getByRole('textbox',{name:service?'서비스명':'상품명',exact:true}),facts=form.getByRole('textbox',{name:'상세설명',exact:true});
  const directions=form.getByRole('textbox',{name:'추가 요청',exact:true});await directions.fill('내 연출 요청');
  await name.fill(service?'내 숙소':'내 텀블러');await facts.fill('고객이 입력한 실제 특징과 조건');await form.getByRole('button',{name:'직접 입력',exact:true}).click();
@@ -37,7 +38,7 @@ for(const service of [false,true])test(`example guides preserve ${service?'servi
 });
 
 for(const service of [false,true])test(`example guides follow interface language without changing ${service?'service':'product'} copy`,async({page},info)=>{
- await page.goto('/#create');await page.getByRole('combobox',{name:'앱 언어',exact:true}).selectOption('en');const form=page.locator('.consumer-create');await form.getByLabel('Choose an industry').selectOption(service?'lodging':'other');await form.getByRole('textbox',{name:'Additional requests',exact:true}).fill('My creative direction');await form.getByRole('textbox',{name:'Description',exact:true}).fill('My original description');
+ await page.goto('/#create');await page.getByRole('combobox',{name:'앱 언어',exact:true}).selectOption('en');const form=page.locator('.consumer-create');await selectConsumerIndustry(form,service?'lodging':'other');await form.getByRole('textbox',{name:'Additional requests',exact:true}).fill('My creative direction');await form.getByRole('textbox',{name:'Description',exact:true}).fill('My original description');
  const guide=form.locator('[data-guide="facts"]');await guide.locator('summary').click();await expect(guide.locator('summary')).toHaveText('Example guide for better results');await expect(guide).toContainText('Replace the facts, prices and inclusions with your actual offer.');
  await expect(guide).toContainText('Fictional offer');await expect(guide).toContainText('Keep product facts accurate and creative directions specific.');await expect(guide.locator('blockquote').first()).toHaveText(service?'A relaxing 3-day, 2-night Jeju trip for busy working couples. Includes two hotel nights and breakfast; flights are extra. From KRW 390,000 per person, depending on departure date.':'A 50 ml moisturizer for dry skin with a lightweight, non-sticky feel. For busy people in their 20s and 30s looking for daily hydration. Price: KRW 29,000.Same-day Rocket delivery');await expect(guide.locator('blockquote').nth(1)).toHaveText(service?'Create a relaxed mood with blue ocean scenery and clear sunlight. Highlight the travel company name, trip duration and starting price, and include a call to action such as “Book now”. Clearly state that hotel and breakfast are included, flights are extra, and prices vary by departure date.':'Use a light beige background and soft natural light, with the product large and centered. Make the brand name and price stand out, and include a shopping call to action such as “Shop now”.');
  if(!service){const delivery=guide.locator('[data-example-delivery]');await expect(delivery).toBeVisible();expect(await delivery.evaluate(el=>{const previous=el.previousElementSibling;return !!previous&&el.getBoundingClientRect().top>=previous.getBoundingClientRect().bottom;})).toBe(true);}

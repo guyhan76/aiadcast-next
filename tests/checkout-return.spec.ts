@@ -1,3 +1,4 @@
+import {selectConsumerIndustry} from './helpers/industry';
 import {openWorkspaceMenu,waitForSavedDraft} from './helpers/workspace-menu';
 import {authenticatedSession} from './helpers/authenticated-session';
 import {test,expect,type Page} from '@playwright/test';
@@ -8,7 +9,7 @@ async function mocks(page:Page){const calls:string[]=[];await page.route('**/api
 async function context(page:Page,userId=session.user.id,age=0,route='create'){await page.evaluate(({userId,age,route,orderId})=>localStorage.setItem('aiadcast.checkout-continuation',JSON.stringify({userId,orderId,origin:location.origin,created:Date.now()-age,route})),{userId,age,route,orderId:order.id});}
 test('native return verifies paid ledger, refreshes credits and resumes original photo/description/dimensions without generating',async({page},info)=>{
  const calls=await mocks(page);await page.addInitScript(s=>sessionStorage.setItem('aiadcast.beta-session',JSON.stringify(s)),session);await page.goto('/#create');
- const form=page.locator('.create-page');await form.getByLabel('산업 선택').selectOption('boxes');await form.getByLabel('상품명',{exact:true}).fill('복귀 검증 박스');
+ const form=page.locator('.create-page');await selectConsumerIndustry(form,'boxes');await form.getByLabel('상품명',{exact:true}).fill('복귀 검증 박스');
  const photo=await sharp({create:{width:200,height:300,channels:4,background:'#ddd'}}).png().toBuffer();await form.getByLabel('참조사진 추가').setInputFiles({name:'mock-box.png',mimeType:'image/png',buffer:photo});
  const textboxes=await form.locator('textarea').all();await textboxes[0].fill('사진과 설명을 유지하는 테스트 박스');
  await form.getByRole('button',{name:'규격 넣기',exact:true}).click();

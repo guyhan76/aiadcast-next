@@ -1,3 +1,4 @@
+import {selectConsumerIndustry} from './helpers/industry';
 import {test,expect} from '@playwright/test';
 import {protectedScreen,mockSession} from './helpers/authenticated-session';
 import {readFile} from 'node:fs/promises';
@@ -5,7 +6,7 @@ import sharp from 'sharp';
 const photo=await sharp({create:{width:400,height:300,channels:4,background:'#dddddd'}}).png().toBuffer();
 test('unit conversion preserves canonical size, selected unit and display option through a saved project',async({page})=>{
  await protectedScreen(page,mockSession('simple-units-user'));
- await page.goto('/#create');const wizard=page.locator('.create-page');await wizard.getByLabel('산업 선택').selectOption('boxes');await wizard.getByRole('textbox',{name:'상세설명',exact:true}).fill('원본 사진과 입력 규격을 유지하는 시험 상품');
+ await page.goto('/#create');const wizard=page.locator('.create-page');await selectConsumerIndustry(wizard,'boxes');await wizard.getByRole('textbox',{name:'상세설명',exact:true}).fill('원본 사진과 입력 규격을 유지하는 시험 상품');
  await wizard.getByLabel('상품명',{exact:true}).fill('단위 검증 상품');
  await wizard.getByLabel('참조사진 추가').setInputFiles({name:'photo.png',mimeType:'image/png',buffer:photo});
  await wizard.getByRole('button',{name:'규격 넣기',exact:true}).click();await wizard.getByLabel('규격 형식').selectOption('rectangular');

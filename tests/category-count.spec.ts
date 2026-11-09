@@ -1,3 +1,4 @@
+import {selectConsumerIndustry} from './helpers/industry';
 import {reloadDraft} from './helpers/workspace';
 import {authenticatedSession,mockSession} from './helpers/authenticated-session';
 import {test,expect,type Page} from '@playwright/test';
@@ -24,36 +25,79 @@ async function mocks(page:Page,{auth=false,enabled=true,admin=false,v2=false,unc
  return send({error:{code:'TEST_ROUTE_UNAVAILABLE'}},404);
  });await authenticatedSession(page,mockSession(admin?'admin-budget-test':'consumer-user-123',admin?'admin':'member'),{seed:!auth});return state;
 }
-async function details(page:Page,service=true){await page.goto('/#create');const form=page.locator('.consumer-create');await form.getByLabel('산업 선택').selectOption(service?'lodging':'boxes');await form.getByLabel(service?'서비스명':'상품명',{exact:true}).fill(service?'숲속 숙소':'우체국3호박스');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill(service?'숲 전망의 객실, 1박 120,000원':'B골, 크라프트재질, 튼튼하고 습기에 강하다. 빠른배송. 10개 19,800원');return form;}
+async function details(page:Page,service=true){await page.goto('/#create');const form=page.locator('.consumer-create');await selectConsumerIndustry(form,service?'lodging':'boxes');await form.getByLabel(service?'서비스명':'상품명',{exact:true}).fill(service?'숲속 숙소':'우체국3호박스');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill(service?'숲 전망의 객실, 1박 120,000원':'B골, 크라프트재질, 튼튼하고 습기에 강하다. 빠른배송. 10개 19,800원');return form;}
 
 
 test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));});
 
-for(const language of ['ko','en'] as const)test(`search categories in ${language} without changing saved inputs or submitting`,async({page},info)=>{
- const state=await mocks(page,{admin:true});
+for(const language of ['ko','en'] as const)test(`search categories in ${language} directly without changing saved inputs or submitting`,async({page},info)=>{
+ const state=await mocks(page,{admin:true}),ko=language==='ko';
  await page.addInitScript(lang=>localStorage.setItem('aiadcast.ui-language',lang),language);
  await page.goto('/#create');
- const form=page.locator('.consumer-create'),choice=form.getByLabel(language==='ko'?'산업 선택':'Choose an industry',{exact:true}),search=form.getByRole('searchbox');
- await expect(choice.locator('option')).toHaveCount(49);await expect(choice.locator('optgroup')).toHaveCount(0);
- await choice.selectOption('boxes');
- await form.getByLabel(language==='ko'?'상품명':'Product name',{exact:true}).fill('KEEP ORIGINAL');
- await form.getByRole('textbox',{name:language==='ko'?'상세설명':'Description',exact:true}).fill('Original facts and price 19,800');
- await form.getByLabel(language==='ko'?'참조사진 추가':'Add reference photos').setInputFiles({name:'original.png',mimeType:'image/png',buffer:first});
- await search.fill(language==='ko'?'운동화':'sneakers');
- await expect(choice).toHaveValue('boxes');await expect(choice.locator('option[value="shoes"]')).toHaveCount(1);
- await expect(choice.locator('option')).toHaveCount(3);
+ const form=page.locator('.consumer-create'),section=form.locator('[data-order="1"]'),search=section.getByRole('combobox');
+ await expect(section.locator('select')).toHaveCount(0);
+ await section.screenshot({path:info.outputPath('category-browse.png')});
+ await expect(section.getByRole('button',{name:ko?'상품':'Products',exact:true})).toHaveAttribute('aria-pressed','true');
+ await section.getByRole('button',{name:ko?'서비스':'Services',exact:true}).click();
+ await expect(section.getByRole('button',{name:ko?'미용·생활·돌봄':'Beauty & daily care',exact:true})).toBeVisible();
+ await section.getByRole('button',{name:ko?'미용·생활·돌봄':'Beauty & daily care',exact:true}).click();
+ await expect(section.getByRole('option').filter({hasText:ko?'미용실':'Hair'})).toBeVisible();
+ await selectConsumerIndustry(form,'boxes');
+ await form.getByLabel(ko?'상품명':'Product name',{exact:true}).fill('KEEP ORIGINAL');
+ await form.getByRole('textbox',{name:ko?'상세설명':'Description',exact:true}).fill('Original facts and price 19,800');
+ await form.getByLabel(ko?'참조사진 추가':'Add reference photos').setInputFiles({name:'original.png',mimeType:'image/png',buffer:first});
+ await search.fill(ko?'운동화':'sneakers');
+ await expect(section.locator('.industry-selected')).toContainText(ko?'박스':'Boxes');
+ await expect(section.getByRole('option')).toHaveCount(1);
+ await expect(section.getByRole('option')).toContainText(ko?'신발':'Shoes');
+ await section.screenshot({path:info.outputPath('category-search.png')});
  await search.press('Enter');expect(state.posts).toBe(0);await expect(page).toHaveURL(/#create$/);
- await choice.selectOption('shoes');await expect(search).toHaveValue('');
- await search.fill('no-such-category-xyz');await expect(choice).toHaveValue('shoes');
- await expect(form.locator('[data-order="1"]').getByRole('status')).toContainText(language==='ko'?'검색 결과가 없습니다':'No matches');
- await form.getByRole('button',{name:language==='ko'?'검색 지우기':'Clear search'}).click();
- await expect(choice.locator('option')).toHaveCount(49);
- await reloadDraft(page);await expect(choice).toHaveValue('shoes');
- await expect(form.getByLabel(language==='ko'?'상품명':'Product name',{exact:true})).toHaveValue('KEEP ORIGINAL');
- await expect(form.getByRole('textbox',{name:language==='ko'?'상세설명':'Description',exact:true})).toHaveValue('Original facts and price 19,800');
+ await section.getByRole('option').click();await expect(search).toHaveValue('');
+ await search.fill('no-such-category-xyz');await expect(section.locator('.industry-selected')).toContainText(ko?'신발':'Shoes');
+ await expect(section.getByRole('status')).toContainText(ko?'검색 결과가 없습니다':'No matches');
+ await search.press('Escape');
+ await reloadDraft(page);await expect(section.locator('.industry-selected')).toContainText(ko?'신발':'Shoes');
+ await expect(form.getByLabel(ko?'상품명':'Product name',{exact:true})).toHaveValue('KEEP ORIGINAL');
+ await expect(form.getByRole('textbox',{name:ko?'상세설명':'Description',exact:true})).toHaveValue('Original facts and price 19,800');
  await expect(form.locator('.reference-item')).toHaveCount(1);
- await form.locator('[data-order="1"]').screenshot({path:info.outputPath('category-search.png')});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);expect(state.posts).toBe(0);
+});
+
+test('search crosses product/service tabs, keyboard and Korean composition cannot accidentally submit',async({page})=>{
+ const state=await mocks(page,{admin:true});await page.goto('/#create');
+ const section=page.locator('.consumer-create [data-order="1"]'),search=section.getByRole('combobox');
+ await search.fill('카페');await expect(section.getByRole('option')).toHaveCount(1);
+ await search.press('ArrowDown');
+ await search.dispatchEvent('keydown',{key:'Enter',code:'Enter',isComposing:true,keyCode:229});
+ await expect(section.locator('.industry-selected')).toHaveCount(0);
+ await search.press('Enter');await expect(section.locator('.industry-selected')).toContainText('카페·디저트');
+ await expect(section.getByRole('button',{name:'서비스',exact:true})).toHaveAttribute('aria-pressed','true');
+ expect(state.posts).toBe(0);
+});
+
+for(const kind of ['product','service'] as const)test(`custom ${kind} category survives reload and reaches the generation request`,async({page})=>{
+ const state=await mocks(page,{admin:true});await page.goto('/#create');
+ const form=page.locator('.consumer-create'),section=form.locator('[data-order="1"]'),name='맞춤형 분야 85';
+ await section.getByRole('combobox').fill(name);
+ await section.getByRole('button',{name:kind==='product'?'상품으로 선택':'서비스로 선택',exact:true}).click();
+ await form.getByLabel(kind==='product'?'상품명':'서비스명',{exact:true}).fill('내 브랜드');
+ await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('사용자가 제공한 설명과 가격 12,000원');
+ if(kind==='product')await form.getByLabel('참조사진 추가').setInputFiles({name:'original.png',mimeType:'image/png',buffer:first});
+ await reloadDraft(page);await expect(section.locator('.industry-selected')).toContainText(name);
+ await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect.poll(()=>state.posts).toBe(1);
+ expect(state.body.request.productProfile.industryName).toBe(name);
+ expect(state.body.request.subjectType).toBe(kind==='product'?'physical-product':'service');
+ expect(normalizeGenerationRequest(state.body.request).creativeDirection.additionalInstructions).toContain(name);
+});
+
+test('section 9 spacing is clear on a tablet as well as phone widths',async({page},info)=>{
+ await mocks(page);await page.setViewportSize({width:info.project.name==='mobile'?390:768,height:1000});await page.goto('/#create');
+ const section=page.locator('.consumer-create [data-order="9"]');
+ const number=await section.locator('h2>span').boundingBox(),title=await section.locator('h2>strong').boundingBox(),heading=await section.locator('h2').boundingBox(),buttons=await section.locator('.image-count-options').boundingBox();
+ expect(title!.x-(number!.x+number!.width)).toBeGreaterThanOrEqual(18);
+ expect(buttons!.y-(heading!.y+heading!.height)).toBeGreaterThanOrEqual(20);
+ await section.screenshot({path:info.outputPath('section-9-spacing.png')});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
 for(const count of [1,2,4,6,8,10])test(`section 9 dispatches exactly ${count} distinct images and displays every result`,async({page},info)=>{
@@ -108,3 +152,4 @@ test('multi-image choice still requires explicit new-credit charge confirmation'
  await consent.check();await page.getByRole('button',{name:'광고 생성 · 10크레딧',exact:true}).click();
  await expect(page.locator('.result-picker img')).toHaveCount(2);expect(state.posts).toBe(2);expect(state.accepts).toBe(0);
 });
+

@@ -1,3 +1,4 @@
+import {selectConsumerIndustry} from './helpers/industry';
 import {test,expect} from '@playwright/test';
 import {protectedScreen,mockSession} from './helpers/authenticated-session';
 // This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
@@ -25,7 +26,7 @@ test.describe('Independent Korean and English interface',()=>{
  test('finds industries in English and keeps the chosen ad language independent of the UI',async({page})=>{
   await page.goto('/');await page.getByRole('button',{name:'Create an ad',exact:true}).click();
   const wizard=page.locator('.create-page');
-  await wizard.getByLabel('Choose an industry').selectOption('yoga');
+  await selectConsumerIndustry(wizard,'yoga');
   await wizard.getByLabel(/^(Product name|Service name)$/,{exact:true}).fill('Studio Bloom');
   await wizard.getByRole('textbox',{name:'Description',exact:true}).fill('Small-group yoga classes');
 
@@ -70,4 +71,3 @@ test.describe('Independent Korean and English interface',()=>{
   await expect(page.getByRole('textbox',{name:'Project name',exact:true})).toHaveValue('Back navigation draft');
  });
 });
-

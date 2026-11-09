@@ -48,8 +48,14 @@ jobs:
         run: |
           export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(node --input-type=module -e "import {chromium} from '@playwright/test'; process.stdout.write(chromium.executablePath())")"
           npx playwright test tests/category-count.spec.ts tests/result-set.spec.ts --workers=2 --max-failures=1
+      - name: Preserve synthetic UI screenshots for review
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: python3 scripts/export-ui-checks.py
       - name: Category prompt wiring and multi-image queue checks
-        run: node --experimental-strip-types --test tests-domain/industry-production.test.mjs tests-domain/result-set-component.test.mjs
+        run: node --experimental-strip-types --test tests-domain/industry-production.test.mjs tests-domain/industry-catalog.test.mjs tests-domain/product.test.mjs tests-domain/result-set-component.test.mjs
       - name: Creation input, photo preservation and request admission regression checks
         # The full legacy consumer suite still runs unfiltered in App checks.
         # Its pre-existing review/navigation selector failures are tracked in
@@ -117,11 +123,11 @@ jobs:
           fi
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 "$apk"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" > release/android-candidate/package.txt
-          grep -q "name='com.selluplabs.aiadcast.next.preview' versionCode='86' versionName='0.2.84-preview'" release/android-candidate/package.txt
-          cp "$apk" "release/android-candidate/aiadcast-0.2.84-preview-code86-$label.apk"
+          grep -q "name='com.selluplabs.aiadcast.next.preview' versionCode='87' versionName='0.2.85-preview'" release/android-candidate/package.txt
+          cp "$apk" "release/android-candidate/aiadcast-0.2.85-preview-code87-$label.apk"
           (cd release/android-candidate && sha256sum *.apk > SHA256SUMS.txt)
           cp android/app/src/main/assets/native-build.json release/android-candidate/
-          printf 'Source: %s\nPackage: com.selluplabs.aiadcast.next.preview\nVersion: 0.2.84-preview (86)\nSigning: %s\nServer deployment: not performed\nLive AI editing: not validated\n' "$(git rev-parse HEAD)" "$label" | tee release/android-candidate/status.txt
+          printf 'Source: %s\nPackage: com.selluplabs.aiadcast.next.preview\nVersion: 0.2.85-preview (87)\nSigning: %s\nServer deployment: not performed\nLive AI editing: not validated\n' "$(git rev-parse HEAD)" "$label" | tee release/android-candidate/status.txt
           cat release/android-candidate/status.txt >> "$GITHUB_STEP_SUMMARY"
       - name: Publish verified signed Preview APK for testing
         if: steps.signing.outputs.available == 'true'
@@ -132,15 +138,16 @@ jobs:
         run: |
           set -euo pipefail
           source_sha=$(git rev-parse HEAD)
-          tag="preview-0.2.84-code86-${source_sha:0:12}"
+          tag="preview-0.2.85-code87-${source_sha:0:12}"
           cat > "$RUNNER_TEMP/preview-release-notes.md" <<'NOTES'
-          Preview testing APK, version 0.2.84-preview (86).
+          Preview testing APK, version 0.2.85-preview (87).
           Package: com.selluplabs.aiadcast.next.preview.
           The signing certificate matches the owner's signed Preview 0.2.80 APK.
           Login startup/logout/native-return browser checks, native unit tests, Android lint, apksigner verification and zipalign passed.
-          Categories are searchable by name and common aliases, with no repeated product/service group headings.
-          All 48 saved category IDs and category-specific generation guidance remain unchanged.
-          Image quantity is section 9. Mocked browser requests verify 1/2/4/6/8/10 images, budget blocking, charge consent and original-preserving edits.
+          Products and services have separate browsing groups. Typing shows directly selectable results across both kinds.
+          Expanded categories and custom industry names are preserved in drafts and image generation context.
+          All 48 stable category IDs remain compatible. Expanded names reuse existing generation families; they do not represent new quality-validated engines.
+          Section 9 has 18px number/title spacing and 20px heading/button spacing. Mocked browser requests verify 1/2/4/6/8/10 images, budget blocking, charge consent and original-preserving edits.
           Device sign-out follows successful private-work preservation without waiting for the server.
           Offline and 401/503 logout responses cannot block device logout or clear a replacement account.
           Google start waits for a bounded shared GET readiness check, then sends one OAuth POST.
@@ -152,13 +159,13 @@ jobs:
           The existing image boundary defect and broader browser/PostgreSQL test issues remain under review; this is not a production quality approval.
           NOTES
           printf '\nSource: %s\n' "$source_sha" >> "$RUNNER_TEMP/preview-release-notes.md"
-          gh release create "$tag" release/android-candidate/* --repo "$GH_REPO" --target "$source_sha" --prerelease --title 'aiadcast Preview 0.2.84 (86) — testing APK' --notes-file "$RUNNER_TEMP/preview-release-notes.md"
+          gh release create "$tag" release/android-candidate/* --repo "$GH_REPO" --target "$source_sha" --prerelease --title 'aiadcast Preview 0.2.85 (87) — testing APK' --notes-file "$RUNNER_TEMP/preview-release-notes.md"
           gh release view "$tag" --repo "$GH_REPO" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
       - name: Upload APK candidate and Android reports
         if: steps.signing.outputs.available != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: aiadcast-android-0.2.84-code86-candidate
+          name: aiadcast-android-0.2.85-code87-candidate
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
@@ -166,4 +173,5 @@ jobs:
             release/android-candidate/
             android/app/build/reports/tests/testPreviewUnitTest/
             android/app/build/reports/lint-results-preview.html
+
 

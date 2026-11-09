@@ -5,14 +5,14 @@ import type {ProductCategory} from './industry.ts';
 export {productCategories} from './industry.ts';
 export type {ProductCategory} from './industry.ts';
 export type SpecType = 'rectangular' | 'flat' | 'cylindrical' | 'none';
-export type ProductProfile = {category: ProductCategory; specType: SpecType; material: string};
+export type ProductProfile = {category: ProductCategory; specType: SpecType; material: string; industryName?: string};
 export const specTypes = [['rectangular','가로 × 세로 × 높이'],['flat','가로 × 세로'],['cylindrical','지름 × 높이'],['none','규격 정보 없음']] as const;
 export const defaultProfile = ():ProductProfile => ({category:'other',specType:'rectangular',material:''});
 export const isServiceCategory = (category:ProductCategory) => !isPhysicalCategory(category);
 export function withCategory(p:Project,category:ProductCategory):Project {
   if(p.productProfile.category===category)return p;
   const noSpecsByDefault=isServiceCategory(category)||category==='automotive';
-  return {...p,...(noSpecsByDefault&&p.generation.dimensionBased?{generation:{...p.generation,dimensionBased:false,planarSourceHash:undefined}}:{}),productProfile:{...p.productProfile,category,specType:noSpecsByDefault?'none':p.productProfile.specType},dimensions:noSpecsByDefault?{...p.dimensions,visible:false,lines:false}:p.dimensions};
+  return {...p,...(noSpecsByDefault&&p.generation.dimensionBased?{generation:{...p.generation,dimensionBased:false,planarSourceHash:undefined}}:{}),productProfile:{...p.productProfile,category,industryName:undefined,specType:noSpecsByDefault?'none':p.productProfile.specType},dimensions:noSpecsByDefault?{...p.dimensions,visible:false,lines:false}:p.dimensions};
 }
 export function parseProfile(value:unknown):ProductProfile {
   if(value===undefined)return defaultProfile(); // Earlier project files remain compatible.
@@ -20,7 +20,8 @@ export function parseProfile(value:unknown):ProductProfile {
   const p=value as ProductProfile;
   const category=resolveIndustryCategory(p.category);
   if(!category||!specTypes.some(([key])=>key===p.specType)||typeof p.material!=='string'||p.material.length>2000)throw Error('상품 분류 또는 규격 형식을 확인해주세요.');
-  return {category,specType:p.specType,material:p.material};
+  if(p.industryName!==undefined&&(typeof p.industryName!=='string'||!p.industryName.trim()||p.industryName.length>80))throw Error('광고 분야 이름을 확인해주세요.');
+  return {category,specType:p.specType,material:p.material,...(p.industryName?{industryName:p.industryName.trim()}:{} )};
 }
 export function dimensionAxes(profile?:ProductProfile):('width'|'depth'|'height')[] {
   if(profile?.specType==='none')return [];
@@ -36,3 +37,4 @@ export function specSummary(values:Record<'width'|'depth'|'height',string>&{disp
   if(!dimensionAxes(profile).length)return '';
   return (profile?.specType==='cylindrical'?'Ø ':'')+dimensionAxes(profile).map(axis=>fromMillimeters(values[axis],dimensionUnit(values.displayUnit))).join(' × ')+' '+dimensionUnit(values.displayUnit);
 }
+

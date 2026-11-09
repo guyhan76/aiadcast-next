@@ -100,12 +100,39 @@
 .input-example-content .input-example-sentence:last-child{margin-bottom:0}
 .input-example-price{white-space:nowrap}
 
-.studio-shell .consumer-create .industry-search{position:relative;display:flex;align-items:center}
-.studio-shell .consumer-create .industry-search>svg{position:absolute;left:13px;pointer-events:none;color:var(--brand-muted)}
-.studio-shell .consumer-create .industry-search input{padding-left:40px;padding-right:48px;min-height:48px}
+/* One search, directly selectable results; product/service browsing stays separate. */
+.studio-shell .consumer-create .industry-search-select{margin-top:20px}
+.studio-shell .consumer-create .industry-kind-tabs{display:flex;gap:6px;padding:5px;border-radius:12px;background:#f1f2f3;margin-bottom:14px}
+.studio-shell .consumer-create .industry-kind-tabs button{flex:1;min-height:46px;border:0;border-radius:9px;background:transparent;color:#252525;font-size:16px;font-weight:650}
+.studio-shell .consumer-create .industry-kind-tabs button[aria-pressed=true]{background:#202020;color:#fff}
+.studio-shell .consumer-create .industry-search{position:relative;display:block}
+.studio-shell .consumer-create .industry-search>svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);pointer-events:none;color:#727272}
+.studio-shell .consumer-create .industry-search input{display:block;width:100%;min-width:0;min-height:52px;padding:13px 44px 13px 43px;margin:0;border:1px solid #d5d5d5;border-radius:11px;background:#fff;color:#202020;font-size:16px;line-height:1.5}
 .studio-shell .consumer-create .industry-search input::-webkit-search-cancel-button{display:none}
-.studio-shell .consumer-create .industry-search button{position:absolute;right:2px;display:grid;place-items:center;width:44px;height:44px;padding:0;border:0;background:transparent;color:var(--brand-black);border-radius:8px}
-.studio-shell .consumer-create .industry-choice{margin-top:8px}
-.studio-shell .consumer-create .industry-select-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.studio-shell .consumer-create .industry-search button:focus-visible{outline:2px solid var(--brand-orange,#b45e35);outline-offset:1px}
+.studio-shell .consumer-create .industry-search>button{position:absolute;right:3px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:42px;height:44px;padding:0;border:0;background:transparent;color:#555}
+.studio-shell .consumer-create .industry-group-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:14px}
+.studio-shell .consumer-create .industry-group-grid button{display:flex;align-items:center;justify-content:space-between;gap:5px;min-width:0;min-height:48px;padding:11px 12px;border:1px solid #e2e2e2;border-radius:9px;background:#fff;color:#242424;text-align:left;font-size:14px;line-height:1.5;word-break:keep-all}
+.studio-shell .consumer-create .industry-search-select svg{flex-shrink:0}
+.studio-shell .consumer-create .industry-results{border:1px solid #dedede;border-radius:11px;overflow:auto;max-height:300px;overscroll-behavior:contain;margin-top:10px;scroll-padding:4px}
+.studio-shell .consumer-create .industry-results button{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:13px 14px;border:0;border-bottom:1px solid #eeeeee;border-radius:0;background:#fff;color:#202020;text-align:left;font-size:15px;line-height:1.5}
+.studio-shell .consumer-create .industry-results button:last-child{border-bottom:0}
+.studio-shell .consumer-create .industry-results button>span{flex:1;overflow-wrap:anywhere}
+.studio-shell .consumer-create .industry-results small{font-size:12px;color:#737373;white-space:nowrap}
+.studio-shell .consumer-create .industry-results button:hover,.studio-shell .consumer-create .industry-results button.is-active,.studio-shell .consumer-create .industry-results button[aria-selected=true]{background:#faf1eb}
+.studio-shell .consumer-create .industry-selected{display:flex;align-items:center;gap:10px;margin-top:12px;padding:10px 13px;border:1px solid #dfb39a;border-radius:10px;background:#fff8f2;color:#713d24}
+.studio-shell .consumer-create .industry-selected>span{flex:1;display:flex;align-items:center;gap:10px;min-width:0}
+.studio-shell .consumer-create .industry-selected strong{font-size:15px;overflow-wrap:anywhere;color:#232323}
+.studio-shell .consumer-create .industry-selected small{font-size:12px;white-space:nowrap}
+.studio-shell .consumer-create .industry-selected button{min-height:40px;padding:6px 10px;border:0;background:transparent;color:#713d24;font-size:14px;flex-shrink:0}
+.studio-shell .consumer-create .industry-back{display:flex;align-items:center;gap:7px;min-height:44px;border:0;background:transparent;color:#525252;font-size:14px;padding:10px 0;margin-top:8px}
+.studio-shell .consumer-create .industry-result-count,.studio-shell .consumer-create .industry-hint{margin:12px 0 0;font-size:13px;line-height:1.6;color:#686868;word-break:keep-all}
+.studio-shell .consumer-create .industry-custom{padding:13px 0 0;margin-top:12px;border-top:1px solid #e5e5e5}
+.studio-shell .consumer-create .industry-custom p{margin:0 0 9px;font-size:14px;overflow-wrap:anywhere;color:#555}
+.studio-shell .consumer-create .industry-custom>div{display:flex;gap:9px}
+.studio-shell .consumer-create .industry-custom button{flex:1;min-height:44px;padding:9px;border:1px solid #d9d9d9;border-radius:9px;background:white;color:#242424;font-size:14px}
+.studio-shell .consumer-create .industry-search-select button:focus-visible,.studio-shell .consumer-create .industry-search input:focus-visible{outline:2px solid #ae5c36;outline-offset:2px}
+.studio-shell .consumer-create [data-order="9"] h2{column-gap:18px;margin-bottom:20px}
+.studio-shell .consumer-create [data-order="9"] h2 strong{font:inherit}
+.studio-shell .consumer-create [data-order="9"] .image-count-options{margin-top:0}
+@media(max-width:360px){.studio-shell .consumer-create .industry-group-grid button{padding:10px 8px;font-size:13px}.studio-shell .consumer-create .industry-search input{font-size:14px}.studio-shell .consumer-create .industry-selected>span{align-items:flex-start;flex-direction:column;gap:2px}}
 

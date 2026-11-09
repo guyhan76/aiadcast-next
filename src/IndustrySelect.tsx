@@ -1,39 +1,46 @@
-import {useState} from 'react';
-import {Search,X} from 'lucide-react';
-import {productCategories,industryGroupFor,type ProductCategory} from './industry';
+import {useRef,useState} from 'react';
+import {Search,X,Check,ChevronRight,ArrowLeft} from 'lucide-react';
+import {industryKindFor,type ProductCategory,type IndustryKind} from './industry';
+import {browseGroups,industryOptions,searchIndustries,type IndustryOption} from './industry-catalog';
 import {useUiLanguage} from './ui-language';
 
-// Search changes only the visible choices. Stable IDs and explicit selection
-// preserve saved projects and the product/service generation rules.
-const aliases:Partial<Record<ProductCategory,string>>={
- shoes:'운동화 스니커즈 구두 sneakers trainers footwear',
- boxes:'택배박스 골판지 상자 carton shipping box',
- beauty:'화장품 스킨케어 메이크업 cosmetics skincare makeup',
- cafe:'커피 베이커리 빵 coffee bakery',lodging:'숙소 펜션 호텔 hotel stay accommodation',
- labels:'스티커 sticker',pouches:'연포장 flexible packaging',
- containers:'병 플라스틱 bottle jar',plasticfilm:'비닐봉투 필름 film bag',
- electronics:'가전 노트북 컴퓨터 laptop appliance',
- education:'학원 과외 수업 academy tuition class',
- fitness:'헬스장 피트니스 gym',hospital:'의원 치과 클리닉 clinic dental',
- realestate:'아파트 주택 apartment property',rental:'렌탈 렌트 대여 rent',
-};
-const normalize=(value:string)=>value.normalize('NFKC').toLocaleLowerCase().replace(/[\s·ㆍ._-]+/g,'');
-
-export function IndustrySelect({id,value,onChange}:{id:string;value:ProductCategory|'';onChange:(value:ProductCategory)=>void}){
- const {language,t,text}=useUiLanguage();
- const [query,setQuery]=useState('');
- const options=productCategories.map(([category,label])=>({id:category,label:category==='packaging'?t('기타 포장재','Other packaging'):category==='other'?t('기타 제품','Other products'):category==='services'?t('기타 업종','Other industries'):text(label),search:normalize([category,label,text(label),industryGroupFor(category).label,aliases[category]??''].join(' '))})).sort((a,b)=>a.label.localeCompare(b.label,language));
- const needle=normalize(query),matches=options.filter(option=>!needle||option.search.includes(needle));
- // Retain a non-matching current option so typing cannot silently change the
- // native select's display or submit a different category.
- const visible=options.filter(option=>option.id===value||matches.some(match=>match.id===option.id));
+export function IndustrySelect({id,value,name,initialKind='product',onChange}:{id:string;value:ProductCategory|'';name?:string;initialKind?:IndustryKind;onChange:(value:ProductCategory,name?:string)=>void}){
+ const {t,text,language}=useUiLanguage();
+ const [kind,setKind]=useState<IndustryKind>(value?industryKindFor(value):initialKind);
+ const [query,setQuery]=useState(''),[open,setOpen]=useState(!value),[group,setGroup]=useState(''),[active,setActive]=useState(-1);
+ const input=useRef<HTMLInputElement>(null);
+ const label=(o:IndustryOption)=>language==='ko'?o.ko:o.en??text(o.ko);
+ const current=industryOptions.find(o=>o.category===value&&(o.name??'')===(name??''));
+ const searching=!!query.trim(),matches=searching?searchIndustries(query,label):industryOptions.filter(o=>o.kind===kind&&o.group===group);
+ const select=(category:ProductCategory,industryName?:string)=>{onChange(category,industryName);setKind(industryKindFor(category));setQuery('');setOpen(false);setActive(-1);input.current?.focus();};
+ const selected=(o:IndustryOption)=>o.category===value&&(o.name??'')===(name??'');
+ const listOpen=open&&(searching||!!group);
  return <div className="industry-search-select">
-  <div className="industry-search field">
-   <Search size={18} aria-hidden="true"/>
-   <input type="search" aria-label={t('분야 검색','Search categories')} placeholder={t('분야 검색 · 예: 신발, 카페, 박스','Search · shoes, cafe, boxes')} value={query} maxLength={100} onChange={event=>setQuery(event.target.value)} onKeyDown={event=>{if(event.key==='Enter')event.preventDefault();}} aria-controls={id} autoComplete="off"/>
-   {query&&<button type="button" aria-label={t('검색 지우기','Clear search')} onClick={()=>setQuery('')}><X size={18} aria-hidden="true"/></button>}
+  <div className="industry-kind-tabs" role="group" aria-label={t('상품 또는 서비스','Products or services')}>
+   {(['product','service'] as const).map(k=><button type="button" key={k} aria-pressed={kind===k} onClick={()=>{setKind(k);setQuery('');setGroup('');setOpen(true);setActive(-1);}}>{k==='product'?t('상품','Products'):t('서비스','Services')}</button>)}
   </div>
-  <label className="field industry-choice" htmlFor={id}><span className="industry-select-label">{t('산업 선택','Choose an industry')}</span><select id={id} aria-label={t('산업 선택','Choose an industry')} value={value} onChange={event=>{if(!event.target.value)return;onChange(event.target.value as ProductCategory);setQuery('');}}><option value="">{t('분야를 선택해주세요','Select a category')}</option>{visible.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
-  {needle&&<p className="help" role="status">{matches.length?t(`검색 결과 ${matches.length}개`,`Found ${matches.length} categories`):t('검색 결과가 없습니다. 다른 단어로 검색해주세요.','No matches. Try another word.')}</p>}
+  <div className="industry-search">
+   <Search size={19} aria-hidden="true"/>
+   <input ref={input} id={id} type="search" role="combobox" aria-label={t('분야 검색','Search categories')} placeholder={t('전체 분야 검색 · 예: 신발, 카페, 박스','Search all · shoes, cafe, boxes')} value={query} maxLength={80} aria-expanded={listOpen} aria-controls={listOpen?id+'-results':undefined} aria-autocomplete="list" aria-activedescendant={listOpen&&active>=0?id+'-option-'+active:undefined} autoComplete="off"
+    onChange={event=>{setQuery(event.target.value);setOpen(true);setActive(-1);}}
+    onKeyDown={event=>{
+     if(event.nativeEvent.isComposing||event.keyCode===229){if(event.key==='Enter')event.preventDefault();return;}
+     if(event.key==='Enter'){event.preventDefault();if(listOpen&&active>=0&&matches[active])select(matches[active].category,matches[active].name);}
+     if(event.key==='Escape'){setOpen(false);setQuery('');setActive(-1);}
+     if((event.key==='ArrowDown'||event.key==='ArrowUp')&&matches.length){event.preventDefault();setOpen(true);const next=event.key==='ArrowDown'?(active+1)%matches.length:(active<=0?matches.length-1:active-1);setActive(next);document.getElementById(id+'-option-'+next)?.scrollIntoView({block:'nearest'});}
+    }}/>
+   {query&&<button type="button" aria-label={t('검색 지우기','Clear search')} onClick={()=>{setQuery('');setGroup('');setActive(-1);input.current?.focus();}}><X size={18} aria-hidden="true"/></button>}
+  </div>
+  {value&&<div className="industry-selected"><Check size={18} aria-hidden="true"/><span><small>{industryKindFor(value)==='product'?t('상품','Product'):t('서비스','Service')}</small><strong>{current?label(current):name}</strong></span><button type="button" aria-expanded={open} onClick={()=>{setOpen(!open);setGroup('');setQuery('');setActive(-1);}}>{open?t('닫기','Close'):t('변경','Change')}</button></div>}
+  {open&&!searching&&<>
+   {group?<button type="button" className="industry-back" onClick={()=>{setGroup('');setActive(-1);}}><ArrowLeft size={16} aria-hidden="true"/>{kind==='product'?t('상품 분야','Product categories'):t('서비스 분야','Service categories')}</button>:<div className="industry-group-grid" aria-label={kind==='product'?t('상품 분야','Product categories'):t('서비스 분야','Service categories')}>{browseGroups[kind].map(([key,ko,en])=><button type="button" key={key} onClick={()=>{setGroup(key);setActive(-1);}}>{t(ko,en)}<ChevronRight size={16} aria-hidden="true"/></button>)}</div>}
+  </>}
+  {open&&searching&&<p className="industry-result-count" role="status">{matches.length?t(`검색 결과 ${matches.length}개`,`Found ${matches.length} categories`):t('검색 결과가 없습니다. 아래에서 직접 선택할 수 있어요.','No matches. You can use your own category below.')}</p>}
+  {listOpen&&<div className="industry-results" id={id+'-results'} role="listbox" aria-label={t('분야 검색 결과','Category results')}>
+   {matches.map((o,i)=><button type="button" role="option" id={id+'-option-'+i} data-industry-key={o.key} key={o.key} aria-selected={selected(o)} className={active===i?'is-active':''} onClick={()=>select(o.category,o.name)}><span>{label(o)}</span>{searching&&<small>{o.kind==='product'?t('상품','Product'):t('서비스','Service')}</small>}{selected(o)?<Check size={18} aria-hidden="true"/>:<ChevronRight size={16} aria-hidden="true"/>}</button>)}
+  </div>}
+  {open&&searching&&!matches.some(o=>label(o)===query.trim())&&<div className="industry-custom"><p>{t(`“${query.trim()}” 직접 입력`,`Use “${query.trim()}”`)}</p><div><button type="button" onClick={()=>select('other',query.trim())}>{t('상품으로 선택','Use as product')}</button><button type="button" onClick={()=>select('services',query.trim())}>{t('서비스로 선택','Use as service')}</button></div></div>}
+  {open&&!searching&&<p className="industry-hint">{t('찾는 분야가 없으면 검색창에 직접 입력해주세요.','Can’t find your category? Type it in the search box.')}</p>}
  </div>;
 }
+

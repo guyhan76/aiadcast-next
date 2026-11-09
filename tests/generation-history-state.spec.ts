@@ -1,3 +1,4 @@
+import {selectConsumerIndustry} from './helpers/industry';
 import {authenticatedSession,mockSession} from './helpers/authenticated-session';
 import {test,expect,type Page} from '@playwright/test';
 import sharp from 'sharp';
@@ -50,7 +51,7 @@ for(const late of [false,true])test(`new generation clears ${late?'late pending'
 });
 test('auto request stays in generation mode after its intent is consumed',async({page})=>{
  const state=await setup(page);await page.getByRole('button',{name:'입력 내용 수정',exact:true}).click();
- const form=page.locator('.consumer-create');await form.getByLabel('산업 선택').selectOption('boxes');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('튼튼한 종이 상자');
+ const form=page.locator('.consumer-create');await selectConsumerIndustry(form,'boxes');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('튼튼한 종이 상자');
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.getByText(progress,{exact:true})).toBeVisible();await expect(page.locator('.historical-ad')).toHaveCount(0);
  state.finish=true;await expect(page.locator('.generation-ad-preview')).toBeVisible();await expect(page.getByText(missing,{exact:true})).toHaveCount(0);expect(state.posts).toBe(1);expect(state.otherWrites).toBe(0);
 });

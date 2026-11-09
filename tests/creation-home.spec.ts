@@ -1,3 +1,4 @@
+import {selectConsumerIndustry} from './helpers/industry';
 import sharp from 'sharp';
 import {test,expect} from '@playwright/test';
 import {protectedScreen,mockSession} from './helpers/authenticated-session';
@@ -18,7 +19,7 @@ for(const language of ['ko','en'] as const){
 }
 test('home entry preserves unsaved inputs, photos and history on repeat clicks and reload',async({page})=>{
  await protectedScreen(page,mockSession('home-unsaved'));await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
- await page.goto('/#create');const form=page.locator('.create-page');await form.getByLabel('산업 선택').selectOption('boxes');await form.getByLabel('상품명',{exact:true}).fill('보존할 상품');await form.getByRole('textbox',{name:'추가 요청',exact:true}).fill('입력 내용 보존');
+ await page.goto('/#create');const form=page.locator('.create-page');await selectConsumerIndustry(form,'boxes');await form.getByLabel('상품명',{exact:true}).fill('보존할 상품');await form.getByRole('textbox',{name:'추가 요청',exact:true}).fill('입력 내용 보존');
  const photo=await sharp({create:{width:40,height:40,channels:3,background:'#b97842'}}).png().toBuffer();await form.getByLabel('참조사진 추가').setInputFiles({name:'retained.png',mimeType:'image/png',buffer:photo});const originalPhoto=await form.locator('img').first().getAttribute('src');
  await page.getByRole('link',{name:'aiadcast 홈',exact:true}).filter({visible:true}).first().click();await expect(page.locator('.creation-home')).toBeVisible();
  await page.locator('.creation-home').getByRole('button',{name:'광고 이미지 만들기',exact:true}).evaluate((el:HTMLButtonElement)=>{el.click();el.click();});await expect(form.getByLabel('상품명',{exact:true})).toHaveValue('보존할 상품');
