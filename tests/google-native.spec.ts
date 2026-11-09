@@ -75,7 +75,12 @@ for(const status of [503,429])test(`temporary ${status} preserves proof and auto
 test('three transient errors pause and manual status retry keeps the same proof',async({page})=>{
  const m=await setup(page);await page.clock.install({time:Date.now()});let count=0,ok=false;
  await page.route('**/api/auth/google/native-poll',r=>{count++;expect(r.request().postDataJSON()).toEqual({state,proof});return ok?r.fulfill({json:{state:'verified',session}}):r.abort('failed');});
- await page.goto('/');await page.getByRole('button',{name:'Google로 계속하기',exact:true}).click();await expect.poll(()=>count).toBe(1);await page.clock.runFor(3100);await expect.poll(()=>count).toBe(2);await page.clock.runFor(6100);await expect.poll(()=>count).toBe(3);
+ await page.goto('/');await page.getByRole('button',{name:'Google로 계속하기',exact:true}).click();await expect.poll(()=>count).toBe(1);
+ // Counting a request does not mean its failed response and recovery read have
+ // settled. Advance in bounded ticks while those real network promises drain.
+ const began=await page.evaluate(()=>Date.now());
+ for(const expected of [2,3])await expect.poll(async()=>{await page.clock.runFor(500);return count;},{intervals:[50],timeout:4000}).toBe(expected);
+ expect(await page.evaluate(()=>Date.now())-began).toBeLessThanOrEqual(20000);
  const retry=page.getByRole('button',{name:'로그인 다시 확인',exact:true});await expect(retry).toBeVisible();await page.evaluate(()=>{for(let i=0;i<5;i++)window.dispatchEvent(new Event('focus'));});await page.clock.fastForward(20000);expect(count).toBe(3);expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.google-flow'))).not.toBeNull();
  ok=true;await retry.evaluate((b:HTMLButtonElement)=>{b.click();b.click();});await expect(page.locator('.home-page')).toBeVisible();expect(count).toBe(4);expect(m.starts).toBe(1);
 });
@@ -122,3 +127,4 @@ test('late native approval cannot replace a newly selected account',async({page}
 test('malformed verified session is rejected without a new OAuth exchange',async({page})=>{
  const m=await setup(page);await page.route('**/api/auth/google/native-poll',r=>r.fulfill({json:{state:'verified',session:{...session,expires:0}}}));await page.goto('/');await page.getByRole('button',{name:'Google로 계속하기',exact:true}).click();await expect(page.getByRole('alert')).toBeVisible();expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();expect(m.starts).toBe(1);
 });
+

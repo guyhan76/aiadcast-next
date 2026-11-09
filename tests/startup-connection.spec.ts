@@ -15,8 +15,8 @@ for(const language of ['ko','en'])test(`startup failure offers GET-only retry an
  const {state,session}=await setup(page,language);await page.goto('/');const retry=page.getByRole('button',{name:language==='ko'?'다시 연결':'Reconnect',exact:true});await expect(retry).toBeEnabled();await page.screenshot({path:info.outputPath('startup-reconnect.png')});expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('aiadcast.beta-session')!).token)).toBe(session.token);
  state.mode='ok';await retry.evaluate((b:HTMLButtonElement)=>{b.click();b.click();});await expect(page.locator('.home-page')).toBeVisible();expect(state.reads).toBe(4);expect(state.writes).toBe(0);
 });
-for(const language of ['ko','en'])test(`stalled startup exits loading after 15 seconds and ignores the late response (${language})`,async({page},info)=>{
- const {state,session}=await setup(page,language);state.mode='hold';await page.clock.install({time:Date.now()});await page.goto('/');await expect.poll(()=>state.reads).toBe(1);await page.clock.fastForward(16000);await page.clock.fastForward(1100);await expect.poll(()=>state.reads).toBe(2);await page.clock.fastForward(16000);await page.clock.fastForward(2100);await expect.poll(()=>state.reads).toBe(3);await page.clock.fastForward(16000);
+for(const language of ['ko','en'])test(`stalled startup has an 80-second total budget and ignores the late response (${language})`,async({page},info)=>{
+ const {state,session}=await setup(page,language);state.mode='hold';await page.clock.install({time:Date.now()});await page.goto('/');await expect.poll(()=>state.reads).toBe(1);for(let i=0;i<82;i++)await page.clock.runFor(1000);
  const retry=page.getByRole('button',{name:language==='ko'?'다시 연결':'Reconnect',exact:true});await expect(retry).toBeEnabled();await expect(page.getByText(language==='ko'?'로그인을 확인하고 있어요':'Finishing sign-in…',{exact:true})).not.toBeVisible();
  state.release();await expect(page.locator('.home-page')).toHaveCount(0);expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('aiadcast.beta-session')!).token)).toBe(session.token);
  state.mode='ok';await retry.click();await expect(page.locator('.home-page')).toBeVisible();expect(state.writes).toBe(0);
@@ -64,6 +64,8 @@ test('back forward and reload retain the route without replaying generation',asy
  await page.reload();await expect(page.locator('.projects-page')).toBeVisible();expect(state.reads).toBe(3);expect(state.writes).toBe(0);
 });
 test('background or offline time cannot renew the initial connection deadline',async({page})=>{
- const {state}=await setup(page);await page.clock.install({time:Date.now()});await page.addInitScript(()=>Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>false}));await page.goto('/');await expect.poll(()=>state.reads).toBe(1);await expect(page.getByRole('button',{name:'다시 연결',exact:true})).toBeEnabled();await page.clock.fastForward(51000);state.mode='ok';
+ const {state}=await setup(page);await page.clock.install({time:Date.now()});await page.addInitScript(()=>Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>false}));await page.goto('/');await expect.poll(()=>state.reads).toBe(1);await expect(page.getByRole('button',{name:'다시 연결',exact:true})).toBeEnabled();await page.clock.fastForward(81000);state.mode='ok';
  await page.evaluate(()=>{Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>true});window.dispatchEvent(new Event('online'));});await expect(page.getByRole('alert')).toHaveText('연결이 지연되고 있습니다. 다시 연결해주세요.');expect(state.reads).toBe(1);await page.getByRole('button',{name:'다시 연결',exact:true}).click();await expect(page.locator('.home-page')).toBeVisible();expect(state.reads).toBe(2);expect(state.writes).toBe(0);
 });
+
+

@@ -1,6 +1,6 @@
 import {useRef,useState} from 'react';
 import {betaSession} from './beta-session';
-import {signOut} from './sign-out';
+import {signOut,SignOutPreservationFailure} from './sign-out';
 import {useUiLanguage} from './ui-language';
 import './account-bar.css';
 export function AccountBar({preserve}:{preserve:()=>Promise<void>}){
@@ -12,7 +12,9 @@ export function AccountBar({preserve}:{preserve:()=>Promise<void>}){
   if(!window.confirm(t('현재 작업을 이 기기에 보관한 뒤 로그아웃합니다. 서버 저장은 별도입니다. 계속할까요?','Your current work will be kept on this device before signing out. Server saving is separate. Continue?')))return;
   locked.current=true;setBusy(true);setError('');
   try{await signOut(preserve);}
-  catch{setError(t('작업 보관 또는 로그아웃 결과를 확인하지 못했습니다. 작업은 지우지 않았습니다. 저장 공간과 연결을 확인한 뒤 다시 시도해주세요.','Could not confirm saving or sign-out. Your work was not deleted. Check storage and your connection, then retry.'));}
+  catch(error){setError(error instanceof SignOutPreservationFailure
+   ?t('현재 작업을 이 기기에 보관하지 못해 로그아웃하지 않았습니다. 작업은 그대로 유지됩니다. 저장 공간을 확인한 뒤 다시 시도해주세요.','Your work could not be saved on this device, so you remain signed in. Your work is kept. Check device storage and retry.')
+   :t('계정 상태가 변경되어 로그아웃을 완료하지 못했습니다. 현재 계정을 확인한 뒤 다시 시도해주세요.','The account changed before sign-out completed. Check the current account and retry.'));}
   finally{locked.current=false;setBusy(false);}
  }
  return <section className="account-bar" aria-label={t('내 계정 및 로그아웃','My account and sign out')}>
@@ -21,3 +23,4 @@ export function AccountBar({preserve}:{preserve:()=>Promise<void>}){
   {error&&<p role="alert">{error}</p>}
  </section>;
 }
+

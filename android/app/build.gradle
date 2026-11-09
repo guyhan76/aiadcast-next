@@ -21,8 +21,8 @@ android {
         applicationId 'com.selluplabs.aiadcast.next'
         minSdk 29
         targetSdk 36
-        versionCode 82
-        versionName '0.2.80'
+        versionCode 87
+        versionName '0.2.85'
         buildConfigField 'String', 'API_ORIGIN', '"' + publicApiOrigin + '"'
         buildConfigField 'boolean', 'ALLOW_TEST_CONFIG', 'false'
         resValue 'string', 'app_name', 'aiadcast'
@@ -32,7 +32,7 @@ android {
             def keyPath = providers.environmentVariable('AIADCAST_DEMO_KEYSTORE').orNull
             if (keyPath) storeFile file(keyPath)
             storePassword providers.environmentVariable('AIADCAST_DEMO_STORE_PASSWORD').orNull
-            keyAlias 'aiadcast-demo'
+            keyAlias providers.environmentVariable('AIADCAST_DEMO_KEY_ALIAS').getOrElse('aiadcast-demo')
             keyPassword providers.environmentVariable('AIADCAST_DEMO_STORE_PASSWORD').orNull
         }
     }
@@ -51,7 +51,10 @@ android {
             versionNameSuffix '-preview'
             resValue 'string', 'app_name', 'aiadcast Preview'
             debuggable false
-            signingConfig signingConfigs.debug
+            // Explicit candidate builds use the owner's verified Preview key.
+            // Default local Preview builds keep their existing debug behavior.
+            signingConfig providers.gradleProperty('AIADCAST_UNSIGNED_PREVIEW').getOrElse('false') == 'true' ? null :
+                (providers.gradleProperty('AIADCAST_SIGNED_PREVIEW').getOrElse('false') == 'true' ? signingConfigs.demo : signingConfigs.debug)
             matchingFallbacks = ['debug']
         }
         demo {
@@ -62,7 +65,9 @@ android {
             buildConfigField 'boolean', 'ALLOW_TEST_CONFIG', 'false'
             buildConfigField 'String', 'API_ORIGIN', '"https://aiadcast-next.onrender.com"'
             debuggable false
-            signingConfig signingConfigs.demo
+            // CI can compile an explicitly unsigned review candidate when the
+            // existing private key is unavailable. Such an APK is not deployable.
+            signingConfig providers.gradleProperty('AIADCAST_UNSIGNED_DEMO').getOrElse('false') == 'true' ? null : signingConfigs.demo
             matchingFallbacks = ['debug']
         }
         release {
@@ -94,3 +99,6 @@ tasks.register('verifyWebAssets') {
     }
 }
 tasks.named('preBuild').configure { dependsOn 'verifyWebAssets' }
+
+
+

@@ -1,0 +1,177 @@
+name: Android update candidate
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - android/**
+      - native/**
+      - src/**
+      - tests/google-*.spec.ts
+      - tests/startup-connection.spec.ts
+      - tests/login-latency.spec.ts
+      - tests/account-signout.spec.ts
+      - tests/category-count.spec.ts
+      - tests/result-set.spec.ts
+      - tests-domain/industry-production.test.mjs
+      - tests-domain/result-set-component.test.mjs
+      - .github/workflows/android-candidate.yml
+permissions:
+  contents: read
+jobs:
+  android-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Prepare Android SDK
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"'
+      - name: Prepare verified Gradle with inherited network settings
+        run: python3 native/prepare-gradle-ci.py
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: Install browser for login regression checks
+        run: npx playwright install --with-deps chromium
+      - name: Category search, all six image counts and original-preserving edits
+        run: |
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(node --input-type=module -e "import {chromium} from '@playwright/test'; process.stdout.write(chromium.executablePath())")"
+          npx playwright test tests/category-count.spec.ts tests/result-set.spec.ts --workers=2 --max-failures=1
+      - name: Preserve synthetic UI screenshots for review
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: python3 scripts/export-ui-checks.py
+      - name: Category prompt wiring and multi-image queue checks
+        run: node --experimental-strip-types --test tests-domain/industry-production.test.mjs tests-domain/industry-catalog.test.mjs tests-domain/product.test.mjs tests-domain/result-set-component.test.mjs
+      - name: Creation input, photo preservation and request admission regression checks
+        # The full legacy consumer suite still runs unfiltered in App checks.
+        # Its pre-existing review/navigation selector failures are tracked in
+        # docs/category-count-preview.md, not waived as passing tests here.
+        run: |
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(node --input-type=module -e "import {chromium} from '@playwright/test'; process.stdout.write(chromium.executablePath())")"
+          npx playwright test tests/consumer-flow.spec.ts --grep 'photo-free service|unauthenticated creation|budget blockage|photo purpose survives|photo size overflow|when no photo fits|large photo drafts|draft storage failure|English photo creation|persisted uncertain result|storage preflight rejection' --workers=2 --max-failures=1
+      - name: Login startup, native return and account boundary checks
+        run: |
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(node --input-type=module -e "import {chromium} from '@playwright/test'; process.stdout.write(chromium.executablePath())")"
+          npx playwright test tests/login-latency.spec.ts tests/startup-connection.spec.ts tests/google-signin.spec.ts tests/google-native.spec.ts tests/google-link-recovery.spec.ts tests/account-signout.spec.ts --workers=2
+      - run: node scripts/check-web-build.mjs --require-commit
+      - run: node native/test-android-bridge.mjs
+      - run: node native/prepare-android.mjs
+      - name: Configure existing signing identity if available
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.AIADCAST_DEMO_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.AIADCAST_DEMO_STORE_PASSWORD }}
+          AIADCAST_SIGNING_PROFILE: preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$KEYSTORE_BASE64" && -n "$STORE_PASSWORD" ]]; then
+            umask 077
+            export AIADCAST_DEMO_KEYSTORE="$RUNNER_TEMP/aiadcast-demo.jks"
+            python3 native/decode-signing-secret.py
+            echo "AIADCAST_DEMO_KEYSTORE=$AIADCAST_DEMO_KEYSTORE" >> "$GITHUB_ENV"
+            python3 native/check-android-signing.py
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo 'Existing signing credentials unavailable: compile an unsigned inspection candidate only.'
+          fi
+      - name: Native tests, lint and APK assembly
+        env:
+          SIGNING_AVAILABLE: ${{ steps.signing.outputs.available }}
+          AIADCAST_DEMO_STORE_PASSWORD: ${{ secrets.AIADCAST_DEMO_STORE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd android
+          unsigned=()
+          if [[ "$SIGNING_AVAILABLE" != true ]]; then unsigned=(-PAIADCAST_UNSIGNED_PREVIEW=true); fi
+          "$AIADCAST_GRADLE" --no-daemon testPreviewUnitTest lintPreview assemblePreview -PAIADCAST_SIGNED_PREVIEW=true -PAIADCAST_API_ORIGIN=https://aiadcast-next.onrender.com "${unsigned[@]}"
+      - name: Verify candidate identity and signing state
+        env:
+          SIGNING_AVAILABLE: ${{ steps.signing.outputs.available }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release/android-candidate
+          apk=android/app/build/outputs/apk/preview/app-preview-unsigned.apk
+          label=unsigned-inspection-only
+          if [[ "$SIGNING_AVAILABLE" == true ]]; then
+            apk=android/app/build/outputs/apk/preview/app-preview.apk
+            label=signed-candidate
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" > release/android-candidate/signature.txt
+            # Match the owner's signed Preview 0.2.80 APK; never substitute a key.
+            grep -qi '7dc020bc774784d3df553c58c672f4210d232e2543004fd52ac9084943488b4e' release/android-candidate/signature.txt
+          else
+            if "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$apk" >/dev/null 2>&1; then
+              echo 'Unexpected signing identity on unsigned candidate' >&2; exit 1
+            fi
+          fi
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" > release/android-candidate/package.txt
+          grep -q "name='com.selluplabs.aiadcast.next.preview' versionCode='87' versionName='0.2.85-preview'" release/android-candidate/package.txt
+          cp "$apk" "release/android-candidate/aiadcast-0.2.85-preview-code87-$label.apk"
+          (cd release/android-candidate && sha256sum *.apk > SHA256SUMS.txt)
+          cp android/app/src/main/assets/native-build.json release/android-candidate/
+          printf 'Source: %s\nPackage: com.selluplabs.aiadcast.next.preview\nVersion: 0.2.85-preview (87)\nSigning: %s\nServer deployment: not performed\nLive AI editing: not validated\n' "$(git rev-parse HEAD)" "$label" | tee release/android-candidate/status.txt
+          cat release/android-candidate/status.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish verified signed Preview APK for testing
+        if: steps.signing.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha=$(git rev-parse HEAD)
+          tag="preview-0.2.85-code87-${source_sha:0:12}"
+          cat > "$RUNNER_TEMP/preview-release-notes.md" <<'NOTES'
+          Preview testing APK, version 0.2.85-preview (87).
+          Package: com.selluplabs.aiadcast.next.preview.
+          The signing certificate matches the owner's signed Preview 0.2.80 APK.
+          Login startup/logout/native-return browser checks, native unit tests, Android lint, apksigner verification and zipalign passed.
+          Products and services have separate browsing groups. Typing shows directly selectable results across both kinds.
+          Expanded categories and custom industry names are preserved in drafts and image generation context.
+          All 48 stable category IDs remain compatible. Expanded names reuse existing generation families; they do not represent new quality-validated engines.
+          Section 9 has 18px number/title spacing and 20px heading/button spacing. Mocked browser requests verify 1/2/4/6/8/10 images, budget blocking, charge consent and original-preserving edits.
+          Device sign-out follows successful private-work preservation without waiting for the server.
+          Offline and 401/503 logout responses cannot block device logout or clear a replacement account.
+          Google start waits for a bounded shared GET readiness check, then sends one OAuth POST.
+          A freshly verified login opens home without a duplicate session GET; stored sessions are still verified.
+          Render Free server spin-up delays remain; this APK does not change the hosting plan.
+          Device installation, live AI image quality and all-count paid provider runs are not validated.
+          Video creation remains coming soon; no video generation integration is claimed.
+          Server deployment and Play publication have not been performed.
+          The existing image boundary defect and broader browser/PostgreSQL test issues remain under review; this is not a production quality approval.
+          NOTES
+          printf '\nSource: %s\n' "$source_sha" >> "$RUNNER_TEMP/preview-release-notes.md"
+          gh release create "$tag" release/android-candidate/* --repo "$GH_REPO" --target "$source_sha" --prerelease --title 'aiadcast Preview 0.2.85 (87) — testing APK' --notes-file "$RUNNER_TEMP/preview-release-notes.md"
+          gh release view "$tag" --repo "$GH_REPO" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload APK candidate and Android reports
+        if: steps.signing.outputs.available != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aiadcast-android-0.2.85-code87-candidate
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+          path: |
+            release/android-candidate/
+            android/app/build/reports/tests/testPreviewUnitTest/
+            android/app/build/reports/lint-results-preview.html
+
+

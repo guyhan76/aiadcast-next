@@ -6,6 +6,66 @@ on:
 permissions:
   contents: read
 jobs:
+  selective-edit-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        volumes:
+          - /tmp/aiadcast-selective-pg-socket:/var/run/postgresql
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Real PostgreSQL selective-edit and cost-ledger checks (mock provider)
+        env:
+          AIADCAST_SELECTIVE_PG_SOCKET: /tmp/aiadcast-selective-pg-socket
+        run: >-
+          node --experimental-strip-types --test --test-concurrency=1
+          tests-domain/selective-edit-real-postgres.test.mjs
+          tests-domain/selective-quality-once.test.mjs
+          tests-domain/selective-connector-ledger.test.mjs
+  selective-edit-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Selected-image editing browser checks (mock provider)
+        run: |
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(node --input-type=module -e "import {chromium} from '@playwright/test'; process.stdout.write(chromium.executablePath())")"
+          npx playwright test tests/selective-image-edit.spec.ts tests/result-set.spec.ts --workers=2 --trace retain-on-failure
+      - name: Result actions and retained-input rejection checks
+        run: |
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(node --input-type=module -e "import {chromium} from '@playwright/test'; process.stdout.write(chromium.executablePath())")"
+          npx playwright test tests/generation-auto-recovery.spec.ts --grep 'simple review|simple rejection' --workers=2 --output=review-test-results --trace retain-on-failure
+      - name: Upload partial-edit browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selective-edit-browser-evidence
+          path: |
+            test-results/
+            review-test-results/
+          retention-days: 7
+          if-no-files-found: ignore
   verify:
     runs-on: ubuntu-latest
     steps:

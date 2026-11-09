@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "execution": "offline-existing-image-fixture",
+  "providerCalls": 0,
+  "semanticQuality": "not-assessed",
+  "visualApproval": false,
+  "original": {
+    "file": "exec-80d25a38-a2bd-4b0b-aacc-5998c0112a6b.png",
+    "sha256": "653a51d99facdbd814ef2c1d9a92dc9fb85827ba0d7fbf891fb86b0767bd7c2a",
+    "width": 941,
+    "height": 1672
+  },
+  "candidate": {
+    "file": "exec-208ef3f3-94d7-4cb3-a61b-830c38ad7059.png",
+    "sha256": "70570ce10d0c407b15575b61d5664aa0dbc8f5bdb5dbd8c431f1b390f451b9be"
+  },
+  "references": [
+    {
+      "file": "01-25527.jpg",
+      "sha256": "5c5d8caf1a18a0c9cb6d34c0366bf40c931f5b05a796d73f769e820a8d7b6db0",
+      "width": 1536,
+      "height": 1536,
+      "mime": "image/jpeg"
+    },
+    {
+      "file": "02-25515.jpg",
+      "sha256": "11876c30b9569f93c84c1ad4452fd6e01b055bb9b2e5a4e4da43145c7aaba9a0",
+      "width": 1182,
+      "height": 1536,
+      "mime": "image/jpeg"
+    },
+    {
+      "file": "03-25518.jpg",
+      "sha256": "c275e89324b7a0e1591c186833b0e61f27b33cdcf0bec8d0684c9996774b63d2",
+      "width": 1536,
+      "height": 1536,
+      "mime": "image/jpeg"
+    },
+    {
+      "file": "04-25521.jpg",
+      "sha256": "28d618eadbfedb648d27b2b7359b6006dcb6310776fd991bff08f1d8b0c738d3",
+      "width": 1536,
+      "height": 1536,
+      "mime": "image/jpeg"
+    },
+    {
+      "file": "05-25524.jpg",
+      "sha256": "c9ceb6f006f482b6beec0c8e45c79de7a492354a89e35057e82808ecebf8f240",
+      "width": 1536,
+      "height": 1536,
+      "mime": "image/jpeg"
+    },
+    {
+      "file": "06-25530.jpg",
+      "sha256": "ec8eeb5dfd5c6aecde8417252c14c063a5daf0acd680952a4bc297985525f8df",
+      "width": 851,
+      "height": 1536,
+      "mime": "image/jpeg"
+    },
+    {
+      "file": "07-25533.jpg",
+      "sha256": "d97de4a623badb912cc790dc9f9971bbbbe2f6a9545d26c84d52233ca94633f1",
+      "width": 1536,
+      "height": 1269,
+      "mime": "image/jpeg"
+    }
+  ],
+  "multipart": {
+    "images": 8,
+    "firstImageIsAdvertisement": true,
+    "maskIsAdvertisementMask": true,
+    "referencesUnchanged": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "rawCandidateChangedOutsideSelection": 1290667,
+  "preservation": {
+    "version": 1,
+    "sourceHash": "653a51d99facdbd814ef2c1d9a92dc9fb85827ba0d7fbf891fb86b0767bd7c2a",
+    "maskHash": "693d038dae8591d436f697745b12714014ae3f90782ec9f0996f889364ab2157",
+    "resultHash": "3c7fb6ae36d243f926aa2911a8978b4511f5ac1593cd46af55781c13c5decb2f",
+    "width": 941,
+    "height": 1672,
+    "selectedPixels": 239197,
+    "changedSelectedPixels": 239012,
+    "changedOutsidePixels": 0,
+    "bounds": {
+      "x": 130,
+      "y": 704,
+      "width": 790,
+      "height": 434
+    },
+    "semanticQuality": "not-assessed"
+  },
+  "originalFileUnchanged": true,
+  "limitations": [
+    "Mask is manually reviewed for this fixture, not automatic segmentation.",
+    "Composite bytes are checked in memory, not exported or approved as an advertisement.",
+    "No live masked API, ledger settlement, production database or Android execution."
+  ]
+}

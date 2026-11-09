@@ -1,3 +1,4 @@
+import {selectConsumerIndustry} from './helpers/industry';
 // Korean UI scenarios explicitly select Korean; English cases override this choice.
 test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));});
 import {test,expect} from '@playwright/test';
@@ -20,7 +21,7 @@ test('simple campaign supports 10 references, individual footer choices, reviewe
  if(url.pathname==='/api/generations/premium_job_001')return respond({job,wallet});
  if(url.pathname==='/api/generations')return respond({jobs:job?[job]:[]});
  if(url.pathname.endsWith('/accept')){accepts++;job.state='accepted';return respond({job,wallet});}return respond({});});
- await page.goto('/');await page.getByRole('button',{name:'광고 이미지 만들기',exact:true}).click();const wizard=page.locator('.create-page');await wizard.getByLabel('산업 선택').selectOption('boxes');
+ await page.goto('/');await page.getByRole('button',{name:'광고 이미지 만들기',exact:true}).click();const wizard=page.locator('.create-page');await selectConsumerIndustry(wizard,'boxes');
  await wizard.getByLabel('참조사진 추가').setInputFiles(photos);await expect(wizard.getByRole('alert')).toContainText('최대 10장');
  await expect(wizard.locator('.reference-item')).toHaveCount(10);await expect(wizard.getByLabel('참조사진 추가')).toHaveCount(0);
  await wizard.getByRole('button',{name:'2 대표 사진으로',exact:true}).click();
@@ -41,8 +42,6 @@ test('simple campaign supports 10 references, individual footer choices, reviewe
  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
 });
 test('English service rejects a missing photo without writes and reports unavailable generation after a photo is attached',async({page})=>{
- let writes=0;await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','en'));await page.route('**/api/**',r=>{if(r.request().method()!=='GET')writes++;return ['/api/auth/session','/api/account/capabilities'].includes(new URL(r.request().url()).pathname)?r.fallback():r.fulfill({status:503,body:'{}'});});await page.goto('/');await page.getByRole('button',{name:'Create an ad image',exact:true}).click();const form=page.locator('.create-page');await form.getByLabel('Choose an industry').selectOption('yoga');await form.getByLabel('Service name',{exact:true}).fill('Studio Bloom');await form.getByRole('textbox',{name:'Description',exact:true}).fill('Private yoga classes');await form.getByRole('button',{name:'Generate ad',exact:true}).click();await expect(form.getByRole('alert')).toBeVisible();await expect(page).toHaveURL(/#create$/);expect(writes).toBe(0);await form.locator('input[type=file]').first().setInputFiles(photos[0]);await form.getByRole('button',{name:'Generate ad',exact:true}).click();await expect(page.locator('.simple-ad-result')).toBeVisible();await expect(page.locator('.simple-generation-block')).toBeVisible();await expect(page.getByRole('button',{name:'Save / share image',exact:true})).toHaveCount(0);await expect(page.locator('.generation-ad-preview')).toHaveCount(0);
+ let writes=0;await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','en'));await page.route('**/api/**',r=>{if(r.request().method()!=='GET')writes++;return ['/api/auth/session','/api/account/capabilities'].includes(new URL(r.request().url()).pathname)?r.fallback():r.fulfill({status:503,body:'{}'});});await page.goto('/');await page.getByRole('button',{name:'Create an ad image',exact:true}).click();const form=page.locator('.create-page');await selectConsumerIndustry(form,'yoga');await form.getByLabel('Service name',{exact:true}).fill('Studio Bloom');await form.getByRole('textbox',{name:'Description',exact:true}).fill('Private yoga classes');await form.getByRole('button',{name:'Generate ad',exact:true}).click();await expect(form.getByRole('alert')).toBeVisible();await expect(page).toHaveURL(/#create$/);expect(writes).toBe(0);await form.locator('input[type=file]').first().setInputFiles(photos[0]);await form.getByRole('button',{name:'Generate ad',exact:true}).click();await expect(page.locator('.simple-ad-result')).toBeVisible();await expect(page.locator('.simple-generation-block')).toBeVisible();await expect(page.getByRole('button',{name:'Save / share image',exact:true})).toHaveCount(0);await expect(page.locator('.generation-ad-preview')).toHaveCount(0);
 
 });
-
-

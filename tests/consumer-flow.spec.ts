@@ -1,3 +1,4 @@
+import {selectConsumerIndustry} from './helpers/industry';
 import {waitForSavedDraft} from './helpers/workspace-menu';
 // Korean UI scenarios explicitly select Korean; English cases override this choice.
 test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));});
@@ -27,7 +28,7 @@ async function mocks(page:Page,{auth=false,enabled=true,admin=false,v2=false,unc
  return send({error:{code:'TEST_ROUTE_UNAVAILABLE'}},404);
  });await authenticatedSession(page,mockSession(admin?'admin-budget-test':'consumer-user-123',admin?'admin':'member'),{seed:!auth});return state;
 }
-async function details(page:Page,service=true){await page.goto('/#create');const form=page.locator('.consumer-create');await form.getByLabel('산업 선택').selectOption(service?'lodging':'boxes');await form.getByLabel(service?'서비스명':'상품명',{exact:true}).fill(service?'숲속 숙소':'우체국3호박스');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill(service?'숲 전망의 객실, 1박 120,000원':'B골, 크라프트재질, 튼튼하고 습기에 강하다. 빠른배송. 10개 19,800원');return form;}
+async function details(page:Page,service=true){await page.goto('/#create');const form=page.locator('.consumer-create');await selectConsumerIndustry(form,service?'lodging':'boxes');await form.getByLabel(service?'서비스명':'상품명',{exact:true}).fill(service?'숲속 숙소':'우체국3호박스');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill(service?'숲 전망의 객실, 1박 120,000원':'B골, 크라프트재질, 튼튼하고 습기에 강하다. 빠른배송. 10개 19,800원');return form;}
 
 test('eight inputs submit actual generation request once and a complete accepted PNG can be saved',async({page})=>{
  const state=await mocks(page),form=await details(page,false);
@@ -190,7 +191,7 @@ test('new credits require explicit ten-credit confirmation before auto creation 
 });
 test('English photo creation reviews and saves a complete ad without duplicate requests',async({page})=>{
  const state=await mocks(page);await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','en'));await page.goto('/#create');const form=page.locator('.consumer-create');
- await form.getByLabel('Choose an industry').selectOption('lodging');await form.getByRole('textbox',{name:'Service name',exact:true}).fill('Forest stay');await form.getByRole('textbox',{name:'Description',exact:true}).fill('Quiet rooms surrounded by trees');await form.locator('input[type=file]').first().setInputFiles({name:'room.png',mimeType:'image/png',buffer:first});await expect(form.locator('.reference-item img')).toBeVisible();await form.getByRole('button',{name:'Generate ad',exact:true}).click();
+ await selectConsumerIndustry(form,'lodging');await form.getByRole('textbox',{name:'Service name',exact:true}).fill('Forest stay');await form.getByRole('textbox',{name:'Description',exact:true}).fill('Quiet rooms surrounded by trees');await form.locator('input[type=file]').first().setInputFiles({name:'room.png',mimeType:'image/png',buffer:first});await expect(form.locator('.reference-item img')).toBeVisible();await form.getByRole('button',{name:'Generate ad',exact:true}).click();
  const result=page.locator('.simple-ad-result');await expect(result.locator('.generation-ad-preview')).toBeVisible();expect(state.posts).toBe(1);expect(state.body.request.output.locale).toBe('en');expect(state.body.request.output.showDimensions).toBe(false);
  await expect(result.getByRole('button',{name:/^(사용 확정|Accept)$/})).toBeEnabled();await result.getByRole('button',{name:'Accept',exact:true}).click();await expect(result.locator('.accepted-ad')).toBeVisible();const pending=page.waitForEvent('download');await result.getByRole('button',{name:'Save / share image',exact:true}).click();expect(await sharp((await(await pending).path())!).metadata()).toMatchObject({format:'png',width:1080,height:1920});expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
 });
@@ -241,7 +242,7 @@ test('edited delivered credit result requires new charge consent and coalesces d
 
 for(const adLocale of ['ko','en'])for(const ui of ['ko','en'])test(`result analysis UI ${ui} with ad ${adLocale} is collapsed, localized and read-only`,async({page})=>{
  const state=await mocks(page),form=await details(page,false);
- await form.getByLabel('산업 선택').selectOption('fashion');await form.getByLabel('상품명',{exact:true}).fill('ACME');
+ await selectConsumerIndustry(form,'fashion');await form.getByLabel('상품명',{exact:true}).fill('ACME');
  await form.getByLabel('참조사진 추가').setInputFiles({name:'shirt.png',mimeType:'image/png',buffer:first});
  await form.getByRole('combobox',{name:/^광고 문구 언어/}).selectOption(adLocale);
  await form.getByRole('button',{name:'광고 생성',exact:true}).click();const result=page.locator('.simple-ad-result');await expect(result.locator('.generation-ad-preview')).toBeVisible();
@@ -258,7 +259,7 @@ for(const adLocale of ['ko','en'])for(const ui of ['ko','en'])test(`result analy
 
 for(const language of ['ko','en'] as const)test(`photo guidance and visible creative request preserve separate facts (${language})`,async({page})=>{
  const state=await mocks(page);await page.addInitScript(language=>localStorage.setItem('aiadcast.ui-language',language),language);await page.goto('/#create');
- const form=page.locator('.consumer-create'),ko=language==='ko';await form.getByLabel(ko?'산업 선택':'Choose an industry').selectOption('boxes');
+ const form=page.locator('.consumer-create'),ko=language==='ko';await selectConsumerIndustry(form,'boxes');
  const description=form.getByRole('textbox',{name:ko?'상세설명':'Description',exact:true}),note=form.getByRole('textbox',{name:ko?'추가 요청':'Additional requests',exact:true});
  await expect(note).toBeVisible();await expect(note).toBeEditable();expect(await note.evaluate(el=>!!el.closest('details'))).toBe(false);
  expect(await description.evaluate(el=>el.closest('label')?.nextElementSibling?.contains(document.querySelector('[data-order="5"] textarea[maxlength="600"]')))).toBe(true);
@@ -285,7 +286,7 @@ for(const language of ['ko','en'] as const)test(`storage preflight rejection is 
  await mocks(page);await page.addInitScript(language=>localStorage.setItem('aiadcast.ui-language',language),language);
  let posts=0;await page.route('**/api/generations',route=>{if(route.request().method()!=='POST')return route.fallback();posts++;return route.fulfill({status:413,contentType:'application/json',body:JSON.stringify({error:{code:'STORAGE_CAPACITY_UNAVAILABLE'}})});});
  await page.goto('/#create');const ko=language==='ko',form=page.locator('.consumer-create');
- await form.getByLabel(ko?'산업 선택':'Choose an industry').selectOption('boxes');await form.getByLabel(ko?'상품명':'Product name',{exact:true}).fill('Hoodie');
+ await selectConsumerIndustry(form,'boxes');await form.getByLabel(ko?'상품명':'Product name',{exact:true}).fill('Hoodie');
  await form.getByRole('textbox',{name:ko?'상세설명':'Description',exact:true}).fill('Cotton hoodie');
  await form.getByLabel(ko?'참조사진 추가':'Add reference photos').setInputFiles({name:'product.png',mimeType:'image/png',buffer:first});
  await form.getByRole('button',{name:ko?'광고 생성':'Generate ad',exact:true}).click();
@@ -295,4 +296,5 @@ for(const language of ['ko','en'] as const)test(`storage preflight rejection is 
  await page.getByRole('button',{name:ko?'입력 내용 수정':'Edit details',exact:true}).click();
  await expect(form.getByRole('textbox',{name:ko?'상세설명':'Description',exact:true})).toHaveValue('Cotton hoodie');await expect(form.locator('.reference-item')).toHaveCount(1);expect(posts).toBe(1);
 });
+
 

@@ -42,3 +42,14 @@ test('explicit AI replanning creates a separate draft while preserving source ph
  assert.equal(next.campaign.creative.note,p.campaign.creative.note);assert.equal(JSON.stringify(p),before);
  const r=normalizeGenerationRequest(buildGenerationRequest(next));assert.equal(r.mode,'creative');assert.equal(r.references[0].purpose,'style');assert.equal(r.copy.description,'10개 39,800원');assert.ok(r.output.compositionKey);
 });
+test('replanning retains optional dimension choices until submission and discards old placement evidence',()=>{
+ for(const mode of ['none','main','inset']){
+  const p=fixture();p.productProfile.specType='rectangular';p.dimensions={...p.dimensions,width:'400',depth:'300',height:'350',visible:mode!=='none',lines:mode==='main'};
+  p.dimensionAnnotation={method:'manual',mode,snapshot:'old-result',manual:{sentinel:'old-placement'}};
+  const before=JSON.stringify(p),draft=creativeCampaignDraft(p);
+  assert.deepEqual(draft.dimensions,p.dimensions);assert.deepEqual(draft.dimensionAnnotation,{method:'manual',mode,snapshot:''});
+  const submitted=prepareCampaign(draft);assert.deepEqual(submitted.dimensionAnnotation,{method:'ai',mode,snapshot:''});
+  assert.equal(submitted.dimensions.visible,mode!=='none');assert.equal(submitted.dimensions.lines,mode!=='none');
+  assert.equal(JSON.stringify(p),before);assert.equal(draft.generated,undefined);
+ }
+});

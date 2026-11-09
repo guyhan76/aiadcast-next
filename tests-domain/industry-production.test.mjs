@@ -5,6 +5,8 @@ import {productCategories,isPhysicalCategory} from '../src/industry.ts';
 import {artDirectionFor} from '../src/art-direction.ts';
 import {newProject} from '../src/model.ts';
 import {withCategory} from '../src/product.ts';
+import {parseProfile} from '../src/product.ts';
+import {completeAdKey} from '../src/complete-ad.ts';
 import {withCreative} from '../src/creative.ts';
 import {buildGenerationRequest} from '../src/generation.ts';
 import {normalizeGenerationRequest} from '../server/generation-service.mjs';
@@ -35,6 +37,21 @@ test('every supported industry has a suitable production brief; services never f
  const packaging=['packaging','boxes','shoppingbags','labels','containers','pouches','plasticfilm'];
  assert.equal(new Set(packaging.map(id=>artDirectionFor(id,'9:16').id)).size,packaging.length);
  assert.match(artDirectionFor('boxes','9:16').constraints.join(' '),/never impose corrugation on a rigid box/);
+});
+
+test('custom product and service names reach the provider prompt and invalidate old composition reuse',()=>{
+ for(const category of ['other','services']){
+  const p=project(category),before=completeAdKey(p),originalFacts=p.productProfile.material;
+  p.productProfile=parseProfile({...p.productProfile,industryName:'고객이 지정한 맞춤 분야'});
+  const request=normalizeGenerationRequest(buildGenerationRequest(p));
+  assert.equal(request.productProfile.industryName,'고객이 지정한 맞춤 분야');
+  assert.equal(request.creativeDirection.industry.label,'고객이 지정한 맞춤 분야');
+  assert.match(promptFor(request),/고객이 지정한 맞춤 분야/);
+  assert.equal(p.productProfile.material,originalFacts);
+  assert.notEqual(completeAdKey(p),before);
+  assert.equal(request.subjectType,category==='other'?'physical-product':'service');
+  assert.equal(withCategory(p,category==='other'?'shoes':'lodging').productProfile.industryName,undefined);
+ }
 });
 
 test('all industry and language requests preserve facts, photos or photo-free services, and patent-result planning through server normalization',()=>{
@@ -95,3 +112,4 @@ test('service-specific brief reaches the actual image adapter transport with no 
  assert.equal(calls[0].body.quality,'high');assert.equal(calls[0].body.n,1);
  assert.equal(result.composition,'complete-ad');assert.equal(result.sha256,hashBytes(bytes));
 });
+

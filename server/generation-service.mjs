@@ -1,3 +1,4 @@
+import {verifiedPreservation} from '../src/selective-preservation.ts';
 import {prepareSelectiveEdit,compositeSelectiveEdit} from './selective-image-edit.mjs';
 import {plannedAdText} from '../src/planned-ad-text.ts';
 import {exactAdText,plannedTextInput} from '../src/exact-ad-text.ts';
@@ -233,7 +234,7 @@ export class GenerationService {
     const wallet=readinessMeasure('wallet',()=>this.wallet());
     const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : (cumulative?.limitMicros??limit) < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : !this.adminTestUnlimited && wallet.available < 1 && wallet.credits.available < 10 ? 'NO_TEST_CREDITS' : null;
     const assistantReason = !this.assistantEnabled ? 'ASSISTANT_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : (cumulative?.availableMicros??(this.budgetMicros-(budget?.spent_micros??0)-(budget?.held_micros??0))) < TEXT_MAX_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : null;
-    return { mode: 'local-development', commercialReady: false, generation: { selectiveEdit: this.selectiveEditingEnabled===true&&this.adapter?.selectiveEditReady===true, creditQuote:this.creditQuote(wallet), enabled: reason === null, exactAdText:false, plannedAdText:false, manualDimensionOverlay:true, aiDimensionDisplay: true, photoPurposes: true, textExamples: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet, budget: { currency: 'USD', period, limitMicros: limit, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false, ...(cumulative?{scope:cumulative.scope,historyMode:cumulative.historyMode,activatedAt:cumulative.activatedAt,limitMicros:cumulative.limitMicros,spentMicros:cumulative.spentMicros,heldMicros:cumulative.heldMicros,availableMicros:cumulative.availableMicros}:{}) }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
+    return { mode: 'local-development', commercialReady: false, generation: { selectiveEditProofVersion:1, selectiveEdit: this.selectiveEditingEnabled===true&&this.adapter?.selectiveEditReady===true, creditQuote:this.creditQuote(wallet), enabled: reason === null, exactAdText:false, plannedAdText:false, manualDimensionOverlay:true, aiDimensionDisplay: true, photoPurposes: true, textExamples: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet, budget: { currency: 'USD', period, limitMicros: limit, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false, ...(cumulative?{scope:cumulative.scope,historyMode:cumulative.historyMode,activatedAt:cumulative.activatedAt,limitMicros:cumulative.limitMicros,spentMicros:cumulative.spentMicros,heldMicros:cumulative.heldMicros,availableMicros:cumulative.availableMicros}:{}) }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
   }
   storeAsset(asset) {
     this.db.prepare('INSERT INTO generation_assets VALUES (?,?,?,?,?) ON CONFLICT(hash) DO NOTHING').run(asset.sha256, asset.mime, asset.width, asset.height, asset.bytes);
@@ -256,7 +257,7 @@ export class GenerationService {
   jobView(row,billing,requestIds,defectReport,{includeArtifact=true}={}) {
     const id=row.id,metadata=row.metadata_json?JSON.parse(row.metadata_json):null,request=JSON.parse(row.request_json);
     const state = row.error_code === 'PROVIDER_UNCERTAIN' ? 'uncertain' : row.error_code ? 'failed' : billing.status === 'released' ? (billing.reason === 'customer_rejected' ? 'rejected' : 'expired') : billing.status === 'refunded' ? 'refunded' : billing.status === 'reserved' ? 'running' : billing.status;
-    return { id, ...(request.selectiveEdit?{selectiveEdit:request.selectiveEdit}:{}), requestFingerprint:hashBytes(Buffer.from(generationMatchKey(request))), ...(request.dimensionDisplay?{dimensionDisplay:request.dimensionDisplay,...(metadata?.dimensionReview?{dimensionReview:metadata.dimensionReview}:{})}:{}), ...(request.inputMode==='text-example'?{inputMode:'text-example'}:{}),...(request.dimensionPlan?{dimensionPlan:request.dimensionPlan}:{}), ...(metadata?.planarReport?{planarReport:metadata.planarReport,...(includeArtifact?{planarOriginal:this.asset(metadata.planarReport.originalHash)}:{})}:{}), creditUnit:billing.unit,creditPolicy:billing.creditExempt?'admin-unlimited':billing.policy,creditCost:billing.creditExempt?0:billing.credits,creditCaptured:billing.captured,...(defectReport?{defectReport}:{}), requestId: requestIds[0] ?? null, requestIds, projectId: row.project_id, state, mode: request.mode, sourceHash: row.source_hash, createdAt: new Date(row.created_at).toISOString(), model: metadata?.model??IMAGE_MODEL, quality: 'high', outputFormat: request.output.format, ...(metadata?.composition?{composition:metadata.composition,...(metadata.composition==='complete-ad'?{compositionKey:request.output.compositionKey}:{})}:{}), artifact: ['ready','accepted'].includes(state) && includeArtifact && row.artifact_hash ? { ...this.asset(row.artifact_hash), role: row.artifact_role } : null, artifactId: row.artifact_hash, errorCode: row.error_code, usage: metadata?.usage ?? null, cost: metadata?.cost ?? null, providerRequestId: metadata?.providerRequestId ?? null, marketingPlan: request.marketingPlan ?? null, review: 'human-review-required', billingStatus: billing.status, expiresAt: billing.expires_at };
+    return { id, ...(request.selectiveEdit?{selectiveEdit:request.selectiveEdit,...(metadata?.preservation?{preservation:metadata.preservation}:{})}:{}), requestFingerprint:hashBytes(Buffer.from(generationMatchKey(request))), ...(request.dimensionDisplay?{dimensionDisplay:request.dimensionDisplay,...(metadata?.dimensionReview?{dimensionReview:metadata.dimensionReview}:{})}:{}), ...(request.inputMode==='text-example'?{inputMode:'text-example'}:{}),...(request.dimensionPlan?{dimensionPlan:request.dimensionPlan}:{}), ...(metadata?.planarReport?{planarReport:metadata.planarReport,...(includeArtifact?{planarOriginal:this.asset(metadata.planarReport.originalHash)}:{})}:{}), creditUnit:billing.unit,creditPolicy:billing.creditExempt?'admin-unlimited':billing.policy,creditCost:billing.creditExempt?0:billing.credits,creditCaptured:billing.captured,...(defectReport?{defectReport}:{}), requestId: requestIds[0] ?? null, requestIds, projectId: row.project_id, state, mode: request.mode, sourceHash: row.source_hash, createdAt: new Date(row.created_at).toISOString(), model: metadata?.model??IMAGE_MODEL, quality: 'high', outputFormat: request.output.format, ...(metadata?.composition?{composition:metadata.composition,...(metadata.composition==='complete-ad'?{compositionKey:request.output.compositionKey}:{})}:{}), artifact: ['ready','accepted'].includes(state) && includeArtifact && row.artifact_hash ? { ...this.asset(row.artifact_hash), role: row.artifact_role } : null, artifactId: row.artifact_hash, errorCode: row.error_code, usage: metadata?.usage ?? null, cost: metadata?.cost ?? null, providerRequestId: metadata?.providerRequestId ?? null, marketingPlan: request.marketingPlan ?? null, review: 'human-review-required', billingStatus: billing.status, expiresAt: billing.expires_at };
   }
   requestStatus(requestId, projectId) {
     if (!identifier(requestId) || !identifier(projectId)) fail('INVALID_REQUEST');
@@ -283,6 +284,33 @@ export class GenerationService {
     if(job.selectiveEdit?.sourceJobId!==sourceJobId)fail('REQUEST_PROJECT_MISMATCH',409);
     return {state:'found',jobId:job.id,projectId:job.projectId};
   }
+  async selectiveProductReferences(request,sourceHash) {
+    // Derive evidence only from this tenant's immutable job history. The edit
+    // client cannot add arbitrary URLs, hashes or another project's photographs.
+    const visited=new Set();
+    while(request.selectiveEdit&&!Array.isArray(request.selectiveEdit.productReferences)){
+      const id=request.selectiveEdit.sourceJobId;
+      if(!identifier(id)||visited.has(id)||visited.size>=32)fail('INVALID_EDIT_SOURCE',409);
+      visited.add(id);
+      const row=this.db.prepare('SELECT request_json FROM generation_records WHERE id=?').get(id);
+      if(!row)fail('INVALID_EDIT_SOURCE',409);
+      request=JSON.parse(row.request_json);
+    }
+    const descriptors=request.selectiveEdit?.productReferences??[request.source,...request.references??[]].filter(r=>r&&(r.purpose??'subject')==='subject');
+    if(!Array.isArray(descriptors)||descriptors.length>10)fail('INVALID_EDIT_SOURCE',409);
+    const references=[],seen=new Set([sourceHash]);
+    for(const descriptor of descriptors){
+      if(!descriptor||!/^[a-f0-9]{64}$/.test(descriptor.sha256))fail('INVALID_EDIT_SOURCE',409);
+      if(seen.has(descriptor.sha256))continue;
+      seen.add(descriptor.sha256);
+      const saved=this.asset(descriptor.sha256);
+      if(!saved)fail('INVALID_EDIT_SOURCE',409);
+      let ref;try{ref=await parseSourceAsset({...saved,data:saved.dataUrl});}catch{fail('INVALID_EDIT_SOURCE',409);}
+      references.push(ref);
+    }
+    if(references.reduce((n,r)=>n+r.bytes.length,0)>10*1024*1024)fail('INVALID_EDIT_SOURCE',409);
+    return references;
+  }
   async createSelectiveEdit(body) {
     if(!this.selectiveEditingEnabled||this.adapter?.selectiveEditReady!==true)fail('REGION_EDIT_NOT_AVAILABLE',503);
     if(!body||Object.keys(body).some(k=>!['sourceJobId','sourceHash','requestId','projectId','prompt','mask','creditQuote'].includes(k))||!identifier(body.sourceJobId)||!identifier(body.requestId)||!identifier(body.projectId)||typeof body.prompt!=='string'||!body.prompt.trim()||body.prompt.length>2000)fail('INVALID_EDIT_REQUEST');
@@ -290,6 +318,7 @@ export class GenerationService {
     const request=JSON.parse(row.request_json);
     if(!['ready','accepted'].includes(original.state)||!original.artifact||original.artifactId!==body.sourceHash||original.composition!=='complete-ad'||request.inputMode==='text-example'||request.output.manualDimensionBase||request.output.exactText||request.proportionControl||request.dimensionDisplay||body.projectId===original.projectId)fail('INVALID_EDIT_SOURCE',409);
     let prepared;try{prepared=await prepareSelectiveEdit(original.artifact,body.mask);}catch(error){fail(error.message,400);}
+    prepared.references=await this.selectiveProductReferences(request,prepared.source.sha256);
     let providerInput;try{this.adapter.validateSelectiveInput?.(prepared);providerInput=await this.adapter.prepareSelectiveInput?.(prepared);}catch(error){fail(['UNSUPPORTED_EDIT_MODEL','UNSUPPORTED_EDIT_SIZE','INVALID_EDIT_MASK'].includes(error.code)?error.code:'INVALID_EDIT_REQUEST',400);}
     const region={...prepared,providerInput,prompt:body.prompt.trim(),sourceJobId:original.id,sourceProjectId:original.projectId,sourceHash:original.artifactId};
     const ref={sha256:prepared.source.sha256,width:prepared.source.width,height:prepared.source.height,purpose:'subject'};
@@ -302,7 +331,7 @@ export class GenerationService {
     if(!supportsImageMedia(body?.mediaType))fail('UNSUPPORTED_MEDIA');
     if (!body || !identifier(body.requestId) || !identifier(body.projectId)) fail('INVALID_REQUEST');
     const request = normalizeGenerationRequest(body.request);
-    if(region){if(!this.selectiveEditingEnabled||this.adapter?.selectiveEditReady!==true)fail('REGION_EDIT_NOT_AVAILABLE',503);request.selectiveEdit={version:1,sourceJobId:region.sourceJobId,sourceProjectId:region.sourceProjectId,sourceHash:region.sourceHash,maskHash:region.mask.sha256,prompt:region.prompt};}
+    if(region){if(!this.selectiveEditingEnabled||this.adapter?.selectiveEditReady!==true)fail('REGION_EDIT_NOT_AVAILABLE',503);request.selectiveEdit={version:1,sourceJobId:region.sourceJobId,sourceProjectId:region.sourceProjectId,sourceHash:region.sourceHash,maskHash:region.mask.sha256,prompt:region.prompt,productReferences:region.references.map(({sha256,width,height})=>({sha256,width,height,purpose:'subject'}))};}
     if(request.inputMode==='text-example'&&(body.source!=null||(body.references??[]).length))fail('TEXT_EXAMPLE_PHOTOS_NOT_ALLOWED');
     let source;
     try { source = await parseSourceAsset(body.source); }
@@ -340,7 +369,7 @@ export class GenerationService {
     const quote=this.creditQuote();
     if((quote.unit==='credit-v2'||body.creditQuote)&&(!body.creditQuote||body.creditQuote.unit!==quote.unit||body.creditQuote.amount!==quote.amount||body.creditQuote.policy!==quote.policy))fail('CREDIT_QUOTE_CHANGED',409);
     submissionStage('storage_capacity');
-    await this.assertOutputCapacity(request, region?[...all,region.mask]:all);
+    await this.assertOutputCapacity(request, region?[...all,region.mask,...region.references]:all);
     const id = randomUUID();
     const createdAt = this.now();
     submissionStage('original_persistence');
@@ -387,18 +416,23 @@ export class GenerationService {
       began = true;
       stage='provider';
       let result = region ? await this.adapter.editRegion({...region,attemptId}) : await this.adapter.generate({ request, source: request.mode === 'creative' ? source : null, references:request.mode==='creative'?references:[], attemptId });
-      if(region)result=await compositeSelectiveEdit(region.source,region.mask,result);
+      if(region)result=await compositeSelectiveEdit(region.source,region.mask,result,region.sourceHash);
       if(!supportsImageMedia(result.mediaType))throw new ProviderFailure('UNSUPPORTED_PROVIDER_MEDIA');
       // Persist provider metadata before any customer capture. Pixel validity is not semantic quality approval.
       stage='persist-image';
       if(result.planarOriginal)this.storeAsset(result.planarOriginal);
       this.storeAsset(result);
       stage='persist-metadata';
-      this.db.prepare('UPDATE generation_records SET artifact_hash=?,artifact_role=?,metadata_json=? WHERE id=?').run(result.sha256, result.role, JSON.stringify({ model: result.model, revision: result.revision, ...(result.composition?{composition:result.composition}:{}), ...(result.planarReport?{planarReport:result.planarReport}:{}), usage: result.usage, cost: result.cost, providerRequestId: result.providerRequestId }), id);
+      this.db.prepare('UPDATE generation_records SET artifact_hash=?,artifact_role=?,metadata_json=? WHERE id=?').run(result.sha256, result.role, JSON.stringify({ model: result.model, revision: result.revision, ...(result.composition?{composition:result.composition}:{}), ...(result.planarReport?{planarReport:result.planarReport}:{}), ...(region&&result.preservation?{preservation:result.preservation}:{}), usage: result.usage, cost: result.cost, providerRequestId: result.providerRequestId }), id);
       stage='usage';
       if (!result.cost) throw new ProviderFailure('PROVIDER_USAGE_UNCERTAIN');
       stage='settle';
       this.ledger.settleAttempt(attemptId, result.cost.microUsd, 'completed');
+      if(region&&result.preservation.changedSelectedPixels===0){
+        this.ledger.release(id,LOCAL_USER,'quality_failed');
+        this.db.prepare('UPDATE generation_records SET error_code=? WHERE id=?').run('EDIT_NO_CHANGE',id);
+        return;
+      }
       stage='ready';
       this.ledger.markReady(id, result.sha256);
     } catch (error) {
@@ -421,6 +455,7 @@ export class GenerationService {
   }
   accept(id, artifactId, dimensionReview) {
     const job = this.job(id);
+    if(job.selectiveEdit){const a=job.artifact,p=job.selectiveEdit;const proof=a&&verifiedPreservation(job.preservation,{sourceHash:p.sourceHash,maskHash:p.maskHash,resultHash:job.artifactId,width:a.width,height:a.height});if(!proof||!proof.changedSelectedPixels)fail('EDIT_PRESERVATION_UNVERIFIED',409);}
     if (typeof artifactId !== 'string' || artifactId !== job.artifactId) fail('ARTIFACT_MISMATCH', 409);
     if(job.dimensionDisplay&&!validAiDimensionReview(dimensionReview,job.dimensionDisplay,artifactId))fail('AI_DIMENSION_REVIEW_REQUIRED',409);
     try { this.ledger.transaction(()=>{this.ledger.accept(id, LOCAL_USER, artifactId);if(job.dimensionDisplay){const row=this.db.prepare('SELECT metadata_json FROM generation_records WHERE id=?').get(id),metadata=JSON.parse(row.metadata_json??'{}');metadata.dimensionReview={inputHash:job.dimensionDisplay.inputHash,artifactHash:artifactId,values:true,axes:true,complete:true};this.db.prepare('UPDATE generation_records SET metadata_json=? WHERE id=?').run(JSON.stringify(metadata),id);}}); }

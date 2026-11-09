@@ -1,3 +1,4 @@
+import {selectConsumerIndustry} from './helpers/industry';
 import {test,expect,type Page} from '@playwright/test';
 import {protectedScreen,mockSession} from './helpers/authenticated-session';
 // This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
@@ -21,7 +22,7 @@ async function api(page:Page,{supported=true,lost=false,statusGate=Promise.resol
   return r.fulfill({status:404,json:{error:{code:'UNEXPECTED_TEST_ROUTE'}}});
  });return state;
 }
-async function form(page:Page){await page.goto('/#create');const f=page.locator('.consumer-create');await f.getByLabel('산업 선택').selectOption('other');await f.getByRole('textbox',{name:'상품명',exact:true}).fill('나의 텀블러');await f.getByRole('textbox',{name:'상세설명',exact:true}).fill('450mL 스테인리스, 아이보리');return f;}
+async function form(page:Page){await page.goto('/#create');const f=page.locator('.consumer-create');await selectConsumerIndustry(f,'other');await f.getByRole('textbox',{name:'상품명',exact:true}).fill('나의 텀블러');await f.getByRole('textbox',{name:'상세설명',exact:true}).fill('450mL 스테인리스, 아이보리');return f;}
 
 async function historical(page:Page,{photos=true}={}){
  const state=await api(page);let draft=starterProject('other');draft.productName='나의 텀블러';draft.productProfile.material='450mL 스테인리스, 아이보리';
@@ -55,4 +56,3 @@ test('same-tick create clicks enter the saved result once before capability load
  const create=f.getByRole('button',{name:'광고 생성',exact:true,includeHidden:true});await create.evaluate((b:HTMLButtonElement)=>{b.click();b.click();});await expect(page.getByRole('heading',{name:'내 광고',exact:true})).toBeVisible();await expect(create).toBeEnabled();
  expect(await page.evaluate(()=>(window as any).creationSaves)).toBe(1);expect(state.posts).toBe(0);release();await expect(page.getByRole('button',{name:/^(사용 확정|Accept)$/})).toBeEnabled();expect(state.posts).toBe(1);
 });
-

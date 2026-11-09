@@ -1,3 +1,4 @@
+import {selectConsumerIndustry} from './helpers/industry';
 import {test,expect} from '@playwright/test';
 import sharp from 'sharp';
 import {protectedScreen,mockSession} from './helpers/authenticated-session';
@@ -5,7 +6,7 @@ import {reloadDraft} from './helpers/workspace';
 const photos=await Promise.all(['#bf8e52','#449966','#5577bb'].map(async(color,i)=>({name:`view-${i+1}.png`,mimeType:'image/png',buffer:await sharp({create:{width:400,height:300,channels:3,background:color}}).png().toBuffer()})));
 test('a single multi-file selection keeps every view and exposes dimensions beside the preview',async({page})=>{
  await protectedScreen(page,mockSession('protected-mobile-update'));
- await page.goto('/#create');const wizard=page.locator('.create-page');await wizard.getByLabel('산업 선택').selectOption('boxes');await wizard.getByRole('textbox',{name:'상세설명',exact:true}).fill('원본 사진과 입력 규격을 유지하는 시험 상품');
+ await page.goto('/#create');const wizard=page.locator('.create-page');await selectConsumerIndustry(wizard,'boxes');await wizard.getByRole('textbox',{name:'상세설명',exact:true}).fill('원본 사진과 입력 규격을 유지하는 시험 상품');
  await wizard.getByLabel('참조사진 추가',{exact:true}).setInputFiles(photos);
  await expect(wizard.locator('.reference-photos img')).toHaveCount(3);
  await expect(wizard.locator('.reference-heading')).toContainText('3 / 10');
@@ -35,7 +36,7 @@ test('a single multi-file selection keeps every view and exposes dimensions besi
 });
 test('a bad file in a new batch keeps both existing and valid new photos',async({page})=>{
  await protectedScreen(page,mockSession('protected-mobile-update'));
- await page.goto('/#create');const wizard=page.locator('.create-page');await wizard.getByLabel('산업 선택').selectOption('boxes');await wizard.getByRole('textbox',{name:'상세설명',exact:true}).fill('원본 사진과 입력 규격을 유지하는 시험 상품');await wizard.getByLabel('참조사진 추가').setInputFiles(photos.slice(0,2));await expect(wizard.locator('.reference-photos img')).toHaveCount(2);
+ await page.goto('/#create');const wizard=page.locator('.create-page');await selectConsumerIndustry(wizard,'boxes');await wizard.getByRole('textbox',{name:'상세설명',exact:true}).fill('원본 사진과 입력 규격을 유지하는 시험 상품');await wizard.getByLabel('참조사진 추가').setInputFiles(photos.slice(0,2));await expect(wizard.locator('.reference-photos img')).toHaveCount(2);
  await wizard.getByLabel('참조사진 추가').setInputFiles([photos[2],{name:'bad.png',mimeType:'image/png',buffer:Buffer.from('not an image')}]);await expect(wizard.locator('.reference-photos [role=alert]')).toBeVisible();await expect(wizard.locator('.reference-photos img')).toHaveCount(3);
 });
 test('test server readiness requires valid responses and delegates preview configuration without secrets',async({page})=>{

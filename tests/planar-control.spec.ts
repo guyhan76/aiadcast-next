@@ -1,3 +1,4 @@
+import {selectConsumerIndustry} from './helpers/industry';
 import {test,expect,type Page} from '@playwright/test';
 import {protectedScreen,mockSession} from './helpers/authenticated-session';
 // This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
@@ -13,7 +14,7 @@ import {restoreOwnedWorkspace} from './helpers/owned-workspace';
 import {reloadDraft} from './helpers/workspace';
 const photo=await sharp(Buffer.from('<svg width="300" height="300"><rect width="300" height="300" fill="white"/><rect x="60" y="60" width="180" height="120" fill="#346074"/></svg>')).png().toBuffer();
 const raw=await sharp(Buffer.from('<svg width="1024" height="1024"><rect width="1024" height="1024" fill="white"/><rect x="200" y="260" width="600" height="340" fill="#446074"/></svg>')).png().toBuffer();
-async function form(page:Page,withPhoto=true){await page.goto('/#create');const f=page.locator('.create-page');await f.getByLabel('산업 선택').selectOption('other');await f.getByLabel('상품명',{exact:true}).fill('평면 상품');await f.getByRole('textbox',{name:'상세설명',exact:true}).fill('정면 평면 패널');if(withPhoto)await f.getByLabel('참조사진 추가').setInputFiles({name:'panel.png',mimeType:'image/png',buffer:photo});await f.getByRole('button',{name:'규격 넣기',exact:true}).click();await f.getByLabel('규격 형식').selectOption('flat');await f.getByLabel('규격 단위').selectOption('mm');await f.getByLabel('가로 mm',{exact:true}).fill('180');await f.getByLabel('세로 mm',{exact:true}).fill('120');return f;}
+async function form(page:Page,withPhoto=true){await page.goto('/#create');const f=page.locator('.create-page');await selectConsumerIndustry(f,'other');await f.getByLabel('상품명',{exact:true}).fill('평면 상품');await f.getByRole('textbox',{name:'상세설명',exact:true}).fill('정면 평면 패널');if(withPhoto)await f.getByLabel('참조사진 추가').setInputFiles({name:'panel.png',mimeType:'image/png',buffer:photo});await f.getByRole('button',{name:'규격 넣기',exact:true}).click();await f.getByLabel('규격 형식').selectOption('flat');await f.getByLabel('규격 단위').selectOption('mm');await f.getByLabel('가로 mm',{exact:true}).fill('180');await f.getByLabel('세로 mm',{exact:true}).fill('120');return f;}
 test('historical planar result preserves source, raw result, measurements and export without a new provider request',async({page},info)=>{
  let calls=0;const requests:any[]=[];
  const adapter=new OpenAIImageAdapter({apiKey:'local-fixture-only',fetchImpl:async()=>{calls++;return new Response(JSON.stringify({data:[{b64_json:raw.toString('base64')}],usage:{input_tokens:3,input_tokens_details:{text_tokens:1,image_tokens:2},output_tokens:2}}));}});
@@ -48,4 +49,3 @@ test('historical garment and container variants retain names and exact numeric m
   for(let i=0;i<2;i++){const event=page.waitForEvent('download');await page.getByRole('button',{name:'프로젝트 백업',exact:true}).click();const saved=JSON.parse(await readFile((await(await event).path())!,'utf8'));expect(saved.dimensions).toEqual(draft.dimensions);expect(saved.generation.dimensionVariant).toBe(name);expect(saved.generation.dimensionBasis).toBe(basis);expect(saved.productProfile.specType).toBe(shape);if(i===0)await page.reload();}expect(writes).toBe(0);
  }
 });
-

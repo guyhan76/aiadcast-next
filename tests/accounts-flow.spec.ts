@@ -1,3 +1,4 @@
+import {selectConsumerIndustry} from './helpers/industry';
 import {test,expect,type Page} from '@playwright/test';
 import {authenticatedSession} from './helpers/authenticated-session';
 import sharp from 'sharp';
@@ -22,7 +23,7 @@ async function setup(page:Page){const state={approved:false,requests:[] as strin
  });return state;}
 test('existing account recovery keeps owned photos and checkout selection across sign-out and reload',async({page})=>{
  const state=await setup(page);await authenticatedSession(page,session);await page.goto('/#create');const wizard=page.locator('.create-page');
- await wizard.getByLabel('산업 선택').selectOption('boxes');await wizard.getByLabel('상품명',{exact:true}).fill('이어 만드는 광고');await wizard.getByLabel('참조사진 추가').setInputFiles({name:'product.png',mimeType:'image/png',buffer:photo});
+ await selectConsumerIndustry(wizard,'boxes');await wizard.getByLabel('상품명',{exact:true}).fill('이어 만드는 광고');await wizard.getByLabel('참조사진 추가').setInputFiles({name:'product.png',mimeType:'image/png',buffer:photo});
  await wizard.locator('[data-order="2"] summary').click();await wizard.getByRole('textbox',{name:'회사명',exact:true}).fill('selluplabs');
  await page.locator('.app-header').getByRole('button',{name:'이용 요금',exact:true}).click();await page.getByRole('link',{name:'이용권 선택',exact:true}).click();await page.getByRole('radio',{name:/묶음형/}).check();
  page.once('dialog',d=>d.accept());await page.getByRole('region',{name:'내 계정 및 로그아웃',exact:true}).getByRole('button',{name:'로그아웃',exact:true}).click();await expect(page).toHaveURL(/#login$/);await expect(page.locator('.create-page')).toHaveCount(0);await page.goto('/#account-recovery');await page.locator('.account-page').getByLabel('이메일',{exact:true}).fill('test@example.com');await page.getByRole('button',{name:'인증메일 받기'}).click();await expect(page.getByRole('heading',{name:'메일함을 확인해주세요'})).toBeVisible();

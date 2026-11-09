@@ -1,8 +1,16 @@
 import {expect,type Locator,type Page} from '@playwright/test';
 import {industryKindFor,productCategories,type ProductCategory} from '../../src/industry';
 
+/** Select a category by typing and clicking a real visible result. Works in both UI languages. */
+export async function selectConsumerIndustry(container:Locator|Page,category:string){
+ await container.locator('.industry-search input').fill(category);
+ await container.locator(`.industry-results [data-industry-key="${category}"]`).click();
+ await expect(container.locator('.industry-selected')).toBeVisible();
+}
+
 /** Select through the customer-facing search in either the wizard or compact editor. */
 export async function selectIndustry(page:Page,category:string,container?:Locator){
+ if(container&&await container.locator('.industry-search-select').count()){await selectConsumerIndustry(container,category);return;}
  const label=productCategories.find(([id])=>id===category)?.[1];
  if(!label)throw Error(`Unknown industry: ${category}`);
  if(container){const options=container.locator('.quiet-details').first();if(await options.getAttribute('open')===null)await options.locator(':scope > summary').click();}
@@ -27,4 +35,5 @@ export async function selectIndustry(page:Page,category:string,container?:Locato
  if(await toggle.count())await expect(toggle).toContainText(label);
  else await expect(picker.getByRole('button',{name:label,exact:true})).toHaveAttribute('aria-pressed','true');
 }
+
 
