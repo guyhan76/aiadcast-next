@@ -18,7 +18,7 @@ async function setup(page:Page){
 }
 const bar=(page:Page)=>page.getByRole('region',{name:'내 계정 및 로그아웃',exact:true});
 async function login(page:Page,name:string){
- await expect(page.getByRole('button',{name:'Google로 계속하기',exact:true})).toBeVisible();await page.goto('/#account-recovery');
+ await expect(page.getByRole('button',{name:'Google로 계속하기',exact:true})).toBeVisible();await page.evaluate(()=>location.hash='account-recovery');
  await page.getByLabel('이메일',{exact:true}).fill(name+'@example.com');await page.getByLabel('비밀번호',{exact:true}).fill('Fixture-password!');
  // Wait for authentication separately from rendering the restored account.
  // The five-second DOM assertion must not also time a valid slow HTTP exchange.
@@ -36,19 +36,28 @@ test('cancel keeps session; confirmed double sign-out preserves private draft an
  const state=await setup(page);await page.goto('/#create');await page.getByLabel('상품명',{exact:true}).fill('alpha private product');await page.getByLabel('참조사진 추가').setInputFiles({name:'private.png',mimeType:'image/png',buffer:picture});
  await openWorkspaceMenu(page);page.once('dialog',d=>d.dismiss());await bar(page).getByRole('button',{name:'로그아웃',exact:true}).click();expect(state.calls).toBe(0);
  let release!:()=>void;state.wait=new Promise(r=>release=r);page.once('dialog',d=>{expect(d.message()).toContain('이 기기에 보관');return d.accept();});
- await bar(page).getByRole('button',{name:'로그아웃',exact:true}).evaluate((b:HTMLButtonElement)=>{b.click();b.click();});await expect.poll(()=>state.calls).toBe(1);await expect(bar(page).getByRole('button')).toBeDisabled();release();
+ await bar(page).getByRole('button',{name:'로그아웃',exact:true}).evaluate((b:HTMLButtonElement)=>{b.click();b.click();});await expect.poll(()=>state.calls).toBe(1);await expect(page).toHaveURL(/#login$/);release();
  await expect(page).toHaveURL(/#login$/);expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();await expect(bar(page)).toHaveCount(0);
  await login(page,'bravo');await page.goto('/#create');await expect(page.getByLabel('상품명',{exact:true})).not.toHaveValue('alpha private product');await expect(page.locator('.reference-photos img')).toHaveCount(0);
  await page.goto('/#projects');await expect(page.getByText('alpha private product',{exact:true})).toHaveCount(0);
  await openWorkspaceMenu(page);page.once('dialog',d=>d.accept());await bar(page).getByRole('button',{name:'로그아웃',exact:true}).click();await expect(page).toHaveURL(/#login$/);state.loginDelayMs=5500;await login(page,'alpha');await page.goto('/#create');await expect(page.getByLabel('상품명',{exact:true})).toHaveValue('alpha private product');await expect(page.locator('.reference-photos img')).toHaveCount(1);
 });
-test('server failure keeps authentication and an expired-session retry safely signs out',async({page})=>{
- const state=await setup(page);state.status=503;await page.goto('/#home');await openWorkspaceMenu(page);page.on('dialog',d=>d.accept());await bar(page).getByRole('button',{name:'로그아웃',exact:true}).click();await expect(bar(page).getByRole('alert')).toBeVisible();expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('aiadcast.beta-session')!).user.id)).toBe('account-alpha');
- state.status=401;await bar(page).getByRole('button',{name:'로그아웃',exact:true}).click();await expect(page).toHaveURL(/#login$/);await expect(bar(page)).toHaveCount(0);expect(state.calls).toBe(2);
+for(const status of [401,503])test('server response never blocks device sign-out '+status,async({page})=>{
+ const state=await setup(page);state.status=status;await page.goto('/#home');await openWorkspaceMenu(page);page.on('dialog',d=>d.accept());await bar(page).getByRole('button',{name:'로그아웃',exact:true}).click();await expect(page).toHaveURL(/#login$/);await expect(bar(page)).toHaveCount(0);expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();await expect.poll(()=>state.calls).toBe(1);
+});
+test('offline sign-out keeps the owner draft and clears the device token without replay',async({page})=>{
+ const state=await setup(page);await page.route('**/api/auth/logout',r=>{state.calls++;return r.abort('internetdisconnected');});
+ await page.goto('/#create');await page.getByLabel('상품명',{exact:true}).fill('offline private work');await waitForSavedDraft(page,'offline private work');await openWorkspaceMenu(page);page.on('dialog',d=>d.accept());await bar(page).getByRole('button',{name:'로그아웃',exact:true}).click();await expect(page).toHaveURL(/#login$/);expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();await expect.poll(()=>state.calls).toBe(1);
+ await login(page,'alpha');await page.goto('/#create');await expect(page.getByLabel('상품명',{exact:true})).toHaveValue('offline private work');expect(state.calls).toBe(1);
+});
+test('late revocation response cannot sign out a replacement account',async({page})=>{
+ const state=await setup(page);let release!:()=>void;state.wait=new Promise(r=>release=r);state.status=401;
+ await page.goto('/#home');await openWorkspaceMenu(page);page.on('dialog',d=>d.accept());const response=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/auth/logout');await bar(page).getByRole('button',{name:'로그아웃',exact:true}).click();await expect(page).toHaveURL(/#login$/);await expect.poll(()=>state.calls).toBe(1);await login(page,'bravo');release();await (await response).finished();await expect(bar(page)).toContainText('bravo');expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('aiadcast.beta-session')!).user.id)).toBe('account-bravo');
 });
 test('draft storage failure stops sign-out before its server request and permits retry without deleting projects',async({page})=>{
  const state=await setup(page);await page.goto('/#create');await page.getByLabel('상품명',{exact:true}).fill('keep unsaved edits');await waitForSavedDraft(page,'keep unsaved edits');
  await page.evaluate(()=>{const put=IDBObjectStore.prototype.put;(window as any).failLogoutSave=true;IDBObjectStore.prototype.put=function(...args:any[]){if((window as any).failLogoutSave&&this.name==='drafts')throw new DOMException('fixture quota','QuotaExceededError');return put.apply(this,args as [any,IDBValidKey]);};});
- await openWorkspaceMenu(page);page.on('dialog',d=>d.accept());await bar(page).getByRole('button',{name:'로그아웃',exact:true}).click();await expect(bar(page).getByRole('alert')).toBeVisible();expect(state.calls).toBe(0);await expect(page.getByLabel('상품명',{exact:true})).toHaveValue('keep unsaved edits');
+ await openWorkspaceMenu(page);page.on('dialog',d=>d.accept());await bar(page).getByRole('button',{name:'로그아웃',exact:true}).click();await expect(bar(page).getByRole('alert')).toContainText('현재 작업을 이 기기에 보관하지 못해');expect(state.calls).toBe(0);await expect(page.getByLabel('상품명',{exact:true})).toHaveValue('keep unsaved edits');
  await page.evaluate(()=>(window as any).failLogoutSave=false);await bar(page).getByRole('button',{name:'로그아웃',exact:true}).click();await expect(page).toHaveURL(/#login$/);expect(state.calls).toBe(1);
 });
+
