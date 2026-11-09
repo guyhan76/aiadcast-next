@@ -13,10 +13,13 @@ jobs:
   android-candidate:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
@@ -39,6 +42,7 @@ jobs:
         env:
           KEYSTORE_BASE64: ${{ secrets.AIADCAST_DEMO_KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.AIADCAST_DEMO_STORE_PASSWORD }}
+          AIADCAST_SIGNING_PROFILE: preview
         shell: bash
         run: |
           set -euo pipefail
@@ -47,7 +51,7 @@ jobs:
             export AIADCAST_DEMO_KEYSTORE="$RUNNER_TEMP/aiadcast-demo.jks"
             python3 native/decode-signing-secret.py
             echo "AIADCAST_DEMO_KEYSTORE=$AIADCAST_DEMO_KEYSTORE" >> "$GITHUB_ENV"
-            python3 native/check-demo-signing.py
+            python3 native/check-android-signing.py
             echo 'available=true' >> "$GITHUB_OUTPUT"
           else
             echo 'available=false' >> "$GITHUB_OUTPUT"
@@ -62,8 +66,8 @@ jobs:
           set -euo pipefail
           cd android
           unsigned=()
-          if [[ "$SIGNING_AVAILABLE" != true ]]; then unsigned=(-PAIADCAST_UNSIGNED_DEMO=true); fi
-          "$AIADCAST_GRADLE" --no-daemon testDemoUnitTest lintDemo assembleDemo "${unsigned[@]}"
+          if [[ "$SIGNING_AVAILABLE" != true ]]; then unsigned=(-PAIADCAST_UNSIGNED_PREVIEW=true); fi
+          "$AIADCAST_GRADLE" --no-daemon testPreviewUnitTest lintPreview assemblePreview -PAIADCAST_SIGNED_PREVIEW=true -PAIADCAST_API_ORIGIN=https://aiadcast-next.onrender.com "${unsigned[@]}"
       - name: Verify candidate identity and signing state
         env:
           SIGNING_AVAILABLE: ${{ steps.signing.outputs.available }}
@@ -71,14 +75,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release/android-candidate
-          apk=android/app/build/outputs/apk/demo/app-demo-unsigned.apk
+          apk=android/app/build/outputs/apk/preview/app-preview-unsigned.apk
           label=unsigned-inspection-only
           if [[ "$SIGNING_AVAILABLE" == true ]]; then
-            apk=android/app/build/outputs/apk/demo/app-demo.apk
+            apk=android/app/build/outputs/apk/preview/app-preview.apk
             label=signed-candidate
             "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" > release/android-candidate/signature.txt
-            # Keep the existing demo identity; never replace it with a new/debug key.
-            grep -qi '576ead9f546b2d227250323d688c9087b0e206bf101b8560a9922b1ee793b638' release/android-candidate/signature.txt
+            # Match the owner's signed Preview 0.2.80 APK; never substitute a key.
+            grep -qi '7dc020bc774784d3df553c58c672f4210d232e2543004fd52ac9084943488b4e' release/android-candidate/signature.txt
           else
             if "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$apk" >/dev/null 2>&1; then
               echo 'Unexpected signing identity on unsigned candidate' >&2; exit 1
@@ -86,13 +90,36 @@ jobs:
           fi
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 "$apk"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" > release/android-candidate/package.txt
-          grep -q "name='com.selluplabs.aiadcast.next.demo' versionCode='83' versionName='0.2.81-demo'" release/android-candidate/package.txt
-          cp "$apk" "release/android-candidate/aiadcast-0.2.81-demo-code83-$label.apk"
-          sha256sum "release/android-candidate/aiadcast-0.2.81-demo-code83-$label.apk" > release/android-candidate/SHA256SUMS.txt
+          grep -q "name='com.selluplabs.aiadcast.next.preview' versionCode='83' versionName='0.2.81-preview'" release/android-candidate/package.txt
+          cp "$apk" "release/android-candidate/aiadcast-0.2.81-preview-code83-$label.apk"
+          (cd release/android-candidate && sha256sum *.apk > SHA256SUMS.txt)
           cp android/app/src/main/assets/native-build.json release/android-candidate/
-          printf 'Source: %s\nPackage: com.selluplabs.aiadcast.next.demo\nVersion: 0.2.81-demo (83)\nSigning: %s\nDeployment: not performed\nLive AI editing: not validated\n' "$(git rev-parse HEAD)" "$label" | tee release/android-candidate/status.txt
+          printf 'Source: %s\nPackage: com.selluplabs.aiadcast.next.preview\nVersion: 0.2.81-preview (83)\nSigning: %s\nServer deployment: not performed\nLive AI editing: not validated\n' "$(git rev-parse HEAD)" "$label" | tee release/android-candidate/status.txt
           cat release/android-candidate/status.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish verified signed Preview APK for testing
+        if: steps.signing.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha=$(git rev-parse HEAD)
+          tag="preview-0.2.81-code83-${source_sha:0:12}"
+          cat > "$RUNNER_TEMP/preview-release-notes.md" <<'NOTES'
+          Preview testing APK, version 0.2.81-preview (83).
+          Package: com.selluplabs.aiadcast.next.preview.
+          The signing certificate matches the owner's signed Preview 0.2.80 APK.
+          Native unit tests, Android lint, apksigner verification and zipalign passed.
+          Device installation and live AI partial-edit quality are not validated.
+          Server deployment and Play publication have not been performed.
+          The existing image boundary defect and broader browser/PostgreSQL test issues remain under review; this is not a production quality approval.
+          NOTES
+          printf '\nSource: %s\n' "$source_sha" >> "$RUNNER_TEMP/preview-release-notes.md"
+          gh release create "$tag" release/android-candidate/* --repo "$GH_REPO" --target "$source_sha" --prerelease --title 'aiadcast Preview 0.2.81 (83) — testing APK' --notes-file "$RUNNER_TEMP/preview-release-notes.md"
+          gh release view "$tag" --repo "$GH_REPO" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
       - name: Upload APK candidate and Android reports
+        if: steps.signing.outputs.available != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: aiadcast-android-0.2.81-code83-candidate
@@ -101,5 +128,5 @@ jobs:
           if-no-files-found: error
           path: |
             release/android-candidate/
-            android/app/build/reports/tests/testDemoUnitTest/
-            android/app/build/reports/lint-results-demo.html
+            android/app/build/reports/tests/testPreviewUnitTest/
+            android/app/build/reports/lint-results-preview.html

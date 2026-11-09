@@ -51,7 +51,10 @@ android {
             versionNameSuffix '-preview'
             resValue 'string', 'app_name', 'aiadcast Preview'
             debuggable false
-            signingConfig signingConfigs.debug
+            // Explicit candidate builds use the owner's verified Preview key.
+            // Default local Preview builds keep their existing debug behavior.
+            signingConfig providers.gradleProperty('AIADCAST_UNSIGNED_PREVIEW').getOrElse('false') == 'true' ? null :
+                (providers.gradleProperty('AIADCAST_SIGNED_PREVIEW').getOrElse('false') == 'true' ? signingConfigs.demo : signingConfigs.debug)
             matchingFallbacks = ['debug']
         }
         demo {
