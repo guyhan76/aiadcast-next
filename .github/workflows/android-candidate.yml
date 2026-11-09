@@ -6,6 +6,9 @@ on:
       - android/**
       - native/**
       - src/**
+      - tests/google-*.spec.ts
+      - tests/startup-connection.spec.ts
+      - tests/login-latency.spec.ts
       - .github/workflows/android-candidate.yml
 permissions:
   contents: read

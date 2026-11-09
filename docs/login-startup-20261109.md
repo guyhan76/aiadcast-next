@@ -11,6 +11,7 @@ Existing-session bootstrap GETs share a 15-second total deadline, replacing the 
 ## Verification and limits
 
 - Local typecheck and web build passed before CI. Local Chromium could not launch because the execution environment denied its process-singleton socket; browser results must come from CI, not this blocked local attempt.
+- Initial CI: 133/134 browser checks passed. The existing mobile backoff test counted the outgoing request before its response/recovery read had finished, then advanced a frozen clock too early. The test now advances bounded 500ms ticks while network promises drain, retains the exact three-attempt/proof assertions, and caps simulated recovery at 20 seconds. The failed run did not publish an APK.
 - The Android publishing workflow gates release on desktop/mobile login, startup, native-return and account-recovery browser checks, then native tests/lint/assembly and exact certificate/package/version checks.
 - Production Render service details on 2026-11-09 report the Free runtime plan in Oregon. Render documents idle spin-down after 15 minutes and approximately one minute to spin back up: https://render.com/docs/free#spinning-down-on-idle . That remains a plausible source of the reported long first connection; the exact reported handset request was not timed or traced.
 - No Render plan, server deployment, OAuth configuration, signing identity, cumulative $100 budget or generation dedup policy is changed. Physical phone startup timing and live Google authorization remain to be measured.
