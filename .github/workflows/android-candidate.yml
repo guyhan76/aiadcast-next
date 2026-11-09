@@ -44,8 +44,8 @@ jobs:
           set -euo pipefail
           if [[ -n "$KEYSTORE_BASE64" && -n "$STORE_PASSWORD" ]]; then
             umask 077
-            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/aiadcast-demo.jks"
             export AIADCAST_DEMO_KEYSTORE="$RUNNER_TEMP/aiadcast-demo.jks"
+            python3 native/decode-signing-secret.py
             echo "AIADCAST_DEMO_KEYSTORE=$AIADCAST_DEMO_KEYSTORE" >> "$GITHUB_ENV"
             python3 native/check-demo-signing.py
             echo 'available=true' >> "$GITHUB_OUTPUT"
