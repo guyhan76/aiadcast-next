@@ -99,3 +99,13 @@
 .input-example-content .input-example-sentence{margin:0 0 10px}
 .input-example-content .input-example-sentence:last-child{margin-bottom:0}
 .input-example-price{white-space:nowrap}
+
+.studio-shell .consumer-create .industry-search{position:relative;display:flex;align-items:center}
+.studio-shell .consumer-create .industry-search>svg{position:absolute;left:13px;pointer-events:none;color:var(--brand-muted)}
+.studio-shell .consumer-create .industry-search input{padding-left:40px;padding-right:48px;min-height:48px}
+.studio-shell .consumer-create .industry-search input::-webkit-search-cancel-button{display:none}
+.studio-shell .consumer-create .industry-search button{position:absolute;right:2px;display:grid;place-items:center;width:44px;height:44px;padding:0;border:0;background:transparent;color:var(--brand-black);border-radius:8px}
+.studio-shell .consumer-create .industry-choice{margin-top:8px}
+.studio-shell .consumer-create .industry-select-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.studio-shell .consumer-create .industry-search button:focus-visible{outline:2px solid var(--brand-orange,#b45e35);outline-offset:1px}
+
