@@ -1,37 +1,36 @@
-name: Get verified APK download for direct delivery
+name: Copy existing signed APK for private file delivery
 on:
   push:
     branches: [delivery/preview-0.2.82]
     paths: [.github/workflows/apk-delivery.yml]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  download-link:
+  transfer:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
-      - name: Resolve the existing private release download
+      - name: Stage approved verified APK copy in the existing private repository
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
+          set -euo pipefail
+          mkdir -p delivery
+          gh release download preview-0.2.82-code84-ecdba7b51955 --repo "$GH_REPO" --pattern 'aiadcast-0.2.82-preview-code84-signed-candidate.apk' --dir delivery
           python3 - <<'PY'
-          import os, urllib.request, urllib.error
-          class NoRedirect(urllib.request.HTTPRedirectHandler):
-              def redirect_request(self, req, fp, code, msg, headers, newurl):
-                  return None
-          req = urllib.request.Request(
-              "https://api.github.com/repos/guyhan76/aiadcast-next/releases/assets/725741408",
-              headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"],
-                       "Accept": "application/octet-stream",
-                       "X-GitHub-Api-Version": "2022-11-28"})
-          try:
-              urllib.request.build_opener(NoRedirect()).open(req, timeout=30)
-              raise RuntimeError("Expected a signed asset download redirect")
-          except urllib.error.HTTPError as e:
-              if e.code != 302:
-                  raise
-              url = e.headers.get("Location", "")
-              if not url.startswith("https://release-assets.githubusercontent.com/"):
-                  raise RuntimeError("Unexpected asset download host")
-              print("APK_TRANSFER_URL=" + url)
+          import os, json, base64, hashlib, pathlib, urllib.request
+          data = pathlib.Path("delivery/aiadcast-0.2.82-preview-code84-signed-candidate.apk").read_bytes()
+          assert len(data) == 18525441
+          assert hashlib.sha256(data).hexdigest() == "81e0822301810be75241280881da0040083baaa2ece66ba73d30add93baffd50"
+          payload = json.dumps({"content":base64.b64encode(data).decode("ascii"),"encoding":"base64"}).encode()
+          req = urllib.request.Request("https://api.github.com/repos/guyhan76/aiadcast-next/git/blobs",
+              data=payload, method="POST", headers={
+                  "Authorization":"Bearer " + os.environ["GH_TOKEN"],
+                  "Accept":"application/vnd.github+json", "Content-Type":"application/json",
+                  "X-GitHub-Api-Version":"2022-11-28"})
+          with urllib.request.urlopen(req, timeout=90) as response:
+              blob = json.load(response)
+          print("APK_BLOB_SHA=" + blob["sha"])
+          print("APK_SHA256=" + hashlib.sha256(data).hexdigest())
           PY
