@@ -58,7 +58,7 @@ test('stored session still requires server validation and does not fetch unrelat
 });
 test('leaving sign-in during readiness prevents a late OAuth start',async({page})=>{
  const calls=await setup(page);let release!:()=>void;const hold=new Promise<void>(r=>release=r);
- await page.route('**/api/account/capabilities',async r=>{await hold;await r.fulfill({json:{google:{enabled:true}}});});
+ await page.route('**/api/account/capabilities',async r=>{await hold;await r.fulfill({json:{google:{enabled:true},email:{enabled:true},password:{enabled:true,test:true,adminReady:false},checkout:{enabled:false,test:true,currency:'KRW'}}});});
  await page.goto('/');await page.getByRole('button',{name:'Google로 계속하기',exact:true}).click();await expect(page.getByRole('button',{name:'Google 로그인 여는 중…',exact:true})).toBeDisabled();await page.evaluate(()=>location.hash='account-recovery');release();await expect(page.getByLabel('이메일',{exact:true})).toBeVisible();await page.waitForTimeout(100);expect(calls.starts).toBe(0);expect(calls.polls).toBe(0);
 });
 test('readiness stops after six transient GET failures without starting OAuth',async({page})=>{
