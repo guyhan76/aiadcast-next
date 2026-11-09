@@ -33,7 +33,7 @@ export function IndustrySelect({id,value,onChange}:{id:string;value:ProductCateg
    <input type="search" aria-label={t('분야 검색','Search categories')} placeholder={t('분야 검색 · 예: 신발, 카페, 박스','Search · shoes, cafe, boxes')} value={query} maxLength={100} onChange={event=>setQuery(event.target.value)} onKeyDown={event=>{if(event.key==='Enter')event.preventDefault();}} aria-controls={id} autoComplete="off"/>
    {query&&<button type="button" aria-label={t('검색 지우기','Clear search')} onClick={()=>setQuery('')}><X size={18} aria-hidden="true"/></button>}
   </div>
-  <label className="field industry-choice" htmlFor={id}><span className="industry-select-label">{t('산업 선택','Choose an industry')}</span><select id={id} value={value} onChange={event=>{if(!event.target.value)return;onChange(event.target.value as ProductCategory);setQuery('');}}><option value="">{t('분야를 선택해주세요','Select a category')}</option>{visible.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+  <label className="field industry-choice" htmlFor={id}><span className="industry-select-label">{t('산업 선택','Choose an industry')}</span><select id={id} aria-label={t('산업 선택','Choose an industry')} value={value} onChange={event=>{if(!event.target.value)return;onChange(event.target.value as ProductCategory);setQuery('');}}><option value="">{t('분야를 선택해주세요','Select a category')}</option>{visible.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
   {needle&&<p className="help" role="status">{matches.length?t(`검색 결과 ${matches.length}개`,`Found ${matches.length} categories`):t('검색 결과가 없습니다. 다른 단어로 검색해주세요.','No matches. Try another word.')}</p>}
  </div>;
 }
