@@ -17,12 +17,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p delivery
-          gh release download preview-0.2.82-code84-ecdba7b51955 --repo "$GH_REPO" --pattern 'aiadcast-0.2.82-preview-code84-signed-candidate.apk' --dir delivery
+          gh release download preview-0.2.83-code85-8784cb2d5743 --repo "$GH_REPO" --pattern 'aiadcast-0.2.83-preview-code85-signed-candidate.apk' --dir delivery
           python3 - <<'PY'
           import os, json, base64, hashlib, pathlib, urllib.request
-          data = pathlib.Path("delivery/aiadcast-0.2.82-preview-code84-signed-candidate.apk").read_bytes()
-          assert len(data) == 18525441
-          assert hashlib.sha256(data).hexdigest() == "81e0822301810be75241280881da0040083baaa2ece66ba73d30add93baffd50"
+          data = pathlib.Path("delivery/aiadcast-0.2.83-preview-code85-signed-candidate.apk").read_bytes()
+          assert len(data) == 18526025
+          assert hashlib.sha256(data).hexdigest() == "8717ad604017990c5130c9e86c0f38704a1082144f70c03682a23ccbd5b10fb7"
           encoded = base64.b64encode(data).decode("ascii")
           manifest = []
           for index, start in enumerate(range(0, len(encoded), 524288)):
