@@ -34,6 +34,12 @@ jobs:
         run: python3 native/prepare-gradle-ci.py
       - run: npm ci --no-audit --no-fund
       - run: npm run build
+      - name: Install browser for login regression checks
+        run: npx playwright install --with-deps chromium
+      - name: Login startup, native return and account boundary checks
+        run: |
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(node --input-type=module -e "import {chromium} from '@playwright/test'; process.stdout.write(chromium.executablePath())")"
+          npx playwright test tests/login-latency.spec.ts tests/startup-connection.spec.ts tests/google-signin.spec.ts tests/google-native.spec.ts tests/google-link-recovery.spec.ts --workers=2
       - run: node scripts/check-web-build.mjs --require-commit
       - run: node native/test-android-bridge.mjs
       - run: node native/prepare-android.mjs
@@ -90,11 +96,11 @@ jobs:
           fi
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 "$apk"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" > release/android-candidate/package.txt
-          grep -q "name='com.selluplabs.aiadcast.next.preview' versionCode='83' versionName='0.2.81-preview'" release/android-candidate/package.txt
-          cp "$apk" "release/android-candidate/aiadcast-0.2.81-preview-code83-$label.apk"
+          grep -q "name='com.selluplabs.aiadcast.next.preview' versionCode='84' versionName='0.2.82-preview'" release/android-candidate/package.txt
+          cp "$apk" "release/android-candidate/aiadcast-0.2.82-preview-code84-$label.apk"
           (cd release/android-candidate && sha256sum *.apk > SHA256SUMS.txt)
           cp android/app/src/main/assets/native-build.json release/android-candidate/
-          printf 'Source: %s\nPackage: com.selluplabs.aiadcast.next.preview\nVersion: 0.2.81-preview (83)\nSigning: %s\nServer deployment: not performed\nLive AI editing: not validated\n' "$(git rev-parse HEAD)" "$label" | tee release/android-candidate/status.txt
+          printf 'Source: %s\nPackage: com.selluplabs.aiadcast.next.preview\nVersion: 0.2.82-preview (84)\nSigning: %s\nServer deployment: not performed\nLive AI editing: not validated\n' "$(git rev-parse HEAD)" "$label" | tee release/android-candidate/status.txt
           cat release/android-candidate/status.txt >> "$GITHUB_STEP_SUMMARY"
       - name: Publish verified signed Preview APK for testing
         if: steps.signing.outputs.available == 'true'
@@ -105,24 +111,27 @@ jobs:
         run: |
           set -euo pipefail
           source_sha=$(git rev-parse HEAD)
-          tag="preview-0.2.81-code83-${source_sha:0:12}"
+          tag="preview-0.2.82-code84-${source_sha:0:12}"
           cat > "$RUNNER_TEMP/preview-release-notes.md" <<'NOTES'
-          Preview testing APK, version 0.2.81-preview (83).
+          Preview testing APK, version 0.2.82-preview (84).
           Package: com.selluplabs.aiadcast.next.preview.
           The signing certificate matches the owner's signed Preview 0.2.80 APK.
-          Native unit tests, Android lint, apksigner verification and zipalign passed.
+          Login startup/native-return browser checks, native unit tests, Android lint, apksigner verification and zipalign passed.
+          Google sign-in can be started while background capability discovery is pending.
+          A freshly verified login opens home without a duplicate session GET; stored sessions are still verified.
+          Render Free server spin-up delays remain; this APK does not change the hosting plan.
           Device installation and live AI partial-edit quality are not validated.
           Server deployment and Play publication have not been performed.
           The existing image boundary defect and broader browser/PostgreSQL test issues remain under review; this is not a production quality approval.
           NOTES
           printf '\nSource: %s\n' "$source_sha" >> "$RUNNER_TEMP/preview-release-notes.md"
-          gh release create "$tag" release/android-candidate/* --repo "$GH_REPO" --target "$source_sha" --prerelease --title 'aiadcast Preview 0.2.81 (83) — testing APK' --notes-file "$RUNNER_TEMP/preview-release-notes.md"
+          gh release create "$tag" release/android-candidate/* --repo "$GH_REPO" --target "$source_sha" --prerelease --title 'aiadcast Preview 0.2.82 (84) — testing APK' --notes-file "$RUNNER_TEMP/preview-release-notes.md"
           gh release view "$tag" --repo "$GH_REPO" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
       - name: Upload APK candidate and Android reports
         if: steps.signing.outputs.available != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: aiadcast-android-0.2.81-code83-candidate
+          name: aiadcast-android-0.2.82-code84-candidate
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
