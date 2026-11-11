@@ -1,0 +1,47 @@
+name: Login APK (Preview)
+
+on:
+  push:
+    branches:
+      - delivery/latest-apk-0.2.85
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Build web
+        run: |
+          npm ci
+          npm run build
+          node native/prepare-android.mjs
+
+      - name: Build Preview APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assemblePreview \
+            -PAIADCAST_API_ORIGIN=https://aiadcast-next.onrender.com \
+            -PAIADCAST_BUILD_VERSION_CODE=85 \
+            -PAIADCAST_BUILD_VERSION_NAME=0.2.85
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aiadcast-login-preview-0.2.85
+          path: android/app/build/outputs/apk/preview/*.apk
+          if-no-files-found: error
