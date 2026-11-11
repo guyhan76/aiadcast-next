@@ -1,0 +1,56 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web assets
+        run: npm run build
+
+      - name: Prepare Android
+        run: node native/prepare-android.mjs
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Build Preview APK
+        run: |
+          cd android
+          ./gradlew assemblePreview
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: aiadcast-preview-0.2.85
+          path: android/app/build/outputs/apk/preview/*.apk
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.2.85
+          name: aiadcast Preview 0.2.85
+          files: android/app/build/outputs/apk/preview/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
