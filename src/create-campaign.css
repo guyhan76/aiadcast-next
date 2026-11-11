@@ -82,6 +82,11 @@
 .studio-shell .consumer-create .reference-add{min-height:130px}
 .studio-shell .consumer-create .dimension-form .check-field{margin-top:16px;font-size:14px;display:flex;align-items:center;gap:9px}
 .studio-shell .consumer-create .additional-requests{margin-top:16px}
+.studio-shell .consumer-create .additional-request-example{margin-top:18px;padding:12px 14px;border-left:3px solid #ed6a2c;background:#fafafa;font-size:14px;line-height:1.65;word-break:keep-all;overflow-wrap:anywhere}
+.studio-shell .consumer-create .additional-request-example strong{display:block;font-size:13px}
+.studio-shell .consumer-create .additional-request-example p{margin:7px 0}
+.studio-shell .consumer-create .additional-request-example small{display:block;font-size:12px;color:var(--brand-muted)}
+.studio-shell .consumer-create .additional-request-example+.field{margin-top:12px}
 .studio-shell .consumer-create .submit-help{text-align:center}
 @media(max-width:560px){.studio-shell .consumer-create .company-fields{grid-template-columns:1fr}.studio-shell .consumer-create .creation-section{padding:20px 0}.studio-shell .consumer-create .field textarea{min-height:86px}}
 .studio-shell .consumer-create .company-field{position:relative;display:flex;flex-direction:column}
