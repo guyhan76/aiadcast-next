@@ -2,17 +2,19 @@ name: Build APK
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout latest fix branch
         uses: actions/checkout@v4
+        with:
+          ref: delivery/latest-apk-0.2.85
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -36,8 +38,9 @@ jobs:
           distribution: 'temurin'
 
       - name: Build Preview APK
+        working-directory: android
         run: |
-          cd android
+          chmod +x gradlew
           ./gradlew assemblePreview
 
       - name: Upload APK
@@ -50,7 +53,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.2.85
+          target_commitish: delivery/latest-apk-0.2.85
           name: aiadcast Preview 0.2.85
           files: android/app/build/outputs/apk/preview/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
