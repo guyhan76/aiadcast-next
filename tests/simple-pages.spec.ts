@@ -27,14 +27,20 @@ test('unit conversion preserves canonical size, selected unit and display option
  await page.locator('.editor-container').getByLabel('규격 단위').selectOption('cm');await expect(page.locator('.editor-container').getByLabel('높이 cm')).toHaveValue('0.3175');
  await page.getByRole('button',{name:'되돌리기',exact:true}).click();await expect(page.locator('.editor-container').getByLabel('규격 단위')).toHaveValue('inch');
 });
-test('library and guide show brief essentials while backup and details stay available',async({page})=>{
+test('library and guide show customer-facing FAQs while backup and details stay available',async({page})=>{
  await protectedScreen(page,mockSession('simple-library-user'));
  await page.goto('/#projects');const library=page.locator('.projects-page');
  await expect(library.getByRole('heading',{name:'내 프로젝트',exact:true})).toBeVisible();await expect(library.locator('.project-reuse-note,.section-label,.home-scope')).toHaveCount(0);
  await expect(library.locator('.library-backup')).not.toHaveAttribute('open');await library.locator('.library-backup>summary').click();await expect(library.getByRole('link',{name:'파일 불러오러 가기'})).toBeVisible();
  await page.goto('/#guide');const guide=page.locator('.guide-page');await expect(guide.locator('.simple-guide-steps li')).toHaveCount(3);await expect(guide.getByRole('button',{name:'광고 만들기',exact:true})).toHaveCount(1);
- await expect(guide.locator('details[open]')).toHaveCount(0);await guide.getByText('만든 광고를 다시 수정할 수 있나요?',{exact:true}).click();await expect(guide.getByText(/PNG·JPG만으로는/)).toBeVisible();
+ await expect(guide.locator('details[open]')).toHaveCount(0);await expect(guide.locator('.guide-faq details')).toHaveCount(5);
+ await guide.getByText('만든 광고를 다시 수정할 수 있나요?',{exact:true}).click();await expect(guide.getByText(/PNG·JPG에서 따로 수정할 수 없으므로/)).toBeVisible();await expect(guide.getByText(/지원되는 AI 완성 광고/)).toBeVisible();
+ await guide.getByText('이미지를 저장할 때도 크레딧을 쓰나요?',{exact:true}).click();await expect(guide.getByText(/새 AI 생성 요청이 아닙니다/)).toBeVisible();
+ await expect(guide).not.toContainText(/초대코드|테스트 서버|결제는 연결 준비 중/);
  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
+ await page.getByRole('combobox',{name:'앱 언어',exact:true}).selectOption('en');
+ await expect(guide.getByText('Can I edit an ad later?',{exact:true})).toBeVisible();
+ await guide.getByText('Does saving an image use credits?',{exact:true}).click();await expect(guide.getByText(/Saving or sharing a finished image again/)).toBeVisible();
 });
 test('Google gate, existing-account recovery and order review never pretend to authenticate or charge',async({page})=>{
  let ready=false;await page.route('**/api/account/capabilities',route=>route.fulfill(ready?{json:{google:{enabled:false},email:{enabled:true},checkout:{enabled:false,test:true,currency:'KRW'}}}:{status:503,json:{error:{code:'UNAVAILABLE'}}}));
