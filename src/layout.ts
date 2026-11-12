@@ -39,9 +39,11 @@ export function geometry(p:Project){
  // Merely hiding existing specs keeps the photo placement unchanged.
  if(!dimensionAxes(p.productProfile).length)area={...area,h:footerLine.y-32*markScale-area.y};
  if(textOnly){
-  const size=Math.min(width*.062,height*.08);
-  title=box(brand.x,height*.26,width-brand.x*2,size,3);
-  description=box(brand.x,title.y+size*4.2+32*markScale,width-brand.x*2,Math.min(width*.026,height*.032),4);
+  const content=p.copy[p.locale];
+  const hasDetails=!!(p.campaign?.attributes.length||p.productProfile.material.trim()&&!content.description.includes(p.productProfile.material.trim())||p.productName.trim()&&!content.title.includes(p.productName.trim()));
+  const size=hasDetails?Math.min(width*.047,height*.063):Math.min(width*.062,height*.08);
+  title=box(brand.x,height*(hasDetails?.2:.26),width-brand.x*2,size,3);
+  description=box(brand.x,title.y+size*(hasDetails?3.2:4.2)+32*markScale,width-brand.x*2,Math.min(width*(hasDetails?.022:.026),height*(hasDetails?.026:.032)),hasDetails?3:4);
   if(p.dimensions.visible&&dimensionAxes(p.productProfile).length){
    const overlap=Math.max(0,description.y+description.size*1.4*description.lines+30*markScale-summary.y);
    title={...title,y:title.y-overlap};description={...description,y:description.y-overlap};
