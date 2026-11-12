@@ -10,23 +10,67 @@ export const imageSkills:readonly ImageSkill[]=[
  {id:'product-explosion',label:'제품 확산 연출',aliases:['product-explosion','product explosion'],instruction:'Create a dynamic advertising arrangement of the supplied product or its VERIFIED components spreading from a visual center. Keep their exact identities, quantities, printing and proportions. Do not fabricate hidden internals or confuse this with an engineering exploded-view diagram. If components are not documented, retain the intact product and express energy through lighting and background motion.'},
  {id:'adcreative',label:'광고 크리에이티브',aliases:['adcreative'],instruction:'Produce one coherent campaign visual with a clear hierarchy of the real product, approved headline and supplied offer. Make the product large and legible, choose lighting and setting for the intended audience, and integrate visible business contacts cleanly. No invented benefits, badges, discounts or unsolicited CTA.'},
 ];
+// Open-ended technique families supplement the seven documented recipes; this is
+// not an import of all 160 guide commands. Selection is performed by the image
+// model using the whole provider prompt, not by a category/keyword lookup table.
+const imageTechniqueFamilies:readonly Pick<ImageSkill,'id'|'label'|'instruction'>[]=[
+ {id:'studio-lighting',label:'스튜디오 조명',instruction:'Use material-specific softbox, side, rim or back lighting with coherent shadows and controlled reflections. Preserve actual surface color, texture, transparency and readable physical labels.'},
+ {id:'natural-light',label:'자연광',instruction:'Use plausible window or outdoor daylight, restrained color grading and coherent soft shadows when appropriate to the subject. Warmth must not recolor the product or imply an unsupported setting or benefit.'},
+ {id:'macro-detail',label:'소재·디테일 클로즈업',instruction:'Emphasize documented texture, construction, finish or functional detail with controlled focus. Keep details consistent with the main subject; do not invent hidden parts, material layers or microscopic evidence.'},
+ {id:'flat-lay',label:'플랫레이·탑뷰',instruction:'Arrange documented products or relevant supplied materials in a clear overhead composition with consistent perspective, scale and shadows. Do not imply that decorative props or extra products are included in an offer.'},
+ {id:'lifestyle',label:'사용 장면·라이프스타일',instruction:'Show a plausible use or service interaction when useful and permitted. Preserve identity, anatomy, contact and relative scale; respect requests for no people. Conceptual people and settings must not impersonate actual staff, customers, premises or testimonials.'},
+ {id:'architectural-space',label:'공간·건축 연출',instruction:'Use perspective-correct framing, spatial daylight and an orderly composition for documented rooms, properties and destinations. Without actual evidence use a clearly conceptual composition; do not fabricate facilities, views, landmarks or floor plans.'},
+ {id:'food-styling',label:'음식·음료 연출',instruction:'Use appetizing texture, appropriate side light and restrained serving composition for the supplied food or drink. Preserve portions and packaging; use only declared ingredients and do not invent origin, health claims or included side dishes.'},
+ {id:'automotive-portrait',label:'자동차·산업 제품 연출',instruction:'Use a readable complete silhouette, controlled surface highlights and credible ground contact for the actual vehicle or equipment. Preserve model details and mechanisms; do not invent specifications, stock, performance, certification or unseen geometry.'},
+ {id:'typography-led',label:'타이포 중심 구성',instruction:'Let the approved headline and supplied offer carry the page through strong type scale, spacing and contrast. Photography is optional. Preserve manual-copy wording under the existing language policy; do not add decorative pseudo-text or invented captions.'},
+ {id:'information-layout',label:'혜택·가격·과정 정보 구성',instruction:'Group supplied benefits, prices, dates, curriculum or process into a readable hierarchy with restrained icons when supported. Keep amounts with their periods and qualifiers; no invented steps, statistics, comparison data, charts or guarantees.'},
+ {id:'editorial-collage',label:'에디토리얼·사진 구성',instruction:'Use one dominant supplied view and a few supporting documented details in an intentional single-page grid or collage. Preserve the same subject or service identity; do not invent additional rooms, angles, products or output pages to fill slots.'},
+ {id:'vector-illustration',label:'벡터·그래픽 일러스트',instruction:'Use coherent flat, line, geometric or cut-paper-style illustration when it communicates the supplied message. Keep illustrations clearly conceptual and facts exact; do not turn symbols into unsupported certification or evidence.'},
+ {id:'conceptual-3d',label:'입체 그래픽·상징 표현',instruction:'Use a coherent rendered graphic or visual metaphor when permitted and useful. Keep conceptual objects distinct from factual product reconstruction; never invent internal structure, business results or actual installations. Respect all exclusions of 3D treatments.'},
+ {id:'cinematic-atmosphere',label:'시네마틱·색채 연출',instruction:'Use purposeful contrast, depth, atmosphere and a controlled palette while preserving product color and readable copy. Do not default every subject to dark luxury, neon, marble or gold, and do not imply undocumented locations.'},
+ {id:'motion-effects',label:'동세·확산 효과',instruction:'Express energy through a still-image composition, background motion, light or restrained particles when requested or relevant. Keep the main subject intact and readable; do not imply animation output, unsupported components or physical performance.'},
+ {id:'minimal-negative-space',label:'미니멀·여백 구성',instruction:'Use a deliberate focal point, balanced negative space and a restrained palette when suited to the message. Keep all approved copy and visible contacts legible; avoid accidental blank panels or shrinking essential terms to preserve decoration.'},
+];
 const escape=(value:string)=>value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-export function requestedImageSkills(notes:string):ImageSkill[]{
- const found:{skill:ImageSkill;index:number}[]=[];
+function namedImageSkillRequests(notes:string):{selected:ImageSkill[];excluded:ImageSkill[]}{
+ const found:{skill:ImageSkill;index:number}[]=[],excluded:ImageSkill[]=[];
  for(const skill of imageSkills){
   const matches=[...notes.matchAll(new RegExp('(?:^|[\\s,;+(])\\/(?:'+skill.aliases.map(escape).join('|')+')(?![a-z0-9_-])','gi'))];
   if(!matches.length)continue;
-  const excluded=matches.some(m=>{
+  const denied=matches.some(m=>{
    const before=notes.slice(Math.max(0,m.index!-35),m.index).trimEnd();
    const after=notes.slice(m.index!+m[0].length,m.index!+m[0].length+35);
    return /(?:\bno|\bwithout|\bomit|\bexclude|\bremove)\s*$/i.test(before)||/^(?:은|는|을|를|도)?\s*(?:말고|빼|제외|금지|사용하지|넣지|하지|없이)/.test(after);
   });
-  if(!excluded)found.push({skill,index:matches[0].index!});
+  if(denied)excluded.push(skill);
+  else found.push({skill,index:matches[0].index!});
  }
- return found.sort((a,b)=>a.index-b.index).map(x=>x.skill);
+ return {selected:found.sort((a,b)=>a.index-b.index).map(x=>x.skill),excluded};
 }
+// This helper deliberately recognizes only slash shorthand. Natural language,
+// including negation and context, is interpreted by the image model below.
+export function requestedImageSkills(notes:string):ImageSkill[]{return namedImageSkillRequests(notes).selected;}
+
+const automaticSelectionBrief=`
+AUTOMATIC IMAGE SKILL SELECTION (creative instructions for this image, not external tools):
+Select and apply suitable image-making techniques while composing this same finished advertisement. Use the FULL supplied campaign context: subjectType, productName, productProfile.category, the complete detailed description in productProfile.material, attributes, brief, creativeDirection.additionalInstructions, recorded direction instructions, approved copy, campaign purpose, intended audience, content type, output ratio and actual subject/design references. The short skill request below is only one input; do not ignore the other fields or the uploaded references.
+Understand Korean and English natural language by meaning, including paraphrases, exclusions, alternatives and scope; slash commands and exact technique names are optional. For example, "잡지 표지처럼" can request magazine-cover composition, "창가에서 찍은 것처럼" can request natural lighting, and "사진보다 글자 중심으로" can request typography-led composition. These are examples, not a closed keyword list. A product name, industry label, quoted reference or a mere mention of a style is not automatically a request to use that style.
+If no natural-language style request is supplied, still select techniques from the product or service field, detailed description, supplied facts, advertising purpose and available references. Infer presentation choices only, never missing business facts. An industry is context, not a mandatory style preset. A service may use typography, illustration, documented space or a credible interaction; do not force it into a physical-product showcase or packaging mockup. Without actual subject photos, follow the existing service or text-example policy rather than claiming verified identity.
+Consider all compatible recipes and technique families below. The catalogue is open-ended: use other suitable techniques within the image model's capabilities when they better express the supplied intent. This does not claim access to plugins, external tools or all commands from a separate guide. Choose one coherent primary treatment and only the supporting techniques it needs. Do not apply the entire catalogue, cycle styles arbitrarily or combine incompatible layouts.
+Explicit customer preferences and exclusions take priority over automatic choices and catalogue suggestions. Interpret constraints across ALL input fields, not just the short request: "인물 없이" excludes people, "3D는 제외" excludes 3D treatments, and "자연광 말고 스튜디오 조명" requests studio rather than natural light. Respect the scope of a restriction (for example, background only) and compatible combinations. Excluded techniques must not return under an alias or a related automatic effect. Named command hints below also remain subject to natural-language exclusions. When details are ambiguous, use a restrained compatible treatment supported by the facts.
+Product identity, supplied dimensions, material construction, exact facts, manual copy, contact visibility and the CTA policy take priority over every styling effect. Preserve the existing advertisement-language, geometry, reference-role and output-format policies. Do not invent offers, benefits, contents, facilities, staff, credentials or numeric evidence to enable a technique. Keep creative requests and technique names out of public ad copy. Return only the requested finished image, not a written selection plan. Selection instructions do not verify the generated pixels; the result still needs inspection.`;
+
+// The complete-ad adapter already appends this brief to the provider prompt that
+// carries the full normalized request. Always return the selection policy, even
+// for empty notes. No separate planner request, model call or user setting is needed.
 export function imageSkillBrief(notes:string):string {
- const selected=requestedImageSkills(notes);
- if(!selected.length)return '';
- return '\nREQUESTED IMAGE RECIPES (creative instructions, not external tools):\n'+selected.map(s=>'['+s.id+'] '+s.instruction).join('\n')+'\nApply these requested treatments within ONE finished advertisement. Product identity, supplied dimensions, material construction, exact facts, manual copy, contact visibility and the CTA policy take priority over every styling effect. Keep the established output format. A recipe does not prove the resulting image is accurate; the image must be inspected.';
+ const {selected,excluded}=namedImageSkillRequests(notes);
+ const excludedIds=new Set(excluded.map(s=>s.id));
+ const candidates=imageSkills.filter(s=>!excludedIds.has(s.id)&&!selected.some(chosen=>chosen.id===s.id));
+ return automaticSelectionBrief+
+  '\nCUSTOMER SKILL REQUEST (creative preferences, not public ad copy): '+JSON.stringify(notes)+
+  (excluded.length?'\nEXCLUDED NAMED RECIPES: '+excluded.map(s=>s.id).join(', ')+'. Do not select these automatically.':'')+
+  (selected.length?'\nREQUESTED IMAGE RECIPES (named hints, subject to the constraints above):\n'+selected.map(s=>'['+s.id+'] '+s.instruction).join('\n'):'')+
+  '\nAVAILABLE IMAGE RECIPES (alternatives, not instructions to apply all):\n'+candidates.map(s=>s.id+' ('+s.label+'): '+s.instruction).join('\n')+
+  '\nIMAGE TECHNIQUE FAMILIES (open-ended alternatives):\n'+imageTechniqueFamilies.map(s=>s.id+' ('+s.label+'): '+s.instruction).join('\n');
 }
