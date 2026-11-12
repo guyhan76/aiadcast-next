@@ -34,6 +34,8 @@ const catalog:CatalogSection[]=[
   {ko:'헬스/건강식품',en:'Health supplements',category:'food',keywords:'헬스 건강식품 건강기능식품 영양제 비타민 홍삼 유산균 프로바이오틱스 단백질 프로틴 다이어트 supplement'},
   {ko:'악기',en:'Musical instruments',category:'other',keywords:'악기 피아노 기타 드럼 바이올린 우쿨렐레 키보드 instrument'},
   {ko:'아트/공예',en:'Art & crafts',category:'other',keywords:'아트 미술 그림 미술용품 물감 공예 수공예 핸드메이드 도자기 캔들 art craft'},
+  {ko:'산업 기계/부품',en:'Industrial machinery & parts',category:'industrial',exact:true,keywords:'산업 기계 부품 장비 설비 공구 제조 자동화 센서 모터 베어링 machinery industrial parts equipment'},
+  {ko:'포장재',en:'Packaging materials',category:'packaging',exact:true,keywords:'포장 포장재 박스 상자 쇼핑백 라벨 용기 비닐 파우치 완충재 packaging box pouch'},
  ]},
  {ko:'생활/홈 서비스',en:'Home services',items:[
   {ko:'청소',en:'Cleaning',category:'services',keywords:'청소 입주청소 이사청소 홈클리닝 에어컨청소 cleaning'},
