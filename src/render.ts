@@ -3,22 +3,37 @@ import {labels, loadImage} from './model';
 import type {Project,Axis} from './model';
 import {geometry} from './layout.ts';
 import {paintCreativeFrame} from './creative-render.ts';
+import {defaultPrecision} from './precision.ts';
+import type {TextLayer} from './precision.ts';
 export {geometry} from './layout.ts';
 export const font='"Noto Sans KR Variable", sans-serif';
 function wrap(ctx:CanvasRenderingContext2D,text:string,width:number){const lines:string[]=[];for(const paragraph of text.split('\n')){let line='';for(const char of Array.from(paragraph)){if(ctx.measureText(line+char).width>width&&line){lines.push(line);line=char;}else line+=char;}lines.push(line);}return lines;}
 export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axis):Promise<string[]> {
- const layout=geometry(p);const {width,height,area,photo,summary,footerLine}=layout;const content=p.copy[p.locale];
+ const layout=geometry(p);const {width,height,area,photo,summary,footerLine}=layout;const content=p.copy[p.locale],precision=p.precision??defaultPrecision();
  await Promise.all([400,500,700].map(weight=>document.fonts.load(`${weight} 32px ${font}`,Object.values(content).join('')+'가로세로높이상품규격')));
  const [product,background]=await Promise.all([p.product?loadImage(p.product.data):null,p.background.image?loadImage(p.background.image.data):null]);
  canvas.width=width;canvas.height=height;const ctx=canvas.getContext('2d')!;const errors:string[]=[];
  const color=p.ink==='dark'?'#20261f':'#ffffff';ctx.fillStyle=p.background.color;ctx.fillRect(0,0,width,height);
- if(background){const fit=Math.max(width/background.naturalWidth,height/background.naturalHeight);const w=background.naturalWidth*fit,h=background.naturalHeight*fit;ctx.drawImage(background,(width-w)/2,(height-h)/2,w,h);}
+ if(background){const settings=precision.background,fit=Math.max(width/background.naturalWidth,height/background.naturalHeight)*settings.zoom;const w=background.naturalWidth*fit,h=background.naturalHeight*fit;ctx.save();ctx.globalAlpha=settings.opacity;ctx.drawImage(background,(width-w)/2+settings.x*width,(height-h)/2+settings.y*height,w,h);ctx.restore();}
  paintCreativeFrame(ctx,p,width,height);
- const text=(value:string,x:number,y:number,size:number,maxWidth:number,maxLines:number,name:string,weight=400)=>{ctx.fillStyle=color;ctx.font=`${weight} ${size}px ${font}`;ctx.textBaseline='top';const lines=wrap(ctx,value,maxWidth);if(lines.length>maxLines)errors.push(`${name}이(가) 영역을 넘습니다. 문구를 줄이거나 줄바꿈을 조정해주세요.`);lines.slice(0,maxLines).forEach((line,i)=>ctx.fillText(line,x,y+i*size*1.4));};
- const placed=(value:string,region:typeof layout.title,name:string,weight=400)=>text(value,region.x,region.y,region.size,region.w,region.lines,name,weight);
- placed(content.company||(layout.textOnly?'BRAND STORY':'PRODUCT STORY'),layout.brand,'상단 기업명',500);
- placed(content.title,layout.title,'제목',700);
- placed(content.description,layout.description,'설명');
+ if(precision.motion!=='none'){
+  ctx.save();ctx.strokeStyle=color;ctx.globalAlpha=.16;ctx.lineWidth=Math.max(3,width*.006);
+  if(precision.motion==='rays'){const x=area.x+area.w*.5,y=area.y+area.h*.5,r=Math.min(area.w,area.h)*.22;for(let i=0;i<16;i++){const a=i*Math.PI/8;ctx.beginPath();ctx.moveTo(x+Math.cos(a)*r,y+Math.sin(a)*r);ctx.lineTo(x+Math.cos(a)*r*1.7,y+Math.sin(a)*r*1.7);ctx.stroke();}}
+  else{ctx.beginPath();ctx.moveTo(area.x,area.y+area.h*.75);ctx.bezierCurveTo(area.x+area.w*.45,area.y-area.h*.2,area.x+area.w*.55,area.y+area.h*1.2,area.x+area.w,area.y+area.h*.15);ctx.stroke();}
+  ctx.restore();
+ }
+ const text=(value:string,x:number,y:number,size:number,maxWidth:number,maxLines:number,name:string,weight=400,family=font)=>{ctx.fillStyle=color;ctx.font=`${weight} ${size}px ${family}`;ctx.textBaseline='top';const lines=wrap(ctx,value,maxWidth);if(lines.length>maxLines)errors.push(`${name}이(가) 영역을 넘습니다. 문구를 줄이거나 줄바꿈을 조정해주세요.`);lines.slice(0,maxLines).forEach((line,i)=>ctx.fillText(line,x,y+i*size*1.4));};
+ const placed=(value:string,region:typeof layout.title,name:string,weight=400,layer?:TextLayer)=>{
+  const style=layer?precision.text[layer]:null;
+  const x=region.x+(style?.x??0)*width,y=region.y+(style?.y??0)*height,size=region.size*(style?.scale??1);
+  const family=style?.font==='serif'?`Georgia, "Noto Serif KR", serif`:style?.font==='mono'?`ui-monospace, "Noto Sans Mono CJK KR", monospace`:font;
+  const maxWidth=Math.min(region.w,width-x-region.x);
+  if(value.trim()&&(maxWidth<=0||y<0||y+size*1.4*region.lines>height||x<0))errors.push(`${name}이(가) 이미지 밖으로 나갑니다. 위치나 크기를 조정해주세요.`);
+  if(maxWidth>0)text(value,x,y,size,maxWidth,region.lines,name,weight,family);
+ };
+ placed(content.company||(layout.textOnly?'BRAND STORY':'PRODUCT STORY'),layout.brand,'상단 기업명',500,'brand');
+ placed(content.title,layout.title,'제목',700,'title');
+ placed(content.description,layout.description,'설명',400,'description');
  if(layout.textOnly){
   // Only confirmed public facts belong on the image; creative notes remain private instructions.
   const rows=[...(p.productName.trim()&&!content.title.includes(p.productName.trim())?[{name:p.locale==='ko'?'서비스':'Service',value:p.productName.trim()}]:[]),
@@ -37,11 +52,12 @@ export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axi
  if(product){ctx.drawImage(product,photo.x,photo.y,photo.w,photo.h);}else if(!layout.textOnly){
   ctx.save();ctx.strokeStyle=p.ink==='dark'?'#b2afa5':'#aaa';ctx.lineWidth=2;ctx.setLineDash([12,12]);ctx.strokeRect(area.x,area.y,area.w,area.h);ctx.restore();ctx.save();ctx.globalAlpha=.65;text(p.locale==='ko'?'이곳에 실제 상품 사진이 표시됩니다.':'Your original product photo goes here.',area.x+24,area.y+area.h/2,28*layout.markScale,area.w-48,2,'사진 안내');ctx.restore();
  }
+ if(precision.sticker.glyph){const s=precision.sticker;ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`${s.size}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;ctx.fillText(s.glyph,s.x*width,s.y*height);ctx.restore();}
  if(p.dimensions.visible&&p.dimensions.lines&&product){for(const axis of dimensionAxes(p.productProfile)){const points=p.dimensions.anchors[axis].map(pt=>({x:photo.x+pt.x*photo.w,y:photo.y+pt.y*photo.h}));const [a,b]=points;ctx.save();ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();const angle=Math.atan2(b.y-a.y,b.x-a.x);for(const [pt,theta] of [[a,angle+Math.PI],[b,angle]] as const){ctx.beginPath();ctx.moveTo(pt.x,pt.y);ctx.lineTo(pt.x-14*Math.cos(theta-.4),pt.y-14*Math.sin(theta-.4));ctx.lineTo(pt.x-14*Math.cos(theta+.4),pt.y-14*Math.sin(theta+.4));ctx.closePath();ctx.fill();}
   const label=`${p.dimensions[axis]} mm`;ctx.font=`500 26px ${font}`;const tw=ctx.measureText(label).width;const x=(a.x+b.x)/2,y=(a.y+b.y)/2;ctx.fillStyle=p.ink==='dark'?'#fffefaee':'#171917ee';ctx.fillRect(x-tw/2-12,y-42,tw+24,38);ctx.fillStyle=color;ctx.textBaseline='top';ctx.fillText(label,x-tw/2,y-39);
   if(editingAxis===axis){for(const pt of points){ctx.fillStyle='#e36a22';ctx.strokeStyle='#fff';ctx.lineWidth=4;ctx.beginPath();ctx.arc(pt.x,pt.y,13,0,Math.PI*2);ctx.fill();ctx.stroke();}}ctx.restore();}}
  if(p.dimensions.visible&&dimensionAxes(p.productProfile).length){ctx.save();ctx.fillStyle=p.ink==='dark'?'#ffffffdf':'#10130fe6';ctx.fillRect(summary.x,summary.y,summary.w,summary.h);ctx.restore();placed(labels[p.locale].spec,layout.specLabel,'규격 제목',500);placed(specSummary(p.dimensions,p.productProfile),layout.specValue,'규격 숫자',700);}
  ctx.fillStyle=color;ctx.globalAlpha=.25;ctx.fillRect(footerLine.x,footerLine.y,footerLine.w,footerLine.h);ctx.globalAlpha=1;
- placed(content.company,layout.company,'기업명',700);placed([content.contact,content.website].filter(Boolean).join('  |  '),layout.contact,'연락처');
+ placed(content.company,layout.company,'기업명',700,'company');placed([content.contact,content.website].filter(Boolean).join('  |  '),layout.contact,'연락처',400,'contact');
  return errors;
 }
