@@ -14,23 +14,21 @@ import type {IndustryKind} from './industry';
 import {CreativeOptions} from './CreativeOptions';
 import {defaultCreative,creativeCopy} from './creative';
 export function starterProject(category:ProductCategory='other'):Project{
- const p=withCategory(newProject(),category);return {...p,name:'',background:{...p.background,color:'#f8f7f4'},productProfile:{...p.productProfile,specType:'none'},dimensions:{...p.dimensions,width:'',depth:'',height:'',visible:false,lines:false},campaign:{...defaultCampaign(),creative:defaultCreative()},copy:{ko:{...p.copy.ko,company:''},en:{...p.copy.en,company:''}}};
-}
-export function CreateCampaign({initialKind,onReady}:{initialKind?:IndustryKind;onReady:(p:Project)=>Promise<void>}){
- const [project,setProject]=useState(()=>starterProject(initialKind==='service'?'services':'other'));
+ const p=withCategory(newProject(),category);return {...p,name:'',background:{...p.background,color:'#f8f7f4'},productProfile:{...p.productProfile,specType:'none'},dimensions:{...p.dimensions,width:'',depth:'',height:'',visible:false,lines:false},campaign:{...defaultCampaign(),creative:defaultCreative()},copy:{ko:{...p.copy.ko,company:''},en:{...p.copy.en,company:''}}};\n}
+export function CreateCampaign({initialKind,onReady}:{initialKind?:IndustryKind;onReady:(p:Project)=>Promise<void>}){\n const [project,setProject]=useState(()=>starterProject(initialKind==='service'?'services':'other'));
  const [selectedCategory,setSelectedCategory]=useState<ProductCategory>();
  const [step,setStep]=useState(0),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const service=isServiceCategory(project.productProfile.category);const axes=dimensionAxes(project.productProfile);
  function change(fn:(p:Project)=>Project){setProject(fn);setError('');}
  async function addPhoto(file?:File){if(!file)return;setBusy(true);try{const asset=await imageFile(file);change(p=>({...p,product:asset}));}catch(e){setError(e instanceof Error?e.message:'사진을 다시 확인해주세요.');}finally{setBusy(false);}}
  async function next(){
-  if(step===0&&!selectedCategory){setError('광고할 상품 또는 서비스 분야를 선택해주세요.');return;}
+  if(step===0&&!selectedCategory){setError('광고할 분야를 선택해주세요.');return;}
   if(step===0&&!project.productName.trim()){setError('상품 또는 서비스 이름을 입력해주세요.');return;}
   if(step===1){const issues=generationIssues(project);if(issues.length){setError(issues.join(' '));return;}}
   if(step<2){setStep(step+1);setError('');window.scrollTo(0,0);return;}
   setBusy(true);try{await onReady({...project,name:project.productName+' 광고',updatedAt:new Date().toISOString(),copy:{...project.copy,ko:{...project.copy.ko,...creativeCopy({...project,locale:'ko'})}}});}catch{setError('이 기기에 저장하지 못했습니다. 저장 공간과 브라우저 설정을 확인해주세요. 입력 내용은 이 화면에 유지됩니다.');}finally{setBusy(false);}
  }
- return <div className="create-page"><div className="section-label"><span>CREATE A CAMPAIGN</span><span>처음부터, 간결하게.</span></div><ol className="create-steps">{['업종과 브랜드','사진과 정보','광고 방향'].map((s,i)=><li key={s} aria-current={step===i?'step':undefined} className={i<=step?'current':''}><span>{i<step?<Check size={14}/>:i+1}</span>{s}</li>)}</ol>
+ return <div className="create-page"><div className="section-label"><span>CREATE A CAMPAIGN</span><span>처음부터, 간결하게.</span></div><ol className="create-steps">{['광고할 분야','사진과 정보','광고 방향'].map((s,i)=><li key={s} aria-current={step===i?'step':undefined} className={i<=step?'current':''}><span>{i<step?<Check size={14}/>:i+1}</span>{s}</li>)}</ol>
   <div className="create-heading"><span>0{step+1} / 03</span><h1>{['무엇을 알리고 싶으세요?','광고의 기준이 될 정보.','어떤 모습으로 보여줄까요?'][step]}</h1><p>{['상품부터 서비스까지, 당신의 비즈니스를 선택하세요.','실제 사진과 확인된 정보를 바탕으로 광고를 준비합니다.','방향과 분위기를 고르면 광고 초안을 준비합니다. 추가 요청은 선택이에요.'][step]}</p></div>
   <div className="create-card">
    {step===0&&<><IndustryPicker value={selectedCategory} initialKind={initialKind} onClearSelection={()=>{setSelectedCategory(undefined);setError('');}} onChange={category=>{setSelectedCategory(category);change(p=>withCategory(p,category));}}/>{selectedCategory&&<><label className="field">상품·서비스 이름<input autoComplete="off" value={project.productName} maxLength={60} placeholder={industryPlaceholder(project.productProfile.category)} onChange={e=>change(p=>({...p,productName:e.target.value}))}/></label><label className="field">브랜드·회사명 <span className="optional-tag">선택</span><input value={project.copy.ko.company} maxLength={60} placeholder="광고에 표시할 이름" onChange={e=>change(p=>({...p,copy:{ko:{...p.copy.ko,company:e.target.value},en:{...p.copy.en,company:e.target.value}}}))}/></label><CampaignFields project={project} change={change}/></>}</>}
