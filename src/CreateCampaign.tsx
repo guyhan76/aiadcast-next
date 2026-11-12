@@ -60,8 +60,8 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{
  }
  async function submit(){
   if(!active||submitting.current||photoImporting.current||busy)return;
-  if(!chosen){setError(t('광고할 산업을 선택해주세요.','Choose your industry.'));document.getElementById(id+'-industry')?.focus();return;}
-  if(!regulatoryOk){setError(t('1번 광고할 산업의 법규 안내를 확인해주세요.','Review the industry notice in step 1.'));return;}
+  if(!chosen){setError(t('광고 분야을 선택해주세요.','Choose your industry.'));document.getElementById(id+'-industry')?.focus();return;}
+  if(!regulatoryOk){setError(t('1번 광고 분야의 법규 안내를 확인해주세요.','Review the industry notice in step 1.'));return;}
   if(!project.productName.trim()||!project.productProfile.material.trim()){setError(t('상품·서비스 이름과 상세설명을 입력해주세요.','Enter the name and description.'));document.getElementById(id+(!project.productName.trim()?'-name':'-description'))?.focus();return;}
   if(copyMode==='manual'&&!copy.title.trim()){setError(t('직접 사용할 광고 제목을 입력해주세요.','Enter your advertising headline.'));document.getElementById(id+'-headline')?.focus();return;}
   const prepared=prepareCampaign(photoGenerationDraft(withCreative(project,{copyMode}))),issues=newGenerationIssues(prepared);
