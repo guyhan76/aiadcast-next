@@ -4,6 +4,7 @@ import {ArrowRight,Check,ChevronDown,Palette,Sparkles} from 'lucide-react';
 import type {Project} from './model';
 import {industryDirections,industryLabel} from './industry';
 import {chooseCreativeLook,creativeCopy,creativeLooks,creativeSettings,withCreative} from './creative';
+import {PrecisionControls} from './PrecisionControls';
 import './creative-options.css';
 
 type Props={project:Project;change:(fn:(p:Project)=>Project)=>void;compact?:boolean};
@@ -47,6 +48,6 @@ export function CreativeOptions({project,change,compact=false}:Props){
   {compact&&<div className="creative-copy-suggestion" aria-labelledby={previewId}><div><Sparkles size={15} aria-hidden="true"/><h3 id={previewId}>이 방향에 어울리는 문구</h3></div><p className="creative-copy-title">{recommended.title}</p><p className="creative-copy-description">{recommended.description}</p><button type="button" onClick={applyCopy}>추천 문구 적용<ArrowRight size={15}/></button>{applied&&<p className="creative-copy-applied" role="status">현재 언어의 제목과 설명에 적용했습니다. 사진과 규격은 유지합니다.</p>}</div>}
   <p className="creative-options-footnote">방향과 스타일은 편집·생성 요청에 함께 저장됩니다.</p>
  </div>;
- if(compact)return <details className="creative-options creative-options-compact"><summary><span><Palette size={18} aria-hidden="true"/><strong>광고 방향과 스타일</strong></span><span>{look.label}<ChevronDown size={16} aria-hidden="true"/></span></summary>{content}</details>;
+ if(compact)return <><details className="creative-options creative-options-compact"><summary><span><Palette size={18} aria-hidden="true"/><strong>광고 방향과 스타일</strong></span><span>{look.label}<ChevronDown size={16} aria-hidden="true"/></span></summary>{content}</details><PrecisionControls project={project} change={change}/></>;
  return <section className="creative-options" aria-label="광고 방향과 스타일">{content}</section>;
 }
