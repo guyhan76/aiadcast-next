@@ -19,6 +19,21 @@ export async function render(canvas:HTMLCanvasElement,p:Project,editingAxis?:Axi
  placed(content.company||(layout.textOnly?'BRAND STORY':'PRODUCT STORY'),layout.brand,'상단 기업명',500);
  placed(content.title,layout.title,'제목',700);
  placed(content.description,layout.description,'설명');
+ if(layout.textOnly){
+  // Only confirmed public facts belong on the image; creative notes remain private instructions.
+  const rows=[...(p.productName.trim()&&!content.title.includes(p.productName.trim())?[{name:p.locale==='ko'?'서비스':'Service',value:p.productName.trim()}]:[]),
+   ...(p.productProfile.material.trim()&&!content.description.includes(p.productProfile.material.trim())?[{name:p.locale==='ko'?'서비스 내용':'Details',value:p.productProfile.material.trim()}]:[]),
+   ...(p.campaign?.attributes??[])];
+  const size=Math.min(width*.023,height*.028),lineHeight=size*1.45,margin=20*layout.markScale;
+  let y=layout.description.y+layout.description.size*1.4*layout.description.lines+margin;
+  for(const row of rows){
+   const value=`${row.name}: ${row.value}`;ctx.font=`400 ${size}px ${font}`;
+   const lines=wrap(ctx,value,layout.description.w);
+   if(y+lines.length*lineHeight>footerLine.y-margin){errors.push('서비스 추가 정보가 이미지 영역을 넘습니다. 문구를 줄이거나 더 긴 출력 비율을 선택해주세요.');break;}
+   text(value,layout.description.x,y,size,layout.description.w,lines.length,'서비스 추가 정보');
+   y+=lines.length*lineHeight+margin;
+  }
+ }
  if(product){ctx.drawImage(product,photo.x,photo.y,photo.w,photo.h);}else if(!layout.textOnly){
   ctx.save();ctx.strokeStyle=p.ink==='dark'?'#b2afa5':'#aaa';ctx.lineWidth=2;ctx.setLineDash([12,12]);ctx.strokeRect(area.x,area.y,area.w,area.h);ctx.restore();ctx.save();ctx.globalAlpha=.65;text(p.locale==='ko'?'이곳에 실제 상품 사진이 표시됩니다.':'Your original product photo goes here.',area.x+24,area.y+area.h/2,28*layout.markScale,area.w-48,2,'사진 안내');ctx.restore();
  }
