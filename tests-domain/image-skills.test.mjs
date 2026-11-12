@@ -107,6 +107,22 @@ test('photo-free services receive contextual selection without style requests or
  }
 });
 
+test('gallery-informed techniques keep documented assets and approved copy ahead of visual effects',()=>{
+ const p=fixture();
+ p.generation.brief='제공된 패키지 전개도로 촬영한 듯한 패키지 광고. 재료가 확인된 음식만 동세를 주세요.';
+ p.campaign.creative.note='현장 사진처럼 자연스럽게, 가짜 직원과 가격은 넣지 마세요.';
+ const prompt=promptFor(normalized(p));
+ assert.match(prompt,/GALLERY-INFORMED COMPOSITION/);
+ assert.match(prompt,/requested canvas ratio and working insets/);
+ assert.match(prompt,/Only approved text may become legible advertisement copy/);
+ assert.match(prompt,/dieline-packshot.*Only when an ACTUAL SUBJECT reference includes a legible packaging dieline/);
+ assert.match(prompt,/ingredient-motion.*If ingredients are not documented/);
+ assert.match(prompt,/documentary-capture.*do not present fabricated staff, customers, interiors or events as documentary proof/);
+ assert.ok(prompt.includes(p.generation.brief));assert.ok(prompt.includes(p.campaign.creative.note));
+ assert.match(prompt,/MANUAL COPY/);assert.match(prompt,/Do not add a CTA/);
+ assert.doesNotMatch(prompt,/REQUESTED IMAGE RECIPES/);
+});
+
 test('full-ad skill selection stays out of older photo plates and original-photo generation',()=>{
  const p=fixture();p.campaign.creative.note='/showcase, 인물 없이 자연광으로';
  const complete=normalized(p);assert.match(promptFor(complete),/AUTOMATIC IMAGE SKILL SELECTION/);
