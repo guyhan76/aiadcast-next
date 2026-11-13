@@ -55,6 +55,8 @@ const catalog:CatalogSection[]=[
   {ko:'컨설팅',en:'Consulting',category:'services',keywords:'컨설팅 경영 창업 사업계획 자문 코칭 consulting'},
   {ko:'의료',en:'Medical',category:'hospital',exact:true,keywords:'의료 병원 의원 치과 한의원 피부과 성형외과 안과 검진 clinic medical'},
   {ko:'바이오',en:'Biotech',category:'biotech',exact:true,keywords:'바이오 제약 신약 연구 임상 biotech'},
+  {ko:'기업/브랜드',en:'Company & brand',category:'corporate',exact:true,keywords:'기업 회사 브랜드 기업홍보 회사소개 브랜드광고 기업광고 사업 제조사 company corporate brand business'},
+  {ko:'물류',en:'Logistics',category:'services',keywords:'물류 운송 배송 택배 화물 창고 보관 유통 풀필먼트 수출입 포워딩 logistics shipping freight warehouse fulfillment'},
  ]},
  {ko:'교육·레슨·취미',en:'Education, lessons & hobbies',items:[
   {ko:'어학',en:'Languages',category:'education',keywords:'어학 외국어 영어 영어회화 일본어 중국어 토익 토플 language english'},
