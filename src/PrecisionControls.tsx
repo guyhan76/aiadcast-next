@@ -2,6 +2,7 @@ import {defaultPrecision} from './precision.ts';
 import type {Project,PrecisionSettings,TextLayer,BackgroundEffect,Motion,Expression} from './precision.ts';
 import {ChevronDown,RotateCcw} from 'lucide-react';
 import {useState} from 'react';
+import './precision-controls.css';
 
 interface PrecisionControlsProps {
  project:Project;
@@ -40,8 +41,7 @@ export function PrecisionControls({project,change}:PrecisionControlsProps){
      <div className="section-content">
       <div className="precision-select">
        <label>{project.locale==='ko'?'효과':'Effect'}</label>
-       <select value={precision.background.effect} onChange={e=>updatePrecision(p=>({
-        ...p,
+       <select value={precision.background.effect} onChange={e=>updatePrecision(p=>({\n        ...p,
         background:{...p.background,effect:e.target.value as BackgroundEffect}
        }))}>
         {backgroundEffects.map(effect=>(
@@ -67,10 +67,9 @@ export function PrecisionControls({project,change}:PrecisionControlsProps){
         </span>
         <input type="range" min="0" max="1" step="0.05" 
          value={precision.background.effectIntensity}
-         onChange={e=>updatePrecision(p=>({
-          ...p,
+         onChange={e=>updatePrecision(p=>({\n          ...p,
           background:{...p.background,effectIntensity:parseFloat(e.target.value)}
-         }))}/>
+         }))}\/>
        </div>
       )}
 
@@ -81,10 +80,9 @@ export function PrecisionControls({project,change}:PrecisionControlsProps){
        </span>
        <input type="range" min="0" max="1" step="0.05" 
         value={precision.background.opacity}
-        onChange={e=>updatePrecision(p=>({
-         ...p,
+        onChange={e=>updatePrecision(p=>({\n         ...p,
          background:{...p.background,opacity:parseFloat(e.target.value)}
-        }))}/>
+        }))}\/>
       </div>
 
       <div className="precision-slider">
@@ -94,10 +92,9 @@ export function PrecisionControls({project,change}:PrecisionControlsProps){
        </span>
        <input type="range" min="0.5" max="2" step="0.1" 
         value={precision.background.zoom}
-        onChange={e=>updatePrecision(p=>({
-         ...p,
+        onChange={e=>updatePrecision(p=>({\n         ...p,
          background:{...p.background,zoom:parseFloat(e.target.value)}
-        }))}/>
+        }))}\/>
       </div>
      </div>
     </div>
@@ -115,8 +112,7 @@ export function PrecisionControls({project,change}:PrecisionControlsProps){
         <div className="expression-grid">
          {expressions.map(expr=>(
           <button key={expr} className={`expression-btn ${precision.sticker.glyph===expr?'active':''}`}
-           onClick={()=>updatePrecision(p=>({
-            ...p,
+           onClick={()=>updatePrecision(p=>({\n            ...p,
             sticker:{...p.sticker,glyph:expr}
            }))}>
            <span className="emoji-btn">{expr}</span>
@@ -135,10 +131,9 @@ export function PrecisionControls({project,change}:PrecisionControlsProps){
           </span>
           <input type="range" min="20" max="200" step="10" 
            value={precision.sticker.size}
-           onChange={e=>updatePrecision(p=>({
-            ...p,
+           onChange={e=>updatePrecision(p=>({\n            ...p,
             sticker:{...p.sticker,size:parseInt(e.target.value)}
-           }))}/>
+           }))}\/>
          </div>
 
          <div className="precision-slider">
@@ -148,10 +143,9 @@ export function PrecisionControls({project,change}:PrecisionControlsProps){
           </span>
           <input type="range" min="0" max="360" step="15" 
            value={precision.sticker.rotation}
-           onChange={e=>updatePrecision(p=>({
-            ...p,
+           onChange={e=>updatePrecision(p=>({\n            ...p,
             sticker:{...p.sticker,rotation:parseInt(e.target.value)}
-           }))}/>
+           }))}\/>
          </div>
         </>
        )}
@@ -182,16 +176,14 @@ export function PrecisionControls({project,change}:PrecisionControlsProps){
            <div className="color-input-wrap">
             <input type="color" 
              value={style.color}
-             onChange={e=>updatePrecision(p=>({
-              ...p,
+             onChange={e=>updatePrecision(p=>({\n              ...p,
               text:{...p.text,[layer]:{...style,color:e.target.value}}
-             }))}/>
+             }))}\/>
             <input type="text" placeholder="#000000" maxLength="7"
              value={style.color}
-             onChange={e=>updatePrecision(p=>({
-              ...p,
+             onChange={e=>updatePrecision(p=>({\n              ...p,
               text:{...p.text,[layer]:{...style,color:e.target.value}}
-             }))}/>
+             }))}\/>
            </div>
           </div>
 
@@ -202,10 +194,9 @@ export function PrecisionControls({project,change}:PrecisionControlsProps){
            </span>
            <input type="range" min="0" max="1" step="0.1" 
             value={style.opacity}
-            onChange={e=>updatePrecision(p=>({
-             ...p,
+            onChange={e=>updatePrecision(p=>({\n             ...p,
              text:{...p.text,[layer]:{...style,opacity:parseFloat(e.target.value)}}
-            }))}/>
+            }))}\/>
           </div>
 
           <div className="precision-slider">
@@ -215,16 +206,14 @@ export function PrecisionControls({project,change}:PrecisionControlsProps){
            </span>
            <input type="range" min="0.5" max="2" step="0.1" 
             value={style.scale}
-            onChange={e=>updatePrecision(p=>({
-             ...p,
+            onChange={e=>updatePrecision(p=>({\n             ...p,
              text:{...p.text,[layer]:{...style,scale:parseFloat(e.target.value)}}
-            }))}/>
+            }))}\/>
           </div>
 
           <div className="precision-select">
            <label>{project.locale==='ko'?'폰트':'Font'}</label>
-           <select value={style.font} onChange={e=>updatePrecision(p=>({
-            ...p,
+           <select value={style.font} onChange={e=>updatePrecision(p=>({\n            ...p,
             text:{...p.text,[layer]:{...style,font:e.target.value as any}}
            }))}>
             <option value="sans">{project.locale==='ko'?'기본':'Sans'}</option>
