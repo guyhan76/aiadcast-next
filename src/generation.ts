@@ -44,7 +44,17 @@ export function photoGenerationDraft(p:Project):Project {
 }
 export function newGenerationIssues(p:Project):string[]{
  p=photoGenerationDraft(p);
- return !p.product?['광고에 참고할 상품·공간 사진을 추가해주세요.']:generationIssues(p);
+ if(!p.product){
+   // 무형 서비스이고 AI 광고(새 광고) 모드인 경우 참조 사진 없이도 가능
+   const service=isServiceCategory(p.productProfile.category);
+   const creative=p.generation.mode==='creative';
+   if(service&&creative){
+     return generationIssues(p);
+   }
+   // 유형 상품이거나 원본 모드인 경우 사진 필수
+   return ['광고에 참고할 상품·공간 사진을 추가해주세요.'];
+ }
+ return generationIssues(p);
 }
 // Internal prototype only: no production form or automatic submission opts in.
 // Candidate v2 remains opt-in until actual reserved-area compliance is validated.
@@ -109,4 +119,3 @@ export function buildGenerationRequest(p:Project) {
     claims:{sameProduct:!creative&&!appearanceEdit&&!service&&!!p.product&&!boxProjectionActive(p),exactGeometry:false},
   };
 }
-
