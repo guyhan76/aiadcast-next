@@ -134,7 +134,7 @@ export function IndustrySearch({project,chosen,onChosen,change}:{project:Project
 
  return <div className="field industry-search">
   <label htmlFor={id}>{t('업종 검색','Search industries')}</label>
-  <input id={id} type="search" maxLength={40} autoComplete="off" value={query} placeholder={t('예: 화장품, 분양, 강아지 사료','e.g. cosmetics, real estate, dog food')} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key!=='Enter')return;e.preventDefault();const only=matches.length===1?matches[0]:undefined;if(only)pick(only.category,only.line);}}/>
+  <input id={id} type="search" maxLength={40} autoComplete="off" value={query} placeholder={t('상품명·서비스명으로 검색 (예: 패션, 식품, 교육, 부동산)','e.g. cosmetics, real estate, dog food')} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key!=='Enter')return;e.preventDefault();const only=matches.length===1?matches[0]:undefined;if(only)pick(only.category,only.line);}}/>
   {tokens.length>0&&<div style={{display:'grid',gap:8,marginTop:6}}>
    {matches.length>0&&<ul aria-label={t('검색 결과','Search results')} style={wrap}>{matches.slice(0,12).map(o=><li key={o.key}><button type="button" style={chip} onClick={()=>pick(o.category,o.line)}>{o.label} <small style={{color:'#6b7280'}}>{o.group}</small></button></li>)}</ul>}
    <div style={{padding:'10px 12px',background:'#f4f4f5',borderRadius:8}}>
