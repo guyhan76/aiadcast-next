@@ -56,7 +56,6 @@ export function newGenerationIssues(p:Project):string[]{
  }
  return generationIssues(p);
 }
-
 // Internal prototype only: no production form or automatic submission opts in.
 // Candidate v2 remains opt-in until actual reserved-area compliance is validated.
 export function plannedTextGenerationDraft(p:Project):Project{return p.exactTextVersion===2?p:{...p,exactTextVersion:2};}
