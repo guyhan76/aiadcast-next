@@ -36,7 +36,7 @@ const catalog:CatalogSection[]=[
   {ko:'아트/공예',en:'Art & crafts',category:'other',keywords:'아트 미술 그림 미술용품 물감 공예 수공예 핸드메이드 도자기 캔들 art craft'},
   {ko:'산업 기계/부품',en:'Industrial machinery & parts',category:'industrial',exact:true,keywords:'산업 기계 부품 장비 설비 공구 제조 자동화 센서 모터 베어링 machinery industrial parts equipment'},
   {ko:'포장재',en:'Packaging materials',category:'packaging',exact:true,keywords:'포장 포장재 박스 상자 쇼핑백 라벨 용기 비닐 파우치 완충재 packaging box pouch'},
- ]},
+]},
  {ko:'생활/홈 서비스',en:'Home services',items:[
   {ko:'청소',en:'Cleaning',category:'services',keywords:'청소 입주청소 이사청소 홈클리닝 에어컨청소 cleaning'},
   {ko:'이사',en:'Moving',category:'services',keywords:'이사 포장이사 용달 이삿짐 moving'},

@@ -15,7 +15,7 @@ import {dimensionAxes,withCategory,isServiceCategory} from './product';
 import type {SpecType} from './product';
 import {newGenerationIssues,photoGenerationDraft} from './generation';
 import {imageFormats} from './formats';
-import {industryGroups,industryLabel} from './industry';
+
 import type {IndustryKind,ProductCategory} from './industry';
 import {creativeSettings,withCreative} from './creative';
 import {ReferencePhotos} from './ReferencePhotos';
@@ -60,8 +60,13 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{
  }
  async function submit(){
   if(!active||submitting.current||photoImporting.current||busy)return;
+<<<<<<< HEAD
+  if(!chosen){setError(t('광고할 분야을 선택해주세요.','Choose your industry.'));document.getElementById(id+'-industry')?.focus();return;}
+  if(!regulatoryOk){setError(t('1번 광고할 분야의 법규 안내를 확인해주세요.','Review the industry notice in step 1.'));return;}
+=======
   if(!chosen){setError(t('광고 분야을 선택해주세요.','Choose your industry.'));document.getElementById(id+'-industry')?.focus();return;}
   if(!regulatoryOk){setError(t('1번 광고 분야의 법규 안내를 확인해주세요.','Review the industry notice in step 1.'));return;}
+>>>>>>> a33eda9d9b411cb08a6270b760424ca6726889db
   if(!project.productName.trim()||!project.productProfile.material.trim()){setError(t('상품·서비스 이름과 상세설명을 입력해주세요.','Enter the name and description.'));document.getElementById(id+(!project.productName.trim()?'-name':'-description'))?.focus();return;}
   if(copyMode==='manual'&&!copy.title.trim()){setError(t('직접 사용할 광고 제목을 입력해주세요.','Enter your advertising headline.'));document.getElementById(id+'-headline')?.focus();return;}
   const prepared=prepareCampaign(photoGenerationDraft(withCreative(project,{copyMode}))),issues=newGenerationIssues(prepared);
@@ -73,9 +78,9 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{
   <div className="create-heading"><h1>{t('광고 만들기','Create an ad')}</h1><p>{t('사진과 정보로 만드는 광고','Create ads with photos and details')}</p></div>
   <form aria-busy={busy} onSubmit={e=>{e.preventDefault();void submit();}}>
    <fieldset disabled={submittingBusy} style={{border:0,padding:0,margin:0,minWidth:0}}>
-   <section className="creation-section" data-order="1"><h2><span>1</span>{t('광고할 산업','Your industry')}</h2>
+   <section className="creation-section" data-order="1"><h2><span>1</span>{t('광고할 분야','Your industry')}</h2>
     <IndustrySearch project={project} chosen={chosen} onChosen={()=>setChosen(true)} change={change}/>
-    <label className="field" htmlFor={id+'-industry'}>{t('산업 선택','Choose an industry')}<select id={id+'-industry'} value={chosen?project.productProfile.category:''} onChange={e=>{if(!e.target.value)return;setChosen(true);change(p=>withCategory(p,e.target.value as ProductCategory));}}><option value="">{t('산업을 선택해주세요','Select your industry')}</option>{industryGroups.map(g=><optgroup key={g.id} label={`${g.kind==='product'?t('상품','Products'):t('서비스','Services')} · ${text(g.label)}`}>{g.categoryIds.map(c=><option key={c} value={c}>{text(industryLabel(c))}</option>)}</optgroup>)}</select></label>
+    
     <RegulatoryNotice category={project.productProfile.category} material={project.productProfile.material} confirmed={regulatoryOk} onConfirm={confirmRegulatory}/>
    </section>
    <section className="creation-section" data-order="2"><details className="optional-block"><summary><span className="section-title"><b>2</b>{t('회사 정보','Company details')}</span><small>{t('선택','Optional')}</small></summary><p className="help">{t('입력한 정보만 광고에 표시합니다.','Only the details you enter will appear on the ad.')}</p><div className="company-fields">{companyFields.map(([field,label,placeholder])=><div className="field company-field" key={field}><label htmlFor={id+'-'+field}>{label}</label><input id={id+'-'+field} type={field==='email'?'email':field==='contact'?'tel':'text'} maxLength={field==='company'?80:field==='website'?200:100} placeholder={placeholder} value={copy[field]??''} onChange={e=>setCopy(field,e.target.value)}/><label className="company-visible"><input type="checkbox" aria-label={label+t(' 광고에 표시',' shown on ad')} checked={project.footer?.[field]??true} onChange={e=>change(p=>({...p,footer:{company:p.footer?.company??true,contact:p.footer?.contact??true,email:p.footer?.email??true,website:p.footer?.website??true,[field]:e.target.checked}}))}/>{t('광고에 표시','Show on ad')}</label></div>)}</div></details></section>
