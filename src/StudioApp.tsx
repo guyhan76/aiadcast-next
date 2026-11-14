@@ -1,3 +1,4 @@
+import {CloudLibrary} from './Membership';
 import type {BatchPrice} from './batch-price';
 import {submitAdBatch} from './submit-ad-batch';
 import {createResultSet} from './result-set';
@@ -141,7 +142,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
    </div>
    {page==='portfolio'&&<div className="app-page"><PortfolioPage/></div>}
    <div hidden={page!=='create'} className="app-page"><CreateCampaign active={page==='create'} key={wizardKey} onReady={ready} draft={wizardSeed} onDraft={setWizard}/></div>
-   <div hidden={page!=='projects'} className="app-page projects-page"><ProjectLibrary items={libraryItems} error={libraryError} onNew={begin} onOpen={p=>void open(p)}/></div>
+   <div hidden={page!=='projects'} className="app-page projects-page">{page==='projects'&&<CloudLibrary onOpen={p=>open(p,true)}/>}<ProjectLibrary items={libraryItems} error={libraryError} onNew={begin} onOpen={p=>void open(p)}/></div>
    <div hidden={page!=='guide'} className="app-page guide-page"><UsageGuide onNew={begin}/></div>
    {(page==='signup'||page==='login')&&<div className="app-page"><EmailAccountPage key={page} mode={page} preserve={preserve} returnPage={returnPage}/></div>}
    {page==='admin'&&<div className="app-page"><AdminPage backHref={adminBack.current}/></div>}

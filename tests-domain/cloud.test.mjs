@@ -45,6 +45,7 @@ function bucketFixture(){
   const u=new URL(input);assert.equal(u.origin,env.SUPABASE_URL);assert.equal(o.headers.apikey,env.SUPABASE_SECRET_KEY);assert.equal(o.headers.Authorization,undefined);assert.equal(o.redirect,'error');calls.push({path:u.pathname,method:o.method});
   if(u.pathname==='/storage/v1/bucket/aiadcast-private-beta')return exists?Response.json({public:false}):new Response('',{status:404});
   if(u.pathname==='/storage/v1/bucket'){assert.equal(JSON.parse(o.body).public,false);exists=true;return Response.json({});}
+  if(u.pathname==='/storage/v1/object/list/aiadcast-private-beta'){const {prefix}=JSON.parse(o.body);return Response.json([...objects.keys()].filter(k=>k.startsWith(prefix)).map(k=>({name:k.slice(prefix.length)})));}
   const prefix='/storage/v1/object/aiadcast-private-beta';
   if(u.pathname.startsWith('/storage/v1/object/authenticated/aiadcast-private-beta/')){
    const p=u.pathname.slice('/storage/v1/object/authenticated/aiadcast-private-beta/'.length);
@@ -149,6 +150,7 @@ test('cloud HTTP signup, role checks, project revisions and private storage surv
  const signed=await s.call('/api/auth/email/exchange',{body:{requestId:auth.data.requestId,pollToken:auth.data.pollToken}});assert.equal(signed.status,200,JSON.stringify(signed.data));const a=signed.data.session;
  assert.equal((await s.call('/api/auth/email/exchange',{body:auth.data})).status,401);assert.equal((await s.call('/api/auth/email/verify',{body:{token}})).status,401);
  assert.equal((await s.call('/api/admin/overview',{token:a.token})).status,403);
+ await s.app.store.db.prepare("UPDATE users SET storage_plan='standard' WHERE id=?").run(a.user.id);
  const b=await s.member('Other');const project={version:1,id:'project-private-001',name:'셀업랩스 광고',source};
  assert.equal((await s.call('/api/projects/'+project.id,{token:a.token,body:{project,revision:0}})).data.revision,1);
  assert.equal((await s.call('/api/projects/'+project.id,{token:b.token})).status,404);
@@ -465,7 +467,7 @@ test('cloud transport diagnosis: client abort during source persistence does not
 for(const admin of [false,true])test(`cloud storage preflight refuses full account before provider or credit reservation (${admin?'admin':'member'})`,async t=>{
  const s=await setup(t),a=await s.member('Storage admission',1_000_000,admin?0:3);let token=a.token;
  if(admin){await s.app.store.setRole(a.user.id,'admin');token=(await s.call('/api/auth/login',{body:{invite:(await s.app.store.issueInvite(a.user.id)).invite}})).data.token;}
- await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(a.user.id+'/existing-fixture',a.user.id,admin?299_000_000:99_000_000);
+ await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(a.user.id+'/existing-fixture',a.user.id,admin?599_000_000:99_000_000);
  const before=(await s.call('/api/status',{token})).data,body=generation();body.request.output.format='9:16';body.role='admin';body.storageLimit=900000000;
  const uploads=s.bucket.calls.length;
  const result=await s.call('/api/generations',{token,body});assert.equal(result.status,413);assert.equal(result.data.error.code,'STORAGE_CAPACITY_UNAVAILABLE');
@@ -510,13 +512,13 @@ test('cloud quota filled after admission reproduces persist-image STORAGE_LIMIT 
  assert.equal(await storage.accountLimit(a.user.id),100_000_000);
  await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(a.user.id+'/fixture',a.user.id,98_707_402);
  await assert.rejects(storage.assertGenerationCapacity(a.user.id,[],16_000_000),/STORAGE_CAPACITY_UNAVAILABLE/);
- await s.app.store.setRole(a.user.id,'admin');assert.equal(await storage.accountLimit(a.user.id),300_000_000);
+ await s.app.store.setRole(a.user.id,'admin');assert.equal(await storage.accountLimit(a.user.id),600_000_000);
  await storage.assertGenerationCapacity(a.user.id,[],16_000_000);
  const data=Buffer.alloc(2_000_000,1);await storage.put(a.user.id,hashBytes(data)+'.png',data,'image/png');
  await s.app.store.setRole(a.user.id,'member');assert.equal(await storage.accountLimit(a.user.id),100_000_000);
  await assert.rejects(storage.put(a.user.id,hashBytes(Buffer.from('new'))+'.png',Buffer.from('new'),'image/png'),/STORAGE_LIMIT/);
  await s.app.store.setRole(a.user.id,'admin');
- await s.app.store.db.prepare('UPDATE storage_objects SET bytes=? WHERE path=?').run(299_000_000,a.user.id+'/fixture');
+ await s.app.store.db.prepare('UPDATE storage_objects SET bytes=? WHERE path=?').run(599_000_000,a.user.id+'/fixture');
  await assert.rejects(storage.assertGenerationCapacity(a.user.id,[],1),/STORAGE_CAPACITY_UNAVAILABLE/);
  await assert.rejects(storage.put(a.user.id,hashBytes(Buffer.from('new'))+'.png',Buffer.from('new'),'image/png'),/STORAGE_LIMIT/);
  await s.app.store.db.prepare('UPDATE storage_objects SET bytes=? WHERE path=?').run(98_707_402,a.user.id+'/fixture');
@@ -574,4 +576,29 @@ test('cloud returns durable request-key acceptance while the mock provider is st
   const lookup=await s.call(`/api/generation-requests/${body.requestId}?projectId=${body.projectId}`,{token:a.token});assert.equal(lookup.data.state,'found');assert.equal(lookup.data.jobId,created.data.job.id);
   const duplicate=await s.call('/api/generations',{token:a.token,body});assert.equal(duplicate.data.job.id,created.data.job.id);assert.equal(calls,1);
  }finally{clearTimeout(timer);release();}
+});
+
+test('membership rejects free server saves, fixes the first expiry, isolates withdrawal and retries failed object deletion',async t=>{
+ const s=await setup(t),member=await s.member(),other=await s.member('Other'),admin=await s.member('Admin');
+ await s.app.store.setRole(admin.user.id,'admin');
+ const path='/api/projects/member-project',project={id:'member-project',name:'Fixture',version:1};
+ const save=revision=>s.call(path,{token:member.token,body:{project,revision}});
+ assert.equal((await save(0)).status,403);
+ assert.equal((await s.call('/api/membership/plan',{token:member.token,body:{plan:'standard',userId:member.user.id}})).status,403);
+ assert.equal((await s.call('/api/membership/plan',{token:admin.token,body:{plan:'standard',userId:member.user.id}})).status,200);
+ assert.equal((await save(0)).status,200);
+ const listed=()=>s.call('/api/projects',{token:member.token});
+ const expiry=(await listed()).data.projects[0].expiresAt;
+ assert.equal((await save(1)).status,200);assert.equal((await listed()).data.projects[0].expiresAt,expiry);
+ assert.equal((await s.call('/api/membership/withdraw',{token:member.token,body:{}})).status,400);
+ const storage=s.app.storage,orig=storage.remove.bind(storage);
+ storage.remove=async()=>{throw Error('simulated outage');};
+ const withdraw=await s.call('/api/membership/withdraw',{token:member.token,body:{confirm:'delete-my-account'}});
+ assert.equal(withdraw.status,200,JSON.stringify(withdraw.data));assert.equal((await listed()).status,401);
+ await s.app.store.membership.run();
+ const events=async()=> (await s.call('/api/membership/admin',{token:admin.token})).data.events.filter(e=>e.receipt===withdraw.data.receipt).map(e=>e.kind);
+ assert.ok((await events()).includes('retry'));assert.ok(!(await events()).includes('completed'));
+ storage.remove=orig;await s.app.store.membership.run();
+ assert.ok((await events()).includes('completed'));assert.ok(![...s.bucket.objects.keys()].some(p=>p.startsWith(member.user.id+'/')));
+ assert.equal((await s.call('/api/membership',{token:other.token})).status,200);
 });
