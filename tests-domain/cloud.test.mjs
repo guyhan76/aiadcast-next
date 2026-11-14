@@ -581,6 +581,7 @@ test('cloud returns durable request-key acceptance while the mock provider is st
 test('membership rejects free server saves, fixes the first expiry, isolates withdrawal and retries failed object deletion',async t=>{
  const s=await setup(t),member=await s.member(),other=await s.member('Other'),admin=await s.member('Admin');
  await s.app.store.setRole(admin.user.id,'admin');
+ admin.token=(await s.call('/api/auth/login',{body:{invite:(await s.app.store.issueInvite(admin.user.id)).invite}})).data.token;
  const path='/api/projects/member-project',project={id:'member-project',name:'Fixture',version:1};
  const save=revision=>s.call(path,{token:member.token,body:{project,revision}});
  assert.equal((await save(0)).status,403);

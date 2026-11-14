@@ -1,3 +1,4 @@
+import {saveCloudSnapshot} from './membership-client';
 import {useEffect,useState} from 'react';
 import {apiRequest,ApiRequestFailure} from './generation-client';
 import {betaSession,setBetaSession,storageNamespace} from './beta-session';
@@ -21,9 +22,7 @@ export function SaveCloudProject({project}:{project:Project}){
  if(policy.plan==='free')return <p>{t('무료회원 · 나중에 보려면 이 기기에 저장하세요.','Free plan · Save a copy on this device for later.')}</p>;
  async function save(){
   setBusy(true);setMessage('');
-  const key='aiadcast.cloud-revision:'+storageNamespace()+':'+project.id;
-  try{const result=await apiRequest<{revision:number}>('/api/projects/'+project.id,{project,revision:Number(sessionStorage.getItem(key)??0)});
-   sessionStorage.setItem(key,String(result.revision));setMessage(t('내 프로젝트에 저장했습니다.','Saved to My projects.'));window.dispatchEvent(new Event(changed));
+  try{await saveCloudSnapshot(project);setMessage(t('내 프로젝트에 저장했습니다.','Saved to My projects.'));
   }catch(e){setMessage(e instanceof ApiRequestFailure&&e.code==='PROJECT_CONFLICT'?t('다른 기기에 저장된 버전이 있습니다. 내 프로젝트에서 서버 보관본을 먼저 열어주세요.','Open the latest server copy from My projects first.'):t('서버에 저장하지 못했습니다. 보관 용량을 확인하거나 기기에 저장하세요.','Could not save to the server. Check storage or save to your device.'));}
   finally{setBusy(false);}
  }

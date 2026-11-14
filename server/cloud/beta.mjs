@@ -135,7 +135,7 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
    const s=new CloudGenerationService();s.storage=storage;s.cloudUser=user.id;
    await readinessMeasure('generation_initialize',()=>s.initialize({db,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:config.enabled,assistantEnabled:config.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter),adapter:guardedImageAdapter(adapter,()=>instance?.assert(),gate),assistantAdapter:options=>{instance?.assert();return gate(()=>assistCopy({...options,apiKey:config.key}));}}));
    s.ledger.externalBudget=()=>readExternalSupplierBudget(db,user.id);
-   await readinessMeasure('table_protection',()=>db.protectTables());return s;
+   await readinessMeasure('table_protection',()=>db.protectTables());membership.jobs.set(user.id,s);return s;
   }});
   await accountsDb.exec(readFileSync(new URL('./bootstrap-owner.sql',import.meta.url),'utf8'));
   await accountsDb.protectTables();
