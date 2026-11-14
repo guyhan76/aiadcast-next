@@ -58,6 +58,8 @@ export function createGenerationHttpServer({ service, allowedOrigins = DEFAULT_O
       if (req.method === 'GET' && url.pathname === '/api/status') { sendJson(res, 200, service.status(), origin); return; }
       const selectiveLookup=/^\/api\/selective-edits\/requests\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
       if(req.method==='GET'&&selectiveLookup){sendJson(res,200,service.selectiveRequestStatus(selectiveLookup[1],url.searchParams.get('sourceJobId')),origin);return;}
+      const batch=/^\/api\/ad-batches\/(ads-[a-f0-9]{64})$/.exec(url.pathname);
+      if(req.method==='GET'&&batch){sendJson(res,200,service.batchSummary(batch[1]),origin);return;}
       if (req.method === 'GET' && url.pathname === '/api/generations') { sendJson(res, 200, service.history(url.searchParams.has('projectId') ? url.searchParams.get('projectId') : undefined), origin); return; }
       const requestLookup = /^\/api\/generation-requests\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
       if (req.method === 'GET' && requestLookup) { sendJson(res, 200, service.requestStatus(requestLookup[1],url.searchParams.get('projectId')), origin); return; }

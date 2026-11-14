@@ -1,3 +1,7 @@
+import {BatchConfirmation} from './BatchConfirmation';
+import {batchPrice,type BatchPrice} from './batch-price';
+import {offlineDemo} from './demo-mode';
+import './ad-batch.css';
 import {imageCounts} from './result-set';
 import './result-set.css';
 import {apiRequest,type ApiStatus} from './generation-client';
@@ -27,10 +31,13 @@ import './create-campaign.css';
 
 export {starterProject,prepareCampaign} from './consumer-campaign';
 import {starterProject,prepareCampaign,automaticDimensionDraft} from './consumer-campaign';
-export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{active?:boolean;initialKind?:IndustryKind;onReady:(p:Project)=>Promise<void>;draft?:WizardDraft;onDraft?:(draft:WizardDraft)=>void}){
+export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{active?:boolean;initialKind?:IndustryKind;onReady:(p:Project,price?:BatchPrice)=>Promise<void>;draft?:WizardDraft;onDraft?:(draft:WizardDraft)=>void}){
  const {language,t,text}=useUiLanguage(),id=useId();
  const [project,setProject]=useState(()=>automaticDimensionDraft(photoGenerationDraft(draft?.project??({...starterProject(initialKind==='service'?'services':'other'),locale:language}))));
  const submitting=useRef(false),photoImporting=useRef(false);
+ const [confirmation,setConfirmation]=useState<{project:Project;price:BatchPrice;token:string|undefined}>();
+ const live=useRef(active);live.current=active;
+ useEffect(()=>{setConfirmation(undefined);},[active,betaSession()?.token]);
  const [creditStatus,setCreditStatus]=useState<ApiStatus|null>(null),sessionToken=betaSession()?.token;
  useEffect(()=>{if(!active){setCreditStatus(null);return;}let live=true;const controller=new AbortController();apiRequest<ApiStatus>('/api/status',undefined,controller.signal).then(s=>{if(live)setCreditStatus(s);}).catch(()=>{if(live)setCreditStatus(null);});return()=>{live=false;controller.abort();};},[sessionToken,active]);
  const [chosen,setChosen]=useState(draft?.industryChosen ?? !!draft),[error,setError]=useState(''),[submittingBusy,setSubmittingBusy]=useState(false),[photosBusy,setPhotosBusy]=useState(false),[photoImportIssue,setPhotoImportIssue]=useState('');
@@ -69,7 +76,37 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{
   if(copyMode==='manual'&&!copy.title.trim()){setError(t('직접 사용할 광고 제목을 입력해주세요.','Enter your advertising headline.'));document.getElementById(id+'-headline')?.focus();return;}
   const prepared=prepareCampaign(photoGenerationDraft(withCreative(project,{copyMode}))),issues=newGenerationIssues(prepared);
   if(issues.length){setError(!prepared.product&&photoImportIssue?photoImportIssue:issues.map(text).join(' '));if(!prepared.product)document.getElementById(id+'-photos')?.focus();return;}
-  submitting.current=true;setSubmittingBusy(true);try{await onReady(prepared);}catch{setError(t('입력 내용을 보관하지 못했습니다. 다시 시도해주세요.','Could not keep your inputs. Please try again.'));}finally{submitting.current=false;setSubmittingBusy(false);}
+  submitting.current=true;setSubmittingBusy(true);setError('');
+  const token=betaSession()?.token;
+  try{
+   if(prepared.dimensionControl||offlineDemo()){await onReady(prepared);return;}
+   const status=await apiRequest<ApiStatus>('/api/status');
+   if(token!==betaSession()?.token||!live.current)return;
+   if(status.generation.batchVersion!==1)throw Error('BATCH_UNAVAILABLE');
+   if(!status.generation.enabled&&status.generation.reason!=='NO_TEST_CREDITS')throw Error(status.generation.reason??'GENERATION_DISABLED');
+   setCreditStatus(status);
+   setConfirmation({project:prepared,price:batchPrice(status.wallet,prepared.requestedImageCount??1),token});
+  }catch(e){showError(e);}finally{submitting.current=false;setSubmittingBusy(false);}
+ }
+ function showError(e:unknown){
+  const code=e instanceof Error?e.message:'';
+  const message:Record<string,[string,string]>={
+   BUDGET_NOT_AVAILABLE:['생성 예산이 부족합니다. 관리자에게 확인해주세요. 추가 결제로 해결되지 않습니다.','Generation budget is unavailable. Contact your administrator.'],
+   CREDIT_QUOTE_CHANGED:['잔액이 변경되었습니다. 광고 생성을 다시 눌러 최신 금액을 확인해주세요.','Your balance changed. Check the updated amount before generating.'],
+   GENERATION_ALREADY_RUNNING:['다른 광고를 생성 중입니다. 완료 후 다시 시도해주세요.','Another generation is running. Try again when it finishes.'],
+   STORAGE_CAPACITY_UNAVAILABLE:['이미지를 저장할 서버 공간이 부족합니다. 관리자에게 문의해주세요.','Server storage is full. Contact your administrator.'],
+   NO_TEST_CREDITS:['잔여 크레딧이 부족합니다.','Insufficient credits.'],
+   BATCH_UNAVAILABLE:['서버가 아직 일괄 생성을 지원하지 않습니다.','The server does not yet support batch generation.'],
+   AUTH_REQUIRED:['이미지를 생성하려면 로그인해주세요.','Sign in to generate images.'],
+   PROPORTION_MISMATCH:['입력 규격과 사진 비례를 확인해주세요.','Check the dimensions and photograph proportions.']
+  };
+  setError(t(...(message[code]??['접수 상태를 확인하지 못했습니다. 같은 입력으로 다시 확인해주세요.','Could not confirm submission. Retry with the same details.'] as [string,string])));
+ }
+ async function confirm(){
+  if(!active||!confirmation||submitting.current||confirmation.token!==betaSession()?.token||confirmation.price.creditsAfter<0)return;
+  submitting.current=true;setSubmittingBusy(true);setError('');
+  try{await onReady(confirmation.project,confirmation.price);}catch(e){showError(e);}
+  finally{setConfirmation(undefined);submitting.current=false;setSubmittingBusy(false);}
  }
  const companyFields:[FooterField,string,string][]=[['company',t('회사명','Company'),'셀업랩스'],['contact',t('연락처','Phone'),'010-0000-0000'],['email',t('이메일 주소','Email'),'hello@brand.com'],['website',t('홈페이지','Website'),'https://www.brand.com']];
  return <div className="create-page consumer-create">
@@ -93,9 +130,9 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{
    {!project.dimensionControl&&<section className="creation-section" data-order="9"><h2><span>9</span><strong>{t('생성 장수','Number of images')}</strong></h2><div className="image-count-options" role="group" aria-label={t('생성 장수','Number of images')}>{imageCounts.map(count=><button type="button" key={count} aria-pressed={(project.requestedImageCount??1)===count} onClick={()=>change(p=>({...p,requestedImageCount:count,resultSet:undefined}))}>{count}</button>)}</div></section>}
    </fieldset>
    {error&&<p className={'wizard-error'+(photoImportIssue&&error===photoImportIssue?' photo-upload-error':'')} role="alert">{error}</p>}
-   {!project.dimensionControl&&creditStatus?.generation.creditQuote&&<p className="help">{creditStatus.wallet.unlimited?t('관리자 테스트 · 차감 없음','Administrator test · no charge'):<>{t('기존 이용권','Legacy tickets')} {creditStatus.wallet.available} · {t('신규 크레딧','New credits')} {creditStatus.wallet.credits?.available??0}. {t('이번 생성','This generation')}: {creditStatus.generation.creditQuote.amount}{creditStatus.generation.creditQuote.unit==='credit-v2'?t('크레딧 · 다음 화면에서 차감을 확인합니다.',' credits · Confirm the charge on the next screen.'):t('개 기존 이용권 · 사용 확정 시 차감',' legacy ticket · charged on acceptance')}</>}</p>}
    {!regulatoryOk&&<p className="help">{t('1번 광고할 분야의 법규 안내를 확인하면 광고를 만들 수 있습니다.','Confirm the industry notice in step 1 to generate the ad.')}</p>}
-   <div className="wizard-actions"><button className="primary-action" type="submit" disabled={busy||!active||!regulatoryOk}><Sparkles size={18}/>{photosBusy?t('사진 불러오는 중…','Loading photos…'):submittingBusy?t('준비 중…','Preparing…'):project.dimensionControl?t('기하 검증 이미지 만들기','Create geometry proof'):t('광고 생성','Generate ad')}</button></div><p className="help submit-help">{project.dimensionControl?t('기하 검증용 로컬 구성입니다. AI 호출과 이용권 차감이 없습니다.','Local geometry proof. No AI call or credit charge.'):betaSession()?.user.role==='admin'?t('관리자 테스트 권한과 생성 가능 여부를 서버에서 확인합니다.','The server verifies administrator test access and generation readiness.'):t('기존 이용권 1개를 먼저 사용합니다. 신규 크레딧은 생성·재생성 1회 10개이며 실행 전에 잔액과 차감을 확인합니다.','One legacy ticket first, then 10 new credits per generation or regeneration. Review balance and charge before execution.')}</p>
+   <div className="wizard-actions"><button className="primary-action" type="submit" disabled={busy||!active||!regulatoryOk}><Sparkles size={18}/>{photosBusy?t('사진 불러오는 중…','Loading photos…'):submittingBusy?t('준비 중…','Preparing…'):project.dimensionControl?t('기하 검증 이미지 만들기','Create geometry proof'):t('광고 생성','Generate ad')}</button></div>{!project.dimensionControl&&creditStatus?.wallet.unlimited&&<p className="help submit-help">{t('관리자 테스트 · 차감 없음','Administrator test · no charge')}</p>}
   </form>
+  {confirmation&&active&&<BatchConfirmation price={confirmation.price} busy={busy} onConfirm={()=>void confirm()} onClose={()=>setConfirmation(undefined)}/>}
  </div>;
 }

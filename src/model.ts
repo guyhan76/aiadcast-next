@@ -1,3 +1,4 @@
+import {validBatch,type AdBatch} from './batch-price.ts';
 import {parseResultSet,type ResultSet,imageCounts} from './result-set.ts';
 import {parseTextEdit,type TextEdit} from './text-layers.ts';
 import {aiDimensionReviewError} from './ai-dimension-display.ts';
@@ -36,6 +37,7 @@ export type Asset = {name:string;data:string;width:number;height:number;sha256:s
 export type Copy = {title:string;description:string;company:string;contact:string;website:string;email?:string};
 export type FooterField = 'company'|'contact'|'email'|'website';
 export type Project = {
+ adBatch?:AdBatch;
  requestedImageCount?:number;resultSet?:ResultSet;
  exactTextVersion?:1|2;textEdit?:TextEdit;version:1;id:string;name:string;updatedAt:string;locale:Locale;format:ImageFormat;
  product:Asset|null;references?:Asset[];referenceRoles?:Record<string,PhotoRole>;footer?:Record<FooterField,boolean>;presentation?:'campaign';productName:string;productProfile:ProductProfile;generation:GenerationSettings;scale:number;
@@ -87,7 +89,8 @@ export async function importProject(raw:unknown):Promise<Project> {
  const string=(s:unknown,max=400)=>{if(typeof s!=='string'||s.length>max)throw new Error('프로젝트의 문구 형식을 확인해주세요.');return s;};
  const asset=async (value:unknown)=>{if(value===null)return null;const a=value as Asset;if(!a||typeof a.data!=='string'||!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(a.data)||a.data.length>14_000_000)throw new Error('프로젝트의 사진 형식을 확인해주세요.');const response=await fetch(a.data);return imageFile(new File([await response.blob()],string(a.name,200),{type:a.data.slice(5,a.data.indexOf(';'))}));};
  if(r.version!==1||!['ko','en'].includes(r.locale)||!isImageFormat(r.format)||!['dark','light'].includes(r.ink)||!r.background||!/^#[a-fA-F0-9]{6}$/.test(r.background.color)||!Number.isFinite(r.scale)||r.scale<.5||r.scale>1||!r.dimensions||typeof r.dimensions.visible!=='boolean'||typeof r.dimensions.lines!=='boolean'||!r.copy)throw new Error('지원하지 않는 프로젝트 형식입니다.');
- const p:Project={...base,campaign:r.campaign===undefined?defaultCampaign():parseCampaign(r.campaign),referenceCheck:r.referenceCheck===undefined?defaultReferenceCheck():parseReferenceCheck(r.referenceCheck),name:string(r.name,80),productName:string(r.productName,100),productProfile:parseProfile(r.productProfile),generation:parseGeneration(r.generation),locale:r.locale,format:r.format,ink:r.ink,scale:r.scale,background:{color:r.background.color,image:await asset(r.background.image)},product:await asset(r.product)};
+ if(r.adBatch!==undefined&&!validBatch(r.adBatch))throw Error('INVALID_BATCH');
+ const p:Project={...base,...(r.adBatch?{adBatch:{id:r.adBatch.id,count:r.adBatch.count},id:r.adBatch.id}:{}),campaign:r.campaign===undefined?defaultCampaign():parseCampaign(r.campaign),referenceCheck:r.referenceCheck===undefined?defaultReferenceCheck():parseReferenceCheck(r.referenceCheck),name:string(r.name,80),productName:string(r.productName,100),productProfile:parseProfile(r.productProfile),generation:parseGeneration(r.generation),locale:r.locale,format:r.format,ink:r.ink,scale:r.scale,background:{color:r.background.color,image:await asset(r.background.image)},product:await asset(r.product)};
  for(const lang of ['ko','en'] as const){if(!r.copy[lang])throw new Error('언어별 문구가 누락되었습니다.');for(const field of ['title','description','company','contact','website'] as const)p.copy[lang][field]=string(r.copy[lang][field]);}
  for(const axis of axes){p.dimensions[axis]=string(r.dimensions[axis],20);const points=r.dimensions.anchors?.[axis];if(!Array.isArray(points)||points.length!==2||points.some(pt=>!pt||!Number.isFinite(pt.x)||!Number.isFinite(pt.y)||pt.x<0||pt.x>1||pt.y<0||pt.y>1))throw new Error('치수선 위치가 올바르지 않습니다.');p.dimensions.anchors[axis]=points.map(pt=>({x:pt.x,y:pt.y})) as [Point,Point];}
  if(r.requestedImageCount!==undefined){if(!imageCounts.includes(r.requestedImageCount as typeof imageCounts[number]))throw Error('INVALID_IMAGE_COUNT');p.requestedImageCount=r.requestedImageCount;}

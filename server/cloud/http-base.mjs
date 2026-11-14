@@ -341,6 +341,11 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 send(res, 202, await (await service(user)).createSelectiveEdit(body), cors);
                 return;
             }
+            const batch = /^\/api\/ad-batches\/(ads-[a-f0-9]{64})$/.exec(url.pathname);
+            if (req.method === 'GET' && batch) {
+                send(res, 200, await (await service(user)).batchSummary(batch[1]), cors);
+                return;
+            }
             if (req.method === 'GET' && url.pathname === '/api/generations') {
                 send(res, 200, await (await service(user)).history(url.searchParams.get('projectId') ?? undefined), cors);
                 return;

@@ -47,3 +47,21 @@ test('category menus separate products and services and keep every image count',
     await expect(section.getByRole('button',{pressed:true})).toHaveCount(1);
   }
 });
+
+test('confirm the complete credit amount before submitting a batch',async({page})=>{
+ await protectedScreen(page,mockSession('batch-member'));
+ await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
+ let writes=0;
+ await page.route('**/api/status',route=>route.fulfill({json:{generation:{enabled:true,batchVersion:1,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:80,reserved:0}},budget:{limitMicros:8000000}}}));
+ await page.route('**/api/generations',route=>{if(route.request().method()==='POST'){writes++;const body=route.request().postDataJSON();expect(body.batch.count).toBe(4);expect(body.batch.quote.creditsUsed).toBe(40);return route.fulfill({json:{id:body.batch.id}});}return route.fulfill({json:{jobs:[]}});});
+ await page.goto('/#create');const form=page.locator('.consumer-create');
+ await form.getByRole('button',{name:'서비스',exact:true}).click();
+ await form.getByLabel('분야',{exact:true}).selectOption('logistics');await form.getByLabel('세부 업종',{exact:true}).selectOption('parcel');
+ await form.getByRole('textbox',{name:'서비스명',exact:true}).fill('택배');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('지역 택배 배송 서비스');
+ await form.getByRole('button',{name:'10',exact:true}).click();await form.getByRole('button',{name:'광고 생성',exact:true}).click();
+ const dialog=page.getByRole('dialog');await expect(dialog).toContainText('20크레딧이 부족');await expect(dialog.getByRole('button',{name:'확인',exact:true})).toBeDisabled();
+ await dialog.getByRole('button',{name:'취소'}).click();expect(writes).toBe(0);
+ await form.getByRole('button',{name:'4',exact:true}).click();await form.getByRole('button',{name:'광고 생성',exact:true}).click();
+ await expect(dialog).toContainText('이미지 4장');await expect(dialog.locator('dd')).toHaveText(['80','40','40']);expect(writes).toBe(0);
+ await dialog.getByRole('button',{name:'확인',exact:true}).click();await expect.poll(()=>writes).toBe(1);
+});

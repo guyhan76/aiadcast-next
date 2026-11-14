@@ -125,6 +125,8 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
    const selectiveLookup=/^\/api\/selective-edits\/requests\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
    if(req.method==='GET'&&selectiveLookup){send(res,200,service(user).selectiveRequestStatus(selectiveLookup[1],url.searchParams.get('sourceJobId')),cors);return;}
    if(req.method==='POST'&&url.pathname==='/api/selective-edits'){const body=await read(req,6000000);send(res,202,await service(user).createSelectiveEdit(body),cors);return;}
+   const batch=/^\/api\/ad-batches\/(ads-[a-f0-9]{64})$/.exec(url.pathname);
+   if(req.method==='GET'&&batch){send(res,200,service(user).batchSummary(batch[1]),cors);return;}
    if(req.method==='GET'&&url.pathname==='/api/generations'){send(res,200,service(user).history(url.searchParams.get('projectId')??undefined),cors);return;}
    const requestLookup=/^\/api\/generation-requests\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
    if(req.method==='GET'&&requestLookup){send(res,200,service(user).requestStatus(requestLookup[1],url.searchParams.get('projectId')),cors);return;}
