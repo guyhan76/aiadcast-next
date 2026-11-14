@@ -32,7 +32,7 @@ function campaignContent(project:Project):Project{
 // Explicitly prepare a new draft, without requesting an image or accepting a
 // charge. The old project/result and all source bytes stay intact.
 export function creativeCampaignDraft(project:Project):Project{
- const {adBatch:_adBatch,generated:_generated,background,publishing:_publishing,...source}=project;
+ const {adBatch:_adBatch,generated:_generated,resultSet:_resultSet,background,publishing:_publishing,...source}=project;
  // Opening an editable draft is not submission: retain every dimension input
  // and display choice, but do not reuse placement evidence from the old result.
  const a=source.dimensionAnnotation;

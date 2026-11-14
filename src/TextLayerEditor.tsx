@@ -4,6 +4,7 @@ import {useEffect,useRef,useState} from 'react';
 import type {Project} from './model';
 import {saveProject} from './storage';
 import {renderTextLayers,type TextLayer,type TextEdit} from './text-layers';
+import {PrecisionControls} from './PrecisionControls';
 import './text-layers.css';
 type Props={project:Project;change:(fn:(p:Project)=>Project)=>void};
 export function TextLayerEditor({project,change}:Props){
@@ -23,5 +24,6 @@ export function TextLayerEditor({project,change}:Props){
  <p>영역 밖은 바뀌지 않습니다. 긴 글씨는 영역 안에서 잘립니다. 위치는 이미지를 누르거나 아래 조절 막대로 바꾸세요.</p>
  <div className="text-edit-actions" aria-label="글씨 레이어">{edit?.layers.map((l,i)=><button key={l.id} aria-pressed={selected===l.id} onClick={()=>setSelected(l.id)}>{i+1}. {l.text.slice(0,16)||'빈 글씨'}</button>)}</div>
  {layer&&<div className="text-edit-controls"><label>글씨 내용<textarea aria-label="글씨 내용" value={layer.text} maxLength={500} rows={3} onChange={e=>patch({text:e.target.value})}/></label>{(['x','y','width','height','size'] as const).map((key,i)=><label key={key}>{['가로 위치','세로 위치','영역 너비','영역 높이','글씨 크기'][i]}<input aria-label={['가로 위치','세로 위치','영역 너비','영역 높이','글씨 크기'][i]} type="range" min={key==='size'?.005:key==='x'||key==='y'?0:.01} max={key==='size'?.2:key==='x'?1-layer.width:key==='y'?1-layer.height:key==='width'?1-layer.x:1-layer.y} step="0.005" value={layer[key]} onChange={e=>patch({[key]:Number(e.target.value)})}/></label>)}<label>글씨 색상<input aria-label="글씨 색상" type="color" value={layer.color} onChange={e=>patch({color:e.target.value})}/></label>{layer.cover!==null&&<label>가림 색상<input aria-label="가림 색상" type="color" value={layer.cover} onChange={e=>patch({cover:e.target.value})}/></label>}<label>정렬<select value={layer.align} onChange={e=>patch({align:e.target.value as TextLayer['align']})}><option value="left">왼쪽</option><option value="center">가운데</option><option value="right">오른쪽</option></select></label><label><input type="checkbox" checked={layer.bold} onChange={e=>patch({bold:e.target.checked})}/>굵게</label><button onClick={()=>{update(edit!.layers.filter(l=>l.id!==selected));setSelected('');}}>선택 글씨 삭제</button></div>}
+ <PrecisionControls project={project} change={change}/>
  <div className="text-edit-actions"><button disabled={!ready||original} onClick={()=>void save()}>수정 사본 저장 · 공유</button><button onClick={()=>setOpen(false)}>편집 보관하고 닫기</button><button onClick={cancel}>편집 취소</button></div></fieldset>{error&&<p role="alert">{error}</p>}{message&&<p role="status">{message}</p>}</div>}</section>;
 }

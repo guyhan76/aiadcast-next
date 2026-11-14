@@ -14,6 +14,17 @@ export async function saveProject(p:Project,scope=storageNamespace(),signal?:Abo
 }
 export async function projects(){const database=await db();try{return await new Promise<Project[]>((resolve,reject)=>{const req=database.transaction('projects').objectStore('projects').getAll();req.onsuccess=()=>{try{resolve((req.result as Project[]).map(p=>({...p,productProfile:parseProfile(p.productProfile)})).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)));}catch(error){reject(error);}};req.onerror=()=>reject(req.error);});}finally{database.close();}}
 
+// All collection members exist before any paid request can begin. Repeated
+// submissions keep previously stored originals and user decisions intact.
+export async function saveProjectSet(items:Project[],scope=storageNamespace()):Promise<Project[]>{
+ const database=await db(scope);
+ try{return await new Promise<Project[]>((resolve,reject)=>{
+  const tx=database.transaction('projects','readwrite'),store=tx.objectStore('projects'),saved:Project[]=[];
+  tx.oncomplete=()=>resolve(saved);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error??Error('SAVE_RESULT_SET_FAILED'));
+  items.forEach((p,index)=>{const read=store.get(p.id);read.onsuccess=()=>{saved[index]=read.result??p;if(!read.result)store.add(p);};});
+ });}finally{database.close();}
+}
+
 // A deduplicated edit can be saved by multiple tabs. Never replace an existing
 // destination project, including user changes made after another tab saved it.
 export async function saveProjectCopy(p:Project,scope=storageNamespace(),signal?:AbortSignal):Promise<boolean>{
