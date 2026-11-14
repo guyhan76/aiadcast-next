@@ -1,7 +1,7 @@
 import {saveProject} from './storage';
 import {storageNamespace} from './beta-session';
 import type {Project} from './model';
-export type WizardDraft={project:Project;step:number};
+export type WizardDraft={project:Project;step:number;industryChosen?:boolean};
 export type WorkspaceDraft={wizard?:WizardDraft;editor:Project;returnPage:'create'|'studio'|'editor'|'home'};
 let connection:Promise<IDBDatabase>|undefined;
 function database(){

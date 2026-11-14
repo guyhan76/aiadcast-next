@@ -9,12 +9,12 @@ import {useUiLanguage} from './ui-language';
 import {useId,useState,useLayoutEffect,useRef,useEffect} from 'react';
 import {Sparkles} from 'lucide-react';
 import type {Project,FooterField} from './model';
-import {dimensionAxes,withCategory,isServiceCategory} from './product';
+import {dimensionAxes,isServiceCategory} from './product';
 import type {SpecType} from './product';
 import {newGenerationIssues,photoGenerationDraft} from './generation';
 import {imageFormats} from './formats';
-import {industryGroups,industryLabel} from './industry';
-import type {IndustryKind,ProductCategory} from './industry';
+import {AdFieldPicker} from './AdFieldPicker';
+import type {IndustryKind} from './industry';
 import {creativeSettings,withCreative} from './creative';
 import {ReferencePhotos} from './ReferencePhotos';
 import {PhotoUsage} from './PhotoUsage';
@@ -29,8 +29,8 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{
  const submitting=useRef(false);
  const [creditStatus,setCreditStatus]=useState<ApiStatus|null>(null),sessionToken=betaSession()?.token;
  useEffect(()=>{if(!active){setCreditStatus(null);return;}let live=true;const controller=new AbortController();apiRequest<ApiStatus>('/api/status',undefined,controller.signal).then(s=>{if(live)setCreditStatus(s);}).catch(()=>{if(live)setCreditStatus(null);});return()=>{live=false;controller.abort();};},[sessionToken,active]);
- const [chosen,setChosen]=useState(!!draft),[error,setError]=useState(''),[busy,setBusy]=useState(false),[photoImportIssue,setPhotoImportIssue]=useState('');
- useLayoutEffect(()=>{onDraft?.({project,step:0});},[project,onDraft]);
+ const [chosen,setChosen]=useState(draft?.industryChosen ?? !!draft),[error,setError]=useState(''),[busy,setBusy]=useState(false),[photoImportIssue,setPhotoImportIssue]=useState('');
+ useLayoutEffect(()=>{onDraft?.({project,step:0,industryChosen:chosen});},[project,chosen,onDraft]);
  const example=isTextExample(project);
  const service=isServiceCategory(project.productProfile.category),axes=dimensionAxes(project.productProfile),settings=creativeSettings(project),copy=project.copy[project.locale];
  const copyMode=settings.copyMode??'ai';
@@ -38,7 +38,7 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{
  function setCopy(field:'title'|'description'|FooterField,value:string){change(p=>({...p,copy:{...p.copy,[p.locale]:{...p.copy[p.locale],[field]:value}}}));}
  async function submit(){
   if(submitting.current)return;
-  if(!chosen){setError(t('광고할 산업을 선택해주세요.','Choose your industry.'));document.getElementById(id+'-industry')?.focus();return;}
+  if(!chosen){setError(t('광고할 분야을 선택해주세요.','Choose your industry.'));document.getElementById(id+'-industry')?.focus();return;}
   if(!project.productName.trim()||!project.productProfile.material.trim()){setError(t('상품·서비스 이름과 상세설명을 입력해주세요.','Enter the name and description.'));return;}
   if(copyMode==='manual'&&!copy.title.trim()){setError(t('직접 사용할 광고 제목을 입력해주세요.','Enter your advertising headline.'));return;}
   const prepared=prepareCampaign(photoGenerationDraft(withCreative(project,{copyMode}))),issues=newGenerationIssues(prepared);
@@ -49,8 +49,8 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{
  return <div className="create-page consumer-create">
   <div className="create-heading"><h1>{t('광고 만들기','Create an ad')}</h1><p>{t('사진과 정보로 만드는 광고','Create ads with photos and details')}</p></div>
   <form onSubmit={e=>{e.preventDefault();void submit();}}>
-   <section className="creation-section" data-order="1"><h2><span>1</span>{t('광고할 산업','Your industry')}</h2>
-    <label className="field" htmlFor={id+'-industry'}>{t('산업 선택','Choose an industry')}<select id={id+'-industry'} value={chosen?project.productProfile.category:''} onChange={e=>{if(!e.target.value)return;setChosen(true);change(p=>withCategory(p,e.target.value as ProductCategory));}}><option value="">{t('산업을 선택해주세요','Select your industry')}</option>{industryGroups.map(g=><optgroup key={g.id} label={`${g.kind==='product'?t('상품','Products'):t('서비스','Services')} · ${text(g.label)}`}>{g.categoryIds.map(c=><option key={c} value={c}>{text(industryLabel(c))}</option>)}</optgroup>)}</select></label>
+   <section className="creation-section" data-order="1"><h2><span>1</span>{t('광고할 분야','Your industry')}</h2>
+    <AdFieldPicker id={id+'-industry'} initialKind={initialKind} project={project} chosen={chosen} onChosen={setChosen} change={change}/>
    </section>
    <section className="creation-section" data-order="2"><details className="optional-block"><summary><span className="section-title"><b>2</b>{t('회사 정보','Company details')}</span><small>{t('선택','Optional')}</small></summary><p className="help">{t('입력한 정보만 광고에 표시합니다.','Only the details you enter will appear on the ad.')}</p><div className="company-fields">{companyFields.map(([field,label,placeholder])=><div className="field company-field" key={field}><label htmlFor={id+'-'+field}>{label}</label><input id={id+'-'+field} type={field==='email'?'email':field==='contact'?'tel':'text'} maxLength={field==='company'?80:field==='website'?200:100} placeholder={placeholder} value={copy[field]??''} onChange={e=>setCopy(field,e.target.value)}/><label className="company-visible"><input type="checkbox" aria-label={label+t(' 광고에 표시',' shown on ad')} checked={project.footer?.[field]??true} onChange={e=>change(p=>({...p,footer:{company:p.footer?.company??true,contact:p.footer?.contact??true,email:p.footer?.email??true,website:p.footer?.website??true,[field]:e.target.checked}}))}/>{t('광고에 표시','Show on ad')}</label></div>)}</div></details></section>
    <section className="creation-section" data-order="3" id={id+'-photos'} tabIndex={-1}><h2><span>3</span>{t('사진 첨부','Add photos')}</h2><div hidden={example}><PhotoUsage project={project} change={change}/><ReferencePhotos project={project} change={change} onBusyChange={setBusy} onIssueChange={setPhotoImportIssue}/></div></section>

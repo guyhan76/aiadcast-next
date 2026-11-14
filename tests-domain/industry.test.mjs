@@ -7,15 +7,15 @@ import {buildGenerationRequest} from '../src/generation.ts';
 import {appendDirection} from '../src/conversation.ts';
 
 const physical=['packaging','food','beauty','electronics','fashion','home','industrial','other','automotive','bags','shoes','jewelry','accessories','boxes','shoppingbags','labels','containers','plasticfilm','pouches'];
-const requestedServices=['restaurant','cafe','lodging','travel','education','fitness','yoga','pilates','swimming','tennis','golf','sports','hospital','biotech','realestate','insurance','securities','stocks','crypto','finance','banking','lease','rental','services','corporate','tarot','astrology','myeongri','sinjeom'];
+const requestedServices=['restaurant','cafe','lodging','travel','education','fitness','yoga','pilates','swimming','tennis','golf','sports','hospital','biotech','realestate','insurance','securities','stocks','crypto','finance','banking','lease','rental','services','corporate','brand','logistics','delivery','tarot','astrology','myeongri','sinjeom'];
 
 test('product and service branches keep every saved industry in one appropriate group',()=>{
   const categoryIds=productCategories.map(([id])=>id);
   assert.deepEqual(new Set(categoryIds),new Set([...physical,...requestedServices]));
-  assert.equal(categoryIds.length,48);
-  assert.equal(industryGroups.length,19);
+  assert.equal(categoryIds.length,51);
+  assert.equal(industryGroups.length,21);
   const products=industryGroupsFor('product'),services=industryGroupsFor('service');
-  assert.equal(products.length,9);assert.equal(services.length,10);
+  assert.equal(products.length,9);assert.equal(services.length,12);
   assert.deepEqual(new Set(products.flatMap(group=>group.categoryIds)),new Set(physical));
   assert.deepEqual(new Set(services.flatMap(group=>group.categoryIds)),new Set(requestedServices));
   assert.deepEqual(products.map(group=>group.id),['electronics','fashion','packaging','industrial','food','beauty','home','automotive','products']);
