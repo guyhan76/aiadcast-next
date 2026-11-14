@@ -19,88 +19,23 @@ jobs:
           set -euo pipefail
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" -p 'aiadcast-0.2.95.apk' -p 'SHA256SUMS.txt'
           grep 'aiadcast-0.2.95.apk$' SHA256SUMS.txt | sha256sum -c -
-          python - <<'PY'
-          import datetime, hashlib, json, os, urllib.request, zipfile
-          from pathlib import Path
-          from urllib.parse import quote
-          root = 'https://aiadcast-next.onrender.com/'
-          def read(path):
-              request = urllib.request.Request(root + quote(path) + '?verify=' + os.environ['GITHUB_RUN_ID'],headers={'Cache-Control':'no-cache'})
-              with urllib.request.urlopen(request,timeout=50) as reply:
-                  return reply.read()
-          def projects_layout(manifest, get):
-              found=set()
-              for path, spec in manifest['files'].items():
-                  if not path.endswith('.js'):
-                      continue
-                  data=get(path)
-                  assert hashlib.sha256(data).hexdigest()==spec['sha256'],path
-                  for marker in ('library-views','project-tools'):
-                      if marker.encode() in data: found.add(marker)
-              assert len(found) in (0,2),found
-              return 'clean' if found else 'previous'
-          with zipfile.ZipFile('aiadcast-0.2.95.apk') as apk:
-              embedded=json.loads(apk.read('assets/web-release.json'))
-              assert embedded['commit']==os.environ['TARGET']
-              assert projects_layout(embedded,lambda p: apk.read('assets/'+p))=='clean'
-          served=json.loads(read('web-release.json'))
-          assert served['schema']==1 and served['commit']==json.loads(read('web-build.json'))['commit']
-          layout=projects_layout(served,read)
-          assert served['commit']==os.environ['TARGET'] and layout=='clean', (served['commit'],layout)
-          # Exercise the public HTML/JS/CSS locally with isolated test accounts.
-          folder=Path(os.environ['RUNNER_TEMP'])/'live-client'
-          folder.mkdir(exist_ok=True)
-          with zipfile.ZipFile('aiadcast-0.2.95.apk') as apk:
-              for path, spec in served['files'].items():
-                  dest=folder/path
-                  assert dest.resolve().is_relative_to(folder.resolve())
-                  if path=='index.html' or path.endswith(('.js','.css')) or embedded['files'].get(path)!=spec:
-                      data=read(path)
-                  else:
-                      data=apk.read('assets/'+path)
-                  assert hashlib.sha256(data).hexdigest()==spec['sha256'],path
-                  dest.parent.mkdir(parents=True,exist_ok=True)
-                  dest.write_bytes(data)
-          print('Released APK:',embedded['commit'],'projects=clean')
-          print('Public Android UI:',served['commit'],'projects='+layout)
-          with open(os.environ['GITHUB_ENV'],'a') as f:
-              f.write('EXPECTED_LAYOUT='+layout+'\n')
-          PY
-      - name: Enable KVM for the Android emulator
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - name: Install the published APK and identify the actual online sign-in layout
-        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
-        with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
-          profile: pixel_6
-          disable-animations: true
-          script: bash scripts/check-published-android.sh
-      - name: Check out the tests for the public release
-        uses: actions/checkout@v4
-        with:
-          ref: 283f254ce3969f581dbe1e8d85fbe275364e1fa1
-          path: release-tests
-          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Exercise My projects on the delivered frontend with isolated desktop and mobile sessions
-        working-directory: release-tests
+      - name: Verify that the release gate rejects an earlier revision and accepts the served release
+        env:
+          TARGET: 283f254ce3969f581dbe1e8d85fbe275364e1fa1
+        run: |
+          set -euo pipefail
+          if node scripts/check-live-web-release.mjs 0000000000000000000000000000000000000000 > "$RUNNER_TEMP/mismatch" 2>&1; then exit 1; fi
+          grep 'Public web serves' "$RUNNER_TEMP/mismatch"
+          node scripts/check-live-web-release.mjs "$TARGET"
+      - name: Compare section 5 on the live website and in the signed Android package
+        env:
+          AIADCAST_PARITY_WEB_ORIGIN: https://aiadcast-next.onrender.com
         run: |
           set -euo pipefail
           npm ci --no-audit --no-fund
+          unzip -qo aiadcast-0.2.95.apk 'assets/*' -d android/app/src/main
           export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(command -v google-chrome)"
-          cat > playwright.served.config.ts <<'CONFIG'
-          import {defineConfig} from '@playwright/test';
-          import config from './playwright.config';
-          export default defineConfig({...config,webServer:{
-            command: 'python3 -m http.server 4180 --bind 127.0.0.1 --directory "' + process.env.RUNNER_TEMP + '/live-client"',
-            url:'http://127.0.0.1:4180',reuseExistingServer:false
-          }});
-          CONFIG
-          npx playwright test tests/membership.spec.ts --config=playwright.served.config.ts --project=desktop --project=mobile
+          npx playwright test tests/production-parity.spec.ts --project=desktop --grep 'section 5'
