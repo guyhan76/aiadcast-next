@@ -13,10 +13,17 @@ export function DownloadDeadline({value}:{value?:string}){
  const {t}=useUiLanguage();
  return value?<small>{t('서버 다운로드 기한','Server download deadline')} · <time dateTime={value}>{new Date(value).toLocaleString()}</time></small>:null;
 }
+function LibraryExpiry({value}:{value:string}){
+ const {language,t}=useUiLanguage(),locale=language==='ko'?'ko-KR':'en-US';
+ const date=new Date(value);
+ return <time dateTime={value} title={date.toLocaleString(locale)}>{t('기한','Until')} {date.toLocaleString(locale,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time>;
+}
+const downloadPageSize=5;
 type Delivery={id:string;name:string;expiresAt:string;reviewRequired:boolean};
 export function CloudLibrary({onOpen}:{onOpen:(p:Project)=>Promise<boolean>}){
  const {t}=useUiLanguage(),[items,setItems]=useState<CloudProject[]>([]),[downloads,setDownloads]=useState<Delivery[]>([]);
  const [error,setError]=useState(''),[busy,setBusy]=useState(false),[refresh,setRefresh]=useState(0);
+ const [loaded,setLoaded]=useState(false),[shownDownloads,setShownDownloads]=useState(downloadPageSize),[shownProjects,setShownProjects]=useState(downloadPageSize);
  const active=useRef<AbortController|null>(null),token=betaSession()?.token;
  useEffect(()=>{
   if(!token||offlineDemo())return;
@@ -24,7 +31,7 @@ export function CloudLibrary({onOpen}:{onOpen:(p:Project)=>Promise<boolean>}){
   Promise.all([apiRequest<{projects:CloudProject[]}>('/api/projects',undefined,controller.signal),
    apiRequest<{downloads:Delivery[]}>('/api/membership/downloads',undefined,controller.signal)]).then(([legacy,current])=>{
     if(!controller.signal.aborted){setItems(legacy.projects);setDownloads(current.downloads);setError('');}
-   }).catch(()=>{if(!controller.signal.aborted)setError(t('다운로드 목록을 불러오지 못했습니다.','Could not load downloads.'));});
+   }).catch(()=>{if(!controller.signal.aborted)setError(t('다운로드 목록을 불러오지 못했습니다.','Could not load downloads.'));}).finally(()=>{if(!controller.signal.aborted)setLoaded(true);});
   const update=()=>setRefresh(n=>n+1);window.addEventListener(changed,update);
   return ()=>{controller.abort();window.removeEventListener(changed,update);};
  },[token,refresh]);
@@ -59,13 +66,27 @@ export function CloudLibrary({onOpen}:{onOpen:(p:Project)=>Promise<boolean>}){
   setBusy(true);try{await apiRequest('/api/membership/remove-project',{id:item.id});window.dispatchEvent(new Event(changed));}
   catch{setError(t('삭제하지 못했습니다. 다시 시도해주세요.','Deletion failed. Try again.'));}finally{setBusy(false);}
  }
- return <section className="membership-panel"><h2>{t('임시 다운로드','Temporary downloads')}</h2>
- <p>{t('새 결과는 생성 완료 후 24시간 동안 내려받을 수 있습니다. 보관하려면 기기에 저장하세요.','Download new results within 24 hours of completion. Save a copy on your device to keep it.')}</p>
- {downloads.some(item=>Date.parse(item.expiresAt)>Date.now()+86400000)&&<p>{t('정책 적용 전에 생성한 자료는 표시된 전환 기한까지 내려받을 수 있습니다.','Earlier results remain available until their displayed transition deadline.')}</p>}
- {downloads.map(item=><div className="membership-row" key={item.id}><span>{item.name} · <DownloadDeadline value={item.expiresAt}/></span>
-  <button disabled={busy} onClick={()=>void download(item)}>{item.reviewRequired?t('사용 확정 후 원본 저장','Confirm and save original'):t('원본 저장','Save original')}</button></div>)}
- {items.length>0&&<h3>{t('정책 변경 전에 저장한 프로젝트','Projects saved before the policy change')}</h3>}
- {items.map(item=><div key={item.id} className="membership-row"><button disabled={busy} onClick={()=>void open(item)}>{item.name} · {new Date(item.expiresAt).toLocaleDateString()} {t('삭제 예정','expires')}</button><button disabled={busy} onClick={()=>void remove(item)}>{t('삭제','Delete')}</button></div>)}{error&&<p role="alert">{error} <button onClick={()=>setRefresh(n=>n+1)}>{t('다시 확인','Retry')}</button></p>}</section>;
+ return <section className="download-library" aria-label={t('다운로드 목록','Available downloads')}>
+  {!loaded&&<p role="status">{t('불러오는 중…','Loading…')}</p>}
+  {loaded&&!error&&!downloads.length&&!items.length&&<p className="download-empty">{t('다운로드할 파일이 없습니다.','No files to download.')}</p>}
+  {downloads.length>0&&<>
+   <p className="download-notice">{t('새 광고는 생성 후 24시간 동안 다운로드할 수 있습니다.','New ads are available to download for 24 hours after creation.')}</p>
+   <ul className="download-list">{downloads.slice(0,shownDownloads).map(item=><li key={item.id}>
+    <div><strong>{item.name||t('이름 없는 광고','Untitled ad')}</strong><LibraryExpiry value={item.expiresAt}/></div>
+    <button type="button" disabled={busy} onClick={()=>void download(item)}>{item.reviewRequired?t('사용 확정 후 저장','Confirm and save'):t('원본 저장','Save original')}</button>
+   </li>)}</ul>
+   {shownDownloads<downloads.length&&<button type="button" className="library-more" onClick={()=>setShownDownloads(n=>n+downloadPageSize)}>{t('다운로드 더 보기','Show more downloads')}</button>}
+  </>}
+  {items.length>0&&<>
+   <h2>{t('이전 보관본','Previously saved projects')}</h2>
+   <ul className="download-list">{items.slice(0,shownProjects).map(item=><li key={item.id}>
+    <div><button type="button" className="legacy-open" disabled={busy} onClick={()=>void open(item)}>{item.name||t('이름 없는 광고','Untitled ad')}</button><LibraryExpiry value={item.expiresAt}/></div>
+    <button type="button" disabled={busy} onClick={()=>void remove(item)}>{t('삭제','Delete')}</button>
+   </li>)}</ul>
+   {shownProjects<items.length&&<button type="button" className="library-more" onClick={()=>setShownProjects(n=>n+downloadPageSize)}>{t('보관본 더 보기','Show more saved projects')}</button>}
+  </>}
+  {error&&<p role="alert">{error} <button type="button" className="library-more" onClick={()=>setRefresh(n=>n+1)}>{t('다시 확인','Retry')}</button></p>}
+ </section>;
 }
 export function Withdrawal(){
  const {t}=useUiLanguage(),[confirm,setConfirm]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
