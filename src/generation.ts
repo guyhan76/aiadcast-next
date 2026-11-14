@@ -44,7 +44,7 @@ export function photoGenerationDraft(p:Project):Project {
 }
 export function newGenerationIssues(p:Project):string[]{
  p=photoGenerationDraft(p);
- return !p.product?['광고에 참고할 상품·공간 사진을 추가해주세요.']:generationIssues(p);
+ return generationIssues(p);
 }
 // Internal prototype only: no production form or automatic submission opts in.
 // Candidate v2 remains opt-in until actual reserved-area compliance is validated.
@@ -109,4 +109,5 @@ export function buildGenerationRequest(p:Project) {
     claims:{sameProduct:!creative&&!appearanceEdit&&!service&&!!p.product&&!boxProjectionActive(p),exactGeometry:false},
   };
 }
+
 

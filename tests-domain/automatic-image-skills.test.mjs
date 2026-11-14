@@ -5,7 +5,7 @@ import {imageRecipes, imageSkills} from '../src/image-skills.ts';
 import {newProject} from '../src/model.ts';
 import {withCategory} from '../src/product.ts';
 import {withCreative} from '../src/creative.ts';
-import {buildGenerationRequest} from '../src/generation.ts';
+import {buildNewGenerationRequest} from '../src/generation.ts';
 import {normalizeGenerationRequest} from '../server/generation-service.mjs';
 import {finishedAdSkillBrief} from '../server/automatic-image-skills.mjs';
 import {OpenAIImageAdapter, promptFor, hashBytes} from '../server/openai-image-adapter.mjs';
@@ -29,7 +29,7 @@ test('all 180 unique directions reach the automatic catalog without a command; l
 });
 
 test('title, description and extra instructions affect directions without user commands; exclusions and legacy paths are respected', () => {
-  const request = normalizeGenerationRequest(buildGenerationRequest(project('education', '수강생 모집', '단계별 설명', '창가 빛')));
+  const request = normalizeGenerationRequest(buildNewGenerationRequest(project('education', '수강생 모집', '단계별 설명', '창가 빛')));
   const prompt = promptFor(request);
   assert.match(prompt, /\[natural-window-light\]/); assert.match(prompt, /\[event-poster\]/);
   request.copy.title = '새 학기'; request.productName = '새 학기';
@@ -48,10 +48,10 @@ test('image transport carries customer fields, original photo bytes and automati
   const pixels = await sharp({create:{width:1024,height:1024,channels:3,background:'#eee'}}).png().toBuffer();
   const asset = {name:'shoe.png',data:'data:image/png;base64,'+pixels.toString('base64'),width:1024,height:1024,sha256:hashBytes(pixels)};
   const shoe = project('shoes', '화이트 스니커즈', '검은 스우시는 외측에만 표시', '사람 없이 신발만 흰 배경');
-  assert.throws(() => buildGenerationRequest(shoe), /사진/);
+  assert.throws(() => buildNewGenerationRequest(shoe), /사진/);
   shoe.product = asset;
   const service = project('education', '온라인 한국어 수업', '초급 회화 과정');
-  const requests = [shoe, service].map(p => normalizeGenerationRequest(buildGenerationRequest(p)));
+  const requests = [shoe, service].map(p => normalizeGenerationRequest(buildNewGenerationRequest(p)));
   const seen = [];
   const adapter = new OpenAIImageAdapter({apiKey:'fixture',fetchImpl:async (url, options) => {
     const body = options.body;

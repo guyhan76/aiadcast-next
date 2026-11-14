@@ -47,9 +47,20 @@ test('eight inputs submit actual generation request once and a complete accepted
  const save=result.getByRole('button',{name:'이미지 저장 · 공유',exact:true});await expect(save).toBeEnabled();const pending=page.waitForEvent('download');await save.click();expect((await pending).suggestedFilename()).toBe('aiadcast-9x16.png');expect(state.accepts).toBe(1);expect(state.posts).toBe(1);
  await result.getByRole('button',{name:'입력 내용 수정',exact:true}).click();await expect(form.getByRole('textbox',{name:'광고 제목',exact:true})).toHaveValue('보내는 마음까지, 든든하게.');
 });
-test('photo-free service submission rejects without generation or charge, then preserves a photo-backed dimension-free brief',async({page})=>{
- const state=await mocks(page),form=await details(page);await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(form.getByRole('alert')).toContainText('사진');await expect(page).toHaveURL(/#create$/);expect(state.posts).toBe(0);expect(state.accepts).toBe(0);expect(state.job).toBeNull();
- await form.getByLabel('참조사진 추가').setInputFiles({name:'space.png',mimeType:'image/png',buffer:first});await form.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();expect(state.posts).toBe(1);expect(state.body.source.sha256).toBe(createHash('sha256').update(first).digest('hex'));expect(state.body.request.specifications).toEqual([]);expect(state.body.request.output.showDimensions).toBe(false);expect(state.body.request.creativeDirection.copyMode).toBe('ai');
+for (const withPhoto of [false, true]) test(`service ad submits once with optional photo (attached=${withPhoto})`, async ({page}) => {
+ const state = await mocks(page);
+ const form = await details(page);
+ await expect(form.getByText('공간이나 서비스 사진을 추가하세요. (선택)', {exact:true})).toBeVisible();
+ if (withPhoto) await form.getByLabel('참조사진 추가').setInputFiles({name:'space.png', mimeType:'image/png', buffer:first});
+ await form.getByRole('button', {name:'광고 생성', exact:true}).click();
+ await expect(page.locator('.generation-ad-preview')).toBeVisible();
+ expect(state.posts).toBe(1);
+ expect(state.accepts).toBe(0);
+ expect(state.body.source?.sha256 ?? null).toBe(withPhoto ? createHash('sha256').update(first).digest('hex') : null);
+ expect(state.body.request.subjectType).toBe('service');
+ expect(state.body.request.specifications).toEqual([]);
+ expect(state.body.request.output.showDimensions).toBe(false);
+ expect(state.body.request.creativeDirection.copyMode).toBe('ai');
 });
 test('unauthenticated creation requires Google sign-in and never dispatches generation',async({page})=>{
  const state=await mocks(page,{auth:true});await page.goto('/#create');await expect(page.getByRole('button',{name:'Google로 계속하기',exact:true})).toBeVisible();await expect(page.locator('.consumer-create')).toHaveCount(0);expect(state.posts).toBe(0);
@@ -265,7 +276,7 @@ for(const language of ['ko','en'] as const)test(`photo guidance and visible crea
  await description.fill('Cotton hoodie, navy');await note.fill('Warm studio lighting');
  for(const width of [320,390,768]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
  await page.setViewportSize({width:test.info().project.name==='mobile'?390:1440,height:900});await note.evaluate(el=>el.scrollIntoView({block:'center'}));await page.screenshot({path:`/tmp/uncertain-form-${language}-${test.info().project.name}.png`});
- await expect(form.locator('.photo-usage')).toHaveText(ko?'상품·서비스 사진을 첨부해주세요.':'Attach photos of your product or service.');
+ await expect(form.locator('.photo-usage')).toHaveText(ko?'실제 상품 사진을 한 장 이상 첨부해주세요.':'Add at least one photo of the actual product.');
  await expect(form.locator('.reference-file-info')).toContainText('10MB');
  await form.getByLabel(ko?'상품명':'Product name',{exact:true}).fill('Hoodie');await form.getByLabel(ko?'참조사진 추가':'Add reference photos').setInputFiles({name:'product.png',mimeType:'image/png',buffer:first});
  await form.getByRole('button',{name:ko?'광고 생성':'Generate ad',exact:true}).click();await expect(page.locator('.generation-ad-preview')).toBeVisible();

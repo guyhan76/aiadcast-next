@@ -1,6 +1,8 @@
 import type {Project} from './model';
+import {isServiceCategory} from './product';
 import {useUiLanguage} from './ui-language';
-export function PhotoUsage(_props:{project:Project;change:(fn:(p:Project)=>Project)=>void}){
+export function PhotoUsage({project}:{project:Project;change:(fn:(p:Project)=>Project)=>void}){
  const {t}=useUiLanguage();
- return <div className="photo-usage"><p className="help">{t('상품·서비스 사진을 첨부해주세요.','Attach photos of your product or service.')}</p></div>;
+ if(isServiceCategory(project.productProfile.category))return null;
+ return <div className="photo-usage"><p className="help">{t('실제 상품 사진을 한 장 이상 첨부해주세요.','Add at least one photo of the actual product.')}</p></div>;
 }

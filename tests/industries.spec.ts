@@ -17,9 +17,18 @@ test('all industries remain available in a grouped list without a duplicate subj
  for(const group of industryGroups)for(const category of group.categoryIds){await select.selectOption(category);await expect(select).toHaveValue(category);if(group.kind==='service')await expect(wizard.getByLabel('규격 형식')).toHaveCount(0);}
  for(const width of [320,390,768]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
 });
-test('different service industries reject missing photos without generation or credit mutations',async({page})=>{
- let writes=0;await page.route('**/api/**',r=>{if(r.request().method()!=='GET')writes++;return r.fallback();});
- for(const category of ['pilates','lodging','hospital','banking','tarot','astrology','myeongri','sinjeom']){await page.goto('/#create');const wizard=page.locator('.create-page');await wizard.getByLabel('산업 선택').selectOption(category);await wizard.getByRole('textbox',{name:'상세설명',exact:true}).fill(category+' 서비스 안내');await wizard.getByLabel(/^(상품명|서비스명)$/).fill(category+' 안내');await wizard.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(wizard.getByRole('alert')).toContainText('사진');await expect(page).toHaveURL(/#create$/);await expect(wizard.getByLabel('규격 형식')).toHaveCount(0);await expect(wizard.getByLabel(/^(상품명|서비스명)$/)).toHaveValue(category+' 안내');expect(writes).toBe(0);}
+test('service industries can submit a brief without attaching a photo', async ({page}) => {
+ for (const category of ['pilates','lodging','hospital','banking','tarot','astrology','myeongri','sinjeom']) {
+  await page.goto('/#create');
+  const wizard = page.locator('.create-page');
+  await wizard.getByLabel('산업 선택').selectOption(category);
+  await expect(wizard.getByText('공간이나 서비스 사진을 추가하세요. (선택)', {exact:true})).toBeVisible();
+  await expect(wizard.getByLabel('규격 형식')).toHaveCount(0);
+  await wizard.getByLabel('서비스명', {exact:true}).fill(category+' 안내');
+  await wizard.getByRole('textbox', {name:'상세설명', exact:true}).fill(category+' 서비스 안내');
+  await wizard.getByRole('button', {name:'광고 생성', exact:true}).click();
+  await expect(page).toHaveURL(/#studio$/);
+ }
 });
 test('optional purpose and requests remain editable and persist through backup',async({page})=>{
  await page.goto('/');await page.getByRole('button',{name:'광고 이미지 만들기',exact:true}).click();const wizard=page.locator('.create-page');await wizard.getByLabel('산업 선택').selectOption('pilates');await wizard.getByRole('textbox',{name:'상세설명',exact:true}).fill('조용한 필라테스 수업');await wizard.getByLabel('서비스명',{exact:true}).fill('온 필라테스');await wizard.getByLabel('목적 선택').selectOption('offer');await expect(wizard.locator('.creative-look-card')).toHaveCount(0);await wizard.getByRole('textbox',{name:'추가 요청',exact:true}).fill('조용한 스튜디오');for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}await wizard.getByLabel('참조사진 추가').setInputFiles({name:'studio.png',mimeType:'image/png',buffer:await sharp({create:{width:400,height:300,channels:4,background:'#b87844'}}).png().toBuffer()});await wizard.getByRole('button',{name:'광고 생성',exact:true}).click();await expect(page).toHaveURL(/#studio$/);await page.goto('/#editor');const saved=await backup(page);expect(saved.campaign.creative).toMatchObject({look:'auto',directionId:'offer',note:'조용한 스튜디오'});
@@ -50,4 +59,5 @@ test('legacy fortune JSON and device projects keep their source and copy with mi
  expect(updated.copy).toEqual(legacy.copy);expect(updated.product).toEqual(legacy.product);expect(updated.dimensions.width).toBe(legacy.dimensions.width);expect(updated.productProfile.specType).toBe('none');
  await options.getByRole('button',{name:'추천 문구 적용',exact:true}).click();updated=await backup(page);expect(updated.copy.ko.title).not.toBe(legacy.copy.ko.title);expect(updated.copy.en).toEqual(legacy.copy.en);expect(updated.product).toEqual(legacy.product);
 });
+
 
