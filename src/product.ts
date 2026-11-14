@@ -1,6 +1,6 @@
 import {dimensionUnit,fromMillimeters,type DimensionUnit} from './dimension-units.ts';
 import type {Project} from './model.ts';
-import {findAdField} from './ad-fields.ts';
+import {findAdField,formatIndustryDetail} from './ad-fields.ts';
 import {isPhysicalCategory,resolveIndustryCategory} from './industry.ts';
 import type {ProductCategory} from './industry.ts';
 export {productCategories} from './industry.ts';
@@ -21,7 +21,8 @@ export function parseProfile(value:unknown):ProductProfile {
   const p=value as ProductProfile;
   const category=resolveIndustryCategory(p.category);
   if(!category||!specTypes.some(([key])=>key===p.specType)||typeof p.material!=='string'||p.material.length>2000)throw Error('상품 분류 또는 규격 형식을 확인해주세요.');
-  const detail = findAdField(category,p.industryDetail)?.item.ko;
+  const saved = findAdField(category,p.industryDetail);
+  const detail = saved && formatIndustryDetail(saved.item,saved.custom.trim());
   return {category,specType:p.specType,material:p.material,...(detail ? {industryDetail:detail} : {})};
 }
 export function dimensionAxes(profile?:ProductProfile):('width'|'depth'|'height')[] {
