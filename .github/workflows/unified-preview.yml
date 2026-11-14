@@ -2,7 +2,7 @@ name: Unified web and Android Preview
 
 on:
   push:
-    branches: [feat/patent-product-generation-20261011, feat/member-storage-20261115, feat/sport-industry-options-20261115, feat/dancesport-disciplines-20261115]
+    branches: [feat/patent-product-generation-20261011, feat/member-storage-20261115, feat/sport-industry-options-20261115, feat/dancesport-disciplines-20261115, feat/clean-projects-20261115]
   workflow_dispatch:
 
 permissions:
@@ -63,7 +63,7 @@ jobs:
           ./gradlew --no-daemon testPreviewUnitTest lintPreview assemblePreview \
             -PAIADCAST_SIGNED_PREVIEW=true \
             -PAIADCAST_API_ORIGIN=https://aiadcast-next.onrender.com \
-            -PAIADCAST_BUILD_VERSION_CODE=96 -PAIADCAST_BUILD_VERSION_NAME=0.2.94
+            -PAIADCAST_BUILD_VERSION_CODE=97 -PAIADCAST_BUILD_VERSION_NAME=0.2.95
       - name: Verify packaged version, certificate, alignment and source
         run: |
           set -euo pipefail
@@ -73,7 +73,7 @@ jobs:
           grep -Fx 'Signer #1 certificate SHA-256 digest: 7dc020bc774784d3df553c58c672f4210d232e2543004fd52ac9084943488b4e' "$RUNNER_TEMP/certificate.txt"
           "$build_tools/zipalign" -c -P 16 4 "$apk"
           "$build_tools/aapt" dump badging "$apk" > "$RUNNER_TEMP/package.txt"
-          grep -F "name='com.selluplabs.aiadcast.next.preview' versionCode='96' versionName='0.2.94-preview'" "$RUNNER_TEMP/package.txt"
+          grep -F "name='com.selluplabs.aiadcast.next.preview' versionCode='97' versionName='0.2.95-preview'" "$RUNNER_TEMP/package.txt"
           unzip -p "$apk" assets/native-build.json | jq -e --arg sha "$GITHUB_SHA" '.webBuild.commit == $sha and .webBuild.dirty == false'
           python3 - "$apk" <<'PY'
           import hashlib, json, sys, zipfile
@@ -88,19 +88,19 @@ jobs:
           cmp public/aiadcast-app-icon.png <(unzip -p "$apk" assets/aiadcast-app-icon.png)
           grep -q "^application-icon-" "$RUNNER_TEMP/package.txt"
           mkdir -p release
-          cp "$apk" release/aiadcast-0.2.94.apk
+          cp "$apk" release/aiadcast-0.2.95.apk
           cd release
-          zip -q -0 aiadcast-0.2.94.zip aiadcast-0.2.94.apk
-          sha256sum aiadcast-0.2.94.{apk,zip} > SHA256SUMS.txt
+          zip -q -0 aiadcast-0.2.95.zip aiadcast-0.2.95.apk
+          sha256sum aiadcast-0.2.95.{apk,zip} > SHA256SUMS.txt
       - name: Publish the verified Preview build
         if: github.ref_name == 'feat/patent-product-generation-20261011'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="preview-0.2.94-code96-${GITHUB_SHA:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          gh release create "$tag" release/aiadcast-0.2.94.apk release/aiadcast-0.2.94.zip release/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-            --title 'aiadcast 0.2.94 Preview (96)' --notes "Android Preview for testing. Verified source: $GITHUB_SHA. Certificate and APK checks passed."
+          tag="preview-0.2.95-code97-${GITHUB_SHA:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          gh release create "$tag" release/aiadcast-0.2.95.apk release/aiadcast-0.2.95.zip release/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title 'aiadcast 0.2.95 Preview (97)' --notes "Android Preview for testing. Verified source: $GITHUB_SHA. Certificate and APK checks passed."
       - name: Remove temporary signing material
         if: always()
         run: rm -f "$RUNNER_TEMP/preview.p12"

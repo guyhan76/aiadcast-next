@@ -9,7 +9,7 @@ export function AccountBar({preserve}:{preserve:()=>Promise<void>}){
  if(!session)return null;
  async function logout(){
   if(locked.current)return;
-  if(!window.confirm(t('현재 작업을 이 기기에 보관한 뒤 로그아웃합니다. 서버 저장은 별도입니다. 계속할까요?','Your current work will be kept on this device before signing out. Server saving is separate. Continue?')))return;
+  if(!window.confirm(t('현재 작업을 이 기기에 저장하고 로그아웃할까요?','Save your current work on this device and sign out?')))return;
   locked.current=true;setBusy(true);setError('');
   try{await signOut(preserve);}
   catch(error){setError(error instanceof SignOutPreservationFailure

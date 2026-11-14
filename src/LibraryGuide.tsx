@@ -1,6 +1,7 @@
+import {CloudLibrary} from './Membership';
 import {PrecisionEditAction} from './PrecisionEditAction';
 import {useEffect,useRef,useState} from 'react';
-import {ArrowUpRight,FolderOpen,Plus,Search} from 'lucide-react';
+import {ArrowUpRight,ChevronDown,FolderOpen,Plus,Search} from 'lucide-react';
 import type {Project} from './model';
 import {render} from './render';
 import {hasUsableCreative,hasSavedAcceptedAd} from './generated';
@@ -16,17 +17,29 @@ function ProjectPreview({project}:{project:Project}){
  },[project]);
  return <div className="project-thumb"><canvas ref={canvas} hidden={!ready} aria-label={t('저장한 광고 미리보기','Saved ad preview')}/>{!ready&&(project.generated?.composition==='complete-ad'&&project.generated.asset?.data?<img src={project.generated.asset.data} alt={t('과거 광고 원본','Previous ad original')}/>:project.product?<img src={project.product.data} alt={t('참조사진 · 제작 중','Reference photo · in progress')}/>:<strong>{project.productName||project.copy[project.locale].title}</strong>)}<span>{project.format}</span></div>;
 }
-export function ProjectLibrary({items,error,onNew,onOpen}:{items:Project[];error:string;onNew:()=>void;onOpen:(p:Project)=>void}){
- const {language,t}=useUiLanguage(),[filter,setFilter]=useState('');
- const filtered=items.filter(p=>hasSavedAcceptedAd(p)||p.presentation==='campaign'&&!!p.productName.trim()).filter(p=>(p.name+' '+p.productName).toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
+type LibraryProps={items:Project[];error:string;onNew:()=>void;onOpen:(p:Project)=>void;
+ onOpenServer:(p:Project)=>Promise<boolean>;showDownloads:boolean};
+export function ProjectLibrary({items,error,onNew,onOpen,onOpenServer,showDownloads}:LibraryProps){
+ const {language,t}=useUiLanguage();
+ const [filter,setFilter]=useState(''),[view,setView]=useState<'saved'|'downloads'>('saved');
+ const saved=items.filter(p=>hasSavedAcceptedAd(p)||p.presentation==='campaign'&&!!p.productName.trim());
+ const filtered=saved.filter(p=>(p.name+' '+p.productName).toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
  return <>
   <div className="projects-heading"><h1>{t('내 프로젝트','My projects')}</h1><button className="primary-action" onClick={onNew}><Plus size={18}/>{t('새 광고','New ad')}</button></div>
-  <p>{t('이 기기에 저장한 프로젝트입니다.','Projects saved on this device.')}</p>
-  <PrecisionEditAction label={t('기기 사진 정밀 편집','Edit a device image')}/>
-  <label className="project-search"><Search size={20}/><input aria-label={t('프로젝트 검색','Search projects')} placeholder={t('광고 이름 검색','Search ad names')} value={filter} onChange={e=>setFilter(e.target.value)}/></label>
-  {error&&<p role="alert">{error}</p>}
-  {!filtered.length?error?null:<div className="project-empty"><FolderOpen size={32}/><h2>{filter?t('검색 결과가 없습니다.','No matches.'):t('첫 광고를 만들어보세요.','Create your first ad.')}</h2>{filter&&<button onClick={()=>setFilter('')}>{t('검색 초기화','Clear search')}</button>}</div>:<div className="project-grid">{filtered.map(p=><button key={p.id} className="project-tile" onClick={()=>onOpen(p)}><ProjectPreview project={p}/><div className="project-tile-caption"><strong>{p.name||p.productName||t('이름 없는 광고','Untitled ad')}</strong><ArrowUpRight size={18}/><small>{!hasSavedAcceptedAd(p)&&t('제작 중 · ','Draft · ')}{new Date(p.updatedAt).toLocaleDateString(language==='ko'?'ko-KR':'en-US')}</small></div></button>)}</div>}
-  <details className="library-backup"><summary><span>{t('이 기기에 저장됨','Saved on this device')}</span><strong>{t('백업·불러오기','Backup & import')}</strong></summary><p>{t('다른 기기에서 열려면 프로젝트 파일을 백업하세요.','Back up your project file to open it on another device.')}</p><p>{t('광고를 열고 ‘프로젝트 백업’을 누르세요. 가져온 파일은 ‘파일 불러오기’로 열 수 있습니다.','Open an ad and choose Project backup. Use Import file to restore a backup.')}</p><a href="#studio">{t('파일 불러오러 가기','Go to file import')} <ArrowUpRight size={16}/></a></details>
+  {showDownloads&&<div className="library-views" role="group" aria-label={t('프로젝트 보기','Project view')}>
+   <button type="button" aria-pressed={view==='saved'} onClick={()=>setView('saved')}>{t('저장한 광고','Saved ads')}</button>
+   <button type="button" aria-pressed={view==='downloads'} onClick={()=>setView('downloads')}>{t('다운로드','Downloads')}</button>
+  </div>}
+  {showDownloads&&view==='downloads'?<CloudLibrary onOpen={onOpenServer}/>:<>
+   {saved.length>0&&<label className="project-search"><Search size={20}/><input aria-label={t('프로젝트 검색','Search projects')} placeholder={t('광고 이름 검색','Search ad names')} value={filter} onChange={e=>setFilter(e.target.value)}/></label>}
+   {error&&<p role="alert">{error}</p>}
+   {filtered.length>0?<div className="project-grid">{filtered.map(p=><button key={p.id} className="project-tile" onClick={()=>onOpen(p)}><ProjectPreview project={p}/><div className="project-tile-caption"><strong>{p.name||p.productName||t('이름 없는 광고','Untitled ad')}</strong><ArrowUpRight size={18}/><small>{!hasSavedAcceptedAd(p)&&t('제작 중 · ','Draft · ')}{new Date(p.updatedAt).toLocaleDateString(language==='ko'?'ko-KR':'en-US')}</small></div></button>)}</div>
+    :!error&&<div className="project-empty"><FolderOpen size={30} aria-hidden="true"/><h2>{saved.length?t('검색 결과가 없습니다.','No matches.'):t('저장한 광고가 없습니다.','No saved ads yet.')}</h2>{saved.length>0&&<button onClick={()=>setFilter('')}>{t('검색 초기화','Clear search')}</button>}</div>}
+   <details className="project-tools"><summary>{t('프로젝트 도구','Project tools')}<ChevronDown aria-hidden="true" size={18}/></summary>
+    <PrecisionEditAction label={t('기기 사진 정밀 편집','Edit a device image')}/>
+    <a href="#editor">{t('프로젝트 백업·불러오기','Back up or import a project')} <ArrowUpRight aria-hidden="true" size={16}/></a>
+   </details>
+  </>}
  </>;
 }
 export function UsageGuide({onNew}:{onNew:()=>void}){
