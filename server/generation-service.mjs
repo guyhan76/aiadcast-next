@@ -133,7 +133,7 @@ export class GenerationService {
     this.db = this.ledger.db; this.now = now; this.adapter = adapter; this.enabled = enabled; this.assistantAdapter = assistantAdapter; this.assistantEnabled = assistantEnabled; this.budgetMicros = budgetMicros; this.providerConfigured = providerConfigured; this.tasks = new Set(); this.budgetForPeriod=budgetForPeriod;
     // The authenticated HTTP service sets this from the server-owned account
     // role. Request JSON, login form fields and client session labels cannot.
-    this.adminTestUnlimited = false; this.selectiveEditingEnabled = false;
+    this.adminTestUnlimited = false; this.selectiveEditingEnabled = enabled && adapter?.selectiveEditReady === true;
     if (managedBudgetIncrease && !budgetForPeriod) {
       const highest=this.db.prepare('SELECT COALESCE(MAX(limit_micros),0) value FROM budgets').get().value;
       if(highest>budgetMicros){this.ledger.close();this.unlock();throw Error('BUDGET_DECREASE_REQUIRES_REVIEW');}
@@ -362,6 +362,20 @@ export class GenerationService {
     }
     if(references.reduce((n,r)=>n+r.bytes.length,0)>10*1024*1024)fail('INVALID_EDIT_SOURCE',409);
     return references;
+  }
+  async createUploadedEdit(body) {
+    if(!this.selectiveEditingEnabled||this.adapter?.selectiveEditReady!==true)fail('REGION_EDIT_NOT_AVAILABLE',503);
+    if(!body||!identifier(body.requestId)||!identifier(body.projectId)||typeof body.prompt!=='string'||!body.prompt.trim()||body.prompt.length>2000||!body.creditQuote)fail('INVALID_EDIT_REQUEST');
+    if(!/^[a-f0-9]{64}$/.test(body.sourceHash)||body.original?.sha256!==body.sourceHash)fail('INVALID_EDIT_SOURCE');
+    let prepared;
+    try { prepared=await prepareSelectiveEdit(body.original,body.mask); } catch(error) { fail(error.message,400); }
+    const sourceId='upload-'+body.sourceHash;
+    const source={sha256:prepared.source.sha256,width:prepared.source.width,height:prepared.source.height,purpose:'subject'};
+    const region={...prepared,references:[],sourceJobId:sourceId,sourceProjectId:sourceId,sourceHash:body.sourceHash,prompt:body.prompt.trim()};
+    try { region.providerInput=await this.adapter.prepareSelectiveInput?.(region); }
+    catch(error) { fail(error.code==='UNSUPPORTED_EDIT_SIZE'?error.code:'INVALID_EDIT_MASK'); }
+    const request={version:1,mode:'creative',operation:'image-product-concept',subjectType:'physical-product',productName:'Image edit',brief:'',source,references:[],specifications:[],copy:{},output:{format:'1:1',locale:'ko',compositionKey:'{}'}};
+    return this.create({requestId:body.requestId,projectId:body.projectId,creditQuote:body.creditQuote,request,source:{...source,data:'data:image/png;base64,'+prepared.source.bytes.toString('base64')}},{region});
   }
   async createSelectiveEdit(body) {
     if(!this.selectiveEditingEnabled||this.adapter?.selectiveEditReady!==true)fail('REGION_EDIT_NOT_AVAILABLE',503);

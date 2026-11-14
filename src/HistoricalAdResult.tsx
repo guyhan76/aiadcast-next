@@ -1,3 +1,4 @@
+import {PrecisionEditAction} from './PrecisionEditAction';
 import {useEffect,useRef,useState} from 'react';
 import type {Asset,Project} from './model';
 import {apiRequest,ApiRequestFailure,verifiedArtifact,type GenerationJob} from './generation-client';
@@ -59,7 +60,7 @@ export function HistoricalAdResult({project}:{project:Project}){
  }
  return <section className="historical-ad" aria-label={t('과거 완료 결과','Previous completed result')}>
   {jobs.length>1&&<label>{t('완료 기록 선택','Choose completed result')}<select value={selected} disabled={busy} onChange={e=>{setAsset(null);setSelected(e.target.value);void recover(e.target.value);}}>{jobs.map(j=><option key={j.id} value={j.id}>{new Date(j.createdAt).toLocaleString()} · {j.id}</option>)}</select></label>}
-  {asset&&<><img src={asset.data} alt={t('과거에 생성한 광고 원본','Previously generated ad original')} style={{display:'block',maxWidth:'100%',height:'auto'}}/><button onClick={()=>void download()}>{t('원본 저장 · 공유','Save / share original')}</button></>}
+  {asset&&<><img src={asset.data} alt={t('과거에 생성한 광고 원본','Previously generated ad original')} style={{display:'block',maxWidth:'100%',height:'auto'}}/><PrecisionEditAction getInput={()=>({data:asset.data,name:project.name})}/><button onClick={()=>void download()}>{t('원본 저장 · 공유','Save / share original')}</button></>}
   {busy&&<p role="status">{t('과거 완료 결과 확인 중…','Checking completed history…')}</p>}
   {message&&<p role="status">{message}</p>}
   {!asset&&<button disabled={busy} onClick={()=>void recover(selected||undefined)}>{t('과거 결과 다시 확인','Retry previous result')}</button>}

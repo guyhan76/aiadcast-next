@@ -331,6 +331,11 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 send(res, 200, { ...s, mode: password.available() ? 'test-account-beta' : 'invite-beta', limitations: s.limitations.filter(x => !['local-single-user', 'no-production-auth'].includes(x)).concat([password.available() ? 'test-email-unverified' : 'invite-only', 'single-instance-beta', 'no-live-payment']), user: { id: user.id, label: user.label } }, cors);
                 return;
             }
+            if (req.method === 'POST' && url.pathname === '/api/selective-edits/upload') {
+                const body = await read(req, 19500000);
+                send(res, 202, await (await service(user)).createUploadedEdit(body), cors);
+                return;
+            }
             const selectiveLookup = /^\/api\/selective-edits\/requests\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
             if (req.method === 'GET' && selectiveLookup) {
                 send(res, 200, await (await service(user)).selectiveRequestStatus(selectiveLookup[1], url.searchParams.get('sourceJobId')), cors);

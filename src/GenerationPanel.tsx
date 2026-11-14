@@ -1,4 +1,4 @@
-import {SelectiveImageEditor} from './SelectiveImageEditor';
+import {PrecisionEditAction} from './PrecisionEditAction';
 import {preflightPlannedAdText} from './planned-ad-text-render';
 import {exactTextSnapshot} from './exact-ad-text';
 import {getImageFormat} from './formats';
@@ -81,7 +81,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
   return()=>{document.removeEventListener('visibilitychange',hidden);window.removeEventListener('pagehide',stop);};
  },[]);
  const [creditConsent,setCreditConsent]=useState(false),[defect,setDefect]=useState('');
- const [enlarged,setEnlarged]=useState(false);const [selectiveOpen,setSelectiveOpen]=useState(false);
+ const [enlarged,setEnlarged]=useState(false);
  const [preview,setPreview]=useState<AdPreview|null>(null),[previewError,setPreviewError]=useState('');
  const previewRef=useRef<AdPreview|null>(null);
  const remember=(value:Pending|null)=>{pending.current=value;try{if(value)localStorage.setItem(storageKey,JSON.stringify(value));else localStorage.removeItem(storageKey);}catch{/* API history still keeps the job. */}};
@@ -351,7 +351,6 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
  const progressText=queuedIntent||preparing?t('생성 준비 상태를 확인하고 있어요','Checking readiness for your ad'):t('광고 이미지를 만들고 있어요','Creating your ad image');
  const labels:Record<GenerationJob['state'],string>={running:simple?t('광고 시안을 제작하고 있습니다. 잠시만 기다려 주세요.','We are creating your ad. Please wait.'):t('시안 제작 중','Creating your visual'),ready:t('결과를 확인해주세요','Review your result'),accepted:t('사용 확정한 시안','Accepted visual'),rejected:job?.creditCaptured?t('반려 · 자동 복원 없음','Rejected · no automatic refund'):t('반려 · 이용권 복원','Rejected · credit restored'),failed:t('실패 · 이용권 복원','Failed · credit restored'),uncertain:t('결과 미확인 · 이용권 복원','Result unconfirmed · credit restored'),expired:t('검토 만료 · 이용권 복원','Review expired · credit restored'),refunded:t('이용권 복원됨','Credit restored')};
  return <section className={`generation-panel${simple?' generation-simple':''}`}  aria-label={offlineDemo()?t('기기 내 체험 합성','Local demo composition'):t('AI 광고 제작','AI ad generation')}>
-  {selectiveOpen&&job?.artifact&&status?.generation.creditQuote&&<SelectiveImageEditor key={storageNamespace()+job.id+job.artifactId} source={job} project={project} quote={status.generation.creditQuote} onClose={()=>setSelectiveOpen(false)}/>}
   {!simple&&<div className="generation-heading"><div><span className="eyebrow">{demo?'LOCAL DEMO':'AI CREATIVE'}</span><h2>{t('내 광고의 다음 시안.','Your next creative.')}</h2></div><button onClick={()=>void refresh()} disabled={busy||checking}><RefreshCw size={16}/>{t('연결 상태 확인','Refresh connection')}</button></div>}
   {simple&&project.generation.mode==='original'&&<div className="original-photo-notice">
    <strong>{t('현재 방식: 원본 사진 합성','Current mode: original-photo composition')}</strong>
@@ -391,7 +390,7 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
    </>}
 
    {preview?.composed.generated?.planarReport&&<PlanarResult report={preview.composed.generated.planarReport} original={preview.composed.generated.planarOriginal}/>}
-   {(job.state==='ready'||job.state==='accepted')&&<>{!compatible&&<p role="alert">{revisedReady?t('입력이 바뀌었습니다. 새 광고를 생성할 수 있으며 이전 결과와 차감 내역은 유지됩니다.','Details changed. You can generate a new ad; the previous result and charges are preserved.'):t('사진·상품 설정 또는 완성 광고의 문구·규격 표시·연락처가 바뀌었습니다. 원래 정보를 복원하거나 시안을 반려한 뒤 현재 정보로 새로 생성해주세요.','The photo, product settings or finished ad copy, dimension display or contacts changed. Restore the original details, or reject the visual and generate with the current details.')}</p>}{preview&&manualBaseExport(preview.composed)&&<p role="status">{t('치수선 없는 광고입니다. 입력 규격은 보관됩니다.','Ad without added dimension lines. Your measurements are preserved.')}</p>}<div className="generation-review-actions"><button disabled={busy||!compatible||!previewReady} onClick={()=>void accept()}>{job.state==='accepted'?t('저장한 시안 다시 적용','Reapply accepted visual'):t('사용확정','Accept')}</button><button disabled={busy||!previewReady||!status?.generation.selectiveEdit||status.generation.selectiveEditProofVersion!==1||job.composition!=='complete-ad'||(!!project.dimensionAnnotation&&project.dimensionAnnotation.mode!=='none')||!!project.exactTextVersion||!!project.textEdit||!!job.inputMode||!!job.dimensionDisplay||!!job.planarReport} onClick={()=>setSelectiveOpen(true)}>{t('부분수정','Edit selected area')}</button>{job.state==='ready'&&<button disabled={busy} onClick={()=>void reject()}>{t('시안반려','Reject visual')}</button>}</div></>}
+   {(job.state==='ready'||job.state==='accepted')&&<>{!compatible&&<p role="alert">{revisedReady?t('입력이 바뀌었습니다. 새 광고를 생성할 수 있으며 이전 결과와 차감 내역은 유지됩니다.','Details changed. You can generate a new ad; the previous result and charges are preserved.'):t('사진·상품 설정 또는 완성 광고의 문구·규격 표시·연락처가 바뀌었습니다. 원래 정보를 복원하거나 시안을 반려한 뒤 현재 정보로 새로 생성해주세요.','The photo, product settings or finished ad copy, dimension display or contacts changed. Restore the original details, or reject the visual and generate with the current details.')}</p>}{preview&&manualBaseExport(preview.composed)&&<p role="status">{t('치수선 없는 광고입니다. 입력 규격은 보관됩니다.','Ad without added dimension lines. Your measurements are preserved.')}</p>}<div className="generation-review-actions"><button disabled={busy||!compatible||!previewReady} onClick={()=>void accept()}>{job.state==='accepted'?t('저장한 시안 다시 적용','Reapply accepted visual'):t('사용확정','Accept')}</button>{previewReady&&preview&&<PrecisionEditAction getInput={()=>({data:preview.dataUrl,name:project.name})}/>} {job.state==='ready'&&<button disabled={busy} onClick={()=>void reject()}>{t('시안반려','Reject visual')}</button>}</div></>}
    {job.state==='uncertain'&&<p>{t('결과를 확인하지 못했습니다. 기존 결과를 다시 확인해주세요. 중복 생성을 막기 위해 새 요청은 보내지 않습니다.','The result is unconfirmed. Check the existing result again. No new request will be sent to avoid duplicate generation.')}</p>}
   </div>}
   {enlarged&&previewReady&&<ImageReview label={t('시안 확대 검수','Enlarged visual inspection')} onClose={()=>setEnlarged(false)}><img src={preview!.dataUrl} alt={t('광고 전체 확대 검수','Inspect the complete ad')}/></ImageReview>}

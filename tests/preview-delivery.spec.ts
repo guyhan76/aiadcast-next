@@ -85,3 +85,31 @@ test('confirm the complete credit amount before submitting a batch',async({page}
  const names=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('shared-names')??'[]'));expect(names).toHaveLength(2);expect(names[0]).toMatch(/-01\.png$/);expect(names[1]).toMatch(/-03\.png$/);
  expect(writes).toBe(1);
 });
+
+test('open a device image and paint a precision edit on mobile and desktop',async({page})=>{
+ await protectedScreen(page,mockSession('device-editor'));
+ await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
+ await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,selectiveEditProofVersion:1,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:30,reserved:0}},budget:{limitMicros:1000000}}}));
+ const png=await sharp({create:{width:128,height:96,channels:4,background:'#578aac'}}).png().toBuffer();
+ let submissions=0;
+ await page.route('**/api/selective-edits/upload',async r=>{
+  submissions++;
+  const body=r.request().postDataJSON();
+  expect(body.original.width).toBe(128);expect(body.original.height).toBe(96);
+  expect(body.mask.width).toBe(128);expect(body.creditQuote.amount).toBe(10);
+  const raw=await sharp(Buffer.from(body.mask.data.split(',')[1],'base64')).ensureAlpha().raw().toBuffer();
+  const alpha=Array.from(raw).filter((_,i)=>i%4===3);expect(alpha).toContain(0);expect(alpha).toContain(255);
+  await r.fulfill({status:409,json:{error:{code:'GENERATION_ALREADY_RUNNING'}}});
+ });
+ await page.goto('/#projects');
+ await expect(page.getByRole('button',{name:'기기 사진 정밀 편집'})).toBeVisible();
+ await page.getByLabel('편집할 기기 사진').setInputFiles({name:'sky.png',mimeType:'image/png',buffer:png});
+ const dialog=page.getByRole('dialog',{name:'정밀 편집'});
+ await expect(dialog.getByAltText('원본 광고')).toBeVisible();
+ await dialog.getByLabel('수정 영역 칠하기').click({position:{x:20,y:20}});
+ await dialog.getByLabel('수정 요청',{exact:true}).fill('하늘에 구름 추가');
+ const submit=dialog.getByRole('button',{name:'정밀 편집 요청'});
+ await expect(submit).toBeDisabled();
+ await dialog.getByRole('checkbox').check();await submit.click();await expect.poll(()=>submissions).toBe(1);
+ await expect(submit).toBeEnabled();
+});

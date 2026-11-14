@@ -53,3 +53,19 @@ test('large ROI uses normal source ownership and one ledger attempt for concurre
  s.adapter=adapter;const [a,b]=await Promise.all([s.createSelectiveEdit(body),s.createSelectiveEdit({...body,projectId:randomUUID()})]);assert.equal(a.job.id,b.job.id);await s.waitForIdle();const job=s.job(a.job.id);assert.equal(job.state,'ready');assert.equal(calls,1);assert.equal(JSON.stringify(s.job(body.sourceJobId)),before);
  const output=await sharp(Buffer.from(job.artifact.dataUrl.split(',')[1],'base64')).ensureAlpha().raw().toBuffer();assert.deepEqual(output.subarray(0,point),raw.subarray(0,point));assert.deepEqual(output.subarray(point+4),raw.subarray(point+4));assert.notDeepEqual(output.subarray(point,point+4),raw.subarray(point,point+4));
 });
+
+test('uploaded pixels and mask use one reservation and preserve the original size',async t=>{
+ const {s,body,calls}=await fixture(t);
+ const original={...asset},request={original,sourceHash:original.sha256,prompt:'Change the sky',mask:body.mask,requestId:randomUUID(),projectId:randomUUID(),creditQuote:s.creditQuote()};
+ const before=calls();
+ await assert.rejects(s.createUploadedEdit({...request,sourceHash:'f'.repeat(64)}),/INVALID_EDIT_SOURCE/);
+ await assert.rejects(s.createUploadedEdit({...request,mask:await mask(1)}),/EMPTY_EDIT_MASK/);
+ assert.equal(calls(),before);
+ const first=await s.createUploadedEdit(request);await s.waitForIdle();
+ const second=await s.createUploadedEdit(request);
+ assert.equal(second.job.id,first.job.id);assert.equal(calls(),before+1);
+ const job=s.job(first.job.id);
+ assert.equal(job.state,'ready');assert.equal(job.preservation.changedOutsidePixels,0);
+ assert.equal(job.selectiveEdit.sourceJobId,'upload-'+original.sha256);
+ assert.equal(s.accept(job.id,job.artifactId).job.state,'accepted');
+});

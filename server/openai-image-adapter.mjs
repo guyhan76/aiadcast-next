@@ -189,8 +189,8 @@ async function responseJsonLimited(response, maximumBytes = 24_000_000) {
   catch { throw new ProviderFailure('PROVIDER_INVALID_RESPONSE'); }
 }
 export class OpenAIImageAdapter {
-  constructor({ apiKey, fetchImpl = globalThis.fetch, timeoutMs = 180_000 } = {}) {
-    this.selectiveEditReady = false; // Release gate: current model/cost bound is not approved for masked calls.
+  constructor({ apiKey, fetchImpl = globalThis.fetch, timeoutMs = 180_000, enableEdits = false } = {}) {
+    this.selectiveEditReady = enableEdits && Boolean(apiKey);
     this.apiKey = apiKey; this.fetchImpl = fetchImpl; this.timeoutMs = timeoutMs;
   }
   validateSelectiveInput(input){validateSelectiveOriginal({...input,model:IMAGE_MODEL});}

@@ -2,7 +2,7 @@ name: Login APK (Preview)
 
 on:
   push:
-    branches: [delivery/latest-apk-0.2.87]
+    branches: [delivery/latest-apk-0.2.88]
   workflow_dispatch:
 
 permissions:
@@ -62,7 +62,7 @@ jobs:
           ./gradlew --no-daemon testPreviewUnitTest lintPreview assemblePreview \
             -PAIADCAST_SIGNED_PREVIEW=true \
             -PAIADCAST_API_ORIGIN=https://aiadcast-next.onrender.com \
-            -PAIADCAST_BUILD_VERSION_CODE=89 -PAIADCAST_BUILD_VERSION_NAME=0.2.87
+            -PAIADCAST_BUILD_VERSION_CODE=90 -PAIADCAST_BUILD_VERSION_NAME=0.2.88
       - name: Verify packaged version, certificate, alignment and source
         run: |
           set -euo pipefail
@@ -72,21 +72,21 @@ jobs:
           grep -Fx 'Signer #1 certificate SHA-256 digest: 7dc020bc774784d3df553c58c672f4210d232e2543004fd52ac9084943488b4e' "$RUNNER_TEMP/certificate.txt"
           "$build_tools/zipalign" -c -P 16 4 "$apk"
           "$build_tools/aapt" dump badging "$apk" > "$RUNNER_TEMP/package.txt"
-          grep -F "name='com.selluplabs.aiadcast.next.preview' versionCode='89' versionName='0.2.87-preview'" "$RUNNER_TEMP/package.txt"
+          grep -F "name='com.selluplabs.aiadcast.next.preview' versionCode='90' versionName='0.2.88-preview'" "$RUNNER_TEMP/package.txt"
           unzip -p "$apk" assets/native-build.json | jq -e --arg sha "$GITHUB_SHA" '.webBuild.commit == $sha and .webBuild.dirty == false'
           mkdir -p release
-          cp "$apk" release/aiadcast-0.2.87.apk
+          cp "$apk" release/aiadcast-0.2.88.apk
           cd release
-          zip -q -0 aiadcast-0.2.87.zip aiadcast-0.2.87.apk
-          sha256sum aiadcast-0.2.87.{apk,zip} > SHA256SUMS.txt
+          zip -q -0 aiadcast-0.2.88.zip aiadcast-0.2.88.apk
+          sha256sum aiadcast-0.2.88.{apk,zip} > SHA256SUMS.txt
       - name: Publish the verified Preview build
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="preview-0.2.87-code89-${GITHUB_SHA:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          gh release create "$tag" release/aiadcast-0.2.87.apk release/aiadcast-0.2.87.zip release/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-            --title 'aiadcast 0.2.87 Preview (89)' --notes "Android Preview for testing. Verified source: $GITHUB_SHA. Certificate and APK checks passed."
+          tag="preview-0.2.88-code90-${GITHUB_SHA:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          gh release create "$tag" release/aiadcast-0.2.88.apk release/aiadcast-0.2.88.zip release/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title 'aiadcast 0.2.88 Preview (90)' --notes "Android Preview for testing. Verified source: $GITHUB_SHA. Certificate and APK checks passed."
       - name: Remove temporary signing material
         if: always()
         run: rm -f "$RUNNER_TEMP/preview.p12"

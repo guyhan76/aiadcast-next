@@ -1,3 +1,4 @@
+import {PrecisionEditAction} from './PrecisionEditAction';
 import {useEffect,useRef,useState} from 'react';
 import {ArrowUpRight,FolderOpen,Plus,Search} from 'lucide-react';
 import type {Project} from './model';
@@ -20,6 +21,7 @@ export function ProjectLibrary({items,error,onNew,onOpen}:{items:Project[];error
  const filtered=items.filter(p=>hasSavedAcceptedAd(p)||p.presentation==='campaign'&&!!p.productName.trim()).filter(p=>(p.name+' '+p.productName).toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
  return <>
   <div className="projects-heading"><h1>{t('내 프로젝트','My projects')}</h1><button className="primary-action" onClick={onNew}><Plus size={18}/>{t('새 광고','New ad')}</button></div>
+  <PrecisionEditAction label={t('기기 사진 정밀 편집','Edit a device image')}/>
   <label className="project-search"><Search size={20}/><input aria-label={t('프로젝트 검색','Search projects')} placeholder={t('광고 이름 검색','Search ad names')} value={filter} onChange={e=>setFilter(e.target.value)}/></label>
   {error&&<p role="alert">{error}</p>}
   {!filtered.length?error?null:<div className="project-empty"><FolderOpen size={32}/><h2>{filter?t('검색 결과가 없습니다.','No matches.'):t('첫 광고를 만들어보세요.','Create your first ad.')}</h2>{filter&&<button onClick={()=>setFilter('')}>{t('검색 초기화','Clear search')}</button>}</div>:<div className="project-grid">{filtered.map(p=><button key={p.id} className="project-tile" onClick={()=>onOpen(p)}><ProjectPreview project={p}/><div className="project-tile-caption"><strong>{p.name||p.productName||t('이름 없는 광고','Untitled ad')}</strong><ArrowUpRight size={18}/><small>{!hasSavedAcceptedAd(p)&&t('제작 중 · ','Draft · ')}{new Date(p.updatedAt).toLocaleDateString(language==='ko'?'ko-KR':'en-US')}</small></div></button>)}</div>}
