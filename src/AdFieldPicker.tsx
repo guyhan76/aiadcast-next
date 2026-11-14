@@ -43,13 +43,13 @@ export function AdFieldPicker({id, project, chosen, initialKind, onChosen, chang
         </button>)}
     </div>
     {kind && <label className="field">{t('분야','Field')}
-      <select value={fieldId} onChange={event=>{setFieldId(event.target.value);onChosen(false);}}>
+      <select aria-label={t('분야','Field')} value={fieldId} onChange={event=>{setFieldId(event.target.value);onChosen(false);}}>
         <option value="" disabled>{t('분야 선택','Choose a field')}</option>
         {fields.map(entry=><option key={entry.id} value={entry.id}>{t(entry.ko,entry.en)}</option>)}
       </select>
     </label>}
     {field && <label className="field">{t('세부 업종','Industry')}
-      <select value={chosen && saved?.field.id===field.id ? saved.item.id : ''} onChange={event=>{
+      <select aria-label={t('세부 업종','Industry')} value={chosen && saved?.field.id===field.id ? saved.item.id : ''} onChange={event=>{
         const item = field.items.find(entry=>entry.id===event.target.value);
         if(item) selectItem(item);
       }}>
