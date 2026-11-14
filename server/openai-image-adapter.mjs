@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import {artDirectionFor} from '../src/art-direction.ts';
 import {dimensionLabel,dimensionUnit} from '../src/dimension-units.ts';
-import {imageSkillBrief} from '../src/image-skills.ts';
+import {finishedAdSkillBrief} from './automatic-image-skills.mjs';
 
 // Pinned, opt-in development adapter. No model discovery or automatic upgrades.
 export const IMAGE_MODEL = 'gpt-image-2.6-sunburst';
@@ -158,7 +158,7 @@ function basePromptFor(request) {
   const original = request.mode === 'original';
   const notes=typeof request.creativeDirection?.additionalInstructions==='string'?request.creativeDirection.additionalInstructions:'';
   const production=artDirectionFor(request.productProfile?.category??'other',request.output.format,notes);
-  if(completeAdRequest(request))return completeAdPrompt(request,production)+exactAdTextBrief(request)+imageSkillBrief([notes,typeof request.brief==='string'?request.brief:''].join('\n'));
+  if(completeAdRequest(request))return completeAdPrompt(request,production)+exactAdTextBrief(request)+finishedAdSkillBrief(request);
   const zones={top:'Keep the upper 30% quiet for editable headline and description. Place the hero below that zone, large enough to read on mobile.',bottom:'Keep the lower 32% quiet for editable headline and description, and the lowest 14% for optional facts/contact. Place the hero above that zone.',left:'Keep the left 42% quiet for editable headline and description. Place the hero mostly on the right; the lowest 14% stays calm for optional facts/contact.'};
   const base = original
     ? 'Create ONLY an empty premium advertising background for later compositing. Do not draw the advertised product, packaging, person, logo, or existing source photograph. Leave an uncluttered central placement area and ample headline space. The original photograph will be composited separately without modifying its pixels.'
