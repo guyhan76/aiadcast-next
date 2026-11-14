@@ -15,7 +15,8 @@ for(const name of files.filter(name=>/\.(webp|png|jpe?g)$/.test(name))){
  script=script.replaceAll(`/assets/${name}`,data);
  if(script.includes(name))throw Error(`Standalone image was not embedded: ${name}`);
 }
-const html=`<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#191a18"><title>aiadcast Studio · 편집 검증판</title><style>${styles}</style></head><body><div id="root"></div><script type="module">${script}</script></body></html>`;
+const icon = fs.readFileSync('dist/aiadcast-app-icon.png').toString('base64');
+const html=`<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#191a18"><link rel="icon" type="image/png" href="data:image/png;base64,${icon}"><title>aiadcast Studio · 편집 검증판</title><style>${styles}</style></head><body><div id="root"></div><script type="module">${script}</script></body></html>`;
 fs.mkdirSync('release',{recursive:true});fs.writeFileSync('release/aiadcast-studio.html',html);console.log('Standalone HTML: '+(Buffer.byteLength(html)/1048576).toFixed(1)+' MB');
 fs.copyFileSync('docs/preview-guide.txt','release/사용안내.txt');
 for(const name of ['FONT-LICENSE.txt','THIRD-PARTY-NOTICES.txt'])fs.copyFileSync('licenses/'+name,'release/'+name);

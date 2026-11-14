@@ -19,6 +19,7 @@ if (buildVersionCode < 83 || buildVersionCode > 2100000000) {
 def buildVersionName = providers.gradleProperty('AIADCAST_BUILD_VERSION_NAME').getOrElse('0.2.86')
 
 android {
+    sourceSets.main.res.srcDir('generated/launcher-res')
     namespace 'com.selluplabs.aiadcast.next'
     compileSdk 36
     buildToolsVersion '36.0.0'
@@ -94,7 +95,7 @@ dependencies {
 
 tasks.register('verifyWebAssets') {
     doLast {
-        if (!file('src/main/assets/index.html').exists()) {
+        if (!file('src/main/assets/index.html').exists() || !file('generated/launcher-res/mipmap-xxxhdpi/ic_launcher.png').exists()) {
             throw new GradleException('Web assets missing. Run npm run build and node native/prepare-android.mjs from the repository root.')
         }
     }
