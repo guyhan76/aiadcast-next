@@ -23,8 +23,8 @@ export class SupabaseStorage {
  async accountLimit(userId){
   // Storage allowance only: read the current server role, never client claims
   // or a cached session role. This does not change supplier/credit budgets.
-  const user=await this.db.prepare('SELECT role FROM users WHERE id=? AND disabled=0').get(userId);
-  return user?.role==='admin'?300000000:100000000;
+  const user=await this.db.prepare('SELECT role,storage_plan FROM users WHERE id=? AND disabled=0').get(userId);
+  return user?.role==='admin'||user?.storage_plan==='standard'?600000000:100000000;
  }
  async assertGenerationCapacity(userId,originals,outputBytes){
   let needed=outputBytes;
@@ -38,6 +38,9 @@ export class SupabaseStorage {
   const total=await this.db.prepare('SELECT COALESCE(SUM(bytes),0) n FROM storage_objects').get();
   const user=await this.db.prepare('SELECT COALESCE(SUM(bytes),0) n FROM storage_objects WHERE user_id=?').get(userId);
   if(total.n+needed>900000000||user.n+needed>await this.accountLimit(userId))fail('STORAGE_CAPACITY_UNAVAILABLE',413);
+ }
+ async renewAsset(userId,hash){
+  await this.db.prepare("UPDATE storage_objects SET expires_at=GREATEST(expires_at,now()+interval '24 hours') WHERE user_id=? AND split_part(split_part(path,'/',2),'.',1)=?").run(userId,hash);
  }
  async verifyAsset(userId,asset){
   if(!Buffer.isBuffer(asset.bytes)||sha(asset.bytes)!==asset.sha256)fail('STORAGE_CONTENT_MISMATCH');
@@ -66,7 +69,7 @@ export class SupabaseStorage {
    const total=await this.db.prepare('SELECT COALESCE(SUM(bytes),0) n FROM storage_objects').get();
    const user=await this.db.prepare('SELECT COALESCE(SUM(bytes),0) n FROM storage_objects WHERE user_id=?').get(userId);
    if(total.n+bytes.length>900000000||user.n+bytes.length>await this.accountLimit(userId))fail('STORAGE_LIMIT',413);
-   await this.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(path,userId,bytes.length);
+   await this.db.prepare('INSERT INTO storage_objects(path,user_id,bytes) VALUES(?,?,?)').run(path,userId,bytes.length);
   });
   const res=await this.call('/storage/v1/object/'+this.bucket+'/'+path,{method:'POST',body:bytes,mime,raw:true,upsert:!immutable});
   if(!res.ok){
@@ -78,7 +81,7 @@ export class SupabaseStorage {
  }
  async get(userId,path){
   if(!path.startsWith(userId+'/'))fail('STORAGE_OWNER_MISMATCH',403);
-  const record=await this.db.prepare('SELECT bytes FROM storage_objects WHERE path=? AND user_id=?').get(path,userId);if(!record)fail('STORAGE_NOT_FOUND',404);
+  const record=await this.db.prepare('SELECT bytes FROM storage_objects WHERE path=? AND user_id=? AND expires_at>now()').get(path,userId);if(!record)fail('STORAGE_NOT_FOUND',404);
   if(this.cache.has(path))return Buffer.from(this.cache.get(path));
   const res=await this.call('/storage/v1/object/authenticated/'+this.bucket+'/'+path);if(!res.ok)fail('SUPABASE_DOWNLOAD_FAILED');
   if(Number(res.headers.get('content-length')??0)>40000000)fail('STORAGE_LIMIT',413);
@@ -90,7 +93,7 @@ export class SupabaseStorage {
  }
  async remove(userId,path){
   if(!path.startsWith(userId+'/'))fail('STORAGE_OWNER_MISMATCH',403);
-  const res=await this.call('/storage/v1/object/'+this.bucket,{method:'DELETE',body:{prefixes:[path]}});if(!res.ok)return;
+  const res=await this.call('/storage/v1/object/'+this.bucket,{method:'DELETE',body:{prefixes:[path]}});if(!res.ok)fail('SUPABASE_DELETE_FAILED');
   await this.db.prepare('DELETE FROM storage_objects WHERE path=? AND user_id=?').run(path,userId);
   if(this.cache.has(path)){this.cacheBytes-=this.cache.get(path).length;this.cache.delete(path);}
  }

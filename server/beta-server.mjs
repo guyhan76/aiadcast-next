@@ -39,6 +39,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
  const send=(res,status,value,cors)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer',...(cors?{'Access-Control-Allow-Origin':cors,'Vary':'Origin'}:{})});res.end(JSON.stringify(value));};
  const read=async(req,max)=>{if(!/^application\/json(?:;.*)?$/i.test(req.headers['content-type']??''))throw new ApiFailure('JSON_REQUIRED',415);if(Number(req.headers['content-length']??0)>max)throw new ApiFailure('REQUEST_TOO_LARGE',413);if(bodies>=2)throw new ApiFailure('SERVER_BUSY',429);bodies++;try{let size=0;const parts=[];for await(const part of req){size+=part.length;if(size>max)throw new ApiFailure('REQUEST_TOO_LARGE',413);parts.push(part);}try{return JSON.parse(Buffer.concat(parts).toString('utf8'));}catch{throw new ApiFailure('INVALID_JSON',400);}}finally{bodies--;}};
  const handle=async(req,res)=>{
+  let releaseLease;
   const cors=allowed.has(req.headers.origin)?req.headers.origin:null;
   try {
    const url=new URL(req.url,origin);
@@ -76,6 +77,13 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
    if(req.method==='POST'&&['/api/checkout/launch','/api/checkout/confirm'].includes(url.pathname)){const b=await read(req,2048);send(res,200,await (url.pathname.endsWith('/launch')?checkout.launch(b):checkout.confirm(b)),cors);return;}
    submissionStage('authentication');
    const user=readinessMeasure('authentication',()=>store.authenticate(req.headers.authorization));
+   if(store.membership){
+    releaseLease=await store.membership.enter(user);
+    if(url.pathname.startsWith('/api/membership')){
+     const body=req.method==='POST'?await read(req,2048):undefined;
+     send(res,200,await store.membership.route(user,req.method,url.pathname,body),cors);return;
+    }
+   }
    if(req.method==='GET'&&url.pathname==='/api/auth/session'){send(res,200,{user:{id:user.id,label:user.label,role:user.role}},cors);return;}
    if(/^\/api\/(?:generations\/[A-Za-z0-9_-]{1,100}\/recommendations|recommendations\/[A-Za-z0-9_-]{1,100})$/.test(url.pathname)){
     if(!recommendations){send(res,503,{error:{code:'RECOMMENDATIONS_DISABLED'}},cors);return;}
@@ -136,11 +144,11 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
    if(req.method==='POST'&&['/api/generations','/api/assistant'].includes(url.pathname)){submissionStage('body_read');const body=await read(req,14_100_000);if(url.pathname==='/api/generations'&&body?.request?.output?.exactText!==undefined)throw new ApiFailure('PAID_TRIAL_NOT_APPROVED',403);submissionStage('service_initialization');const s=service(user);submissionStage('generation_admission');const result=await (url.pathname==='/api/generations'?s.create(body):s.assist(body));submissionStage('response');send(res,url.pathname==='/api/generations'?202:200,result,cors);return;}
    if(req.method==='POST'&&job?.[2]){const body=await read(req,8192),s=service(user);send(res,200,job[2]==='report'?s.reportDefect(job[1],body):job[2]==='accept'?s.accept(job[1],body.artifactId,body.dimensionReview):s.reject(job[1]),cors);return;}
    throw new ApiFailure('NOT_FOUND',404);
-  }catch(e){submissionError(e instanceof ApiFailure?e.code:'INTERNAL_ERROR');send(res,e instanceof ApiFailure?e.status:500,{error:{code:e instanceof ApiFailure?e.code:'INTERNAL_ERROR'}},cors);}
+  }catch(e){submissionError(e instanceof ApiFailure?e.code:'INTERNAL_ERROR');send(res,e instanceof ApiFailure?e.status:500,{error:{code:e instanceof ApiFailure?e.code:'INTERNAL_ERROR'}},cors);}finally{releaseLease?.();}
  };
  const server=createServer((req,res)=>observeSubmission(req,res,()=>observeReadiness(req,res,()=>handle(req,res))));
  server.requestTimeout=30_000;server.headersTimeout=10_000;server.maxConnections=100;
- return {server,close:async()=>{await new Promise(resolve=>server.close(resolve));await Promise.all([...services.values()].map(s=>s.close()));services.clear();await dimensionAnalysis.close();await singleBox.close();}};
+ return {server,forgetService:id=>services.delete(id),close:async()=>{await new Promise(resolve=>server.close(resolve));await Promise.all([...services.values()].map(s=>s.close()));services.clear();await dimensionAnalysis.close();await singleBox.close();}};
 }
 export function betaConfig(env=process.env){
  const publicUrl=publicOrigin(env.AIADCAST_BETA_PUBLIC_ORIGIN??env.RENDER_EXTERNAL_URL??''),directory=resolve(env.AIADCAST_BETA_DATA_DIR??'release/beta-runtime');

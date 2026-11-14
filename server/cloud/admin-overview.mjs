@@ -70,7 +70,7 @@ export async function readAdminOverview({pool,guard=()=>{},actor,admin,enabled,p
    const cumulative=cumulativeBudgetView(s?.supplier_policy,totals,{ownerId:u.id,isAdmin:u.role==='admin'&&!u.disabled,now:timestamp});
    const reason=!enabled?'GENERATION_DISABLED':!providerConfigured?'PROVIDER_NOT_CONFIGURED':(cumulative?.availableMicros??(limit-spent-held))<500000?'BUDGET_NOT_AVAILABLE':u.role!=='admin'&&wallet.available<1&&wallet.credits.available<10?'NO_TEST_CREDITS':null;
    for(const j of s?.jobs??[])jobs.push({id:j.id,userId:u.id,userLabel:u.label,state:j.error_code==='PROVIDER_UNCERTAIN'?'uncertain':j.error_code?'failed':j.status==='released'?(j.reason==='customer_rejected'?'rejected':'expired'):j.status==='reserved'?'running':j.status,createdAt:new Date(Number(j.created_at)).toISOString(),mode:j.mode,model:j.model??IMAGE_MODEL,outputFormat:j.format,errorCode:j.error_code,costMicros:j.cost==null?null:Number(j.cost)});
-   return {id:u.id,label:u.label,email:u.email,role:u.role,disabled:Boolean(u.disabled),projects:Number(u.projects),wallet,budget:{limitMicros:limit,spentMicros:spent,heldMicros:held},...(cumulative?{supplierBudget:cumulative}:{}),generation:{enabled:reason===null,reason},ledgerInitialized:!!s};
+   return {id:u.id,joinedAt:u.joined_at??null,label:u.label,email:u.email,role:u.role,disabled:Boolean(u.disabled),projects:Number(u.projects),wallet,budget:{limitMicros:limit,spentMicros:spent,heldMicros:held},...(cumulative?{supplierBudget:cumulative}:{}),generation:{enabled:reason===null,reason},ledgerInitialized:!!s};
   });
   const allocated=users.reduce((n,u)=>n+u.budget.limitMicros,0),baselineCap=approval?.total_micros??admin.store.cap;
   const owner=members.find(u=>u.email===admin.ownerEmail);

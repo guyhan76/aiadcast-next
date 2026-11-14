@@ -8,7 +8,7 @@ import {cloudSchema} from '../server/cloud/postgres.mjs';
 const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222';
 test('bounded SQL cursor pages across owners, old history and equal timestamps; read only, filters preserve states/cost',async()=>{
  const pool=await pgPool();try{
- await pool.engine.exec('CREATE SCHEMA aiadcast_accounts;CREATE TABLE aiadcast_accounts.users(id text primary key,label text);');
+ await pool.engine.exec('CREATE SCHEMA aiadcast_accounts;CREATE TABLE aiadcast_accounts.users(id text primary key,label text);CREATE TABLE aiadcast_accounts.deletion_requests(user_id text primary key);');
  for(const [id,label] of [[a,'Admin'],[b,'Member']]){
   await pool.engine.query('INSERT INTO aiadcast_accounts.users VALUES($1,$2)',[id,label]);const s=cloudSchema(id);
   await pool.engine.exec(`CREATE SCHEMA "${s}";CREATE TABLE "${s}".generation_records(id text primary key,created_at bigint,error_code text,request_json text,metadata_json text);CREATE TABLE "${s}".jobs(id text primary key,status text,reason text);`);

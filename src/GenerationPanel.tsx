@@ -1,3 +1,4 @@
+import {storeAcceptedProject} from './membership-client';
 import {PrecisionEditAction} from './PrecisionEditAction';
 import {preflightPlannedAdText} from './planned-ad-text-render';
 import {exactTextSnapshot} from './exact-ad-text';
@@ -313,13 +314,16 @@ export function GenerationPanel({project,change,simple=false,onEditInputs,onCrea
    const reviewedComposed=dimensionReview?{...reviewedAd.composed,generated:{...reviewedAd.composed.generated!,dimensionReview}}:reviewedAd.composed;
    const composed={...reviewedComposed,generated:{...reviewedComposed.generated!,acceptedAt:new Date().toISOString()}};
    // Keep the confirmed result durable before it can outlive the pending request.
-   await saveProject({...composed,updatedAt:new Date().toISOString()});
+   const accepted={...composed,updatedAt:new Date().toISOString()};
+   await saveProject(accepted);
+   let cloudFailed=false;
+   try{await storeAcceptedProject(accepted);}catch{cloudFailed=true;}
    // Retain the in-memory review for reapply, but never recover a completed request as pending.
    try{localStorage.removeItem(storageKey);}catch{/* A legacy marker is reconciled against the saved result on restore. */}
    if(!alive.current||reviewedAd.source!==latest.current) return;
    const applied={...reviewedAd,composed,source:composed};previewRef.current=applied;setPreview(applied);
    change(p=>p!==reviewedAd.source?p:composed);
-   setJob(result.job);setStatus(s=>updatedWallet(s,result.wallet));setNotice(manualBaseExport(composed)?t('치수선 없는 광고를 적용했습니다. 입력 규격과 기존 위치 정보는 보관됩니다.','Ad applied without added dimension lines. Measurements and existing positions are preserved.'):t('확인한 광고를 적용했습니다. PNG로 저장할 수 있습니다.','Your reviewed ad is applied and ready to save as PNG.'));
+   setJob(result.job);setStatus(s=>updatedWallet(s,result.wallet));setNotice(cloudFailed?t('기기에 보관했습니다. 서버 저장에 실패했습니다. 보관 용량을 확인하거나 내 프로젝트에 저장을 다시 눌러주세요.','Saved on this device. Server save failed. Check storage or save to My projects again.'):manualBaseExport(composed)?t('치수선 없는 광고를 적용했습니다. 입력 규격과 기존 위치 정보는 보관됩니다.','Ad applied without added dimension lines. Measurements and existing positions are preserved.'):t('확인한 광고를 적용했습니다. PNG로 저장할 수 있습니다.','Your reviewed ad is applied and ready to save as PNG.'));
   }catch(e){failure(e);}finally{decisionPending.current=false;if(alive.current)setBusy(false);}
  }
  async function reject(){
