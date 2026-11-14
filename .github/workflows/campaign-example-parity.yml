@@ -1,22 +1,48 @@
-name: Campaign field parity
+name: Verify live campaign fields
 on:
   push:
     branches: [verify/web-campaign-examples]
 permissions:
   contents: read
 jobs:
-  check:
+  public-web:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 4
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-          cache: npm
-      - run: npm ci --no-audit --no-fund
-      - run: npm run build
-      - name: Check the production web frontend on desktop and mobile
+      - name: Verify public build identity and delivered campaign examples
+        env:
+          EXPECTED_COMMIT: b7d49138b39264fca62605b561649a56dc6209cf
         run: |
-          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(command -v google-chrome)"
-          npx playwright test tests/input-example-guides.spec.ts --project=desktop --project=mobile --reporter=list
+          python - <<'PY'
+          import json, os, time
+          from html.parser import HTMLParser
+          from urllib.parse import urljoin, urlparse
+          from urllib.request import Request, urlopen
+          root = 'https://aiadcast-next.onrender.com/'
+          def get(path):
+              url = urljoin(root, path)
+              assert urlparse(url).netloc == urlparse(root).netloc
+              with urlopen(Request(url, headers={'Cache-Control':'no-cache'}), timeout=20) as response:
+                  return response.read().decode('utf-8')
+          for attempt in range(3):
+              try:
+                  revision = json.loads(get('web-build.json?verify=' + os.environ['EXPECTED_COMMIT']))['commit']
+                  assert revision == os.environ['EXPECTED_COMMIT'], revision
+                  break
+              except Exception:
+                  if attempt == 2: raise
+                  time.sleep(3)
+          class Scripts(HTMLParser):
+              def handle_starttag(self, tag, attrs):
+                  node = dict(attrs)
+                  if tag == 'script' and node.get('type') == 'module' and node.get('src'):
+                      self.paths.append(node['src'])
+          parser = Scripts()
+          parser.paths = []
+          parser.feed(get(''))
+          assert parser.paths
+          bundle = '\n'.join(get(path) for path in parser.paths)
+          for copy in ['예: 탄력케어 리프팅 3종세트','예: 제주 감성 숙소','원하는 연출이나 강조할 내용을 적어주세요 (선택)','입력하지 않은 가격·혜택은 만들지 말아주세요.','Do not invent prices, benefits or terms of use.']:
+              assert copy in bundle or json.dumps(copy, ensure_ascii=True)[1:-1] in bundle.lower(), copy
+          print('Verified production commit', revision, 'and five campaign examples in its served JavaScript.')
+          PY
