@@ -13,7 +13,7 @@ export const isServiceCategory = (category:ProductCategory) => !isPhysicalCatego
 export function withCategory(p:Project,category:ProductCategory):Project {
   if(p.productProfile.category===category)return p;
   const noSpecsByDefault=isServiceCategory(category)||category==='automotive';
-  return {...p,...(noSpecsByDefault&&p.generation.dimensionBased?{generation:{...p.generation,dimensionBased:false,planarSourceHash:undefined}}:{}),productProfile:{...p.productProfile,industryDetail:undefined,category,specType:noSpecsByDefault?'none':p.productProfile.specType},dimensions:noSpecsByDefault?{...p.dimensions,visible:false,lines:false}:p.dimensions};
+  return {...p,...(noSpecsByDefault&&p.generation.dimensionBased?{generation:{...p.generation,dimensionBased:false,planarSourceHash:undefined}}:{}),productProfile:{material:p.productProfile.material,category,specType:noSpecsByDefault?'none':p.productProfile.specType},dimensions:noSpecsByDefault?{...p.dimensions,visible:false,lines:false}:p.dimensions};
 }
 export function parseProfile(value:unknown):ProductProfile {
   if(value===undefined)return defaultProfile(); // Earlier project files remain compatible.
