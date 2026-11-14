@@ -10,43 +10,52 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch the customer APK and compare the web release on the public endpoint
+      - name: Compare the released APK with the public web actually served to Android
         env:
           GH_TOKEN: ${{ github.token }}
-          EXPECTED: 2f06b8135c79760e1c297331dfa8893402335aeb
+          TARGET: 283f254ce3969f581dbe1e8d85fbe275364e1fa1
+          RELEASE_TAG: preview-0.2.95-code97-283f254ce396-43651678331-1
         run: |
-          set -eu
-          for i in $(seq 1 90); do
-            tag="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=5" --jq '.[] | select(.target_commitish == env.EXPECTED) | .tag_name' | head -1)"
-            if [ -n "$tag" ]; then break; fi
-            sleep 5
-          done
-          test -n "$tag"
-          gh release download "$tag" -p 'aiadcast-0.2.90.apk'
+          set -euo pipefail
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" -p 'aiadcast-0.2.95.apk' -p 'SHA256SUMS.txt'
+          grep 'aiadcast-0.2.95.apk$' SHA256SUMS.txt | sha256sum -c -
           python - <<'PY'
-          import os, json, hashlib, urllib.request, zipfile
+          import datetime, hashlib, json, os, urllib.request, zipfile
           from urllib.parse import quote
           root = 'https://aiadcast-next.onrender.com/'
-          def read(name):
-              with urllib.request.urlopen(root + quote(name) + '?build=' + os.environ['EXPECTED'],timeout=60) as reply:
+          def read(path):
+              request = urllib.request.Request(root + quote(path) + '?verify=' + os.environ['GITHUB_RUN_ID'],headers={'Cache-Control':'no-cache'})
+              with urllib.request.urlopen(request,timeout=50) as reply:
                   return reply.read()
-          m = json.loads(read('web-release.json'))
-          assert m['schema']==1 and m['commit']==os.environ['EXPECTED']
-          build=json.loads(read('web-build.json'))
-          assert build['commit']==m['commit']
-          with zipfile.ZipFile('aiadcast-0.2.90.apk') as apk:
-              packaged=json.loads(apk.read('assets/web-release.json'))
-              assert packaged['commit']==m['commit']
-          for name in ['index.html','web-build.json','aiadcast-app-icon.png']+[p for p in m['files'] if p.endswith(('.js','.css'))]:
-              assert hashlib.sha256(read(name)).hexdigest()==m['files'][name]['sha256'],name
-          print('Verified deployed HTML, JavaScript, CSS, icon and web metadata',m['commit'])
+          def projects_layout(manifest, get):
+              found=set()
+              for path, spec in manifest['files'].items():
+                  if not path.endswith('.js'):
+                      continue
+                  data=get(path)
+                  assert hashlib.sha256(data).hexdigest()==spec['sha256'],path
+                  for marker in ('library-views','project-tools'):
+                      if marker.encode() in data: found.add(marker)
+              assert len(found) in (0,2),found
+              return 'clean' if found else 'previous'
+          with zipfile.ZipFile('aiadcast-0.2.95.apk') as apk:
+              embedded=json.loads(apk.read('assets/web-release.json'))
+              assert embedded['commit']==os.environ['TARGET']
+              assert projects_layout(embedded,lambda p: apk.read('assets/'+p))=='clean'
+          served=json.loads(read('web-release.json'))
+          assert served['schema']==1 and served['commit']==json.loads(read('web-build.json'))['commit']
+          layout=projects_layout(served,read)
+          print('Released APK:',embedded['commit'],'projects=clean')
+          print('Public Android UI:',served['commit'],'projects='+layout)
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              f.write('EXPECTED_LAYOUT='+layout+'\n')
           PY
       - name: Enable KVM for the Android emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Launch the published APK on Android and assert its online sign-in page
+      - name: Install the published APK and identify the actual online sign-in layout
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
           api-level: 34
