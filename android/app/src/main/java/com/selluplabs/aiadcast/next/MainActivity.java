@@ -62,6 +62,10 @@ public final class MainActivity extends ComponentActivity {
     private ExportJournal.Entry activeExport;
     private AlertDialog exportDialog;
     private DeferredSave deferredSave;
+    private volatile WebRelease publishedWeb;
+    private boolean assetErrorShown;
+    private final ExecutorService webUpdates = Executors.newSingleThreadExecutor();
+    private android.app.ProgressDialog webLoading;
     private String bridgeScript;
     private String bridgeSource;
     private volatile String apiOrigin;
@@ -91,6 +95,7 @@ public final class MainActivity extends ComponentActivity {
         setContentView(frame);
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
         WebSettings settings = webView.getSettings();
+        if (WebRelease.ORIGIN.equals(BuildConfig.API_ORIGIN)) settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(false);
@@ -137,6 +142,9 @@ public final class MainActivity extends ComponentActivity {
                             }
                         } catch (Exception ignored) { /* Export validation handles other messages. */ }
                     }
+                    if(data!=null&&data.startsWith("{\"type\":\"batch-export\",")&&data.length()<=(ExportPolicy.MAX_BYTES*4/3)+4096){
+                        try{receiveBatch(new JSONObject(data));}catch(Exception invalid){toast(words("이미지 내보내기 오류","Image export failed"));}return;
+                    }
                     receiveExport(data);
                 });
             bridgeReady = true;
@@ -149,6 +157,19 @@ public final class MainActivity extends ComponentActivity {
             @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 Uri url = request.getUrl();
                 if (sameOrigin(url, APP_ORIGIN)) {
+                    WebRelease release = publishedWeb;
+                    if (release != null) {
+                        String path = url.getEncodedPath();
+                        if (path == null || !path.startsWith("/") || !"GET".equals(request.getMethod())) return blocked(404, "Not found");
+                        // Native version metadata belongs to the host APK, never to a remote page.
+                        if (!"/native-build.json".equals(path)) {
+                            try { return release.response(path.equals("/") ? "index.html" : path.substring(1)); }
+                            catch (Exception unavailable) {
+                                runOnUiThread(() -> showAssetError());
+                                return blocked(503, "Web build unavailable");
+                            }
+                        }
+                    }
                     WebResourceResponse local = assets.shouldInterceptRequest(url);
                     return local != null ? local : blocked(404, "Not found");
                 }
@@ -217,7 +238,49 @@ public final class MainActivity extends ComponentActivity {
             @Override public void handleOnBackPressed() { handleBack(); }
         });
         cleanOldExports();
+        openCurrentWeb();
+    }
+
+    private void openCurrentWeb() {
+        assetErrorShown = false;
+        if (!WebRelease.ORIGIN.equals(BuildConfig.API_ORIGIN)) { openEditor(); return; }
+        if (webLoading != null) webLoading.dismiss();
+        webLoading = new android.app.ProgressDialog(this);
+        webLoading.setMessage(words("최신 화면을 불러오는 중입니다.", "Opening the current version."));
+        webLoading.setCancelable(false);
+        webLoading.show();
+        webUpdates.execute(() -> {
+            try {
+                WebRelease release = WebRelease.current(getApplicationContext());
+                runOnUiThread(() -> {
+                    if (isDestroyed() || isFinishing()) return;
+                    webLoading.dismiss();
+                    publishedWeb = release;
+                    openEditor();
+                });
+            } catch (Exception unavailable) {
+                runOnUiThread(() -> {
+                    if (isDestroyed() || isFinishing()) return;
+                    webLoading.dismiss();
+                    showAssetError();
+                });
+            }
+        });
+    }
+
+    private void openEditor() {
         webView.loadUrl(APP_ORIGIN + "/index.html" + (checkoutReturn(getIntent()) ? "#checkout-return" : ""));
+    }
+
+    private void showAssetError() {
+        if (assetErrorShown || isDestroyed() || isFinishing()) return;
+        assetErrorShown = true;
+        new AlertDialog.Builder(this)
+            .setMessage(words("최신 화면에 연결할 수 없습니다. 다시 시도하거나 이 기기에 설치된 버전을 여세요.",
+                "The current version is unavailable. Retry or open the version installed on this device."))
+            .setPositiveButton(words("다시 시도", "Retry"), (d,w) -> openCurrentWeb())
+            .setNegativeButton(words("설치된 버전 열기", "Open installed version"), (d,w) -> { publishedWeb = null; openEditor(); })
+            .setOnCancelListener(d -> assetErrorShown = false).show();
     }
 
     private boolean checkoutReturn(Intent intent) {
@@ -485,7 +548,95 @@ public final class MainActivity extends ComponentActivity {
         int count;
         while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
     }
+    private String batchId, batchOwner, batchMode;
+    private int batchCount;
+    private final List<File> batchFiles = new ArrayList<>();
+    private File batchFolder;
+
+    // The bridge streams one PNG at a time; even ten full-size images need only one decoded buffer.
+    private void receiveBatch(JSONObject req) {
+        final String id=req.optString("id"), owner=req.optString("owner");
+        if (!id.matches("[0-9a-fA-F-]{36}") || !owner.equals(exportOwner)) return;
+        io.execute(() -> {
+            try {
+                if (!owner.equals(exportOwner) || isDestroyed()) return;
+                String op=req.getString("op");
+                if ("begin".equals(op)) {
+                    int count=req.getInt("count");String mode=req.getString("mode");
+                    if (count<1 || count>10 || !("save".equals(mode)||"share".equals(mode))) throw new java.io.IOException();
+                    // The web producer serializes actions. A new begin also recovers an abandoned run.
+                    clearBatch(true);batchId=id;batchOwner=owner;batchMode=mode;batchCount=count;
+                    batchFolder=new File(new File(getCacheDir(),"image-batches"),UUID.randomUUID().toString());
+                    if(!batchFolder.mkdirs())throw new java.io.IOException();
+                } else {
+                    if(!id.equals(batchId)||!owner.equals(batchOwner))throw new java.io.IOException();
+                    if("file".equals(op)){
+                        if(req.getInt("index")!=batchFiles.size()||batchFiles.size()>=batchCount)throw new java.io.IOException();
+                        String name=req.getString("name");if(!name.matches("aiadcast-[0-9a-f]{8}-[0-9]{2}\\.png"))throw new java.io.IOException();
+                        byte[] bytes=Base64.decode(req.getString("base64"),Base64.DEFAULT);
+                        if(!ExportPolicy.validContent(bytes,"image/png"))throw new java.io.IOException();
+                        File f=new File(batchFolder,name);if(!f.createNewFile())throw new java.io.IOException();
+                        try(OutputStream out=new FileOutputStream(f)){out.write(bytes);}batchFiles.add(f);
+                    }else if("finish".equals(op)){
+                        if(batchFiles.size()!=batchCount)throw new java.io.IOException();
+                        if("save".equals(batchMode)){saveBatch(owner);clearBatch(true);}
+                        else{
+                            ArrayList<Uri> uris=new ArrayList<>();
+                            for(File file:batchFiles)uris.add(FileProvider.getUriForFile(this,getPackageName()+".exports",file));
+                            clearBatch(false);
+                            runOnUiThread(()->{
+                                if(!owner.equals(exportOwner)||isDestroyed())return;
+                                try{
+                                    Intent intent=new Intent(uris.size()>1?Intent.ACTION_SEND_MULTIPLE:Intent.ACTION_SEND).setType("image/png");
+                                    if(uris.size()>1)intent.putParcelableArrayListExtra(Intent.EXTRA_STREAM,uris);else intent.putExtra(Intent.EXTRA_STREAM,uris.get(0));
+                                    ClipData clip=ClipData.newRawUri("aiadcast",uris.get(0));
+                                    for(int i=1;i<uris.size();i++)clip.addItem(new ClipData.Item(uris.get(i)));
+                                    intent.setClipData(clip);intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                    startActivity(Intent.createChooser(intent,words("공유할 앱 선택","Share with")));batchReply(id,owner,true);
+                                }catch(Exception e){batchReply(id,owner,false);}
+                            });return;
+                        }
+                    }else if("cancel".equals(op))clearBatch(true);else throw new java.io.IOException();
+                }
+                batchReply(id,owner,true);
+            }catch(Exception e){if(id.equals(batchId))clearBatch(true);batchReply(id,owner,false);}
+        });
+    }
+    private void batchReply(String id,String owner,boolean ok) {
+        runOnUiThread(()->{if(owner.equals(exportOwner)&&!isDestroyed())webView.evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('aiadcast-batch-export',{detail:{id:"+JSONObject.quote(id)+",ok:"+ok+"}}))",null);});
+    }
+    private void saveBatch(String owner) throws java.io.IOException {
+        ArrayList<Uri> pending=new ArrayList<>();
+        try{
+            for(File file:batchFiles){
+                if(!owner.equals(exportOwner)||isDestroyed())throw new java.io.IOException();
+                android.content.ContentValues row=new android.content.ContentValues();
+                row.put(MediaStore.MediaColumns.DISPLAY_NAME,file.getName());row.put(MediaStore.MediaColumns.MIME_TYPE,"image/png");
+                row.put(MediaStore.MediaColumns.RELATIVE_PATH,android.os.Environment.DIRECTORY_PICTURES+"/aiadcast");
+                row.put(MediaStore.MediaColumns.IS_PENDING,1);
+                Uri uri=getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,row);
+                if(uri==null)throw new java.io.IOException();pending.add(uri);
+                try(InputStream in=new FileInputStream(file);OutputStream out=getContentResolver().openOutputStream(uri)){
+                    if(out==null)throw new java.io.IOException();copyStream(in,out);
+                }
+            }
+            if(!owner.equals(exportOwner)||isDestroyed())throw new java.io.IOException();
+            android.content.ContentValues done=new android.content.ContentValues();done.put(MediaStore.MediaColumns.IS_PENDING,0);
+            for(Uri uri:pending)if(getContentResolver().update(uri,done,null,null)!=1)throw new java.io.IOException();
+        }catch(Exception e){for(Uri uri:pending)getContentResolver().delete(uri,null,null);throw new java.io.IOException(e);}
+    }
+    private void clearBatch(boolean remove) {
+        if(remove&&batchFolder!=null)removeBatchFolder(batchFolder);
+        batchFiles.clear();batchFolder=null;batchId=null;batchOwner=null;
+    }
+    private void removeBatchFolder(File folder){
+        File[] files=folder.listFiles();if(files!=null)for(File f:files)if(f.isFile())f.delete();
+        folder.delete();
+    }
     private void cleanOldExports() {
+        io.execute(()->{File[] dirs=new File(getCacheDir(),"image-batches").listFiles();
+            if(dirs!=null)for(File d:dirs)if(d.isDirectory()&&System.currentTimeMillis()-d.lastModified()>86400000L)removeBatchFolder(d);});
         io.execute(()->{try{journal().clean(System.currentTimeMillis());}catch(Exception ignored){}});
     }
     private void emit(String status, String message) {
@@ -503,6 +654,7 @@ public final class MainActivity extends ComponentActivity {
     @Override protected void onDestroy() {
         if (filePicker != null) { filePicker.onReceiveValue(null); filePicker = null; }
         if(exportDialog!=null){exportDialog.dismiss();exportDialog=null;}
-        webView.destroy(); io.shutdown(); super.onDestroy();
+        if (webLoading != null) webLoading.dismiss();
+        webUpdates.shutdownNow(); webView.destroy(); io.shutdown(); super.onDestroy();
     }
 }

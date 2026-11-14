@@ -1,4 +1,5 @@
 import {validBatch,type AdBatch} from './batch-price.ts';
+import {parseResultSet,type ResultSet,imageCounts} from './result-set.ts';
 import {parseTextEdit,type TextEdit} from './text-layers.ts';
 import {aiDimensionReviewError} from './ai-dimension-display.ts';
 import {isTextExample,textExampleGeometryError} from './generation-input.ts';
@@ -26,6 +27,9 @@ import type {GeneratedAsset} from './generated.ts';
 import {boxProjectionError,parseBoxProjection} from './box-projection.ts';
 import type {BoxProjection} from './box-projection.ts';
 import {maximumReferenceBytes,maximumReferencePhotos,referenceBytes} from './reference-limits.ts';
+import {parsePrecision} from './precision.ts';
+import type {PrecisionSettings} from './precision.ts';
+
 export type Locale = 'ko' | 'en';
 export type Axis = 'width' | 'depth' | 'height';
 export type Point = {x:number;y:number};
@@ -33,20 +37,24 @@ export type Asset = {name:string;data:string;width:number;height:number;sha256:s
 export type Copy = {title:string;description:string;company:string;contact:string;website:string;email?:string};
 export type FooterField = 'company'|'contact'|'email'|'website';
 export type Project = {
- adBatch?:AdBatch;requestedImageCount?:number;
+ adBatch?:AdBatch;
+ requestedImageCount?:number;resultSet?:ResultSet;
  exactTextVersion?:1|2;textEdit?:TextEdit;version:1;id:string;name:string;updatedAt:string;locale:Locale;format:ImageFormat;
  product:Asset|null;references?:Asset[];referenceRoles?:Record<string,PhotoRole>;footer?:Record<FooterField,boolean>;presentation?:'campaign';productName:string;productProfile:ProductProfile;generation:GenerationSettings;scale:number;
  background:{color:string;image:Asset|null};ink:'dark'|'light';
- dimensionControl?:DimensionControl;dimensionAnnotation?:DimensionAnnotation;publishing?:Publishing;campaign?:Campaign;referenceCheck?:ReferenceCheck;conversation?:Conversation;generated?:GeneratedAsset;boxProjection?:BoxProjection;
+ dimensionControl?:DimensionControl;dimensionAnnotation?:DimensionAnnotation;publishing?:Publishing;campaign?:Campaign;referenceCheck?:ReferenceCheck;conversation?:Conversation;generated?:GeneratedAsset;boxProjection?:BoxProjection;precision?:PrecisionSettings;
  dimensions:{displayUnit?:DimensionUnit;width:string;depth:string;height:string;visible:boolean;lines:boolean;anchors:Record<Axis,[Point,Point]>};
  proportionViews?:{confirmed:boolean;views:Record<string,PhotoView>;resultView?:PhotoView};
  copy:Record<Locale,Copy>;
 };
+
 export function newProject():Project {
  return {version:1,id:crypto.randomUUID(),name:'새 프로젝트',updatedAt:new Date().toISOString(),locale:'ko',format:'9:16',product:null,productName:'',productProfile:defaultProfile(),generation:defaultGeneration(),scale:1,background:{color:'#f4f0e8',image:null},ink:'dark',dimensions:{width:'300',depth:'200',height:'100',visible:true,lines:false,anchors:{width:[{x:.1,y:.78},{x:.72,y:.94}],depth:[{x:.72,y:.94},{x:.94,y:.73}],height:[{x:.94,y:.73},{x:.94,y:.12}]}},copy:{ko:{title:'브랜드의 가치를,\n분명하게 전하세요.',description:'광고 문구를 입력하고\n원하는 배경과 사진으로 꾸며보세요.',company:'selluplabs',contact:'',website:''},en:{title:'Your story.\nClearly told.',description:'Tell customers what you offer.\nAdd a message that fits your brand.',company:'selluplabs',contact:'',website:''}}};
 }
+
 export const labels={ko:{width:'가로',depth:'세로',height:'높이',spec:'상품 규격'},en:{width:'Width',depth:'Depth',height:'Height',spec:'PRODUCT DIMENSIONS'}};
 export const axes:Axis[]=['width','depth','height'];
+
 export async function imageFile(file:File):Promise<Asset> {
  if(!['image/png','image/jpeg','image/webp'].includes(file.type))throw new Error('PNG, JPG, WebP 사진을 선택해주세요.');
  if(file.size>maximumReferenceBytes)throw new Error('사진은 10 MB 이하로 추가해주세요.');
@@ -57,7 +65,9 @@ export async function imageFile(file:File):Promise<Asset> {
  if(img.naturalWidth*img.naturalHeight>30_000_000)throw new Error('3,000만 화소 이하의 사진을 사용해주세요.');
  return {name:file.name,data,width:img.naturalWidth,height:img.naturalHeight,sha256};
 }
+
 export async function loadImage(data:string):Promise<HTMLImageElement> {const img=new Image();img.src=data;await img.decode();return img;}
+
 export function exportErrors(p:Project, originalWithoutManualLines=false) {
  const errors:string[]=[];const exampleError=textExampleGeometryError(p);if(exampleError)return [exampleError];
  if(p.dimensionControl){errors.push(...dimensionControlErrors(p));if(p.dimensionControl.acceptedKey!==dimensionControlKey(p))errors.push('규격 제품의 현재 형상과 문구를 검수한 뒤 확정해주세요.');return errors;}
@@ -71,6 +81,7 @@ export function exportErrors(p:Project, originalWithoutManualLines=false) {
  if(p.dimensions.visible && dimensionAxes(p.productProfile).some(a=>!validMillimeters(p.dimensions[a])))errors.push('규격은 0보다 크고 100,000 mm 이하인 숫자로 입력해주세요.');
  return errors;
 }
+
 // Project imports are picked and validated, never executed or inserted as HTML.
 export async function importProject(raw:unknown):Promise<Project> {
  if(!raw||typeof raw!=='object')throw new Error('프로젝트 파일 형식이 올바르지 않습니다.');
@@ -82,6 +93,8 @@ export async function importProject(raw:unknown):Promise<Project> {
  const p:Project={...base,...(r.adBatch?{adBatch:{id:r.adBatch.id,count:r.adBatch.count},id:r.adBatch.id}:{}),campaign:r.campaign===undefined?defaultCampaign():parseCampaign(r.campaign),referenceCheck:r.referenceCheck===undefined?defaultReferenceCheck():parseReferenceCheck(r.referenceCheck),name:string(r.name,80),productName:string(r.productName,100),productProfile:parseProfile(r.productProfile),generation:parseGeneration(r.generation),locale:r.locale,format:r.format,ink:r.ink,scale:r.scale,background:{color:r.background.color,image:await asset(r.background.image)},product:await asset(r.product)};
  for(const lang of ['ko','en'] as const){if(!r.copy[lang])throw new Error('언어별 문구가 누락되었습니다.');for(const field of ['title','description','company','contact','website'] as const)p.copy[lang][field]=string(r.copy[lang][field]);}
  for(const axis of axes){p.dimensions[axis]=string(r.dimensions[axis],20);const points=r.dimensions.anchors?.[axis];if(!Array.isArray(points)||points.length!==2||points.some(pt=>!pt||!Number.isFinite(pt.x)||!Number.isFinite(pt.y)||pt.x<0||pt.x>1||pt.y<0||pt.y>1))throw new Error('치수선 위치가 올바르지 않습니다.');p.dimensions.anchors[axis]=points.map(pt=>({x:pt.x,y:pt.y})) as [Point,Point];}
+ if(r.requestedImageCount!==undefined){if(!imageCounts.includes(r.requestedImageCount as typeof imageCounts[number]))throw Error('INVALID_IMAGE_COUNT');p.requestedImageCount=r.requestedImageCount;}
+ parseResultSet(r.resultSet,r.id);
  p.references=[];if(r.references!==undefined){if(!Array.isArray(r.references)||r.references.length>9)throw Error('참조사진은 최대 10장입니다.');for(const ref of r.references){const a=await asset(ref);if(!a)throw Error('참조사진을 확인해주세요.');p.references.push(a);}}
  validateReferences(p);
  p.referenceRoles=parsePhotoRoles(r.referenceRoles,referenceAssets(p));
@@ -90,21 +103,39 @@ export async function importProject(raw:unknown):Promise<Project> {
  if(r.presentation==='campaign')p.presentation='campaign';
  for(const lang of ['ko','en'] as const)if(r.copy[lang].email!==undefined)p.copy[lang].email=string(r.copy[lang].email,100);
  if(r.dimensions.displayUnit!==undefined){if(!['cm','mm','inch'].includes(r.dimensions.displayUnit))throw Error('규격 단위를 확인해주세요.');p.dimensions.displayUnit=r.dimensions.displayUnit;}
- p.dimensions.visible=r.dimensions.visible;p.dimensions.lines=r.dimensions.lines;p.conversation=parseConversation(r.conversation);p.generated=await parseGenerated(r.generated,asset);p.boxProjection=parseBoxProjection(r.boxProjection);p.publishing=parsePublishing(r.publishing);p.dimensionAnnotation=parseAnnotation(r.dimensionAnnotation);p.dimensionControl=parseDimensionControl(r.dimensionControl);p.textEdit=await parseTextEdit(r.textEdit,asset);if(r.exactTextVersion!==undefined){if(r.exactTextVersion!==1&&r.exactTextVersion!==2)throw Error('INVALID_EXACT_TEXT');p.exactTextVersion=r.exactTextVersion;}return p;
+ p.dimensions.visible=r.dimensions.visible;p.dimensions.lines=r.dimensions.lines;
+ p.conversation=parseConversation(r.conversation);
+ p.generated=await parseGenerated(r.generated,asset);
+ p.boxProjection=parseBoxProjection(r.boxProjection);
+ p.publishing=parsePublishing(r.publishing);
+ p.dimensionAnnotation=parseAnnotation(r.dimensionAnnotation);
+ p.dimensionControl=parseDimensionControl(r.dimensionControl);
+ p.textEdit=await parseTextEdit(r.textEdit,asset);
+ 
+ // 정밀 편집 설정 파싱
+ if(r.precision!==undefined){
+  try{p.precision=parsePrecision(r.precision);}catch(e){throw new Error(`정밀 편집 설정을 확인해주세요: ${e instanceof Error?e.message:'오류 발생'}`);}
+ }
+ 
+ if(r.exactTextVersion!==undefined){if(r.exactTextVersion!==1&&r.exactTextVersion!==2)throw Error('INVALID_EXACT_TEXT');p.exactTextVersion=r.exactTextVersion;}
+ return p;
 }
 
 export const referenceAssets=(p:Project):Asset[]=>[...(p.product?[p.product]:[]),...(p.references??[])];
+
 export function validateReferences(p:Project){
  const assets=referenceAssets(p);
  if(assets.length>maximumReferencePhotos||(!p.product&&assets.length))throw Error('참조사진은 대표 사진을 포함해 최대 10장입니다.');
  if(new Set(assets.map(a=>a.sha256)).size!==assets.length)throw Error('같은 사진이 중복되어 있습니다.');
  if(referenceBytes(assets)>maximumReferenceBytes)throw Error('참조사진 전체 용량은 10 MB 이하로 선택해주세요.');
 }
+
 export function withReferences(p:Project,assets:Asset[]):Project{
- const next={...p,product:assets[0]??null,references:assets.slice(1),...(p.proportionViews?{proportionViews:{confirmed:p.proportionViews.confirmed,views:Object.fromEntries(Object.entries(p.proportionViews.views).filter(([hash])=>assets.some(a=>a.sha256===hash)))}}:{})};validateReferences(next);
+ const next={...p,product:assets[0]??null,references:assets.slice(1),...(p.proportionViews?{proportionViews:{confirmed:p.proportionViews.confirmed,views:Object.fromEntries(Object.entries(p.proportionViews.views).filter(([hash])=>assets.some(a=>a.sha256===hash)))}}:{})};
+ validateReferences(next);
  if(p.referenceRoles)next.referenceRoles=Object.fromEntries(Object.entries(p.referenceRoles).filter(([hash])=>assets.some(a=>a.sha256===hash)));
  if(next.product?.sha256!==p.product?.sha256&&next.boxProjection)next.boxProjection={...next.boxProjection,confirmedSourceHash:null,markedCorners:[]};
  return next;
 }
-export const footerVisible=(p:Project,field:FooterField)=>p.footer?.[field]??true;
 
+export const footerVisible=(p:Project,field:FooterField)=>p.footer?.[field]??true;

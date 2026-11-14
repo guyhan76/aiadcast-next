@@ -1,5 +1,6 @@
 import type {BatchPrice} from './batch-price';
 import {submitAdBatch} from './submit-ad-batch';
+import {createResultSet} from './result-set';
 import {useWorkspaceHistory} from './workspace-history';
 import {GoogleGate} from './GoogleSignIn';
 import {PreviewLeaveGuard,requestPreviewLeave} from './PreviewLeaveGuard';
@@ -34,7 +35,7 @@ import {SimpleAdResult} from './SimpleAdResult';
 import {CreateCampaign} from './CreateCampaign';
 import {newProject} from './model';
 import type {Project} from './model';
-import {projects,saveProject} from './storage';
+import {projects,saveProject,saveProjectSet} from './storage';
 import './studio.css';
 import './premium.css';
 import './campaign-cover.css';
@@ -112,10 +113,10 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  function createNavigation(event:React.MouseEvent){if(page!=='create'&&(page==='studio'||page==='editor'||wizard?.project.id===current.id||!!wizard&&wizard.project.id===submittedWizard.current)){event.preventDefault();requestPreviewLeave(()=>void begin());}}
  async function open(p:Project,preferIncoming=false){
   screenHistory.checkpoint();
-  try{const changed=JSON.stringify(current)!==JSON.stringify(seed);const snapshot=changed?{...current,updatedAt:new Date().toISOString()}:current;if(changed)await saveProject(snapshot);if(preferIncoming&&p.id===current.id&&JSON.stringify(p)!==JSON.stringify(current))await saveProject({...snapshot,id:crypto.randomUUID(),name:(snapshot.name+' '+(language==='ko'?'기기 보관본':'local copy')).slice(0,80)});const next=changed&&p.id===current.id&&!preferIncoming?snapshot:p;setSeed(next);setCurrent(next);setEditorKey(k=>k+1);setSwitchError('');go('studio');return true;}
+  try{const changed=JSON.stringify(current)!==JSON.stringify(seed);const snapshot=changed?{...current,updatedAt:new Date().toISOString()}:current;if(changed)await saveProject(snapshot);if(preferIncoming&&p.id===current.id&&JSON.stringify(p)!==JSON.stringify(current))await saveProject({...snapshot,id:crypto.randomUUID(),resultSet:undefined,name:(snapshot.name+' '+(language==='ko'?'기기 보관본':'local copy')).slice(0,80)});const next=changed&&p.id===current.id&&!preferIncoming?snapshot:p;setSeed(next);setCurrent(next);setEditorKey(k=>k+1);setSwitchError('');go('studio');return true;}
   catch{setSwitchError(text('현재 편집 내용을 저장하지 못해 작업 전환을 멈췄습니다. 편집기로 돌아가 프로젝트 파일을 백업해주세요.'));return false;}
  }
- async function ready(p:Project,price?:BatchPrice){if(price){const batch=await submitAdBatch(p,price,storageNamespace());if(!await open(batch,true))throw Error('OPEN_FAILED');submittedWizard.current=p.id;setGenerationIntent(undefined);return;}const submittedId=p.id;if(p.id===current.id&&current.generated)p=creativeCampaignDraft(p);await saveProject(p);if(!await open(p,true))throw Error(text('현재 작업 저장 실패'));submittedWizard.current=submittedId;setGenerationIntent(crypto.randomUUID());}
+ async function ready(p:Project,price?:BatchPrice){if(price){const batch=await submitAdBatch(p,price,storageNamespace());if(!await open(batch,true))throw Error('OPEN_FAILED');submittedWizard.current=p.id;setGenerationIntent(undefined);return;}const submittedId=p.id,owner=storageNamespace();const check=()=>{if(owner!==storageNamespace())throw Error('OWNER_CHANGED');};if(p.id===current.id&&current.generated)p=creativeCampaignDraft(p);const set=await createResultSet(p,p.dimensionControl?1:p.requestedImageCount??1);check();if(set.length===1){await saveProject(set[0],owner);p=set[0];}else{p=(await saveProjectSet(set,owner))[0];}check();if(!await open(p,true))throw Error(text('현재 작업 저장 실패'));check();submittedWizard.current=submittedId;setGenerationIntent(crypto.randomUUID());}
  function editDetails(){screenHistory.checkpoint();submittedWizard.current=undefined;setWizardSeed({project:current,step:0});setWizard({project:current,step:0});setWizardKey(k=>k+1);setGenerationIntent(undefined);go('create');}
  async function createCreativeDraft(){
   screenHistory.checkpoint();
