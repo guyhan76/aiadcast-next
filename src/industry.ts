@@ -53,7 +53,8 @@ export const industryGroups:readonly IndustryGroup[] = [
   {id:'finance',kind:'service',label:'금융·보험',description:'조건을 이해하는 금융',categoryIds:['insurance','securities','stocks','crypto','finance','banking']},
   {id:'mobility',kind:'service',label:'리스·렌탈',description:'필요에 맞는 이용 방식',categoryIds:['lease','rental']},
   {id:'logistics',kind:'service',label:'물류·배송·배달',description:'배송과 배달 서비스',categoryIds:['logistics','delivery']},
-  {id:'corporate',kind:'service',label:'기업·브랜드 홍보',description:'기업과 브랜드의 가치',categoryIds:['corporate','brand','services']},
+  {id:'corporate',kind:'service',label:'기업·브랜드 홍보',description:'기업과 브랜드의 가치',categoryIds:['corporate','brand']},
+  {id:'business',kind:'service',label:'기타 서비스',description:'그 밖의 서비스',categoryIds:['services']},
   {id:'fortune',kind:'service',label:'사주·운세',description:'나에게 맞는 상담의 시작',categoryIds:['tarot','astrology','myeongri','sinjeom']},
 ];
 

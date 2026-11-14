@@ -4,7 +4,7 @@ import {apiRequest,type ApiStatus} from './generation-client';
 import {DimensionDisplayChoice} from './DimensionDisplayChoice';
 import {isTextExample} from './generation-input';
 import {InputExampleGuide} from './InputExampleGuide';
-import {IndustrySearch} from './IndustrySearch';
+import {AdFieldPicker} from './AdFieldPicker';
 import {RegulatoryNotice,useRegulatoryCheck} from './RegulatoryNotice';
 import {DimensionControlChoice} from './DimensionControlChoice';
 import type {WizardDraft} from './workspace-draft';
@@ -33,11 +33,12 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{
  const submitting=useRef(false),photoImporting=useRef(false);
  const [creditStatus,setCreditStatus]=useState<ApiStatus|null>(null),sessionToken=betaSession()?.token;
  useEffect(()=>{if(!active){setCreditStatus(null);return;}let live=true;const controller=new AbortController();apiRequest<ApiStatus>('/api/status',undefined,controller.signal).then(s=>{if(live)setCreditStatus(s);}).catch(()=>{if(live)setCreditStatus(null);});return()=>{live=false;controller.abort();};},[sessionToken,active]);
- const [chosen,setChosen]=useState(!!draft),[error,setError]=useState(''),[submittingBusy,setSubmittingBusy]=useState(false),[photosBusy,setPhotosBusy]=useState(false),[photoImportIssue,setPhotoImportIssue]=useState('');
+ const [chosen,setChosen]=useState(draft?.industryChosen ?? !!draft),[error,setError]=useState(''),[submittingBusy,setSubmittingBusy]=useState(false),[photosBusy,setPhotosBusy]=useState(false),[photoImportIssue,setPhotoImportIssue]=useState('');
  const busy=submittingBusy||photosBusy;
  // 법규 안내: 규제 업종이면 안내를 확인하기 전까지 광고 생성을 막습니다.
- const [regulatoryOk,confirmRegulatory]=useRegulatoryCheck(project.productProfile.category,project.productProfile.material);
- useLayoutEffect(()=>{onDraft?.({project,step:0});},[project,onDraft]);
+ const noticeContext=project.productProfile.industryDetail ? '업종: '+project.productProfile.industryDetail : project.productProfile.material;
+ const [regulatoryOk,confirmRegulatory]=useRegulatoryCheck(project.productProfile.category,noticeContext);
+ useLayoutEffect(()=>{onDraft?.({project,step:0,industryChosen:chosen});},[project,chosen,onDraft]);
  const example=isTextExample(project);
  const service=isServiceCategory(project.productProfile.category),axes=dimensionAxes(project.productProfile),settings=creativeSettings(project),copy=project.copy[project.locale];
  const copyMode=settings.copyMode??'ai';
@@ -76,9 +77,9 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{
   <form aria-busy={busy} onSubmit={e=>{e.preventDefault();void submit();}}>
    <fieldset disabled={submittingBusy} style={{border:0,padding:0,margin:0,minWidth:0}}>
    <section className="creation-section" data-order="1"><h2><span>1</span>{t('광고할 분야','Your industry')}</h2>
-    <IndustrySearch project={project} chosen={chosen} onChosen={()=>setChosen(true)} change={change}/>
+    <AdFieldPicker id={id+'-industry'} initialKind={initialKind} project={project} chosen={chosen} onChosen={setChosen} change={change}/>
     
-    <RegulatoryNotice category={project.productProfile.category} material={project.productProfile.material} confirmed={regulatoryOk} onConfirm={confirmRegulatory}/>
+    <RegulatoryNotice category={project.productProfile.category} material={noticeContext} confirmed={regulatoryOk} onConfirm={confirmRegulatory}/>
    </section>
    <section className="creation-section" data-order="2"><details className="optional-block"><summary><span className="section-title"><b>2</b>{t('회사 정보','Company details')}</span><small>{t('선택','Optional')}</small></summary><p className="help">{t('입력한 정보만 광고에 표시합니다.','Only the details you enter will appear on the ad.')}</p><div className="company-fields">{companyFields.map(([field,label,placeholder])=><div className="field company-field" key={field}><label htmlFor={id+'-'+field}>{label}</label><input id={id+'-'+field} type={field==='email'?'email':field==='contact'?'tel':'text'} maxLength={field==='company'?80:field==='website'?200:100} placeholder={placeholder} value={copy[field]??''} onChange={e=>setCopy(field,e.target.value)}/><label className="company-visible"><input type="checkbox" aria-label={label+t(' 광고에 표시',' shown on ad')} checked={project.footer?.[field]??true} onChange={e=>change(p=>({...p,footer:{company:p.footer?.company??true,contact:p.footer?.contact??true,email:p.footer?.email??true,website:p.footer?.website??true,[field]:e.target.checked}}))}/>{t('광고에 표시','Show on ad')}</label></div>)}</div></details></section>
    <section className="creation-section" data-order="3" id={id+'-photos'} tabIndex={-1}><h2><span>3</span>{t('사진 첨부','Add photos')}</h2><div hidden={example}><PhotoUsage project={project} change={change}/><p className="help">{t('한번에 여러 장 선택 가능','Select several photos at once')}</p><ReferencePhotos project={project} change={change} onBusyChange={photoBusyChanged} onIssueChange={setPhotoImportIssue}/></div></section>
@@ -93,7 +94,7 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{
    </fieldset>
    {error&&<p className={'wizard-error'+(photoImportIssue&&error===photoImportIssue?' photo-upload-error':'')} role="alert">{error}</p>}
    {!project.dimensionControl&&creditStatus?.generation.creditQuote&&<p className="help">{creditStatus.wallet.unlimited?t('관리자 테스트 · 차감 없음','Administrator test · no charge'):<>{t('기존 이용권','Legacy tickets')} {creditStatus.wallet.available} · {t('신규 크레딧','New credits')} {creditStatus.wallet.credits?.available??0}. {t('이번 생성','This generation')}: {creditStatus.generation.creditQuote.amount}{creditStatus.generation.creditQuote.unit==='credit-v2'?t('크레딧 · 다음 화면에서 차감을 확인합니다.',' credits · Confirm the charge on the next screen.'):t('개 기존 이용권 · 사용 확정 시 차감',' legacy ticket · charged on acceptance')}</>}</p>}
-   {!regulatoryOk&&<p className="help">{t('1번 광고할 산업의 법규 안내를 확인하면 광고를 만들 수 있습니다.','Confirm the industry notice in step 1 to generate the ad.')}</p>}
+   {!regulatoryOk&&<p className="help">{t('1번 광고할 분야의 법규 안내를 확인하면 광고를 만들 수 있습니다.','Confirm the industry notice in step 1 to generate the ad.')}</p>}
    <div className="wizard-actions"><button className="primary-action" type="submit" disabled={busy||!active||!regulatoryOk}><Sparkles size={18}/>{photosBusy?t('사진 불러오는 중…','Loading photos…'):submittingBusy?t('준비 중…','Preparing…'):project.dimensionControl?t('기하 검증 이미지 만들기','Create geometry proof'):t('광고 생성','Generate ad')}</button></div><p className="help submit-help">{project.dimensionControl?t('기하 검증용 로컬 구성입니다. AI 호출과 이용권 차감이 없습니다.','Local geometry proof. No AI call or credit charge.'):betaSession()?.user.role==='admin'?t('관리자 테스트 권한과 생성 가능 여부를 서버에서 확인합니다.','The server verifies administrator test access and generation readiness.'):t('기존 이용권 1개를 먼저 사용합니다. 신규 크레딧은 생성·재생성 1회 10개이며 실행 전에 잔액과 차감을 확인합니다.','One legacy ticket first, then 10 new credits per generation or regeneration. Review balance and charge before execution.')}</p>
   </form>
  </div>;
