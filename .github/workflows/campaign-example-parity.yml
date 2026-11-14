@@ -11,10 +11,10 @@ jobs:
     steps:
       - name: Verify public build identity and delivered campaign examples
         env:
-          EXPECTED_COMMIT: b7d49138b39264fca62605b561649a56dc6209cf
+          EXPECTED_COMMIT: ac2fa5d20268febaf29b9915c70860293828160c
         run: |
           python - <<'PY'
-          import json, os, time
+          import hashlib, json, os, time
           from html.parser import HTMLParser
           from urllib.parse import urljoin, urlparse
           from urllib.request import Request, urlopen
@@ -44,5 +44,19 @@ jobs:
           bundle = '\n'.join(get(path) for path in parser.paths)
           for copy in ['예: 탄력케어 리프팅 3종세트','예: 제주 감성 숙소','원하는 연출이나 강조할 내용을 적어주세요 (선택)','입력하지 않은 가격·혜택은 만들지 말아주세요.','Do not invent prices, benefits or terms of use.']:
               assert copy in bundle or json.dumps(copy, ensure_ascii=True)[1:-1] in bundle.lower(), copy
+          release=json.loads(get('web-release.json?verify='+revision))
+          assert release['commit']==revision
+          dances=['왈츠','탱고','비엔나 왈츠','슬로우 폭스트롯','퀵스텝','삼바','차차차','룸바','파소도블레','자이브']
+          scripts=[]
+          for path, record in release['files'].items():
+              if path.endswith('.js'):
+                  source=get(path)
+                  assert hashlib.sha256(source.encode('utf-8')).hexdigest()==record['sha256'], path
+                  scripts.append(source)
+          delivered='\n'.join(scripts)
+          for label in ['댄스스포츠 세부 종목','댄스스포츠 전체','스탠다드','라틴','기타']+dances:
+              assert (json.dumps(label,ensure_ascii=False) in delivered
+                      or json.dumps(label,ensure_ascii=True).lower() in delivered.lower()), label
+          print('Verified both dance families, all 10 dances and the selection labels in the live release.')
           print('Verified production commit', revision, 'and five campaign examples in its served JavaScript.')
           PY
