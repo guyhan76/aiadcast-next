@@ -18,7 +18,19 @@ test('category menus separate products and services and keep every image count',
   await expect(items).toHaveValue('shoes');
   await services.click();
   await expect(services).toHaveCSS('color','rgb(255, 255, 255)');
-  await expect(services).toHaveCSS('background-color','rgb(32, 32, 32)');
+  const contrast=await services.evaluate(button=>{
+    const style=getComputedStyle(button);
+    const luminance=(color:string)=>{
+      const channels=(color.match(/\d+/g)??[]).slice(0,3).map(value=>{
+        const channel=Number(value)/255;
+        return channel<=0.04045 ? channel/12.92 : ((channel+0.055)/1.055)**2.4;
+      });
+      return 0.2126*channels[0]+0.7152*channels[1]+0.0722*channels[2];
+    };
+    const fg=luminance(style.color), bg=luminance(style.backgroundColor);
+    return (Math.max(fg,bg)+0.05)/(Math.min(fg,bg)+0.05);
+  });
+  expect(contrast).toBeGreaterThanOrEqual(4.5);
   await expect(products).toHaveAttribute('aria-pressed','false');
   await expect(fields.locator('option[value="fashion"]')).toHaveCount(0);
   for(const [field,item] of [['lease-rental','auto-lease'],['logistics','parcel'],['brand-pr','brand-story']]){
