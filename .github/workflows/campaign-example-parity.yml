@@ -14,7 +14,7 @@ jobs:
           EXPECTED_COMMIT: ac2fa5d20268febaf29b9915c70860293828160c
         run: |
           python - <<'PY'
-          import hashlib, json, os, time
+          import hashlib, json, os, re, time
           from html.parser import HTMLParser
           from urllib.parse import urljoin, urlparse
           from urllib.request import Request, urlopen
@@ -54,9 +54,12 @@ jobs:
                   assert hashlib.sha256(source.encode('utf-8')).hexdigest()==record['sha256'], path
                   scripts.append(source)
           delivered='\n'.join(scripts)
-          for label in ['댄스스포츠 세부 종목','댄스스포츠 전체','스탠다드','라틴','기타']+dances:
-              assert (json.dumps(label,ensure_ascii=False) in delivered
-                      or json.dumps(label,ensure_ascii=True).lower() in delivered.lower()), label
+          assert scripts, 'No JavaScript assets in release manifest'
+          # Vite can emit a mix of literal Korean characters and Unicode escapes.
+          readable=re.sub(r'\\u([0-9a-fA-F]{4})', lambda m:chr(int(m.group(1),16)), delivered)
+          labels=['댄스스포츠 세부 종목','댄스스포츠 전체','스탠다드','라틴','기타']+dances
+          missing=[label for label in labels if label not in readable]
+          assert not missing, (missing, len(scripts), len(readable), 'dance-sport' in readable, 'Dancesport discipline' in readable)
           print('Verified both dance families, all 10 dances and the selection labels in the live release.')
           print('Verified production commit', revision, 'and five campaign examples in its served JavaScript.')
           PY
