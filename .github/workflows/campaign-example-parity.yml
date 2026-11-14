@@ -1,0 +1,22 @@
+name: Campaign field parity
+on:
+  push:
+    branches: [verify/web-campaign-examples]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: Check the production web frontend on desktop and mobile
+        run: |
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(command -v google-chrome)"
+          npx playwright test tests/input-example-guides.spec.ts --project=desktop --project=mobile --reporter=list
