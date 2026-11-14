@@ -71,3 +71,10 @@ test('image transport carries customer fields, original photo bytes and automati
   requests[1].source={purpose:'style'}; assert.match(finishedAdSkillBrief(requests[1]), /\[minimal-poster\]/);
   requests[1].source={purpose:'subject'}; assert.match(finishedAdSkillBrief(requests[1]), /\[editorial-spread\]/);
 });
+
+test('Korean 2D and 3D style instructions select catalog recipes for a single still',()=>{
+ for(const [note,expected] of [['2D 캐릭터로 표현','[anime]'],['3D 캐릭터로 표현','[clay]']]){
+  const request=normalizeGenerationRequest(buildNewGenerationRequest(project('education','드론 관제사','자격 과정',note)));
+  assert.ok(finishedAdSkillBrief(request).split('Catalog:')[0].includes(expected));
+ }
+});
