@@ -41,7 +41,7 @@ jobs:
           export CHROMIUM_PATH="$(command -v google-chrome)"
           export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$CHROMIUM_PATH"
           node native/test-android-bridge.mjs
-          npx playwright test tests/preview-delivery.spec.ts tests/input-example-guides.spec.ts --project=desktop --project=mobile
+          npx playwright test tests/membership.spec.ts tests/preview-delivery.spec.ts tests/input-example-guides.spec.ts --project=desktop --project=mobile
           npx playwright test tests/production-parity.spec.ts --project=desktop
 
       - name: Verify the Preview signing identity
