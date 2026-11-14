@@ -9,7 +9,20 @@ export class RecommendationService {
   assertLocalRecommendationMode(executionMode);
   if(!Number.isSafeInteger(budgetMicros)||budgetMicros<0||!Number.isSafeInteger(reservationMicros)||reservationMicros<1||!version)throw Error('INVALID_MOCK_POLICY');
   Object.assign(this,{resolveOwnedImage,adapter,enabled,outputProvenance,version,budgetMicros,reservationMicros,lookupEvidence});
-  this.db=new DatabaseSync(path);this.db.exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
+  this.db=new DatabaseSync(path);
+  this.db.exec('PRAGMA busy_timeout=5000');
+  // Concurrent first opens can both read the default journal mode before either
+  // acquires the exclusive lock to switch it. SQLite skips its busy handler on
+  // this lock upgrade. Release the statement and retry only SQLITE_BUSY.
+  const deadline=Date.now()+5000, pause=new Int32Array(new SharedArrayBuffer(4));
+  for(;;){
+   try{this.db.exec('PRAGMA journal_mode=WAL');break;}
+   catch(error){
+    if((error.errcode&255)!==5||Date.now()>=deadline){this.db.close();throw error;}
+    Atomics.wait(pause,0,0,20);
+   }
+  }
+  this.db.exec(`PRAGMA synchronous=FULL;
    CREATE TABLE IF NOT EXISTS recommendation_jobs(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,generation_id TEXT NOT NULL,cache_key TEXT NOT NULL,snapshot_json TEXT NOT NULL,artifact_hash TEXT NOT NULL,locale TEXT NOT NULL,version TEXT NOT NULL,state TEXT NOT NULL,output_json TEXT,error_code TEXT,customer_policy TEXT NOT NULL DEFAULT 'proposed-included-first',customer_charge INTEGER NOT NULL DEFAULT 0 CHECK(customer_charge=0),UNIQUE(owner_id,generation_id),UNIQUE(owner_id,cache_key));
    CREATE TABLE IF NOT EXISTS recommendation_attempts(id TEXT PRIMARY KEY,job_id TEXT NOT NULL UNIQUE,state TEXT NOT NULL,held_micros INTEGER NOT NULL,actual_micros INTEGER);
    CREATE TABLE IF NOT EXISTS recommendation_requests(owner_id TEXT NOT NULL,request_id TEXT NOT NULL,fingerprint TEXT NOT NULL,job_id TEXT NOT NULL,PRIMARY KEY(owner_id,request_id));`);
