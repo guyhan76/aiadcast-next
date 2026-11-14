@@ -30,14 +30,17 @@ jobs:
       - name: Verify advertising workflows and build the web assets
         run: |
           npm ci --no-audit --no-fund
-          node --test tests-domain/{industry,industry-production,image-skills,services,seo-keywords,consumer-campaign,result-set,selective-preservation}.test.mjs
+          npm run test:domain
           npm run build
           node scripts/check-web-build.mjs --require-commit
           node native/prepare-android.mjs
           node -e "if(require('./android/app/src/main/assets/native-build.json').webBuild.commit!==process.env.GITHUB_SHA)process.exit(1)"
       - name: Test Android file downloads
         run: |
-          CHROMIUM_PATH="$(command -v google-chrome)" node native/test-android-bridge.mjs
+          export CHROMIUM_PATH="$(command -v google-chrome)"
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$CHROMIUM_PATH"
+          node native/test-android-bridge.mjs
+          npx playwright test tests/preview-delivery.spec.ts --project=desktop --project=mobile
 
       - name: Verify the Preview signing identity
         env:
@@ -81,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           tag="preview-0.2.85-code87-${GITHUB_SHA:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          gh release create "$tag" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+          gh release create "$tag" release/aiadcast-0.2.85.apk release/aiadcast-0.2.85.zip release/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
             --title 'aiadcast 0.2.85 Preview (87)' --notes "Android Preview for testing. Verified source: $GITHUB_SHA. Certificate and APK checks passed."
       - name: Remove temporary signing material
         if: always()

@@ -1,8 +1,8 @@
 import {useEffect,useId,useRef,useState} from 'react';
 import type {CSSProperties} from 'react';
 import type {Project} from './model';
-import {industryGroups,industryLabel} from './industry';
-import type {ProductCategory} from './industry';
+import {industryGroups,industryLabel,industryKindFor} from './industry';
+import type {ProductCategory,IndustryKind} from './industry';
 import {withCategory} from './product';
 import {useUiLanguage} from './ui-language';
 
@@ -56,7 +56,7 @@ const catalog:CatalogSection[]=[
   {ko:'의료',en:'Medical',category:'hospital',exact:true,keywords:'의료 병원 의원 치과 한의원 피부과 성형외과 안과 검진 clinic medical'},
   {ko:'바이오',en:'Biotech',category:'biotech',exact:true,keywords:'바이오 제약 신약 연구 임상 biotech'},
   {ko:'기업/브랜드',en:'Company & brand',category:'corporate',exact:true,keywords:'기업 회사 브랜드 기업홍보 회사소개 브랜드광고 기업광고 사업 제조사 company corporate brand business'},
-  {ko:'물류',en:'Logistics',category:'services',keywords:'물류 운송 배송 택배 화물 창고 보관 유통 풀필먼트 수출입 포워딩 logistics shipping freight warehouse fulfillment'},
+  {ko:'물류·배송',en:'Logistics',category:'logistics',exact:true,keywords:'물류 운송 배송 택배 화물 창고 보관 유통 풀필먼트 수출입 포워딩 logistics shipping freight warehouse fulfillment'},
  ]},
  {ko:'교육·레슨·취미',en:'Education, lessons & hobbies',items:[
   {ko:'어학',en:'Languages',category:'education',keywords:'어학 외국어 영어 영어회화 일본어 중국어 토익 토플 language english'},
@@ -96,6 +96,10 @@ const catalog:CatalogSection[]=[
 // 위 분류와 뜻이 같은 기존 업종은 검색 결과에 두 번 나오지 않게 뺍니다.
 const covered=new Set(catalog.flatMap(s=>s.items.filter(i=>i.exact).map(i=>i.category)));
 const industryLine=/^(?:업종|Industry): (.*)(?:\r?\n|$)/;
+const extraKeywords:Partial<Record<ProductCategory,string>>={
+ shoes:'운동화 스니커즈 구두 sneakers trainers', boxes:'상자 택배박스 골판지 carton box',
+ delivery:'음식배달 배달앱 배달대행 food delivery', brand:'브랜드홍보 브랜드마케팅 brand marketing',
+};
 const wordSplit=/[\s·&\/(),>.]+/;
 const wrap:CSSProperties={display:'flex',flexWrap:'wrap',gap:6,listStyle:'none',padding:0,margin:0};
 const chip:CSSProperties={padding:'6px 12px',border:'1px solid #d4d4d8',borderRadius:999,background:'#fff',cursor:'pointer',fontSize:'0.9rem',maxWidth:'100%',overflowWrap:'anywhere',textAlign:'left'};
@@ -108,6 +112,7 @@ export function IndustrySearch({project,chosen,onChosen,change}:{project:Project
  const {t,text}=useUiLanguage(),id=useId();
  const tr=(s:string)=>String(text(s));
  const [query,setQuery]=useState('');
+ const [browseKind,setBrowseKind]=useState<IndustryKind>(()=>industryKindFor(project.productProfile.category));
  const browse=useRef<HTMLDetailsElement>(null);
  const category=project.productProfile.category;
  const previous=useRef(category),expected=useRef<ProductCategory|null>(null);
@@ -122,23 +127,23 @@ export function IndustrySearch({project,chosen,onChosen,change}:{project:Project
  const lineOf=(s:CatalogSection,item:CatalogItem)=>item.exact?null:`${t(s.ko,s.en)} > ${t(item.ko,item.en)}`;
  const options:Option[]=[
   ...catalog.flatMap((s,si)=>s.items.map((item,ii)=>option(`c${si}-${ii}`,t(item.ko,item.en),t(s.ko,s.en),item.category,lineOf(s,item),[item.ko,item.en,item.keywords]))),
-  ...industryGroups.flatMap(g=>g.categoryIds.filter(c=>!covered.has(c)).map(c=>option('i-'+c,tr(industryLabel(c)),tr(g.label),c,null,[industryLabel(c),tr(industryLabel(c)),g.label,tr(g.label)]))),
+  ...industryGroups.flatMap(g=>g.categoryIds.filter(c=>!covered.has(c)).map(c=>option('i-'+c,tr(industryLabel(c)),tr(g.label),c,null,[industryLabel(c),tr(industryLabel(c)),g.label,tr(g.label),extraKeywords[c]??'']))),
  ];
  const name=query.trim().slice(0,40),tokens=name.toLowerCase().split(/\s+/).filter(Boolean);
  const matches=tokens.length?options.filter(o=>tokens.every(w=>hit(o,w))):[];
- const current=chosen?industryLine.exec(project.productProfile.material)?.[1]:undefined;
+ const current=chosen?(industryLine.exec(project.productProfile.material)?.[1]??tr(industryLabel(category))):undefined;
 
  function pick(next:ProductCategory,line:string|null){
-  onChosen();setQuery('');if(browse.current)browse.current.open=false;
+  onChosen();setQuery('');setBrowseKind(industryKindFor(next));if(browse.current)browse.current.open=false;
   expected.current=next!==category?next:null;
   change(p=>{const body=p.productProfile.material.replace(industryLine,''),base=withCategory(p,next);return {...base,productProfile:{...base.productProfile,material:(line?`${t('업종','Industry')}: ${line}\n${body}`:body).slice(0,2000)}};});
  }
 
  return <div className="field industry-search">
   <label htmlFor={id}>{t('업종 검색','Search industries')}</label>
-  <input id={id} type="search" maxLength={40} autoComplete="off" value={query} placeholder={t('상품명·서비스명으로 검색 (예: 패션, 식품, 교육, 부동산)','e.g. cosmetics, real estate, dog food')} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key!=='Enter')return;e.preventDefault();const only=matches.length===1?matches[0]:undefined;if(only)pick(only.category,only.line);}}/>
+  <input id={id} type="search" maxLength={40} autoComplete="off" value={query} placeholder={t('상품명·서비스명으로 검색 (예: 패션, 식품, 교육, 부동산)','e.g. cosmetics, real estate, dog food')} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key!=='Enter'||e.nativeEvent.isComposing)return;e.preventDefault();const only=matches.length===1?matches[0]:undefined;if(only)pick(only.category,only.line);}}/>
   {tokens.length>0&&<div style={{display:'grid',gap:8,marginTop:6}}>
-   {matches.length>0&&<ul aria-label={t('검색 결과','Search results')} style={wrap}>{matches.slice(0,12).map(o=><li key={o.key}><button type="button" style={chip} onClick={()=>pick(o.category,o.line)}>{o.label} <small style={{color:'#6b7280'}}>{o.group}</small></button></li>)}</ul>}
+   {matches.length>0&&<ul aria-label={t('검색 결과','Search results')} style={wrap}>{matches.map(o=><li key={o.key}><button type="button" style={chip} onClick={()=>pick(o.category,o.line)}>{o.label} <small style={{color:'#6b7280'}}>{o.group}</small></button></li>)}</ul>}
    <div style={{padding:'10px 12px',background:'#f4f4f5',borderRadius:8}}>
     <p style={{margin:'0 0 6px',fontSize:'0.9rem'}}>{matches.length?t('찾는 업종이 없으면 직접 입력하세요.','Not listed? Use your own.'):t('목록에 없는 업종입니다. 직접 입력해서 사용하세요.','Not in the list. Use it as your own industry.')}</p>
     <div style={wrap}>
@@ -149,11 +154,14 @@ export function IndustrySearch({project,chosen,onChosen,change}:{project:Project
   </div>}
   <details ref={browse} style={{marginTop:6}}>
    <summary style={{cursor:'pointer',fontSize:'0.9rem'}}>{t('업종 분류 전체 보기','Browse all industry types')}</summary>
-   {catalog.map((s,si)=><div key={si} style={{marginTop:10}}>
-    <p style={{margin:'0 0 6px',fontWeight:700,fontSize:'0.9rem'}}>{t(s.ko,s.en)}</p>
-    <div style={wrap}>{s.items.map((item,ii)=><button key={ii} type="button" style={chip} onClick={()=>pick(item.category,lineOf(s,item))}>{t(item.ko,item.en)}</button>)}</div>
+   <div role="group" aria-label={t('상품 또는 서비스','Products or services')} style={wrap}>
+    {(['product','service'] as const).map(kind=><button type="button" key={kind} aria-pressed={browseKind===kind} style={chip} onClick={()=>setBrowseKind(kind)}>{kind==='product'?t('상품','Products'):t('서비스','Services')}</button>)}
+   </div>
+   {[...new Set(options.filter(o=>industryKindFor(o.category)===browseKind).map(o=>o.group))].map(group=><div key={group} style={{marginTop:10}}>
+    <p style={{margin:'0 0 6px',fontWeight:700}}>{group}</p>
+    <div style={wrap}>{options.filter(o=>o.group===group&&industryKindFor(o.category)===browseKind).map(o=><button key={o.key} type="button" style={chip} onClick={()=>pick(o.category,o.line)}>{o.label}</button>)}</div>
    </div>)}
   </details>
-  {!tokens.length&&current&&<p className="help">{t('선택한 업종','Selected industry')}: {current} · {t('상세설명 첫 줄에서 고칠 수 있습니다.','You can edit it in the first line of the description.')}</p>}
+  {!tokens.length&&current&&<p className="help">{t('선택한 업종','Selected industry')}: {current}</p>}
  </div>;
 }
