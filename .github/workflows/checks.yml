@@ -22,6 +22,7 @@ jobs:
       - name: Render local dimension evaluation mock (no provider)
         run: node scripts/vision-evaluation-evidence.mjs
       - run: npm run build
+      - run: node native/prepare-android.mjs
       - run: npx playwright install --with-deps chromium
       - name: Browser checks
         run: |
