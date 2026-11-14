@@ -51,6 +51,7 @@ export class CloudGenerationService extends GenerationService {
   return row.created_at<this.membership.cutover?this.membership.cutover+30*86400000:billing.expires_at;
  }
  async jobView(row,billing,requestIds,defectReport,options){
+  if(!this.membership)return super.jobView(row,billing,requestIds,defectReport,options);
   const expires=this.deliveryDeadline(row,billing);
   if(row.artifact_hash && expires<=this.now()){
    const summary=await super.jobView(row,billing,requestIds,defectReport,{includeArtifact:false});
