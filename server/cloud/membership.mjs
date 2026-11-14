@@ -130,9 +130,11 @@ export class Membership {
    await this.db.prepare("INSERT INTO retired_generation_keys(digest,expires_at) SELECT encode(sha256(convert_to(?||':'||request_id,'UTF8')),'hex'),now()+interval '30 days' FROM "+q+"generation_keys WHERE job_id IN ("+expired+") ON CONFLICT DO NOTHING").run(id,...args);
    await this.db.prepare('DELETE FROM '+q+'generation_keys WHERE job_id IN ('+expired+')').run(...args);
    await this.db.prepare('DELETE FROM '+q+'generation_records WHERE id IN ('+expired+')').run(...args);
-   // Partial expiration must not break access to the later images of a batch.
-   await this.db.prepare("UPDATE "+q+"ad_batches b SET job_ids=(SELECT json_agg(j.value ORDER BY j.ordinality)::text FROM json_array_elements_text(b.job_ids::json) WITH ORDINALITY j(value,ordinality) JOIN "+q+"generation_records g ON g.id=j.value) WHERE EXISTS (SELECT 1 FROM json_array_elements_text(b.job_ids::json) j LEFT JOIN "+q+"generation_records g ON g.id=j.value WHERE g.id IS NULL) AND EXISTS (SELECT 1 FROM json_array_elements_text(b.job_ids::json) j JOIN "+q+"generation_records g ON g.id=j.value)").run();
-   await this.db.prepare("DELETE FROM "+q+"ad_batches b WHERE NOT EXISTS (SELECT 1 FROM json_array_elements_text(b.job_ids::json) j JOIN "+q+"generation_records g ON g.id=j.value)").run();
+   if(await this.exists(tenant,'ad_batches')){
+    // Partial expiration must not break access to the later images of a batch.
+    await this.db.prepare("UPDATE "+q+"ad_batches b SET job_ids=(SELECT json_agg(j.value ORDER BY j.ordinality)::text FROM json_array_elements_text(b.job_ids::json) WITH ORDINALITY j(value,ordinality) JOIN "+q+"generation_records g ON g.id=j.value) WHERE EXISTS (SELECT 1 FROM json_array_elements_text(b.job_ids::json) j LEFT JOIN "+q+"generation_records g ON g.id=j.value WHERE g.id IS NULL) AND EXISTS (SELECT 1 FROM json_array_elements_text(b.job_ids::json) j JOIN "+q+"generation_records g ON g.id=j.value)").run();
+    await this.db.prepare("DELETE FROM "+q+"ad_batches b WHERE NOT EXISTS (SELECT 1 FROM json_array_elements_text(b.job_ids::json) j JOIN "+q+"generation_records g ON g.id=j.value)").run();
+   }
    await this.db.prepare('DELETE FROM '+q+'generation_assets a WHERE NOT EXISTS (SELECT 1 FROM storage_objects o WHERE o.user_id=? AND split_part(split_part(o.path,\'/\',2),\'.\',1)=a.hash)').run(id);
    await this.db.prepare("UPDATE "+q+"assistant_requests SET response_json=NULL WHERE response_json IS NOT NULL AND created_at<extract(epoch FROM now()-interval '24 hours')*1000 AND (created_at>=extract(epoch FROM ?::timestamptz)*1000 OR now()>=?::timestamptz)").run(...args);
   });
