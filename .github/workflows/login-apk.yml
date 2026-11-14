@@ -2,44 +2,87 @@ name: Login APK (Preview)
 
 on:
   push:
-    branches:
-      - delivery/latest-apk-0.2.85
+    branches: [delivery/latest-apk-0.2.85]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
-
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: '24'
           cache: npm
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: '17'
 
-      - name: Build web
+      - name: Verify advertising workflows and build the web assets
         run: |
-          npm ci
+          npm ci --no-audit --no-fund
+          node --test tests-domain/{industry,industry-production,image-skills,services,seo-keywords,consumer-campaign,result-set,selective-preservation}.test.mjs
           npm run build
+          node scripts/check-web-build.mjs --require-commit
           node native/prepare-android.mjs
+          node -e "if(require('./android/app/src/main/assets/native-build.json').webBuild.commit!==process.env.GITHUB_SHA)process.exit(1)"
+      - name: Test Android file downloads
+        run: |
+          CHROMIUM_PATH="$(command -v google-chrome)" node native/test-android-bridge.mjs
 
-      - name: Build Preview APK
+      - name: Verify the Preview signing identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.AIADCAST_DEMO_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.AIADCAST_DEMO_STORE_PASSWORD }}
+          AIADCAST_SIGNING_PROFILE: preview
+        run: |
+          umask 077
+          export AIADCAST_DEMO_KEYSTORE="$RUNNER_TEMP/preview.p12"
+          python3 native/decode-signing-secret.py
+          python3 native/check-android-signing.py
+          echo "AIADCAST_DEMO_KEYSTORE=$AIADCAST_DEMO_KEYSTORE" >> "$GITHUB_ENV"
+      - name: Run Android tests and assemble the signed APK
+        env:
+          AIADCAST_DEMO_STORE_PASSWORD: ${{ secrets.AIADCAST_DEMO_STORE_PASSWORD }}
         working-directory: android
         run: |
-          chmod +x gradlew
-          ./gradlew assemblePreview \
+          ./gradlew --no-daemon testPreviewUnitTest lintPreview assemblePreview \
+            -PAIADCAST_SIGNED_PREVIEW=true \
             -PAIADCAST_API_ORIGIN=https://aiadcast-next.onrender.com \
-            -PAIADCAST_BUILD_VERSION_CODE=85 \
-            -PAIADCAST_BUILD_VERSION_NAME=0.2.85
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: aiadcast-login-preview-0.2.85
-          path: android/app/build/outputs/apk/preview/*.apk
-          if-no-files-found: error
+            -PAIADCAST_BUILD_VERSION_CODE=87 -PAIADCAST_BUILD_VERSION_NAME=0.2.85
+      - name: Verify packaged version, certificate, alignment and source
+        run: |
+          set -euo pipefail
+          apk=android/app/build/outputs/apk/preview/app-preview.apk
+          build_tools="$ANDROID_HOME/build-tools/36.0.0"
+          "$build_tools/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/certificate.txt"
+          grep -Fx 'Signer #1 certificate SHA-256 digest: 7dc020bc774784d3df553c58c672f4210d232e2543004fd52ac9084943488b4e' "$RUNNER_TEMP/certificate.txt"
+          "$build_tools/zipalign" -c -P 16 4 "$apk"
+          "$build_tools/aapt" dump badging "$apk" > "$RUNNER_TEMP/package.txt"
+          grep -F "name='com.selluplabs.aiadcast.next.preview' versionCode='87' versionName='0.2.85-preview'" "$RUNNER_TEMP/package.txt"
+          unzip -p "$apk" assets/native-build.json | jq -e --arg sha "$GITHUB_SHA" '.webBuild.commit == $sha and .webBuild.dirty == false'
+          mkdir -p release
+          cp "$apk" release/aiadcast-0.2.85.apk
+          cd release
+          zip -q -0 aiadcast-0.2.85.zip aiadcast-0.2.85.apk
+          sha256sum aiadcast-0.2.85.{apk,zip} > SHA256SUMS.txt
+      - name: Publish the verified Preview build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="preview-0.2.85-code87-${GITHUB_SHA:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          gh release create "$tag" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title 'aiadcast 0.2.85 Preview (87)' --notes "Android Preview for testing. Verified source: $GITHUB_SHA. Certificate and APK checks passed."
+      - name: Remove temporary signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/preview.p12"

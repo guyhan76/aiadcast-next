@@ -1,3 +1,5 @@
+import {imageCounts} from './result-set';
+import './result-set.css';
 import {apiRequest,type ApiStatus} from './generation-client';
 import {DimensionDisplayChoice} from './DimensionDisplayChoice';
 import {isTextExample} from './generation-input';
@@ -11,12 +13,12 @@ import {useUiLanguage} from './ui-language';
 import {useId,useState,useLayoutEffect,useRef,useEffect} from 'react';
 import {Sparkles} from 'lucide-react';
 import type {Project,FooterField} from './model';
-import {dimensionAxes,withCategory,isServiceCategory} from './product';
+import {dimensionAxes,isServiceCategory} from './product';
 import type {SpecType} from './product';
 import {newGenerationIssues,photoGenerationDraft} from './generation';
 import {imageFormats} from './formats';
 
-import type {IndustryKind,ProductCategory} from './industry';
+import type {IndustryKind} from './industry';
 import {creativeSettings,withCreative} from './creative';
 import {ReferencePhotos} from './ReferencePhotos';
 import {PhotoUsage} from './PhotoUsage';
@@ -60,13 +62,8 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{
  }
  async function submit(){
   if(!active||submitting.current||photoImporting.current||busy)return;
-<<<<<<< HEAD
-  if(!chosen){setError(t('광고할 분야을 선택해주세요.','Choose your industry.'));document.getElementById(id+'-industry')?.focus();return;}
-  if(!regulatoryOk){setError(t('1번 광고할 분야의 법규 안내를 확인해주세요.','Review the industry notice in step 1.'));return;}
-=======
-  if(!chosen){setError(t('광고 분야을 선택해주세요.','Choose your industry.'));document.getElementById(id+'-industry')?.focus();return;}
+  if(!chosen){setError(t('광고 분야를 선택해주세요.','Choose your industry.'));document.getElementById(id+'-industry')?.focus();return;}
   if(!regulatoryOk){setError(t('1번 광고 분야의 법규 안내를 확인해주세요.','Review the industry notice in step 1.'));return;}
->>>>>>> a33eda9d9b411cb08a6270b760424ca6726889db
   if(!project.productName.trim()||!project.productProfile.material.trim()){setError(t('상품·서비스 이름과 상세설명을 입력해주세요.','Enter the name and description.'));document.getElementById(id+(!project.productName.trim()?'-name':'-description'))?.focus();return;}
   if(copyMode==='manual'&&!copy.title.trim()){setError(t('직접 사용할 광고 제목을 입력해주세요.','Enter your advertising headline.'));document.getElementById(id+'-headline')?.focus();return;}
   const prepared=prepareCampaign(photoGenerationDraft(withCreative(project,{copyMode}))),issues=newGenerationIssues(prepared);
@@ -92,6 +89,7 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{
    <section className="creation-section" data-order="6"><h2><span>6</span>{t('광고 문구','Advertising copy')}</h2><div className="simple-choice" role="group" aria-label={t('광고 문구 작성 방식','Copy mode')}>{(['ai','manual'] as const).map(mode=><button type="button" key={mode} aria-pressed={copyMode===mode} onClick={()=>change(p=>withCreative(p,{copyMode:mode}))}>{mode==='ai'?(project.dimensionControl?t('문구 초안 사용','Use draft copy'):t('AI가 만들기','Let AI write it')):t('직접 입력','Write my own')}</button>)}</div>{copyMode==='ai'?<p className="help">{project.dimensionControl?t('입력 내용의 문구 초안을 검증용 화면에 사용합니다. AI 문구 생성은 실행하지 않습니다.','Use a draft from your inputs for the proof. AI copy generation is not executed.'):t('상세설명을 바탕으로 AI가 광고 제목과 문구를 함께 만듭니다.','AI writes the headline and supporting copy from your description.')}</p>:<><label className="field">{t('광고 제목','Ad headline')}<textarea id={id+'-headline'} rows={2} maxLength={400} value={copy.title} onChange={e=>setCopy('title',e.target.value)}/></label><InputExampleGuide kind="headline" service={service}/><label className="field">{t('광고 설명','Ad supporting copy')}<textarea rows={3} maxLength={400} value={copy.description} onChange={e=>setCopy('description',e.target.value)}/></label><InputExampleGuide kind="copy" service={service}/></>}</section>
    <section className="creation-section" data-order="7"><h2><span>7</span>{t('광고 목적','Ad purpose')}<small>{t('선택','Optional')}</small></h2><label className="field">{t('목적 선택','Choose a purpose')}<select value={settings.directionId} onChange={e=>change(p=>withCreative(p,{directionId:e.target.value as 'brand'|'offer'|'trust'}))}><option value="brand">{t('AI가 정하기','Let AI decide')}</option><option value="offer">{t('상품·서비스 홍보','Promote the offer')}</option><option value="trust">{t('브랜드·신뢰 강조','Build brand trust')}</option></select></label></section>
    <section className="creation-section" data-order="8"><h2><span>8</span>{t('광고 이미지 비율','Image ratio')}<small>{t('선택','Optional')}</small></h2><label className="field">{t('출력 비율','Output ratio')}<select value={project.format} onChange={e=>change(p=>({...p,format:e.target.value as Project['format']}))}>{imageFormats.map(f=><option key={f.id} value={f.id}>{f.id} · {text(f.use)}</option>)}</select></label><label className="field">{t('광고 문구 언어','Ad copy language')}<select value={project.locale} onChange={e=>change(p=>({...p,locale:e.target.value as 'ko'|'en'}))}><option value="ko">한국어</option><option value="en">English</option></select></label></section>
+   {!project.dimensionControl&&<section className="creation-section" data-order="9"><h2><span>9</span><strong>{t('생성 장수','Number of images')}</strong></h2><div className="image-count-options" role="group" aria-label={t('생성 장수','Number of images')}>{imageCounts.map(count=><button type="button" key={count} aria-pressed={(project.requestedImageCount??1)===count} onClick={()=>change(p=>({...p,requestedImageCount:count,resultSet:undefined}))}>{count}</button>)}</div></section>}
    </fieldset>
    {error&&<p className={'wizard-error'+(photoImportIssue&&error===photoImportIssue?' photo-upload-error':'')} role="alert">{error}</p>}
    {!project.dimensionControl&&creditStatus?.generation.creditQuote&&<p className="help">{creditStatus.wallet.unlimited?t('관리자 테스트 · 차감 없음','Administrator test · no charge'):<>{t('기존 이용권','Legacy tickets')} {creditStatus.wallet.available} · {t('신규 크레딧','New credits')} {creditStatus.wallet.credits?.available??0}. {t('이번 생성','This generation')}: {creditStatus.generation.creditQuote.amount}{creditStatus.generation.creditQuote.unit==='credit-v2'?t('크레딧 · 다음 화면에서 차감을 확인합니다.',' credits · Confirm the charge on the next screen.'):t('개 기존 이용권 · 사용 확정 시 차감',' legacy ticket · charged on acceptance')}</>}</p>}

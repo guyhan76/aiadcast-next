@@ -1,6 +1,6 @@
-import {defaultPrecision, expressionLabels, motionLabels, backgroundEffectLabels, stickerChoices, expressionChoices, motionChoices, backgroundEffectChoices} from './precision';
+import {defaultPrecision, motionLabels, backgroundEffectLabels, stickerChoices, motionChoices, backgroundEffectChoices} from './precision';
 import type {Project} from './model';
-import type {PrecisionSettings, BackgroundEffect, MotionType, ExpressionType} from './precision';
+import type {PrecisionSettings, BackgroundEffect} from './precision';
 import {ChevronDown, RotateCcw} from 'lucide-react';
 import {useState} from 'react';
 import './precision-controls.css';

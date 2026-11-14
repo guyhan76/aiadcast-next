@@ -12,11 +12,11 @@ if (publicApiOrigin) {
     publicApiOrigin = publicApiOrigin.replaceAll('/$', '')
 }
 
-def buildVersionCode = providers.gradleProperty('AIADCAST_BUILD_VERSION_CODE').getOrElse('83').toInteger()
+def buildVersionCode = providers.gradleProperty('AIADCAST_BUILD_VERSION_CODE').getOrElse('87').toInteger()
 if (buildVersionCode < 83 || buildVersionCode > 2100000000) {
     throw new GradleException('AIADCAST_BUILD_VERSION_CODE must be between 83 and 2100000000.')
 }
-def buildVersionName = providers.gradleProperty('AIADCAST_BUILD_VERSION_NAME').getOrElse('0.2.83')
+def buildVersionName = providers.gradleProperty('AIADCAST_BUILD_VERSION_NAME').getOrElse('0.2.85')
 
 android {
     namespace 'com.selluplabs.aiadcast.next'
@@ -38,7 +38,7 @@ android {
             def keyPath = providers.environmentVariable('AIADCAST_DEMO_KEYSTORE').orNull
             if (keyPath) storeFile file(keyPath)
             storePassword providers.environmentVariable('AIADCAST_DEMO_STORE_PASSWORD').orNull
-            keyAlias 'aiadcast-demo'
+            keyAlias providers.environmentVariable('AIADCAST_DEMO_KEY_ALIAS').getOrElse('aiadcast-demo')
             keyPassword providers.environmentVariable('AIADCAST_DEMO_STORE_PASSWORD').orNull
         }
     }
@@ -57,7 +57,7 @@ android {
             versionNameSuffix '-preview'
             resValue 'string', 'app_name', 'aiadcast Preview'
             debuggable false
-            signingConfig signingConfigs.debug
+            signingConfig providers.gradleProperty('AIADCAST_SIGNED_PREVIEW').getOrElse('false') == 'true' ? signingConfigs.demo : signingConfigs.debug
             matchingFallbacks = ['debug']
         }
         demo {

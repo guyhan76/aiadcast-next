@@ -3,16 +3,31 @@ import {DatabaseSync} from 'node:sqlite';
 import {randomUUID} from 'node:crypto';
 import {hash,snapshotOf,validateOutput} from './contracts.mjs';
 
+function initializeLocalDatabase(db,sql){
+ // Simultaneous first opens can return SQLITE_BUSY from the WAL transition
+ // without waiting for busy_timeout. Only this idempotent setup may retry;
+ // request admission, provider dispatch and settlement must never be replayed.
+ const deadline=performance.now()+5000,pause=new Int32Array(new SharedArrayBuffer(4));
+ for(;;){
+  db.exec(`PRAGMA busy_timeout=${Math.max(0,Math.floor(deadline-performance.now()))}`);
+  try{db.exec(sql);db.exec('PRAGMA busy_timeout=5000');return;}
+  catch(error){
+   if(error?.code!=='ERR_SQLITE_ERROR'||error.errcode!==5||performance.now()>=deadline)throw error;
+   Atomics.wait(pause,0,0,Math.min(10,Math.max(0,deadline-performance.now())));
+  }
+ }
+}
+
 // Local-only prototype. No HTTP route, production DB, wallet or provider wiring.
 export class RecommendationService {
  constructor({path,resolveOwnedImage,adapter,enabled=false,executionMode,outputProvenance='mock-ai',version='mock-v1/prompt-v1',budgetMicros=10000,reservationMicros=1000,lookupEvidence}){
   assertLocalRecommendationMode(executionMode);
   if(!Number.isSafeInteger(budgetMicros)||budgetMicros<0||!Number.isSafeInteger(reservationMicros)||reservationMicros<1||!version)throw Error('INVALID_MOCK_POLICY');
   Object.assign(this,{resolveOwnedImage,adapter,enabled,outputProvenance,version,budgetMicros,reservationMicros,lookupEvidence});
-  this.db=new DatabaseSync(path);this.db.exec(`PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
+  this.db=new DatabaseSync(path);try{initializeLocalDatabase(this.db,`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
    CREATE TABLE IF NOT EXISTS recommendation_jobs(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,generation_id TEXT NOT NULL,cache_key TEXT NOT NULL,snapshot_json TEXT NOT NULL,artifact_hash TEXT NOT NULL,locale TEXT NOT NULL,version TEXT NOT NULL,state TEXT NOT NULL,output_json TEXT,error_code TEXT,customer_policy TEXT NOT NULL DEFAULT 'proposed-included-first',customer_charge INTEGER NOT NULL DEFAULT 0 CHECK(customer_charge=0),UNIQUE(owner_id,generation_id),UNIQUE(owner_id,cache_key));
    CREATE TABLE IF NOT EXISTS recommendation_attempts(id TEXT PRIMARY KEY,job_id TEXT NOT NULL UNIQUE,state TEXT NOT NULL,held_micros INTEGER NOT NULL,actual_micros INTEGER);
-   CREATE TABLE IF NOT EXISTS recommendation_requests(owner_id TEXT NOT NULL,request_id TEXT NOT NULL,fingerprint TEXT NOT NULL,job_id TEXT NOT NULL,PRIMARY KEY(owner_id,request_id));`);
+   CREATE TABLE IF NOT EXISTS recommendation_requests(owner_id TEXT NOT NULL,request_id TEXT NOT NULL,fingerprint TEXT NOT NULL,job_id TEXT NOT NULL,PRIMARY KEY(owner_id,request_id));`);}catch(error){this.db.close();throw error;}
  }
  transaction(fn){this.db.exec('BEGIN IMMEDIATE');try{const out=fn();this.db.exec('COMMIT');return out;}catch(e){this.db.exec('ROLLBACK');throw e;}}
  principal(context){if(!context||typeof context.userId!=='string'||!context.userId)throw Error('AUTH_REQUIRED');return context.userId;}
