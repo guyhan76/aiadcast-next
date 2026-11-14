@@ -38,4 +38,10 @@ jobs:
           npm ci --no-audit --no-fund
           unzip -qo aiadcast-0.2.95.apk 'assets/*' -d android/app/src/main
           export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(command -v google-chrome)"
-          npx playwright test tests/production-parity.spec.ts --project=desktop --grep 'section 5'
+          npx playwright test tests/production-parity.spec.ts --project=desktop
+      - name: Upload the screenshots from both clients
+        uses: actions/upload-artifact@v4
+        with:
+          name: section-5-production-and-apk
+          path: test-results/**/*-section-5.png
+          if-no-files-found: error

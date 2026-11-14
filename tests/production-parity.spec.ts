@@ -107,6 +107,7 @@ for (const service of [false,true]) {
         }
         const guide = details.locator('details');
         await expect(guide).not.toHaveAttribute('open','');
+        await details.screenshot({path:test.info().outputPath((native?'android':'web')+'-section-5.png')});
         await guide.locator('summary').click();
         await expect(guide).toContainText(service?'여행상품 예시':'화장품 예시');
         observed.push(await details.innerText());
