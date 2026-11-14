@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {adFields,customIndustryLimit,findAdField,formatIndustryDetail,matchesSport,sportGroups} from '../src/ad-fields.ts';
+import {adFields,customIndustryLimit,findAdField,formatIndustryDetail,matchesSport,searchSportSections,sportGroups} from '../src/ad-fields.ts';
 import {productCategories,industryKindFor} from '../src/industry.ts';
 import {newProject} from '../src/model.ts';
 import {withCategory,parseProfile} from '../src/product.ts';
@@ -60,4 +60,31 @@ test('sports groups and aliases lead to the selected sport',()=>{
     assert.equal(item.group,group);
     assert.ok(matchesSport(item,query),query);
   }
+});
+
+test('dance styles persist with their sport and reach generation requests',()=>{
+  const parent=findAdField('sports','댄스스포츠').item;
+  assert.equal(parent.id,'dance-sport');
+  assert.deepEqual(parent.sections.filter(section=>section.ko).map(section=>[section.en,section.items.length]),
+    [['Standard',5],['Latin',5]]);
+  for(const item of parent.sections.flatMap(section=>section.items)){
+    const custom=item.other ? '휠체어 댄스 입문' : '';
+    const detail=formatIndustryDetail(item,custom);
+    const project=withCategory(newProject(),'sports');
+    project.productName='댄스 아카데미';
+    project.productProfile=parseProfile({...project.productProfile,industryDetail:detail});
+    const saved=findAdField('sports',project.productProfile.industryDetail);
+    assert.equal(saved.parent.id,parent.id);
+    assert.equal(saved.item.id,item.id);
+    assert.equal(saved.custom,custom);
+    assert.ok(detail.startsWith('댄스스포츠 · '));
+    assert.equal(buildGenerationRequest(project).productProfile.industryDetail,detail);
+  }
+  const hits=query=>searchSportSections(parent,query).flatMap(section=>section.items.map(item=>item.id));
+  assert.equal(hits('모던').length,5);
+  assert.equal(hits('Latin').length,5);
+  assert.deepEqual(hits('비에니즈 왈츠'),['dance-viennese-waltz']);
+  assert.deepEqual(hits('Cha Cha'),['dance-cha-cha-cha']);
+  assert.deepEqual(hits('스케이트'),[]);
+  assert.equal(findAdField('sports','댄스스포츠 · 기타 · '+'가'.repeat(61)),undefined);
 });
