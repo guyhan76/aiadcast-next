@@ -1,3 +1,4 @@
+import {Withdrawal} from './Membership';
 import {useEffect,useRef,useState} from 'react';
 import {ArrowLeft,ArrowRight,Menu,X} from 'lucide-react';
 import {BrandLogo} from './BrandLogo';
@@ -22,7 +23,7 @@ export function WorkspaceHeader({preserve,history}:Props){
   <button ref={trigger} className="workspace-menu-trigger" type="button" aria-label={t('메뉴 열기','Open menu')} aria-expanded={open} aria-haspopup="dialog" aria-controls="workspace-menu" onClick={()=>setOpen(true)}><Menu size={23} aria-hidden="true"/></button></div>
   <dialog ref={dialog} id="workspace-menu" className="workspace-menu" aria-labelledby="workspace-menu-title" onKeyDown={e=>{if(e.key!=='Tab'||(e.target as Element).closest('dialog')!==e.currentTarget)return;const items=Array.from(e.currentTarget.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),select:not(:disabled),input:not(:disabled),[tabindex="0"]')).filter(el=>el.getClientRects().length>0);const first=items[0],last=items.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}} onCancel={e=>{if(e.target===e.currentTarget)setOpen(false);}} onClose={e=>{if(e.target===e.currentTarget)setOpen(false);}} onClick={e=>{if(e.target!==e.currentTarget)return;const r=e.currentTarget.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)close();}}>
    <div className="workspace-menu-heading"><h2 id="workspace-menu-title">{t('메뉴','Menu')}</h2><button type="button" aria-label={t('메뉴 닫기','Close menu')} onClick={close}><X size={22} aria-hidden="true"/></button></div>
-   <AccountBar preserve={preserve}/>
+   <AccountBar preserve={preserve}/><Withdrawal/>
    <div className="workspace-menu-options"><LanguageSwitcher/><PricingDialog/>{betaSession()?.user.role==='admin'&&<a href="#admin" onClick={close}>{t('관리자','Admin')}</a>}<a href={betaSession()?'#credits':'#login'} onClick={close}>{betaSession()?t('내 이용권','My Credits'):t('로그인','Sign in')}</a></div>
   </dialog>
  </header>;

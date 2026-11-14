@@ -1,3 +1,4 @@
+import {Membership} from './membership.mjs';
 import {readExternalSupplierBudget} from '../external-supplier-budget.mjs';
 import {readGenerationHistory} from './generation-history.mjs';
 import {readAdminGenerationPage} from './admin-generation-page.mjs';
@@ -10,7 +11,6 @@ import {singleBoxService} from '../vision-evaluation/single-box-service.mjs';
 import {SingleBoxLedger,readSingleBoxEvaluation} from '../vision-evaluation/single-box-ledger.mjs';
 import {dimensionAnalysisService} from '../vision-evaluation/service.mjs';
 import {CloudVisionLedger,readCloudEvaluation} from '../vision-evaluation/cloud-ledger.mjs';
-import {randomUUID} from 'node:crypto';
 import {BetaStore} from './beta-store-base.mjs';
 import {GenerationService} from './generation-base.mjs';
 import {PostgresDatabase,postgresConfiguration,createPool,cloudSchema,acquireInstanceLock} from './postgres.mjs';
@@ -25,33 +25,11 @@ import {resolve} from 'node:path';
 import {readFileSync} from 'node:fs';
 const fail=(code,status=400)=>{throw new ApiFailure(code,status);};
 export class CloudBetaStore extends BetaStore {
- async save(userId,id,body){
-  const p=body?.project,revision=body?.revision;
-  if(!/^[A-Za-z0-9_-]{8,100}$/.test(id??'')||!p||p.version!==1||p.id!==id||typeof p.name!=='string'||p.name.length>80||!Number.isSafeInteger(revision)||revision<0)fail('INVALID_PROJECT');
-  const bytes=Buffer.from(JSON.stringify(p));if(bytes.length>40000000)fail('PROJECT_TOO_LARGE',413);
-  const name='project-'+id+'-'+randomUUID()+'.json';
-  const path=await this.storage.put(userId,name,bytes,'application/json');
-  let oldPath;
-  try{
-   const result=await this.transaction(async()=>{
-    const old=await this.db.prepare('SELECT revision,bytes,json FROM projects WHERE user_id=? AND id=?').get(userId,id);
-    if((old?.revision??0)!==revision)fail('PROJECT_CONFLICT',409);
-    const stats=await this.db.prepare('SELECT COUNT(*) n FROM projects WHERE user_id=?').get(userId);
-    if(!old&&stats.n>=20)fail('STORAGE_LIMIT',413);
-    oldPath=old?JSON.parse(old.json).storagePath:undefined;
-    const next=revision+1,updated=new Date(this.now()).toISOString();
-    const ref=JSON.stringify({storagePath:path,sha256:hashBytes(bytes)});
-    await this.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id,id) DO UPDATE SET revision=excluded.revision,name=excluded.name,json=excluded.json,bytes=excluded.bytes,updated=excluded.updated').run(userId,id,next,p.name,ref,bytes.length,updated);
-    return {revision:next,updated};
-   });
-   if(oldPath)void this.storage.remove(userId,oldPath).catch(()=>{});
-   return result;
-  }catch(e){
-   // A confirmed conflict was rolled back. Unknown database outcomes retain the object.
-   if(e instanceof ApiFailure)void this.storage.remove(userId,path).catch(()=>{});throw e;
-  }
- }
+ async list(userId){return this.db.prepare('SELECT id,revision,name,updated,expires_at AS "expiresAt" FROM projects WHERE user_id=? AND expires_at>now() ORDER BY updated DESC').all(userId);}
+ async save(){fail('DEVICE_ONLY',403);}
  async project(userId,id){
+  const live=await this.db.prepare('SELECT id FROM projects WHERE user_id=? AND id=? AND expires_at>now()').get(userId,id);
+  if(!live)fail('PROJECT_NOT_FOUND',404);
   const record=await super.project(userId,id),ref=record.project;
   if(typeof ref.storagePath!=='string')fail('CLOUD_PROJECT_MIGRATION_REQUIRED',409);
   const bytes=await this.storage.get(userId,ref.storagePath);
@@ -69,8 +47,31 @@ export function guardedImageAdapter(adapter,guard,gate){return {
  editRegion:options=>{guard();if(adapter.selectiveEditReady!==true||typeof adapter.editRegion!=='function')fail('REGION_EDIT_NOT_AVAILABLE',503);return gate(()=>adapter.editRegion(options));}
 };}
 export class CloudGenerationService extends GenerationService {
+ deliveryDeadline(row,billing){
+  return row.created_at<this.membership.cutover?this.membership.cutover+30*86400000:billing.expires_at;
+ }
+ async jobView(row,billing,requestIds,defectReport,options){
+  if(!this.membership)return super.jobView(row,billing,requestIds,defectReport,options);
+  const expires=this.deliveryDeadline(row,billing);
+  if(row.artifact_hash && expires<=this.now()){
+   const summary=await super.jobView(row,billing,requestIds,defectReport,{includeArtifact:false});
+   return {...summary,state:'expired',artifact:null,artifactId:null,downloadExpiresAt:new Date(expires).toISOString()};
+  }
+  const result=await super.jobView(row,billing,requestIds,defectReport,options);
+  if(row.artifact_hash && ['ready','accepted'].includes(result.state))result.downloadExpiresAt=new Date(expires).toISOString();
+  return result;
+ }
+ async defectEvidence(id){
+  const info=await this.job(id,{includeArtifact:false});
+  if(info.state==='expired')fail('PROJECT_EXPIRED',410);
+  return super.defectEvidence(id);
+ }
  async history(projectId){return readGenerationHistory(this,projectId);}
  async create(body,options){
+  if(typeof body?.requestId==='string'&&this.membership){
+   const expired=await this.membership.db.prepare("SELECT 1 FROM retired_generation_keys WHERE digest=encode(sha256(convert_to(?||':'||?,'UTF8')),'hex') AND expires_at>now()").get(this.cloudUser,body.requestId);
+   if(expired)fail('PROJECT_EXPIRED',410);
+  }
   submissionStage('admission_queue');
   // The local implementation has synchronous admission. Cloud reads yield: serialize
   // admission so concurrent retries see the persisted job before reserving again.
@@ -93,7 +94,7 @@ export class CloudGenerationService extends GenerationService {
   const existing=await this.db.prepare('SELECT * FROM generation_assets WHERE hash=?').get(asset.sha256);
   if(existing){
    if(existing.mime!==asset.mime||existing.width!==asset.width||existing.height!==asset.height||existing.bytes!==asset.bytes.length)fail('STORAGE_CONTENT_MISMATCH');
-   if(await this.storage.verifyAsset(this.cloudUser,asset))return;
+   if(await this.storage.verifyAsset(this.cloudUser,asset)){await this.storage.renewAsset(this.cloudUser,asset.sha256);return;}
   }
   const extension=asset.mime==='image/png'?'png':asset.mime==='image/jpeg'?'jpeg':'webp';
   await this.storage.put(this.cloudUser,asset.sha256+'.'+extension,asset.bytes,asset.mime,{immutable:true});
@@ -116,19 +117,26 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
   const accountsDb=await new PostgresDatabase(pool,'aiadcast_accounts',{guard}).initialize();
   const store=await new CloudBetaStore().initialize(accountsDb,{monthlyBudgetMicros:config.monthlyBudgetMicros});
   const storage=injectedStorage??await new SupabaseStorage({url:env.SUPABASE_URL,secretKey:env.SUPABASE_SECRET_KEY,accountsDb,fetchImpl:storageFetch}).initialize();store.storage=storage;
+  const membership=new Membership(store,storage);await membership.initialize();store.membership=membership;
   const gate=providerGate(2),adapter=injectedAdapter??new OpenAIImageAdapter({apiKey:config.key,enableEdits:config.enabled});
   const supabaseMail=env.AIADCAST_EMAIL_ENABLED==='true'&&env.AIADCAST_EMAIL_PROVIDER==='supabase';
   const accounts=injectedAccounts??accountConfiguration(env);
+  if(accounts.password&&await accountsDb.prepare("SELECT value FROM settings WHERE key='owner_withdrawn'").get())accounts.password={...accounts.password,adminPassword:undefined};
   if(!injectedAccounts&&supabaseMail)accounts.sendMail=options=>storage.sendAuthEmail(options);
   app=await createBetaServer({store,recommendations:recommendationRuntime({store,pool,storage,origin:config.publicUrl,extraOrigins:['https://appassets.androidplatform.net',...extraOrigins],apiKey:config.key,policy:config.recommendationPolicy,transport:recommendationTransport,guard:()=>instance?.assert()}),generationHistoryReader:(actor,search)=>readAdminGenerationPage({pool,guard,actor,search}),overviewReader:(actor,admin,options)=>readAdminOverview({pool,guard,actor,admin,...options,enabled:config.enabled,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter)}),publicUrl:config.publicUrl,singleBox:singleBoxService({apiKey:config.key,statusReader:(actor,id)=>readSingleBoxEvaluation(accountsDb,actor,id),ledgerFactory:()=>new SingleBoxLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),dimensionAnalysis:dimensionAnalysisService({evaluationEnabled:true,apiKey:config.key,statusReader:(actor,id)=>readCloudEvaluation(accountsDb,actor,id),ledgerFactory:()=>new CloudVisionLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),extraOrigins,staticDirectory,accounts,serviceFactory:async user=>{
    instance?.assert();const db=await readinessMeasure('schema_setup',()=>new PostgresDatabase(pool,cloudSchema(user.id),{guard}).initialize());
-   const s=new CloudGenerationService();s.storage=storage;s.cloudUser=user.id;
+   const s=new CloudGenerationService();s.storage=storage;s.cloudUser=user.id;s.membership=membership;
    await readinessMeasure('generation_initialize',()=>s.initialize({db,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:config.enabled,assistantEnabled:config.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter),adapter:guardedImageAdapter(adapter,()=>instance?.assert(),gate),assistantAdapter:options=>{instance?.assert();return gate(()=>assistCopy({...options,apiKey:config.key}));}}));
+   // cloudSchema validates the UUID before embedding it as the fixed trigger argument.
+   await db.exec(`CREATE OR REPLACE TRIGGER first_result_delivery BEFORE UPDATE OF status ON jobs
+     FOR EACH ROW EXECUTE FUNCTION aiadcast_accounts.set_delivery_deadline('${user.id}')`);
    s.ledger.externalBudget=()=>readExternalSupplierBudget(db,user.id);
-   await readinessMeasure('table_protection',()=>db.protectTables());return s;
+   await readinessMeasure('table_protection',()=>db.protectTables());membership.jobs.set(user.id,s);return s;
   }});
   await accountsDb.exec(readFileSync(new URL('./bootstrap-owner.sql',import.meta.url),'utf8'));
   await accountsDb.protectTables();
-  return {...app,store,storage,pool,close:async()=>{if(closing)return;closing=true;await app.close();await store.close();await instance?.close();await pool.end();}};
+  membership.forgetService=app.forgetService;
+  membership.start();
+  return {...app,store,storage,pool,close:async()=>{if(closing)return;closing=true;await membership.stop();await app.close();await store.close();await instance?.close();await pool.end();}};
  }catch(e){await instance?.close().catch(()=>{});await pool.end().catch(()=>{});throw e;}
 }

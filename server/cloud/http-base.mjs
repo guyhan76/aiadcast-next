@@ -82,6 +82,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
         bodies--;
     } };
     const handle = async (req, res) => {
+        let releaseLease;
         const cors = allowed.has(req.headers.origin) ? req.headers.origin : null;
         try {
             const url = new URL(req.url, origin);
@@ -191,6 +192,14 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
             }
             submissionStage('authentication');
             const user = await readinessMeasure('authentication', async () => await store.authenticate(req.headers.authorization));
+            if (store.membership) {
+                releaseLease = await store.membership.enter(user);
+                if (url.pathname.startsWith('/api/membership')) {
+                    const body = req.method === 'POST' ? await read(req, 2048) : undefined;
+                    send(res, 200, await store.membership.route(user, req.method, url.pathname, body), cors);
+                    return;
+                }
+            }
             if (req.method === 'GET' && url.pathname === '/api/auth/session') {
                 send(res, 200, { user: { id: user.id, label: user.label, role: user.role } }, cors);
                 return;
@@ -390,10 +399,13 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
             submissionError(e instanceof ApiFailure ? e.code : 'INTERNAL_ERROR');
             send(res, e instanceof ApiFailure ? e.status : 500, { error: { code: e instanceof ApiFailure ? e.code : 'INTERNAL_ERROR' } }, cors);
         }
+        finally {
+            releaseLease?.();
+        }
     };
     const server = createServer((req, res) => observeSubmission(req, res, () => observeReadiness(req, res, () => handle(req, res))));
     server.requestTimeout = 30000;
     server.headersTimeout = 10000;
     server.maxConnections = 100;
-    return { server, close: async () => { await new Promise(resolve => server.close(resolve)); await Promise.all(await Promise.all([...services.values()].map(async (s) => await (await s).close()))); services.clear(); await dimensionAnalysis.close(); await singleBox.close(); } };
+    return { server, forgetService: id => services.delete(id), close: async () => { await new Promise(resolve => server.close(resolve)); await Promise.all(await Promise.all([...services.values()].map(async (s) => await (await s).close()))); services.clear(); await dimensionAnalysis.close(); await singleBox.close(); } };
 }

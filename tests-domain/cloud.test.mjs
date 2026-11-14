@@ -45,6 +45,7 @@ function bucketFixture(){
   const u=new URL(input);assert.equal(u.origin,env.SUPABASE_URL);assert.equal(o.headers.apikey,env.SUPABASE_SECRET_KEY);assert.equal(o.headers.Authorization,undefined);assert.equal(o.redirect,'error');calls.push({path:u.pathname,method:o.method});
   if(u.pathname==='/storage/v1/bucket/aiadcast-private-beta')return exists?Response.json({public:false}):new Response('',{status:404});
   if(u.pathname==='/storage/v1/bucket'){assert.equal(JSON.parse(o.body).public,false);exists=true;return Response.json({});}
+  if(u.pathname==='/storage/v1/object/list/aiadcast-private-beta'){const {prefix}=JSON.parse(o.body);return Response.json([...objects.keys()].filter(k=>k.startsWith(prefix)).map(k=>({name:k.slice(prefix.length)})));}
   const prefix='/storage/v1/object/aiadcast-private-beta';
   if(u.pathname.startsWith('/storage/v1/object/authenticated/aiadcast-private-beta/')){
    const p=u.pathname.slice('/storage/v1/object/authenticated/aiadcast-private-beta/'.length);
@@ -74,6 +75,13 @@ async function setup(t,{adapter,accounts,fault={}}={}){
  };
  return {get app(){return app;},bucket,call,calls:()=>calls,async restart(){await app.close();app=null;return start();},async member(label='Tester',budgetMicros=0,credits=0){const i=await app.store.provision({label,budgetMicros,credits});const r=await call('/api/auth/login',{body:{invite:i.invite}});assert.equal(r.status,200,JSON.stringify(r.data));return r.data;}};
 }
+async function legacyProject(app,userId,project){
+ const bytes=Buffer.from(JSON.stringify(project));
+ const path=await app.storage.put(userId,'project-'+project.id+'-'+randomUUID()+'.json',bytes,'application/json');
+ await app.store.db.prepare('INSERT INTO projects(user_id,id,revision,name,json,bytes,updated) VALUES(?,?,1,?,?,?,?)')
+  .run(userId,project.id,project.name,JSON.stringify({storagePath:path,sha256:hashBytes(bytes)}),bytes.length,new Date().toISOString());
+ return path;
+}
 test('cloud test password accounts and owner login survive restart without invitation or repeated credits',async t=>{
  const password='Fixture-private-admin-2026!',memberPassword='Fixture-private-member-2026!';
  const s=await setup(t,{accounts:{password:{enabled:true,adminEmail:'selluplabs@gmail.com',adminPassword:password}}});
@@ -86,10 +94,10 @@ test('cloud test password accounts and owner login survive restart without invit
  assert.equal((await s.call('/api/admin/test-ready',{token:member.token,body:readyBody})).status,403);
  const ready=await s.call('/api/admin/test-ready',{token:admin.token,body:readyBody});assert.equal(ready.status,200,JSON.stringify(ready.data));assert.equal(ready.data.generation.enabled,true);assert.equal(ready.data.wallet.available,1);
  assert.equal((await s.call('/api/admin/test-ready',{token:admin.token,body:readyBody})).data.wallet.available,1);
- const p={version:1,id:'password-project',name:'Saved test'};assert.equal((await s.call('/api/projects/'+p.id,{token:admin.token,body:{project:p,revision:0}})).status,200);
+ const p={version:1,id:'password-project',name:'Saved test'};assert.equal((await s.call('/api/projects/'+p.id,{token:admin.token,body:{project:p,revision:0}})).status,403);
  assert.equal((await s.call('/api/projects/'+p.id,{token:member.token})).status,404);
  await s.restart();
- assert.equal((await s.call('/api/projects/'+p.id,{token:admin.token})).data.project.name,p.name);
+ assert.equal((await s.call('/api/projects/'+p.id,{token:admin.token})).status,404);
  assert.equal((await s.call('/api/auth/test/login',{body:{email:'member@example.com',password:memberPassword}})).data.user.id,member.user.id);
  assert.equal((await s.call('/api/status',{token:admin.token})).data.wallet.available,3);
  assert.equal((await s.call('/api/status',{token:member.token})).data.wallet.available,1);assert.equal((await s.call('/api/status',{token:member.token})).data.budget.limitMicros,500000);
@@ -140,7 +148,7 @@ test('PostgreSQL transaction rollback and concurrency do not partially change ba
  await assert.rejects(db.transaction(async()=>{await db.prepare('UPDATE counters SET n=n+1').run();throw Error('ROLLBACK_TEST');}),/ROLLBACK_TEST/);
  await Promise.all(Array.from({length:5},()=>db.transaction(async()=>{const old=await db.prepare('SELECT n FROM counters').get();await db.prepare('UPDATE counters SET n=?').run(old.n+1);})));assert.equal((await db.prepare('SELECT n FROM counters').get()).n,5);
 });
-test('cloud HTTP signup, role checks, project revisions and private storage survive a cold restart',async t=>{
+test('cloud HTTP signup, role checks, read-only legacy projects and private storage survive a cold restart',async t=>{
  const mails=[],s=await setup(t,{accounts:{sendMail:async mail=>mails.push(mail)}});
  const auth=await s.call('/api/auth/email/request',{body:{email:'tester@example.com'}});assert.equal(auth.status,200,JSON.stringify(auth.data));assert.equal(mails.length,1);
  const token=new URL(mails[0].url).hash.match(/token=([^&]+)/)?.[1];assert.ok(token);
@@ -149,10 +157,12 @@ test('cloud HTTP signup, role checks, project revisions and private storage surv
  const signed=await s.call('/api/auth/email/exchange',{body:{requestId:auth.data.requestId,pollToken:auth.data.pollToken}});assert.equal(signed.status,200,JSON.stringify(signed.data));const a=signed.data.session;
  assert.equal((await s.call('/api/auth/email/exchange',{body:auth.data})).status,401);assert.equal((await s.call('/api/auth/email/verify',{body:{token}})).status,401);
  assert.equal((await s.call('/api/admin/overview',{token:a.token})).status,403);
+ await s.app.store.db.prepare("UPDATE users SET storage_plan='standard' WHERE id=?").run(a.user.id);
  const b=await s.member('Other');const project={version:1,id:'project-private-001',name:'셀업랩스 광고',source};
- assert.equal((await s.call('/api/projects/'+project.id,{token:a.token,body:{project,revision:0}})).data.revision,1);
+ assert.equal((await s.call('/api/projects/'+project.id,{token:a.token,body:{project,revision:0}})).status,403);
+ await legacyProject(s.app,a.user.id,project);
  assert.equal((await s.call('/api/projects/'+project.id,{token:b.token})).status,404);
- assert.equal((await s.call('/api/projects/'+project.id,{token:a.token,body:{project,revision:0}})).status,409);
+ assert.equal((await s.call('/api/projects/'+project.id,{token:a.token,body:{project,revision:0}})).status,403);
  await s.restart();assert.equal((await s.call('/api/auth/me',{token:a.token})).status,200);
  const loaded=await s.call('/api/projects/'+project.id,{token:a.token});assert.equal(loaded.status,200,JSON.stringify(loaded.data));assert.deepEqual(loaded.data.project,project);
  const row=await s.app.store.db.prepare('SELECT json FROM projects WHERE id=?').get(project.id);assert.ok(!row.json.includes(source.data));
@@ -465,7 +475,7 @@ test('cloud transport diagnosis: client abort during source persistence does not
 for(const admin of [false,true])test(`cloud storage preflight refuses full account before provider or credit reservation (${admin?'admin':'member'})`,async t=>{
  const s=await setup(t),a=await s.member('Storage admission',1_000_000,admin?0:3);let token=a.token;
  if(admin){await s.app.store.setRole(a.user.id,'admin');token=(await s.call('/api/auth/login',{body:{invite:(await s.app.store.issueInvite(a.user.id)).invite}})).data.token;}
- await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(a.user.id+'/existing-fixture',a.user.id,admin?299_000_000:99_000_000);
+ await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(a.user.id+'/existing-fixture',a.user.id,admin?599_000_000:99_000_000);
  const before=(await s.call('/api/status',{token})).data,body=generation();body.request.output.format='9:16';body.role='admin';body.storageLimit=900000000;
  const uploads=s.bucket.calls.length;
  const result=await s.call('/api/generations',{token,body});assert.equal(result.status,413);assert.equal(result.data.error.code,'STORAGE_CAPACITY_UNAVAILABLE');
@@ -510,13 +520,13 @@ test('cloud quota filled after admission reproduces persist-image STORAGE_LIMIT 
  assert.equal(await storage.accountLimit(a.user.id),100_000_000);
  await s.app.store.db.prepare('INSERT INTO storage_objects VALUES(?,?,?)').run(a.user.id+'/fixture',a.user.id,98_707_402);
  await assert.rejects(storage.assertGenerationCapacity(a.user.id,[],16_000_000),/STORAGE_CAPACITY_UNAVAILABLE/);
- await s.app.store.setRole(a.user.id,'admin');assert.equal(await storage.accountLimit(a.user.id),300_000_000);
+ await s.app.store.setRole(a.user.id,'admin');assert.equal(await storage.accountLimit(a.user.id),600_000_000);
  await storage.assertGenerationCapacity(a.user.id,[],16_000_000);
  const data=Buffer.alloc(2_000_000,1);await storage.put(a.user.id,hashBytes(data)+'.png',data,'image/png');
  await s.app.store.setRole(a.user.id,'member');assert.equal(await storage.accountLimit(a.user.id),100_000_000);
  await assert.rejects(storage.put(a.user.id,hashBytes(Buffer.from('new'))+'.png',Buffer.from('new'),'image/png'),/STORAGE_LIMIT/);
  await s.app.store.setRole(a.user.id,'admin');
- await s.app.store.db.prepare('UPDATE storage_objects SET bytes=? WHERE path=?').run(299_000_000,a.user.id+'/fixture');
+ await s.app.store.db.prepare('UPDATE storage_objects SET bytes=? WHERE path=?').run(599_000_000,a.user.id+'/fixture');
  await assert.rejects(storage.assertGenerationCapacity(a.user.id,[],1),/STORAGE_CAPACITY_UNAVAILABLE/);
  await assert.rejects(storage.put(a.user.id,hashBytes(Buffer.from('new'))+'.png',Buffer.from('new'),'image/png'),/STORAGE_LIMIT/);
  await s.app.store.db.prepare('UPDATE storage_objects SET bytes=? WHERE path=?').run(98_707_402,a.user.id+'/fixture');
@@ -574,4 +584,73 @@ test('cloud returns durable request-key acceptance while the mock provider is st
   const lookup=await s.call(`/api/generation-requests/${body.requestId}?projectId=${body.projectId}`,{token:a.token});assert.equal(lookup.data.state,'found');assert.equal(lookup.data.jobId,created.data.job.id);
   const duplicate=await s.call('/api/generations',{token:a.token,body});assert.equal(duplicate.data.job.id,created.data.job.id);assert.equal(calls,1);
  }finally{clearTimeout(timer);release();}
+});
+
+test('membership rejects server saves for both plans, isolates withdrawal and retries failed object deletion',async t=>{
+ const s=await setup(t),member=await s.member(),other=await s.member('Other'),admin=await s.member('Admin');
+ await s.app.store.setRole(admin.user.id,'admin');
+ admin.token=(await s.call('/api/auth/login',{body:{invite:(await s.app.store.issueInvite(admin.user.id)).invite}})).data.token;
+ const path='/api/projects/member-project',project={id:'member-project',name:'Fixture',version:1};
+ const save=revision=>s.call(path,{token:member.token,body:{project,revision}});
+ assert.equal((await save(0)).status,403);
+ assert.equal((await s.call('/api/membership/plan',{token:member.token,body:{plan:'standard',userId:member.user.id}})).status,403);
+ assert.equal((await s.call('/api/membership/plan',{token:admin.token,body:{plan:'standard',userId:member.user.id}})).status,200);
+ assert.equal((await save(0)).data.error.code,'DEVICE_ONLY');
+ await legacyProject(s.app,member.user.id,project);
+ const listed=()=>s.call('/api/projects',{token:member.token});
+ const expiry=(await listed()).data.projects[0].expiresAt;
+ assert.equal((await save(1)).status,403);assert.equal((await listed()).data.projects[0].expiresAt,expiry);
+ assert.equal((await s.call('/api/membership/withdraw',{token:member.token,body:{}})).status,400);
+ const storage=s.app.storage,orig=storage.remove.bind(storage);
+ storage.remove=async()=>{throw Error('simulated outage');};
+ const withdraw=await s.call('/api/membership/withdraw',{token:member.token,body:{confirm:'delete-my-account'}});
+ assert.equal(withdraw.status,200,JSON.stringify(withdraw.data));assert.equal((await listed()).status,401);
+ await s.app.store.membership.run();
+ const events=async()=> (await s.call('/api/membership/admin',{token:admin.token})).data.events.filter(e=>e.receipt===withdraw.data.receipt).map(e=>e.kind);
+ assert.ok((await events()).includes('retry'));assert.ok(!(await events()).includes('completed'));
+ storage.remove=orig;await s.app.store.membership.run();
+ assert.ok((await events()).includes('completed'));assert.ok(![...s.bucket.objects.keys()].some(p=>p.startsWith(member.user.id+'/')));
+ assert.equal((await s.call('/api/membership',{token:other.token})).status,200);
+});
+test('expiration removes temporary bytes and self-contained snapshots without extending revisions or touching another owner',async t=>{
+ const s=await setup(t),a=await s.member('Retention'),other=await s.member('Unrelated');
+ const store=s.app.store,db=store.db,storage=s.app.storage;
+ await db.prepare("UPDATE users SET storage_plan='standard' WHERE id=?").run(a.user.id);
+ const before=await s.call('/api/membership',{token:a.token});assert.equal(before.data.storage,'device');assert.equal(before.data.downloadWindowHours,24);
+ const bytes=Buffer.from('temporary fixture'),hash=hashBytes(bytes);
+ const p1=await storage.put(a.user.id,hash+'.png',bytes,'image/png');
+ const p2=await storage.put(other.user.id,hash+'.png',bytes,'image/png');
+ const id='expire-project-fixture',project={id,version:1,name:'Expiry'};
+ const path=await legacyProject(s.app,a.user.id,project);
+ await db.prepare("UPDATE projects SET expires_at=now()-interval '1 second' WHERE user_id=?").run(a.user.id);
+ await db.prepare("UPDATE storage_objects SET expires_at=now()-interval '1 second' WHERE user_id=?").run(a.user.id);
+ assert.equal((await s.call('/api/projects/'+id,{token:a.token})).status,404);
+ assert.deepEqual(await store.list(a.user.id),[]);
+ await store.membership.run();
+ assert.ok(!s.bucket.objects.has(p1));assert.ok(!s.bucket.objects.has(path));assert.ok(s.bucket.objects.has(p2));
+ const full=await s.call('/api/projects/'+id,{token:a.token,body:{project,revision:0}});
+ assert.equal(full.status,403);assert.equal(full.data.error.code,'DEVICE_ONLY');
+});
+
+test('new downloads keep one 24-hour deadline after delivery, across owners, reads and restart',async t=>{
+ const s=await setup(t),owner=await s.member('Delivery',1_000_000,3),other=await s.member('Unrelated');
+ const submitted=await s.call('/api/generations',{token:owner.token,body:generation()});
+ const id=submitted.data.job.id,path='/api/generations/'+id;
+ let job;
+ for(let i=0;i<80;i++){
+  job=(await s.call(path,{token:owner.token})).data.job;if(job.state==='ready')break;
+  await new Promise(r=>setTimeout(r,10));
+ }
+ assert.equal(job.state,'ready');
+ const deadline=Date.parse(job.downloadExpiresAt);
+ assert.ok(deadline>=Date.parse(job.createdAt)+86400000 && deadline<=Date.now()+86400001);
+ const list=token=>s.call('/api/membership/downloads',{token});
+ assert.deepEqual((await list(other.token)).data.downloads,[]);
+ assert.equal((await list(owner.token)).data.downloads[0].expiresAt,job.downloadExpiresAt);
+ await s.restart();assert.equal((await s.call(path,{token:owner.token})).data.job.downloadExpiresAt,job.downloadExpiresAt);
+ const tenant=new PostgresDatabase(s.app.pool,cloudSchema(owner.user.id));
+ await tenant.prepare('UPDATE jobs SET expires_at=? WHERE id=?').run(Date.now()-1,id);
+ assert.deepEqual((await list(owner.token)).data.downloads,[]);
+ const after=await s.call(path,{token:owner.token});
+ assert.ok(after.status===404 || after.data.job?.artifact===null);
 });

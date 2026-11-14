@@ -7,7 +7,7 @@ function fixture(){
  const bytes=Buffer.from('mock immutable image bytes'),asset={bytes,sha256:hashBytes(bytes),mime:'image/png',width:20,height:30};
  const service=new CloudGenerationService();service.cloudUser='tenant-fixture';
  service.db={prepare:sql=>({get:async()=>row,run:async(hash,mime,width,height,bytes)=>{if(failRecord)throw Error('simulated record failure');row={hash,mime,width,height,bytes};}})};
- service.storage={verifyAsset:async()=>true,put:async()=>{uploads++;if(failUpload)throw Error('simulated upload failure');}};
+ service.storage={renewAsset:async()=>{},verifyAsset:async()=>true,put:async()=>{uploads++;if(failUpload)throw Error('simulated upload failure');}};
  return {service,asset,get row(){return row;},set row(v){row=v;},uploads:()=>uploads,failUpload:v=>failUpload=v,failRecord:v=>failRecord=v};
 }
 test('committed metadata and verified object permit upload reuse; every byte hash is still checked',async()=>{

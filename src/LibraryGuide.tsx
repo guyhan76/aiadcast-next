@@ -21,6 +21,7 @@ export function ProjectLibrary({items,error,onNew,onOpen}:{items:Project[];error
  const filtered=items.filter(p=>hasSavedAcceptedAd(p)||p.presentation==='campaign'&&!!p.productName.trim()).filter(p=>(p.name+' '+p.productName).toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
  return <>
   <div className="projects-heading"><h1>{t('내 프로젝트','My projects')}</h1><button className="primary-action" onClick={onNew}><Plus size={18}/>{t('새 광고','New ad')}</button></div>
+  <p>{t('이 기기에 저장한 프로젝트입니다.','Projects saved on this device.')}</p>
   <PrecisionEditAction label={t('기기 사진 정밀 편집','Edit a device image')}/>
   <label className="project-search"><Search size={20}/><input aria-label={t('프로젝트 검색','Search projects')} placeholder={t('광고 이름 검색','Search ad names')} value={filter} onChange={e=>setFilter(e.target.value)}/></label>
   {error&&<p role="alert">{error}</p>}
