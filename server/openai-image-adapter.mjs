@@ -1,10 +1,12 @@
+import {selectiveEditForm,validateSelectiveOriginal,prepareSelectiveProviderInput,restoreSelectiveProviderResult,verifyPreparedSelectiveInput} from './selective-image-edit.mjs';
 import {providerHttpError,safeProviderEnum} from './provider-http-error.mjs';
 import {preparePlanarSource,requestPlanarRatio,controlPlanarResult} from './planar-proportion.mjs';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
+import {finishedAdSkillBrief} from './automatic-image-skills.mjs';
 import {artDirectionFor} from '../src/art-direction.ts';
 import {dimensionLabel,dimensionUnit} from '../src/dimension-units.ts';
-import {finishedAdSkillBrief} from './automatic-image-skills.mjs';
+import {imageSkillBrief} from '../src/image-skills.ts';
 
 // Pinned, opt-in development adapter. No model discovery or automatic upgrades.
 export const IMAGE_MODEL = 'gpt-image-2.6-sunburst';
@@ -188,8 +190,34 @@ async function responseJsonLimited(response, maximumBytes = 24_000_000) {
   catch { throw new ProviderFailure('PROVIDER_INVALID_RESPONSE'); }
 }
 export class OpenAIImageAdapter {
-  constructor({ apiKey, fetchImpl = globalThis.fetch, timeoutMs = 180_000 } = {}) {
+  constructor({ apiKey, fetchImpl = globalThis.fetch, timeoutMs = 180_000, enableEdits = false } = {}) {
+    this.selectiveEditReady = enableEdits && Boolean(apiKey);
     this.apiKey = apiKey; this.fetchImpl = fetchImpl; this.timeoutMs = timeoutMs;
+  }
+  validateSelectiveInput(input){validateSelectiveOriginal({...input,model:IMAGE_MODEL});}
+  prepareSelectiveInput(input){return prepareSelectiveProviderInput({...input,model:IMAGE_MODEL});}
+  async editRegion({source,mask,prompt,attemptId,providerInput,references=[]}) {
+    if(!this.selectiveEditReady)throw new ProviderFailure('REGION_EDIT_NOT_AVAILABLE',{uncertain:false});
+    source={...source,bytes:Buffer.isBuffer(source?.bytes)?Buffer.from(source.bytes):source?.bytes};
+    mask={...mask,bytes:Buffer.isBuffer(mask?.bytes)?Buffer.from(mask.bytes):mask?.bytes};
+    const prepared=providerInput?verifyPreparedSelectiveInput(providerInput,source,mask,IMAGE_MODEL,references):await this.prepareSelectiveInput({source,mask,references});
+    const body=selectiveEditForm({model:IMAGE_MODEL,source:prepared.source,mask:prepared.mask,prompt,references:prepared.references});
+    if(!this.apiKey)throw new ProviderFailure('PROVIDER_NOT_CONFIGURED',{uncertain:false});
+    let response;try{response=await this.fetchImpl('https://api.openai.com/v1/images/edits',{method:'POST',headers:{Authorization:`Bearer ${this.apiKey}`,'X-Client-Request-Id':attemptId},body,redirect:'error',signal:AbortSignal.timeout(this.timeoutMs)});}catch{throw new ProviderFailure('PROVIDER_UNCERTAIN');}
+    if(!response.ok){const e=await providerHttpError(response);throw new ProviderFailure(e.code,{uncertain:![400,401,403,404,413,422,429].includes(response.status),providerStatus:response.status});}
+    const result=await responseJsonLimited(response),raw=result?.data?.[0]?.b64_json;
+    const observedCost=imageUsageCost(result?.usage);
+    if(observedCost&&typeof this.onSelectiveUsage==='function'){
+      // Opt-in operator evidence hook; expose validated numeric usage only, no
+      // provider body, headers or credentials. Fail closed if durable storage fails.
+      const usage={input_tokens:observedCost.inputTextTokens+observedCost.inputImageTokens,input_tokens_details:{text_tokens:observedCost.inputTextTokens,image_tokens:observedCost.inputImageTokens},output_tokens:observedCost.outputTokens};
+      await this.onSelectiveUsage({usage,cost:observedCost});
+    }
+    if(result.data?.length!==1||typeof raw!=='string'||!/^[A-Za-z0-9+/]+={0,2}$/.test(raw))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
+    const bytes=Buffer.from(raw,'base64');if(bytes.toString('base64')!==raw)throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
+    let meta;try{meta=await validateImage(bytes,'image/png',{maximumPixels:8294400,maximumBytes:MAX_GENERATED_IMAGE_BYTES});}catch{throw new ProviderFailure('PROVIDER_INVALID_IMAGE');}
+    let cropped;try{cropped=await restoreSelectiveProviderResult(bytes,prepared,source,mask);}catch{throw new ProviderFailure('PROVIDER_INVALID_IMAGE',{uncertain:true});}
+    return {...cropped,usage:result.usage??null,cost:imageUsageCost(result.usage),model:IMAGE_MODEL,revision:IMAGE_REVISION,role:'creative',composition:'complete-ad'};
   }
   async generate(options) {
     const started=Date.now(),diagnostic={timeoutMs:this.timeoutMs,endpoint:options.request.mode==='creative'&&options.source?'edits':'generations'};
@@ -282,6 +310,7 @@ export function promptFor(request){
  let prompt=generationPrompt(request);
  if(request.mode==='creative'&&request.source&&request.subjectType==='physical-product'&&!request.dimensionPlan&&!request.proportionControl){
   prompt=prompt.replace('Reconcile named width, depth, height or diameter with the reference silhouette using supplied millimetres and normalized ratios.','Keep the reference photograph silhouette and visible component proportions; numeric dimensions are display labels only.').replace('Supplied internal dimensions are for proportions only and are not visible advertising copy.','Hidden dimensions are not visible advertising copy and must not reshape the photographed product.').replace('A supplied size is guidance for generation, not evidence of reconstructed physical 3D accuracy.','A supplied size is label content, not a target for reconstructing product geometry.').replace('Use supplied width/depth/height by named axes and normalized ratios as proportional guidance, not proof of true 3D reconstruction.','Use the supplied photograph for visible shape and proportions; do not reshape it from numeric dimensions.').replace('If dimensions are supplied, jointly reference the source photo, axis values and normalizedRatios as proportional guidance, not proof of exact reconstructed physical geometry.','Use the supplied photograph for visible shape and proportions; do not reshape it from numeric dimensions.');
+  prompt+='\nWEARABLE PRODUCT CONSISTENCY: Do not introduce a wearer merely because the product is a shoe, garment, watch or jewellery. Follow the requested subject count and product-only versus worn presentation. For product-only artwork, show unworn products without limbs, socks, mannequins or invented people. When an actual wearing reference is supplied, preserve its pose, joint alignment, product placement, scale, perspective and ground contact. Keep the observed left/right and inner/outer product differences; never mirror a logo, seam or fastener onto an unshown side. A pair must be anatomically and geometrically coherent, not two unrelated shoe angles. Do not invent unseen construction. If the requested pose requires unknown anatomy or product surfaces, keep the supplied viewpoint instead. These constraints guide generation and do not constitute visual verification.';
   prompt+='\nPHOTO SHAPE PRIORITY: Preserve the photographed silhouette, construction, open/closed state and relative component proportions. Do not make the body taller, deeper, wider or thinner to match specifications or normalizedRatios. Numeric dimensions describe optional labels only, including any separately requested main/inset arrows; they do not authorize shape reconstruction. Keep the approved advertising art direction. This is an instruction, not a guarantee of identity, physical accuracy or arrow placement.';
  }
  if(!completeAdRequest(request))return prompt;

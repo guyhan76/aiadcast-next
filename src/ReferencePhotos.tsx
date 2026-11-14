@@ -41,7 +41,7 @@ export function ReferencePhotos({project,change,onBusyChange,onAdded,onIssueChan
  finally{setBusy(false);onBusyChange?.(false);}}
  return <section className="reference-photos" aria-label={t('참조사진','Reference photos')}>
   <div className="reference-heading"><strong>{t('사진','Photos')}</strong><span aria-live="polite">{photos.length} / 10</span></div>
-  <p>{isServiceCategory(project.productProfile.category)?t('공간이나 서비스 사진을 추가하세요. (선택)','Add photos of your space or service. (Optional)'):t('첫 사진 · 대표 사진','First photo · Main')}</p>
+  {!isServiceCategory(project.productProfile.category)&&photos.length>0&&<p>{t('첫 사진 · 대표 사진','First photo · Main')}</p>}
   {error&&<div ref={errorRef} tabIndex={-1} role="alert" className="reference-import-error"><p className="reference-error-title"><AlertTriangle size={28} aria-hidden="true"/><strong>{sizeError?t('참조사진 전체 용량이 10MB를 초과했습니다.','The combined reference photo size exceeds 10MB.'):t('사진 첨부를 확인해주세요.','Check the photo attachments.')}</strong></p><p>{error}</p>{issues.length>0&&<ul>{issues.map((issue,i)=><li key={i}><strong>{issue.name}</strong>: {issueReason(issue)}</li>)}</ul>}</div>}
   {notice&&<p role="status">{notice}</p>}
   {photos.length>0&&<div className="reference-grid">{photos.map((photo,i)=><div className="reference-item" key={photo.sha256}>

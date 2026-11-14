@@ -13,6 +13,7 @@ import {industryDirections} from './industry.ts';
 import {completeAdKey} from './complete-ad.ts';
 
 export type GeneratedAsset = {
+ editParent?:{jobId:string;projectId:string;artifactId:string};
  acceptedAt?:string;
  dimensionDisplay?:AiDimensionDisplay;dimensionReview?:AiDimensionReview;inputMode?:'text-example';jobId:string;mode:'original'|'creative';sourceHash:string|null;asset:Asset;
  role:'background'|'creative';model:string;createdAt:string;specificationKey:string;marketingPlan?:MarketingPlan;
@@ -80,6 +81,9 @@ export async function parseGenerated(value:unknown,readAsset:(value:unknown)=>Pr
  if(value===undefined)return undefined;
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('생성 결과 형식이 올바르지 않습니다.');
  const r=value as GeneratedAsset;
+ let editParent:GeneratedAsset['editParent'];
+ if(r.editParent!==undefined){const p=r.editParent;if(!p||typeof p!=='object'||!['jobId','projectId'].every(k=>typeof p[k as 'jobId'|'projectId']==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(p[k as 'jobId'|'projectId']))||typeof p.artifactId!=='string'||!/^[a-f0-9]{64}$/.test(p.artifactId))throw Error('INVALID_EDIT_PARENT');editParent={jobId:p.jobId,projectId:p.projectId,artifactId:p.artifactId};}
+
  const jobId=metadataString(r.jobId,128),model=metadataString(r.model,160),createdAt=metadataString(r.createdAt,40),specificationKey=metadataString(r.specificationKey,4096);
  if(!/^[A-Za-z0-9_-]+$/.test(jobId)||!/^[A-Za-z0-9._:/-]+$/.test(model)||!['original','creative'].includes(r.mode)||!validHash(r.sourceHash)
   ||r.role!==(r.mode==='original'?'background':'creative')||!Number.isFinite(Date.parse(createdAt))||new Date(createdAt).toISOString()!==createdAt)throw Error('생성 결과의 제작 정보가 올바르지 않습니다.');
@@ -115,7 +119,7 @@ export async function parseGenerated(value:unknown,readAsset:(value:unknown)=>Pr
  if(r.dimensionReview&&(!dimensionDisplay||!validAiDimensionReview(r.dimensionReview,dimensionDisplay,asset.sha256)))throw Error('INVALID_AI_DIMENSION_REVIEW');
  if(planarReport?.outputRatio&&Math.abs(asset.width/asset.height-planarReport.outputRatio)>1e-9)throw Error('INVALID_PLANAR_REPORT');
  if(r.acceptedAt!==undefined&&(!Number.isFinite(Date.parse(r.acceptedAt))||new Date(r.acceptedAt).toISOString()!==r.acceptedAt))throw Error('INVALID_ACCEPTANCE');
- return {...(r.acceptedAt?{acceptedAt:r.acceptedAt}:{}),...(dimensionDisplay?{dimensionDisplay}:{}),...(r.dimensionReview?{dimensionReview:r.dimensionReview}:{}),...(r.inputMode?{inputMode:r.inputMode}:{}),...(dimensionPlan?{dimensionPlan}:{}),...(planarReport?{planarReport,planarOriginal:planarOriginal!}:{}),jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey,...(marketingPlan?{marketingPlan}:{}),...(r.composition?{composition:r.composition}:{}),...(compositionKey?{compositionKey}:{})};
+ return {...(editParent?{editParent}:{}),...(r.acceptedAt?{acceptedAt:r.acceptedAt}:{}),...(dimensionDisplay?{dimensionDisplay}:{}),...(r.dimensionReview?{dimensionReview:r.dimensionReview}:{}),...(r.inputMode?{inputMode:r.inputMode}:{}),...(dimensionPlan?{dimensionPlan}:{}),...(planarReport?{planarReport,planarOriginal:planarOriginal!}:{}),jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey,...(marketingPlan?{marketingPlan}:{}),...(r.composition?{composition:r.composition}:{}),...(compositionKey?{compositionKey}:{})};
 }
 
 

@@ -38,6 +38,8 @@ function startingPoint(request, hasSubject) {
 // Match ordinary Korean/English descriptions as well as the catalog labels.
 // The renderer can choose another entry after reconciling the actual photographs.
 const cues = {
+  anime: ['2D 애니메이션', '2D 캐릭터', '2D 일러스트', '2D animation', '2D character'],
+  clay: ['3D 애니메이션', '3D 캐릭터', '3D 만화', '3D character', '3D animation'],
   'studio-product': ['제품만', '신발만', '단독 컷', 'product only', 'shoes only'],
   'natural-window-light': ['자연광', '창가 빛', '햇살', 'window light', 'natural light'],
   'minimal-white': ['흰 배경', '하얀 배경', '흰색 배경', 'white background'],
@@ -99,7 +101,7 @@ export function finishedAdSkillBrief(request) {
     'Privately compare suitable alternatives from the catalog below. Pick ONE primary treatment and only if useful up to TWO compatible accents. Render that decision in this single ad. ' +
     'Base the choice on the specific advertised subject, field, title, product or service description, additional instructions, approved copy and intended format. Read the actual supplied images before choosing. A subject photo establishes identity and geometry; a style reference suggests lighting, palette or composition only. ' +
     'Customer requests and exclusions are binding, including plain language and negated slash names. For a photographed product keep the real scale, shape, material, markings and their exact visible side; if asked for product alone, show no person or body parts. When a service lacks subject photos use a conceptual treatment that cannot be mistaken for its actual staff, premises or outcomes. ' +
-    'Never infer dimensions, internals, before/after results or factual claims from a treatment. Locked copy, placement, language and CTA rules take priority. If a treatment needs undocumented details, pick another. ' +
+    'For an illustrated education, recruitment or event brief, consider an original cel-shaded 2D or softly rendered 3D character when it explains the service. Explicit 2D/3D style choices override the automatic look. A 3D character can have smooth materials without a clay texture. Do not replace real photographed products, present a character as real staff, or add a character when the customer excludes people or wants documentary realism. Deliver one still poster. Never infer dimensions, internals, before/after results or factual claims from a treatment. Locked copy, placement, language and CTA rules take priority. If a treatment needs undocumented details, pick another. ' +
     'Consider these matched directions first: ' + suggestions.map(recipe => '[' + recipe.id + '] ' + recipe.instruction).join(' ') +
     ' Use another catalog treatment if it fits the supplied facts, photos and requested mood better. Catalog:\n' + catalog + '\n';
 }

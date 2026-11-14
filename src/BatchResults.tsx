@@ -1,3 +1,4 @@
+import {PrecisionEditAction} from './PrecisionEditAction';
 import {useEffect,useRef,useState} from 'react';
 import type {Project} from './model';
 import type {AdBatch} from './batch-price';
@@ -89,6 +90,7 @@ export function BatchResults({project,batch,onEdit,renderDetail}:{project:Projec
   <ol className="batch-grid">{jobs.map((j,i)=><li key={j.id}>
    {images[j.id]&&['ready','accepted'].includes(j.state)&&<button type="button" aria-label={t(`${i+1}번 이미지 확대`,`Enlarge image ${i+1}`)} onClick={()=>setZoom(images[j.id].url)}><img src={images[j.id].url} alt=""/></button>}
    <label><input type="checkbox" checked={chosen.some(x=>x.id===j.id)} disabled={busy||!eligible.some(x=>x.id===j.id)} onChange={e=>setSelected(ids=>e.target.checked?[...ids,j.id]:ids.filter(x=>x!==j.id))}/>{t(`광고 ${i+1}`,`Ad ${i+1}`)}</label>
+   {images[j.id]&&eligible.some(item=>item.id===j.id)&&<PrecisionEditAction getInput={()=>({file:images[j.id].file,name:project.name+' '+(i+1)})}/>}
    {['ready','accepted'].includes(j.state)?<button onClick={()=>setDetail(images[j.id]?.accepted??{...project,id:j.projectId,adBatch:undefined,generated:undefined})}>{t('검수 · 수정','Review · edit')}</button>:<small>{j.state==='running'?t('생성 중','Generating'):j.state==='rejected'?t('반려됨','Rejected'):t('생성 종료 · 결과 없음','Finished without an image')}</small>}
   </li>)}</ol>
   {jobs.some(j=>j.dimensionDisplay&&!j.dimensionReview&&j.state==='ready')&&<p>{t('규격을 표시한 이미지는 검수 후 선택할 수 있습니다.','Review the dimensions to select these images.')}</p>}

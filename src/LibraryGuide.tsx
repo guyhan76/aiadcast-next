@@ -1,3 +1,4 @@
+import {PrecisionEditAction} from './PrecisionEditAction';
 import {useEffect,useRef,useState} from 'react';
 import {ArrowUpRight,FolderOpen,Plus,Search} from 'lucide-react';
 import type {Project} from './model';
@@ -20,6 +21,7 @@ export function ProjectLibrary({items,error,onNew,onOpen}:{items:Project[];error
  const filtered=items.filter(p=>hasSavedAcceptedAd(p)||p.presentation==='campaign'&&!!p.productName.trim()).filter(p=>(p.name+' '+p.productName).toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
  return <>
   <div className="projects-heading"><h1>{t('내 프로젝트','My projects')}</h1><button className="primary-action" onClick={onNew}><Plus size={18}/>{t('새 광고','New ad')}</button></div>
+  <PrecisionEditAction label={t('기기 사진 정밀 편집','Edit a device image')}/>
   <label className="project-search"><Search size={20}/><input aria-label={t('프로젝트 검색','Search projects')} placeholder={t('광고 이름 검색','Search ad names')} value={filter} onChange={e=>setFilter(e.target.value)}/></label>
   {error&&<p role="alert">{error}</p>}
   {!filtered.length?error?null:<div className="project-empty"><FolderOpen size={32}/><h2>{filter?t('검색 결과가 없습니다.','No matches.'):t('첫 광고를 만들어보세요.','Create your first ad.')}</h2>{filter&&<button onClick={()=>setFilter('')}>{t('검색 초기화','Clear search')}</button>}</div>:<div className="project-grid">{filtered.map(p=><button key={p.id} className="project-tile" onClick={()=>onOpen(p)}><ProjectPreview project={p}/><div className="project-tile-caption"><strong>{p.name||p.productName||t('이름 없는 광고','Untitled ad')}</strong><ArrowUpRight size={18}/><small>{!hasSavedAcceptedAd(p)&&t('제작 중 · ','Draft · ')}{new Date(p.updatedAt).toLocaleDateString(language==='ko'?'ko-KR':'en-US')}</small></div></button>)}</div>}
@@ -36,7 +38,7 @@ export function UsageGuide({onNew}:{onNew:()=>void}){
  const faqs=[
   [t('AI 제작은 언제 사용할 수 있나요?','When can I use AI generation?'),t('AI 제작 화면에서 연결 상태를 확인하세요. 테스트 서버가 연결된 계정에서 사용할 수 있습니다.','Check the connection status in AI creation. Generation is available to accounts connected to the test server.')],
   [t('사진과 규격은 꼭 필요한가요?','Do I need photos and dimensions?'),t('상품 사진은 최대 10장입니다. 서비스는 사진 없이 시작할 수 있고, 규격은 필요할 때만 입력하세요.','Add up to 10 product photos. Services can start without a photo. Dimensions are optional.')],
-  [t('만든 광고를 다시 수정할 수 있나요?','Can I edit an ad later?'),t('내 프로젝트에서 광고를 열어 수정하세요. 다른 기기로 옮길 때는 프로젝트 파일을 백업하세요. PNG·JPG만으로는 글자와 사진을 따로 수정할 수 없습니다.','Open your ad in My projects. Back up the project file to move it to another device. A PNG or JPG alone does not preserve editable text and photos.')],
+  [t('만든 광고를 다시 수정할 수 있나요?','Can I edit an ad later?'),t('내 프로젝트에서 광고를 열어 수정하세요. 다른 기기로 옮길 때는 프로젝트 파일을 백업하세요. 기기 사진도 정밀 편집에서 열 수 있습니다.','Open your ad in My projects. Back up the project file to move it to another device. Device images can also be opened for area editing.')],
   [t('어떤 크기로 저장하나요?','Which image size should I use?'),t('피드는 4:5, 스토리는 9:16을 선택하세요. 블로그·홈페이지에도 사용할 수 있습니다. 저장되는 파일은 정지 이미지입니다.','Choose 4:5 for feeds or 9:16 for stories. You can also use images on blogs and websites. Exports are still images.')],
   [t('가입과 결제는 가능한가요?','Are sign-up and payments available?'),t('이메일 가입과 결제는 연결 준비 중입니다. 현재는 초대코드로 테스트할 수 있으며 실제 결제는 발생하지 않습니다.','Email sign-up and checkout are being prepared. Invitation testing is available; real payments are not enabled.')]
  ];

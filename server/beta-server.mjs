@@ -122,6 +122,10 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
    if(project&&req.method==='GET'){send(res,200,store.project(user.id,project[1]),cors);return;}
    if(project&&req.method==='POST'){send(res,200,store.save(user.id,project[1],await read(req,40_001_000)),cors);return;}
    if(req.method==='GET'&&url.pathname==='/api/status'){const instance=readinessMeasure('service_initialization',()=>service(user)),s=instance.status();send(res,200,{...s,mode:password.available()?'test-account-beta':'invite-beta',limitations:s.limitations.filter(x=>!['local-single-user','no-production-auth'].includes(x)).concat([password.available()?'test-email-unverified':'invite-only','single-instance-beta','no-live-payment']),user:{id:user.id,label:user.label}},cors);return;}
+   if(req.method==='POST'&&url.pathname==='/api/selective-edits/upload'){const body=await read(req,19_500_000);send(res,202,await service(user).createUploadedEdit(body),cors);return;}
+   const selectiveLookup=/^\/api\/selective-edits\/requests\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
+   if(req.method==='GET'&&selectiveLookup){send(res,200,service(user).selectiveRequestStatus(selectiveLookup[1],url.searchParams.get('sourceJobId')),cors);return;}
+   if(req.method==='POST'&&url.pathname==='/api/selective-edits'){const body=await read(req,6000000);send(res,202,await service(user).createSelectiveEdit(body),cors);return;}
    const batch=/^\/api\/ad-batches\/(ads-[a-f0-9]{64})$/.exec(url.pathname);
    if(req.method==='GET'&&batch){send(res,200,service(user).batchSummary(batch[1]),cors);return;}
    if(req.method==='GET'&&url.pathname==='/api/generations'){send(res,200,service(user).history(url.searchParams.get('projectId')??undefined),cors);return;}
@@ -155,8 +159,8 @@ async function main(){
   let closing=false;const stop=async()=>{if(closing)return;closing=true;await app.close();};process.once('SIGTERM',()=>void stop());process.once('SIGINT',()=>void stop());return;
  }
  const c=betaConfig(),store=new BetaStore(c.directory,c),gate=providerGate(2);
- const adapter=new OpenAIImageAdapter({apiKey:c.key});
- const app=createBetaServer({store,publicUrl:c.publicUrl,accounts:accountConfiguration(),staticDirectory:resolve('dist'),serviceFactory:user=>new GenerationService({databasePath:join(c.directory,'users',user.id+'.sqlite'),databaseLockManagedExternally:true,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:c.enabled,assistantEnabled:c.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(c.key),adapter:{generate:options=>gate(()=>adapter.generate(options))},assistantAdapter:options=>gate(()=>assistCopy({...options,apiKey:c.key}))})});
+ const adapter=new OpenAIImageAdapter({apiKey:c.key,enableEdits:c.enabled});
+ const app=createBetaServer({store,publicUrl:c.publicUrl,accounts:accountConfiguration(),staticDirectory:resolve('dist'),serviceFactory:user=>new GenerationService({databasePath:join(c.directory,'users',user.id+'.sqlite'),databaseLockManagedExternally:true,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:c.enabled,assistantEnabled:c.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(c.key),adapter:{selectiveEditReady:adapter.selectiveEditReady,prepareSelectiveInput:input=>adapter.prepareSelectiveInput(input),editRegion:options=>gate(()=>adapter.editRegion(options)),generate:options=>gate(()=>adapter.generate(options))},assistantAdapter:options=>gate(()=>assistCopy({...options,apiKey:c.key}))})});
  app.server.listen(c.port,'0.0.0.0',()=>console.log('Invite beta server started; real payments disabled.'));
  let closing=false;const stop=async()=>{if(closing)return;closing=true;await app.close();store.close();};process.once('SIGTERM',()=>void stop());process.once('SIGINT',()=>void stop());
 }

@@ -13,3 +13,18 @@ export async function saveProject(p:Project,scope=storageNamespace(),signal?:Abo
  });}finally{database.close();}
 }
 export async function projects(){const database=await db();try{return await new Promise<Project[]>((resolve,reject)=>{const req=database.transaction('projects').objectStore('projects').getAll();req.onsuccess=()=>{try{resolve((req.result as Project[]).map(p=>({...p,productProfile:parseProfile(p.productProfile)})).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)));}catch(error){reject(error);}};req.onerror=()=>reject(req.error);});}finally{database.close();}}
+
+// A deduplicated edit can be saved by multiple tabs. Never replace an existing
+// destination project, including user changes made after another tab saved it.
+export async function saveProjectCopy(p:Project,scope=storageNamespace(),signal?:AbortSignal):Promise<boolean>{
+ signal?.throwIfAborted();const database=await db(scope);
+ try{signal?.throwIfAborted();return await new Promise<boolean>((resolve,reject)=>{
+  const tx=database.transaction('projects','readwrite');let inserted=false;
+  const cancel=()=>{try{tx.abort();}catch{}};
+  const cleanup=()=>signal?.removeEventListener('abort',cancel);
+  tx.oncomplete=()=>{cleanup();resolve(inserted);};tx.onerror=()=>{cleanup();reject(tx.error);};tx.onabort=()=>{cleanup();reject(signal?.reason??tx.error??new DOMException('Save cancelled','AbortError'));};
+  signal?.addEventListener('abort',cancel,{once:true});
+  const store=tx.objectStore('projects'),read=store.get(p.id);
+  read.onsuccess=()=>{if(!read.result){store.add(p);inserted=true;}};
+ });}finally{database.close();}
+}
