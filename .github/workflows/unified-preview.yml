@@ -2,6 +2,13 @@ name: Unified web and Android Preview
 
 on:
   push:
+    paths-ignore:
+      - 'tests/**'
+      - 'docs/**'
+      - 'AGENTS.md'
+      - 'playwright.config.ts'
+      - 'scripts/check-live-web-release.mjs'
+      - '.github/workflows/**'
     branches: [feat/patent-product-generation-20261011, feat/member-storage-20261115, feat/sport-industry-options-20261115, feat/dancesport-disciplines-20261115, feat/clean-projects-20261115]
   workflow_dispatch:
 
@@ -13,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -92,15 +99,58 @@ jobs:
           cd release
           zip -q -0 aiadcast-0.2.95.zip aiadcast-0.2.95.apk
           sha256sum aiadcast-0.2.95.{apk,zip} > SHA256SUMS.txt
-      - name: Publish the verified Preview build
+      - name: Keep the signed candidate for publication after the web deploy
         if: github.ref_name == 'feat/patent-product-generation-20261011'
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-preview-${{ github.sha }}
+          path: release/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Remove temporary signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/preview.p12"
+
+  publish:
+    if: github.ref_name == 'feat/patent-product-generation-20261011'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-preview-${{ github.sha }}
+          path: release
+      # After deploying this revision to Render, retry this job to publish the same signed bytes.
+      - name: Match production to the candidate and compare the actual browser and packaged form
+        env:
+          AIADCAST_PARITY_WEB_ORIGIN: https://aiadcast-next.onrender.com
+        run: |
+          set -euo pipefail
+          (cd release && sha256sum -c SHA256SUMS.txt)
+          apk=(release/*.apk)
+          test "${#apk[@]}" -eq 1
+          unzip -p "${apk[0]}" assets/web-release.json | jq -e --arg sha "$GITHUB_SHA" '.commit == $sha'
+          node scripts/check-live-web-release.mjs "$GITHUB_SHA"
+          unzip -qo "${apk[0]}" 'assets/*' -d android/app/src/main
+          npm ci --no-audit --no-fund
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(command -v google-chrome)"
+          npx playwright test tests/production-parity.spec.ts --project=desktop
+      - name: Publish the verified Preview build
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          node scripts/check-live-web-release.mjs "$GITHUB_SHA"
           tag="preview-0.2.95-code97-${GITHUB_SHA:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           gh release create "$tag" release/aiadcast-0.2.95.apk release/aiadcast-0.2.95.zip release/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
             --title 'aiadcast 0.2.95 Preview (97)' --notes "Android Preview for testing. Verified source: $GITHUB_SHA. Certificate and APK checks passed."
-      - name: Remove temporary signing material
-        if: always()
-        run: rm -f "$RUNNER_TEMP/preview.p12"
