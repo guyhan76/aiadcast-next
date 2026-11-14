@@ -13,8 +13,33 @@ export const sportGroups = [
 ] as const;
 type SportGroup = typeof sportGroups[number]['id'];
 export const customIndustryLimit = 60;
-export type IndustryChoice = {group?:SportGroup; aliases?:string; other?:boolean; id: string; category: ProductCategory; ko: string; en: string};
+type IndustrySection = {ko:string; en:string; aliases?:string; items:IndustryChoice[]};
+export type IndustryChoice = {
+  id:string; category:ProductCategory; ko:string; en:string; group?:SportGroup;
+  aliases?:string; other?:boolean; detail?:string; sections?:IndustrySection[];
+};
 export type AdField = {id: string; kind: IndustryKind; ko: string; en: string; items: IndustryChoice[]};
+function danceStyle(id:string, ko:string, en:string, aliases?:string):IndustryChoice {
+  return {id:'dance-'+id, category:'sports', ko, en, aliases, detail:'댄스스포츠 · '+ko};
+}
+
+const danceSections:IndustrySection[] = [
+  {ko:'스탠다드', en:'Standard', aliases:'스탠더드 모던 Modern', items:[
+    danceStyle('waltz','왈츠','Waltz','슬로 왈츠 슬로우 왈츠 Slow Waltz'),
+    danceStyle('tango','탱고','Tango'),
+    danceStyle('viennese-waltz','비엔나 왈츠','Viennese Waltz','비에니스 왈츠 비에니즈 왈츠 비엔니스 왈츠'),
+    danceStyle('slow-foxtrot','슬로우 폭스트롯','Slow Foxtrot','슬로 폭스트롯 슬로우 폭스트로트 슬로 폭스트로트 폭스트럿 슬로우 폭스'),
+    danceStyle('quickstep','퀵스텝','Quickstep','퀵스탭'),
+  ]},
+  {ko:'라틴', en:'Latin', items:[
+    danceStyle('samba','삼바','Samba'),
+    danceStyle('cha-cha-cha','차차차','Cha-cha-cha','차차'),
+    danceStyle('rumba','룸바','Rumba'),
+    danceStyle('paso-doble','파소도블레','Paso Doble','파소 도블레 파소도블'),
+    danceStyle('jive','자이브','Jive'),
+  ]},
+  {ko:'', en:'', items:[{...danceStyle('other','기타','Other'),other:true}]},
+];
 export const adFields: AdField[] = [
   {id:'fashion', kind:'product', ko:'패션·잡화', en:'Fashion & accessories', items:[
     {id:'fashion', category:'fashion', ko:'의류', en:'Apparel'},
@@ -201,7 +226,7 @@ export const adFields: AdField[] = [
     {id:'pilates', category:'pilates', ko:'필라테스', en:'Pilates', group:'fitness'},
     {id:'gymnastics', category:'sports', ko:'체조', en:'Gymnastics', group:'fitness'},
     {id:'jump-rope', category:'sports', ko:'줄넘기', en:'Jump rope', group:'fitness'},
-    {id:'dance-sport', category:'sports', ko:'댄스스포츠', en:'Dancesport', group:'fitness'},
+    {id:'dance-sport', category:'sports', ko:'댄스스포츠', en:'Dancesport', group:'fitness', aliases:'댄스 스포츠 볼룸댄스 ballroom dance', sections:danceSections},
     {id:'sports', category:'sports', ko:'기타 스포츠 수업', en:'Other sports lessons', other:true},
   ]},
   {id:'health', kind:'service', ko:'의료·바이오', en:'Healthcare & biotech', items:[
@@ -305,19 +330,34 @@ export const adFields: AdField[] = [
 
 // Keep the established Korean detail label stable in project exports and requests.
 export function formatIndustryDetail(item:IndustryChoice, custom=''):string {
-  return item.other && custom ? item.ko+' · '+custom : item.ko;
+  const label=item.detail ?? item.ko;
+  return item.other && custom ? label+' · '+custom : label;
 }
-export function findAdField(category:ProductCategory, detail?:string) {
+
+type AdFieldSelection = {field:AdField; item:IndustryChoice; parent?:IndustryChoice; custom:string};
+
+function readDetail(item:IndustryChoice, detail:string):string|undefined {
+  const label=formatIndustryDetail(item);
+  if(detail===label)return '';
+  const prefix=label+' · ';
+  if(!item.other || !detail.startsWith(prefix))return;
+  const custom=detail.slice(prefix.length);
+  if(custom.length<=customIndustryLimit && !/[\r\n]/.test(custom))return custom;
+}
+
+export function findAdField(category:ProductCategory, detail?:string):AdFieldSelection|undefined {
   if(typeof detail!=='string')return;
   for(const field of adFields){
-    for(const item of field.items){
-      if(item.category!==category)continue;
-      if(item.ko===detail)return {field,item,custom:''};
-      if(!item.other)continue;
-      const prefix=item.ko+' · ';
-      if(!detail.startsWith(prefix))continue;
-      const custom=detail.slice(prefix.length);
-      if(custom.length<=customIndustryLimit && !/[\r\n]/.test(custom))return {field,item,custom};
+    for(const parent of field.items){
+      if(parent.category!==category)continue;
+      const custom=readDetail(parent,detail);
+      if(custom!==undefined)return {field,item:parent,custom};
+      for(const section of parent.sections ?? []){
+        for(const item of section.items){
+          const custom=readDetail(item,detail);
+          if(custom!==undefined)return {field,item,parent,custom};
+        }
+      }
     }
   }
 }
@@ -326,4 +366,15 @@ export function matchesSport(item:IndustryChoice, query:string):boolean {
   const group=sportGroups.find(group=>group.id===item.group);
   const term=searchTerm(query);
   return [item.ko,item.en,item.aliases,group?.ko,group?.en].some(value=>value && searchTerm(value).includes(term));
+}
+
+export function searchSportSections(parent:IndustryChoice, query:string) {
+  if(!query.trim())return [];
+  const term=searchTerm(query);
+  return (parent.sections ?? []).map(section=>{
+    const familyMatch=[parent.ko,parent.en,parent.aliases,section.ko,section.en,section.aliases]
+      .some(label=>label && searchTerm(label).includes(term));
+    const items=section.items.filter(item=>!item.other && (familyMatch || matchesSport(item,query)));
+    return {...section,items};
+  }).filter(section=>section.items.length>0);
 }

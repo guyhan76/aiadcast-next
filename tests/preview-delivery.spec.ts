@@ -181,3 +181,32 @@ test('find sports by group or alias and enter an unlisted industry',async({page}
   await custom.fill('보냉 포장재');
   await expect(custom).toHaveValue('보냉 포장재');
 });
+
+test('browse dance families, search for a dance and enter a custom discipline',async({page})=>{
+  await protectedScreen(page,mockSession('dancesport'));
+  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
+  await page.goto('/#create');
+  const picker=page.locator('.ad-field-picker');
+  await picker.getByRole('button',{name:'서비스',exact:true}).click();
+  await picker.getByLabel('분야',{exact:true}).selectOption('sports');
+  const sports=picker.getByLabel('세부 업종',{exact:true});
+  const style=picker.getByLabel('댄스스포츠 세부 종목',{exact:true});
+  await sports.selectOption('dance-sport');
+  await expect(style).toHaveValue('dance-sport');
+  await expect(style.locator('optgroup[label="스탠다드"] option')).toHaveCount(5);
+  await expect(style.locator('optgroup[label="라틴"] option')).toHaveCount(5);
+  await style.selectOption({label:'탱고'});
+  await expect(style).toHaveValue('dance-tango');
+  await picker.getByRole('searchbox').fill('차차');
+  await sports.selectOption('dance-cha-cha-cha');
+  await expect(style).toHaveValue('dance-cha-cha-cha');
+  await expect(sports).toHaveValue('dance-sport');
+  await style.selectOption({label:'기타'});
+  const custom=picker.getByLabel('세부 항목 직접 입력 (선택)',{exact:true});
+  await custom.fill('휠체어 댄스 입문');
+  await expect(custom).toHaveValue('휠체어 댄스 입문');
+  await style.selectOption('dance-sport');
+  await expect(custom).toHaveCount(0);
+  await sports.selectOption('running');
+  await expect(style).toHaveCount(0);
+});

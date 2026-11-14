@@ -1,7 +1,7 @@
 import {useState} from 'react';
 import type {Project} from './model';
 import {industryKindFor, industryLabel, type IndustryKind} from './industry';
-import {adFields, customIndustryLimit, findAdField, formatIndustryDetail, matchesSport, sportGroups, type IndustryChoice} from './ad-fields';
+import {adFields, customIndustryLimit, findAdField, formatIndustryDetail, matchesSport, searchSportSections, sportGroups, type IndustryChoice} from './ad-fields';
 import {withCategory} from './product';
 import {useUiLanguage} from './ui-language';
 import './ad-field-picker.css';
@@ -21,8 +21,10 @@ export function AdFieldPicker({id, project, chosen, initialKind, onChosen, chang
   const fields = adFields.filter(field => field.kind === kind);
   const field = fields.find(entry => entry.id === fieldId);
   const selected = saved && saved.field.id===fieldId ? saved : undefined;
+  const primary = selected?.parent ?? selected?.item;
   const sports = field?.id==='sports';
   const matchingSports = sports ? field.items.filter(item=>!item.other && matchesSport(item,sportQuery)) : [];
+  const sectionMatches = sports && sportQuery.trim() ? field.items.flatMap(item=>searchSportSections(item,sportQuery)) : [];
   const legacy = chosen && !saved ? legacyLine.exec(profile.material)?.[1] ?? text(industryLabel(profile.category)) : '';
   function changeKind(next:IndustryKind) {
     if (next === kind) return;
@@ -60,22 +62,38 @@ export function AdFieldPicker({id, project, chosen, initialKind, onChosen, chang
       <input type="search" value={sportQuery} placeholder={t('예: 러닝, 태권도','e.g. running, taekwondo')}
         onChange={event=>setSportQuery(event.target.value)}/>
     </label>}
-    {sports && sportQuery.trim() && matchingSports.length===0 && <p className="help" role="status">
+    {sports && sportQuery.trim() && matchingSports.length===0 && sectionMatches.length===0 && <p className="help" role="status">
       {t('찾는 종목이 없으면 기타를 선택해 입력하세요.','Choose Other to enter an unlisted sport.')}
     </p>}
     {field && <label className="field">{t('세부 업종','Industry')}
-      <select aria-label={t('세부 업종','Industry')} value={selected?.item.id ?? ''} onChange={event=>{
-        const item = field.items.find(entry=>entry.id===event.target.value);
+      <select aria-label={t('세부 업종','Industry')} value={primary?.id ?? ''} onChange={event=>{
+        const id=event.target.value;
+        const item=field.items.find(entry=>entry.id===id) ?? sectionMatches.flatMap(section=>section.items).find(entry=>entry.id===id);
         if(item) { selectItem(item); setSportQuery(''); }
       }}>
         <option value="" disabled>{sports ? t('종목 선택','Choose a sport') : t('세부 업종 선택','Choose an industry')}</option>
         {sports ? <>
           {sportGroups.map(group=>{
-            const items=field.items.filter(item=>item.group===group.id && (matchingSports.includes(item) || item===selected?.item));
+            const items=field.items.filter(item=>item.group===group.id && (matchingSports.includes(item) || item===primary));
             return items.length>0 && <optgroup key={group.id} label={t(group.ko,group.en)}>{items.map(option)}</optgroup>;
           })}
+          {sectionMatches.map(section=><optgroup key={section.en} label={t('댄스스포츠 · '+section.ko,'Dancesport · '+section.en)}>
+            {section.items.map(option)}
+          </optgroup>)}
           {field.items.filter(item=>item.other).map(option)}
         </> : field.items.map(option)}
+      </select>
+    </label>}
+    {primary?.sections && <label className="field">{t('댄스스포츠 세부 종목','Dancesport discipline')}
+      <select aria-label={t('댄스스포츠 세부 종목','Dancesport discipline')} value={selected?.item.id} onChange={event=>{
+        const item=primary.sections?.flatMap(section=>section.items).find(entry=>entry.id===event.target.value);
+        selectItem(item ?? primary);
+        setSportQuery('');
+      }}>
+        <option value={primary.id}>{t('댄스스포츠 전체','General dancesport')}</option>
+        {primary.sections.map(section=>section.ko
+          ? <optgroup key={section.en} label={t(section.ko,section.en)}>{section.items.map(option)}</optgroup>
+          : section.items.map(option))}
       </select>
     </label>}
     {selected?.item.other && <label className="field">{t('세부 항목 직접 입력 (선택)','Specify the industry (optional)')}
