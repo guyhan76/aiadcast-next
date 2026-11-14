@@ -21,6 +21,7 @@ jobs:
           grep 'aiadcast-0.2.95.apk$' SHA256SUMS.txt | sha256sum -c -
           python - <<'PY'
           import datetime, hashlib, json, os, urllib.request, zipfile
+          from pathlib import Path
           from urllib.parse import quote
           root = 'https://aiadcast-next.onrender.com/'
           def read(path):
@@ -45,6 +46,21 @@ jobs:
           served=json.loads(read('web-release.json'))
           assert served['schema']==1 and served['commit']==json.loads(read('web-build.json'))['commit']
           layout=projects_layout(served,read)
+          assert served['commit']==os.environ['TARGET'] and layout=='clean', (served['commit'],layout)
+          # Exercise the public HTML/JS/CSS locally with isolated test accounts.
+          folder=Path(os.environ['RUNNER_TEMP'])/'live-client'
+          folder.mkdir(exist_ok=True)
+          with zipfile.ZipFile('aiadcast-0.2.95.apk') as apk:
+              for path, spec in served['files'].items():
+                  dest=folder/path
+                  assert dest.resolve().is_relative_to(folder.resolve())
+                  if path=='index.html' or path.endswith(('.js','.css')) or embedded['files'].get(path)!=spec:
+                      data=read(path)
+                  else:
+                      data=apk.read('assets/'+path)
+                  assert hashlib.sha256(data).hexdigest()==spec['sha256'],path
+                  dest.parent.mkdir(parents=True,exist_ok=True)
+                  dest.write_bytes(data)
           print('Released APK:',embedded['commit'],'projects=clean')
           print('Public Android UI:',served['commit'],'projects='+layout)
           with open(os.environ['GITHUB_ENV'],'a') as f:
@@ -64,3 +80,27 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: bash scripts/check-published-android.sh
+      - name: Check out the tests for the public release
+        uses: actions/checkout@v4
+        with:
+          ref: 283f254ce3969f581dbe1e8d85fbe275364e1fa1
+          path: release-tests
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Exercise My projects on the delivered frontend with isolated desktop and mobile sessions
+        working-directory: release-tests
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(command -v google-chrome)"
+          cat > playwright.served.config.ts <<'CONFIG'
+          import {defineConfig} from '@playwright/test';
+          import config from './playwright.config';
+          export default defineConfig({...config,webServer:{
+            command: 'python3 -m http.server 4180 --bind 127.0.0.1 --directory "' + process.env.RUNNER_TEMP + '/live-client"',
+            url:'http://127.0.0.1:4180',reuseExistingServer:false
+          }});
+          CONFIG
+          npx playwright test tests/membership.spec.ts --config=playwright.served.config.ts --project=desktop --project=mobile
