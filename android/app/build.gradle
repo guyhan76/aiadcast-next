@@ -13,6 +13,7 @@ if (publicApiOrigin) {
 }
 
 android {
+    sourceSets.main.res.srcDir('generated/launcher-res')
     namespace 'com.selluplabs.aiadcast.next'
     compileSdk 36
     buildToolsVersion '36.0.0'
@@ -88,7 +89,7 @@ dependencies {
 
 tasks.register('verifyWebAssets') {
     doLast {
-        if (!file('src/main/assets/index.html').exists()) {
+        if (!file('src/main/assets/index.html').exists() || !file('generated/launcher-res/mipmap-xxxhdpi/ic_launcher.png').exists()) {
             throw new GradleException('Web assets missing. Run npm run build and node native/prepare-android.mjs from the repository root.')
         }
     }

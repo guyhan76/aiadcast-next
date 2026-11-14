@@ -2,6 +2,7 @@ import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
+import sharp from 'sharp';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const dist = join(root, 'dist');
@@ -22,6 +23,14 @@ async function checkFiles(folder) {
   }
 }
 await checkFiles(dist);
+const densitySizes = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };
+const icon = join(dist, 'aiadcast-app-icon.png');
+for (const [density, size] of Object.entries(densitySizes)) {
+  const folder = join(root, 'android/app/generated/launcher-res', 'mipmap-' + density);
+  await mkdir(folder, { recursive: true });
+  await sharp(icon).resize(size, size).png().toFile(join(folder, 'ic_launcher.png'));
+}
+
 const webBuild=JSON.parse(await readFile(join(dist,'web-build.json'),'utf8'));
 if(webBuild.schemaVersion!==1||typeof webBuild.version!=='string'||!(webBuild.commit===null||/^[a-f0-9]{40}$/.test(webBuild.commit)))throw new Error('Invalid web build metadata');
 if (resolve(destination) !== join(root, 'android/app/src/main/assets')) throw new Error('Unexpected asset destination');
