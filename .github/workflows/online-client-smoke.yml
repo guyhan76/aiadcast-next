@@ -1,0 +1,57 @@
+name: Verify released online Android UI
+on:
+  push:
+    branches: [verify/online-android-parity-20261114]
+permissions:
+  contents: read
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the customer APK and compare the web release on the public endpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED: 2f06b8135c79760e1c297331dfa8893402335aeb
+        run: |
+          set -eu
+          for i in $(seq 1 90); do
+            tag="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=5" --jq '.[] | select(.target_commitish == env.EXPECTED) | .tag_name' | head -1)"
+            if [ -n "$tag" ]; then break; fi
+            sleep 5
+          done
+          test -n "$tag"
+          gh release download "$tag" -p 'aiadcast-0.2.90.apk'
+          python - <<'PY'
+          import os, json, hashlib, urllib.request, zipfile
+          from urllib.parse import quote
+          root = 'https://aiadcast-next.onrender.com/'
+          def read(name):
+              with urllib.request.urlopen(root + quote(name) + '?build=' + os.environ['EXPECTED'],timeout=60) as reply:
+                  return reply.read()
+          m = json.loads(read('web-release.json'))
+          assert m['schema']==1 and m['commit']==os.environ['EXPECTED']
+          build=json.loads(read('web-build.json'))
+          assert build['commit']==m['commit']
+          with zipfile.ZipFile('aiadcast-0.2.90.apk') as apk:
+              packaged=json.loads(apk.read('assets/web-release.json'))
+              assert packaged['commit']==m['commit']
+          for name in ['index.html','web-build.json','aiadcast-app-icon.png']+[p for p in m['files'] if p.endswith(('.js','.css'))]:
+              assert hashlib.sha256(read(name)).hexdigest()==m['files'][name]['sha256'],name
+          print('Verified deployed HTML, JavaScript, CSS, icon and web metadata',m['commit'])
+          PY
+      - name: Enable KVM for the Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Launch the published APK on Android and assert its online sign-in page
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: bash scripts/check-published-android.sh
