@@ -1,3 +1,4 @@
+import {validAiDimensionReview} from './ai-dimension-display';
 import {exportBatch} from './batch-export';
 import {useEffect,useState,useRef} from 'react';
 import {apiRequest,verifiedArtifact,type GenerationJob} from './generation-client';
@@ -34,11 +35,14 @@ export function CloudLibrary({onOpen}:{onOpen:(p:Project)=>Promise<boolean>}){
   try{
    const {job}=await apiRequest<{job:GenerationJob}>('/api/generations/'+item.id,undefined,signal);
    if(!['ready','accepted'].includes(job.state)||!job.artifact)throw Error('EXPIRED');
+   if(job.dimensionDisplay && !validAiDimensionReview(job.dimensionReview,job.dimensionDisplay,job.artifactId!)){
+    setError(t('광고 결과 화면에서 규격 표시를 검수하고 사용 확정한 뒤 저장해 주세요.','Review the dimensions and confirm use on the ad result screen before saving.'));return;
+   }
    const asset=await verifiedArtifact(job);
    const blob=await (await fetch(asset.data,{signal})).blob();signal.throwIfAborted();
    if(item.reviewRequired && job.state==='ready'){
     if(!window.confirm(t('이 결과를 사용 확정하고 원본을 저장할까요? 예약된 이용권이 사용됩니다.','Confirm use of this result and download the original? Your reserved ticket will be used.')))return;
-    await apiRequest('/api/generations/'+item.id+'/accept',{artifactId:job.artifactId},signal);
+    await apiRequest('/api/generations/'+item.id+'/accept',{artifactId:job.artifactId,...(job.dimensionReview?{dimensionReview:job.dimensionReview}:{})},signal);
    }
    if(betaSession()?.token!==token)return;
    await exportBatch([new File([blob],'aiadcast-'+item.id+'.'+(blob.type.split('/')[1]||'png'),{type:blob.type})],'save',signal);
@@ -57,6 +61,7 @@ export function CloudLibrary({onOpen}:{onOpen:(p:Project)=>Promise<boolean>}){
  }
  return <section className="membership-panel"><h2>{t('임시 다운로드','Temporary downloads')}</h2>
  <p>{t('새 결과는 생성 완료 후 24시간 동안 내려받을 수 있습니다. 보관하려면 기기에 저장하세요.','Download new results within 24 hours of completion. Save a copy on your device to keep it.')}</p>
+ {downloads.some(item=>Date.parse(item.expiresAt)>Date.now()+86400000)&&<p>{t('정책 적용 전에 생성한 자료는 표시된 전환 기한까지 내려받을 수 있습니다.','Earlier results remain available until their displayed transition deadline.')}</p>}
  {downloads.map(item=><div className="membership-row" key={item.id}><span>{item.name} · <DownloadDeadline value={item.expiresAt}/></span>
   <button disabled={busy} onClick={()=>void download(item)}>{item.reviewRequired?t('사용 확정 후 원본 저장','Confirm and save original'):t('원본 저장','Save original')}</button></div>)}
  {items.length>0&&<h3>{t('정책 변경 전에 저장한 프로젝트','Projects saved before the policy change')}</h3>}
