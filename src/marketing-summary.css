@@ -1,0 +1,31 @@
+.marketing-summary{margin:20px 0;padding:20px 16px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;color:#202521;text-align:left;min-width:0;overflow-wrap:anywhere;word-break:keep-all}
+.marketing-summary-title{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.marketing-summary h3{margin:0;font-size:17px;line-height:1.5}
+.marketing-summary small{display:block;color:#5b635e;font-size:12px;line-height:1.5}
+.marketing-summary p{margin:10px 0 0;font-size:14px;line-height:1.75;text-align:left;color:#343b36}
+.marketing-summary h4{font-size:14px;line-height:1.5;margin:0 0 10px;font-weight:650}
+.marketing-section{margin-top:22px;padding-top:20px;border-top:1px solid #e9ecea}
+.marketing-summary ul{margin:0;padding:0;list-style:none;display:grid;gap:0;min-width:0}
+.marketing-summary li{margin:0;min-width:0;font-size:14px;line-height:1.6}
+.marketing-channels li{padding:10px 0;border-bottom:1px solid #eef0ee}
+.marketing-channels li:last-child{border-bottom:0}
+.marketing-summary .marketing-keywords{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px}
+.marketing-keywords li{padding-left:12px;position:relative}
+.marketing-keywords li::before{content:'·';position:absolute;left:0;color:#7a827c}
+.marketing-summary .marketing-help{margin-top:12px;font-size:12px;color:#5b635e;line-height:1.7}
+.marketing-summary .marketing-evidence{margin:22px 0 0;border-top:1px solid #e9ecea;padding-top:16px}
+.marketing-evidence summary{cursor:pointer;min-height:44px;align-content:center;font-size:13px;font-weight:600;color:#515a54}
+.marketing-evidence summary:focus-visible{outline:2px solid currentColor;outline-offset:3px}
+.marketing-evidence h4{margin-top:16px;font-size:13px}
+.marketing-evidence p{font-size:13px;color:#5b635e}
+@media(min-width:600px){.marketing-summary{padding:24px}.marketing-summary .marketing-channels{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:24px}.marketing-channels li{border-bottom:0}.marketing-summary .marketing-keywords{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.marketing-analysis{margin:16px 0;text-align:left}
+.marketing-analysis>summary{min-height:44px;align-content:center;cursor:pointer;font-size:16px;font-weight:650}
+.marketing-analysis>summary:focus-visible{outline:2px solid currentColor;outline-offset:3px}
+
+.marketing-summary>.marketing-section:first-child{margin-top:0;padding-top:0;border-top:0}
+.dimension-guide-disclosure>summary{min-height:44px;align-content:center;cursor:pointer;font-size:16px}
+
+.new-ad-options > summary.another-ad-action{display:block;box-sizing:border-box;width:100%;padding:16px 20px;background:#1f1f1d;color:#fff;border-radius:12px;text-align:center;font-size:16px;font-weight:700;line-height:1.5;cursor:pointer;list-style:none;word-break:keep-all;overflow-wrap:anywhere}
+.new-ad-options > summary.another-ad-action::-webkit-details-marker{display:none}
+.new-ad-options > summary.another-ad-action:focus-visible{outline:3px solid #e8722a;outline-offset:3px}

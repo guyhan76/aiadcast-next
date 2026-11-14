@@ -1,0 +1,9 @@
+.dimension-application{padding:18px;margin:16px 0;border:1px solid var(--brand-line);border-radius:12px;background:var(--brand-white);color:var(--brand-black);overflow-wrap:anywhere}
+.dimension-application-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.dimension-application h3{font-size:17px;margin:0}
+.dimension-application-heading button{min-height:44px;flex-shrink:0;padding:8px 12px;background:var(--brand-light);border:1px solid var(--brand-line);border-radius:8px;font-size:14px}
+.dimension-application p{font-size:14px;line-height:1.7;margin:10px 0}
+.dimension-application-values{font-weight:650}
+.dimension-application>strong{display:block;font-size:15px}
+.dimension-application .dimension-application-labels{color:var(--brand-muted);font-size:13px}
+.dimension-application .box-geometry{margin-bottom:0}

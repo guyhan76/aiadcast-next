@@ -1,0 +1,14 @@
+.reference-grid .reference-item{aspect-ratio:auto;display:flex;flex-direction:column;overflow:hidden}
+.reference-grid .reference-item img{height:auto;aspect-ratio:1;object-fit:contain}
+.reference-grid .reference-primary{bottom:45px}
+.reference-role{display:block;width:100%;min-width:0;min-height:38px;border:0;border-top:1px solid var(--brand-line,#ddd);background:#fff;color:#222;font:inherit;font-size:11px;padding:6px 3px}
+.photo-usage{margin:0 0 20px}
+.reference-photos .reference-import-error{overflow-wrap:anywhere;margin:16px 0 20px;padding:20px 18px;border:2px solid #b91c1c;border-radius:12px;background:#fff1f2;color:#991b1b;font-size:16px;line-height:1.65}
+.reference-import-error p{margin:0 0 10px}
+.reference-photos .reference-error-title{display:flex;align-items:flex-start;gap:10px;color:#b91c1c;font-size:clamp(20px,3.4vw,26px);font-weight:800;line-height:1.4}
+.reference-error-title svg{flex:0 0 auto;margin-top:3px}
+.reference-error-title strong{font-weight:800}
+.reference-import-error ul{margin:0;padding-inline-start:20px}
+.reference-import-error li{margin:6px 0}
+.consumer-create .photo-upload-error{color:#b91c1c;font-size:20px;font-weight:700;line-height:1.6;border:2px solid #b91c1c;border-radius:12px;padding:16px;background:#fff1f2;overflow-wrap:anywhere}
+@media(max-width:600px){.studio-shell .create-page .reference-photos .reference-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

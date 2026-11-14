@@ -4,11 +4,12 @@ import {readFileSync} from 'node:fs';
 import {pricingCurrency,formatPrice,pricingCatalog,pricingProposal} from '../src/pricing.ts';
 import {estimateUnitCost,estimatePackContribution,estimateMixedBreakEven} from '../server/pricing-economics.mjs';
 const assumptions=JSON.parse(readFileSync(new URL('../config/pricing-assumptions.json',import.meta.url),'utf8'));
-const base={pack:pricingCatalog.packs[1],currency:'KRW',unitCostKrw:350,krwPerUsd:1400,vatRate:.1,storeFeeRate:.15,refundReserveRate:.02};
-test('approved catalog uses exact owner prices in won/cents while checkout remains disabled',()=>{
- assert.deepEqual(pricingCatalog.packs.map(p=>[p.credits,p.prices.KRW,p.prices.USD]),[[3,6900,499],[10,19900,1499],[30,49900,3999]]);
+const legacyPacks=[{id:'trial',credits:3,prices:{KRW:6900,USD:499}},{id:'basic',credits:10,prices:{KRW:19900,USD:1499}},{id:'bundle',credits:30,prices:{KRW:49900,USD:3999}}];
+const base={pack:legacyPacks[1],currency:'KRW',unitCostKrw:350,krwPerUsd:1400,vatRate:.1,storeFeeRate:.15,refundReserveRate:.02};
+test('versioned test catalog uses approved KRW prices and uses approved USD display prices',()=>{
+ assert.deepEqual(pricingCatalog.packs.map(p=>[p.credits,p.prices.KRW,p.prices.USD]),[[30,9900,790],[100,29800,2199],[180,48900,3599]]);
  assert.equal(pricingCatalog.status,'approved');assert.equal(pricingCatalog.purchasesEnabled,false);
- assert.equal(pricingCatalog.standardCredits,1);assert.equal('premiumCredits' in pricingCatalog,false);
+ assert.equal(pricingCatalog.standardCredits,10);assert.equal('premiumCredits' in pricingCatalog,false);
  assert.equal(pricingProposal,pricingCatalog);
  assert.equal(formatPrice(6900,'KRW','ko'),'₩6,900');assert.equal(formatPrice(499,'USD','en'),'$4.99');
  assert.throws(()=>formatPrice(-1,'USD','en'),/Invalid/);
@@ -37,7 +38,7 @@ test('tax, store fees, refund reserve and all purchased ads are reflected once',
  for(const change of [{currency:'EUR'},{refundReserveRate:1.1},{unitCostKrw:-1},{pack:{credits:1.5,prices:{KRW:6900}}}])assert.throws(()=>estimatePackContribution({...base,...change}));
 });
 test('cash break-even covers 22 million cash outflow including unsplit debt repayments',()=>{
- const args={...base,packs:pricingCatalog.packs,mix:assumptions.normalPackMix,monthlyCashOutflowKrw:assumptions.monthlyCashOutflowKrw};
+ const args={...base,packs:legacyPacks,mix:assumptions.normalPackMix,monthlyCashOutflowKrw:assumptions.monthlyCashOutflowKrw};
  const result=estimateMixedBreakEven(args);
  assert.equal(Object.values(assumptions.monthlyCashOutflowBreakdownKrw).reduce((a,b)=>a+b,0),22000000);
  assert.equal(assumptions.loanPrincipalInterestSplitKnown,false);
@@ -49,3 +50,5 @@ test('cash break-even covers 22 million cash outflow including unsplit debt repa
  assert.throws(()=>estimateMixedBreakEven({...args,mix:{basic:.7}}),/sum/);
  assert.throws(()=>estimateMixedBreakEven({...args,mix:{unknown:1}}),/Unknown/);
 });
+
+test('versioned new credits count ten per generation and use owner-approved USD display prices',()=>{const p=pricingCatalog.packs[1];const value=estimatePackContribution({...base,pack:p});assert.equal(value.ads,10);assert.equal(value.variableCost,3500);assert.equal(value.price,29800);assert.equal(formatPrice(p.prices.USD,'USD','en'),'$21.99');assert.equal(estimatePackContribution({...base,pack:p,currency:'USD'}).price,21.99);});

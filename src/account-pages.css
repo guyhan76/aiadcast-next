@@ -31,7 +31,7 @@
 .studio-shell .checkout-summary .checkout-tax{font-size:14px;color:var(--brand-muted);justify-content:flex-end}
 .studio-shell .app-header .account-link{font-size:14px;white-space:nowrap;display:inline-flex;align-items:center;min-height:44px;color:var(--brand-black)}
 .pricing-checkout-link{display:flex;align-items:center;justify-content:center;min-height:48px;border-radius:10px;background:var(--brand-black);color:white;font-size:16px;margin:24px 0;text-decoration:none}
-@media(max-width:600px){.studio-shell .app-header{padding:12px 20px;flex-wrap:wrap;gap:8px}.studio-shell .app-header-actions{gap:12px}.studio-shell .app-header .brand-lockup{font-size:27px}.studio-shell .checkout-packs label{padding:14px 10px;gap:8px}.studio-shell .checkout-packs strong{font-size:16px}.studio-shell .checkout-packs b{font-size:17px}}
+@media(max-width:600px){.studio-shell .app-header{height:auto;min-height:67px;padding:12px 20px;flex-wrap:wrap;gap:8px}.studio-shell .app-header-actions{gap:12px}.studio-shell .app-header .brand-lockup{font-size:27px}.studio-shell .checkout-packs label{padding:14px 10px;gap:8px}.studio-shell .checkout-packs strong{font-size:16px}.studio-shell .checkout-packs b{font-size:17px}}
 .studio-shell .checkout-consent{display:flex;align-items:flex-start;gap:12px;margin-top:24px;font-size:16px;line-height:1.6;cursor:pointer}
 .studio-shell .checkout-consent input{width:22px;height:22px;min-height:22px;flex-shrink:0;accent-color:var(--brand-orange);margin-top:3px}
 .studio-shell .credit-balance{display:flex;justify-content:space-between;padding:18px 0;border-bottom:1px solid var(--brand-line);font-size:18px}
@@ -41,3 +41,4 @@
 .studio-shell .account-page [role=alert]{padding:14px;background:var(--brand-light);border-left:3px solid var(--brand-orange);font-size:16px}
 .studio-shell.account-standalone>.app-page{max-width:610px;padding-top:28px;padding-bottom:48px}
 .studio-shell .account-brand{display:inline-flex;min-height:44px;align-items:center;margin-bottom:20px}
+.studio-shell .credit-summary{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:24px 0}.studio-shell .credit-summary>div{padding:18px;background:#f4f4f4;border-radius:12px}.studio-shell .credit-summary dt{font-size:15px}.studio-shell .credit-summary dd{margin:10px 0 0;font-size:24px;font-weight:700;overflow-wrap:anywhere}.studio-shell .credit-history{list-style:none;padding:0}.studio-shell .credit-history li{padding:14px 0;border-bottom:1px solid #ddd}.studio-shell .credit-history span{display:block;margin-top:6px;font-size:13px;color:#666}.studio-shell .credits-page h2{font-size:19px;margin-top:30px}.studio-shell .credits-page>.guest-link{display:block;margin-top:18px}

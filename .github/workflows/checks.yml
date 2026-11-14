@@ -16,7 +16,11 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run check:isolation
+      - run: npm run check:cloud
+      - run: npm run typecheck
       - run: npm run test:domain
+      - name: Render local dimension evaluation mock (no provider)
+        run: node scripts/vision-evaluation-evidence.mjs
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - name: Browser checks
@@ -31,4 +35,20 @@ jobs:
         with:
           name: campaign-previews
           path: artifacts/showcase/
+          if-no-files-found: ignore
+      - name: Upload browser check evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-check-evidence
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Upload dimension evaluation mock
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vision-evaluation-mock
+          path: artifacts/showcase/vision-evaluation/
+          retention-days: 7
           if-no-files-found: ignore

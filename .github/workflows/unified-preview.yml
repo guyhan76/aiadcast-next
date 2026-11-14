@@ -1,0 +1,106 @@
+name: Unified web and Android Preview
+
+on:
+  push:
+    branches: [feat/patent-product-generation-20261011, verify/unified-client-20261114]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify advertising workflows and build the web assets
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check:cloud
+          npm run test:domain
+          npm run build
+          node scripts/check-web-build.mjs --require-commit
+          node native/prepare-android.mjs
+          node -e "if(require('./android/app/src/main/assets/native-build.json').webBuild.commit!==process.env.GITHUB_SHA)process.exit(1)"
+      - name: Test Android file downloads
+        run: |
+          export CHROMIUM_PATH="$(command -v google-chrome)"
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$CHROMIUM_PATH"
+          node native/test-android-bridge.mjs
+          npx playwright test tests/preview-delivery.spec.ts tests/input-example-guides.spec.ts --project=desktop --project=mobile
+          npx playwright test tests/production-parity.spec.ts --project=desktop
+
+      - name: Verify the Preview signing identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.AIADCAST_DEMO_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.AIADCAST_DEMO_STORE_PASSWORD }}
+          AIADCAST_SIGNING_PROFILE: preview
+        run: |
+          umask 077
+          export AIADCAST_DEMO_KEYSTORE="$RUNNER_TEMP/preview.p12"
+          python3 native/decode-signing-secret.py
+          python3 native/check-android-signing.py
+          echo "AIADCAST_DEMO_KEYSTORE=$AIADCAST_DEMO_KEYSTORE" >> "$GITHUB_ENV"
+      - name: Run Android tests and assemble the signed APK
+        env:
+          AIADCAST_DEMO_STORE_PASSWORD: ${{ secrets.AIADCAST_DEMO_STORE_PASSWORD }}
+        working-directory: android
+        run: |
+          ./gradlew --no-daemon testPreviewUnitTest lintPreview assemblePreview \
+            -PAIADCAST_SIGNED_PREVIEW=true \
+            -PAIADCAST_API_ORIGIN=https://aiadcast-next.onrender.com \
+            -PAIADCAST_BUILD_VERSION_CODE=92 -PAIADCAST_BUILD_VERSION_NAME=0.2.90
+      - name: Verify packaged version, certificate, alignment and source
+        run: |
+          set -euo pipefail
+          apk=android/app/build/outputs/apk/preview/app-preview.apk
+          build_tools="$ANDROID_HOME/build-tools/36.0.0"
+          "$build_tools/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/certificate.txt"
+          grep -Fx 'Signer #1 certificate SHA-256 digest: 7dc020bc774784d3df553c58c672f4210d232e2543004fd52ac9084943488b4e' "$RUNNER_TEMP/certificate.txt"
+          "$build_tools/zipalign" -c -P 16 4 "$apk"
+          "$build_tools/aapt" dump badging "$apk" > "$RUNNER_TEMP/package.txt"
+          grep -F "name='com.selluplabs.aiadcast.next.preview' versionCode='92' versionName='0.2.90-preview'" "$RUNNER_TEMP/package.txt"
+          unzip -p "$apk" assets/native-build.json | jq -e --arg sha "$GITHUB_SHA" '.webBuild.commit == $sha and .webBuild.dirty == false'
+          python3 - "$apk" <<'PY'
+          import hashlib, json, sys, zipfile
+          from pathlib import Path
+          with zipfile.ZipFile(sys.argv[1]) as archive:
+              manifest = Path('dist/web-release.json').read_bytes()
+              assert archive.read('assets/web-release.json') == manifest
+              for name, info in json.loads(manifest)['files'].items():
+                  data = archive.read('assets/' + name)
+                  assert len(data) == info['size'] and hashlib.sha256(data).hexdigest() == info['sha256'], name
+          PY
+          cmp public/aiadcast-app-icon.png <(unzip -p "$apk" assets/aiadcast-app-icon.png)
+          grep -q "^application-icon-" "$RUNNER_TEMP/package.txt"
+          mkdir -p release
+          cp "$apk" release/aiadcast-0.2.90.apk
+          cd release
+          zip -q -0 aiadcast-0.2.90.zip aiadcast-0.2.90.apk
+          sha256sum aiadcast-0.2.90.{apk,zip} > SHA256SUMS.txt
+      - name: Publish the verified Preview build
+        if: github.ref_name == 'feat/patent-product-generation-20261011'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="preview-0.2.90-code92-${GITHUB_SHA:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          gh release create "$tag" release/aiadcast-0.2.90.apk release/aiadcast-0.2.90.zip release/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title 'aiadcast 0.2.90 Preview (92)' --notes "Android Preview for testing. Verified source: $GITHUB_SHA. Certificate and APK checks passed."
+      - name: Remove temporary signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/preview.p12"

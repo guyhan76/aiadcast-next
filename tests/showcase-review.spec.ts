@@ -1,4 +1,7 @@
 import {test,expect} from '@playwright/test';
+import {protectedScreen,mockSession} from './helpers/authenticated-session';
+// This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
+test.beforeEach(async({page})=>{await protectedScreen(page,mockSession('protected-showcase-review'));});
 import {mkdir,readFile} from 'node:fs/promises';
 import campaigns from '../src/assets/lookbook-campaigns.json' with {type:'json'};
 
@@ -7,6 +10,8 @@ test('single-file preview embeds all ten campaign photos',async({page})=>{
  await page.route('**/standalone.html',route=>route.fulfill({contentType:'text/html',body:html}));
  await page.goto('/standalone.html');
  const gallery=page.locator('.home-showcase');await expect(gallery.getByRole('tab')).toHaveCount(10);
+ await expect(gallery.locator('.showcase-channels li')).toHaveText(['인스타그램','유튜브','홈페이지','블로그','포스터','홍보브로셔']);await expect(gallery.locator('.showcase-ratios li')).toHaveText(['1:1','4:5','3:4','9:16','2:3','16:9','1.91:1']);
+ if(page.viewportSize()!.width<600){const boxes=await gallery.locator('.showcase-channels li').evaluateAll(els=>els.map(e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right};}));for(let i=0;i<6;i+=2){expect(Math.abs(boxes[i].y-boxes[i+1].y)).toBeLessThan(2);expect(boxes[i+1].x).toBeGreaterThan(boxes[i].x);}expect(Math.max(...boxes.map(b=>b.right))).toBeLessThanOrEqual(page.viewportSize()!.width);}
  for(const campaign of campaigns){
   await gallery.getByRole('tab',{name:campaign.label[0],exact:true}).click();
   const photo=gallery.locator('figure img');await expect(photo).toHaveAttribute('src',/^data:image\/webp;base64,/);
@@ -56,7 +61,7 @@ test('keyboard, previous/next and enlarged inspection preserve selected campaign
  await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);await expect(enlarge).toBeFocused();
  await enlarge.click();
  expect(await page.evaluate(()=>window.dispatchEvent(new CustomEvent('aiadcast-native-back',{cancelable:true})))).toBe(false);
- await expect(dialog).toHaveCount(0);await expect(page).toHaveURL(/\/$/);
+ await expect(dialog).toHaveCount(0);await expect(page).toHaveURL(/#home$/);
 });
 
 
@@ -64,7 +69,7 @@ test('export complete Korean posters for enlarged review',async({browser},testIn
  test.skip(testInfo.project.name!=='desktop','Export once at desktop resolution');test.setTimeout(90000);
  const context=await browser.newContext({viewport:{width:1440,height:1100},deviceScaleFactor:2,locale:'ko-KR',reducedMotion:'reduce'});
  try{
-  const page=await context.newPage();await page.goto('http://127.0.0.1:4180/');await page.evaluate(()=>document.fonts.ready);
+  const page=await context.newPage();await protectedScreen(page,mockSession('showcase-export-user'));await page.goto('http://127.0.0.1:4180/');await page.evaluate(()=>document.fonts.ready);
   const gallery=page.locator('.home-showcase');await mkdir('artifacts/showcase/posters',{recursive:true});
   for(const campaign of campaigns){
    await gallery.getByRole('tab',{name:campaign.label[0],exact:true}).click();
@@ -74,3 +79,4 @@ test('export complete Korean posters for enlarged review',async({browser},testIn
   }
  }finally{await context.close();}
 });
+

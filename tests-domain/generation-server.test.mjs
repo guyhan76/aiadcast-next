@@ -23,6 +23,28 @@ function setup(t, overrides={}) {
   t.after(()=>service.close());
   return {service,calls};
 }
+
+test('administrator mode creates and accepts more than 30 images at zero credits, keeping exact usage costs and review requirements',async t=>{
+ let calls=0;const {service}=setup(t,{testCredits:0,adapter:{generate:async options=>{calls++;return {...result(options.request.mode),cost:{microUsd:1}};}}});
+ service.adminTestUnlimited=true;assert.equal(service.status().generation.enabled,true);assert.equal(service.wallet().unlimited,true);
+ for(let i=0;i<35;i++){
+  const created=await service.create(body());await service.waitForIdle();const ready=service.job(created.job.id);
+  assert.equal(ready.state,'ready');assert.equal(ready.creditCost,0);assert.equal(ready.creditPolicy,'admin-unlimited');
+  service.accept(ready.id,ready.artifactId);assert.equal(service.wallet().available,0);assert.equal(service.wallet().reserved,0);
+ }
+ assert.equal(calls,35);assert.equal(service.status().budget.spentMicros,35);
+ assert.equal(service.db.prepare('SELECT COUNT(*) n FROM purchases').get().n,0);
+ service.adminTestUnlimited=false;assert.equal(service.status().generation.reason,'NO_TEST_CREDITS');await assert.rejects(service.create(body()),/NO_TEST_CREDITS/);
+});
+test('administrator mode preserves budget and provider blockers, rejection costs and server-owned policy',async t=>{
+ const {service}=setup(t,{testCredits:0});const forged=body();forged.adminTestUnlimited=true;forged.request.creditExempt=true;forged.request.role='admin';
+ await assert.rejects(service.create(forged),/NO_TEST_CREDITS/);assert.equal(service.wallet().unlimited,undefined);
+ service.adminTestUnlimited=true;service.providerConfigured=false;assert.equal(service.status().generation.reason,'PROVIDER_NOT_CONFIGURED');
+ service.providerConfigured=true;service.budgetMicros=0;assert.equal(service.status().generation.reason,'BUDGET_NOT_AVAILABLE');
+ service.budgetMicros=2_000_000;
+ for(let i=0;i<3;i++){const created=await service.create(body());await service.waitForIdle();service.reject(created.job.id);}
+ assert.equal(service.wallet().available,0);assert.equal(service.wallet().reserved,0);assert.ok(service.status().budget.spentMicros>0);
+});
 async function httpSetup(t, overrides={}) {
   const state=setup(t,overrides);
   const http=createGenerationHttpServer({service:state.service,nodeEnvironment:'test'});
@@ -48,6 +70,15 @@ test('default startup remains opt-in with zero budget even when a key exists',t=
  assert.equal(config.enabled,false); assert.equal(config.assistantEnabled,false); assert.equal(config.budgetMicros,0);
  assert.throws(()=>localServerConfiguration({AIADCAST_SERVER_HOST:'0.0.0.0'}));
  assert.throws(()=>localServerConfiguration({NODE_ENV:'production'}));
+});
+test('complete-ad metadata persists by result, never by the current revision or caller claims',async t=>{
+ const {service}=setup(t,{adapter:{generate:async()=>({...result('creative'),composition:'complete-ad'})}});
+ const input=body('creative');input.request.output.compositionKey='{"copy":{"title":"봄 신상품"}}';
+ input.request.composition='fake-attestation';const created=await service.create(input);await service.waitForIdle();
+ const ready=service.job(created.job.id);assert.equal(ready.composition,'complete-ad');assert.equal(ready.compositionKey,input.request.output.compositionKey);
+ service.accept(ready.id,ready.artifactId);assert.equal(service.job(ready.id).compositionKey,ready.compositionKey);
+ const old=setup(t);const first=await old.service.create(body('creative'));await old.service.waitForIdle();
+ assert.equal(old.service.job(first.job.id).composition,undefined);assert.equal(old.service.job(first.job.id).compositionKey,undefined);
 });
 test('request validation ignores client model/prices and rejects unimplemented region editing',()=>{
  const normalized=normalizeGenerationRequest({...request(),model:'free-model',credits:-999,price:0,userId:'other'});
@@ -75,12 +106,12 @@ test('original request protects source bytes; acceptance captures one test credi
  assert.equal(calls.length,1); assert.equal(calls[0].source,null);
  assert.equal(service.db.prepare('SELECT hex(bytes) data FROM generation_assets WHERE hash=?').get(source.sha256).data,bytes.toString('hex').toUpperCase());
  const preview=service.job(first.job.id); assert.equal(preview.state,'ready'); assert.equal(preview.artifact.role,'background');
- assert.deepEqual(service.wallet(),{available:2,reserved:1,kind:'test-credits'});
+ assert.deepEqual(service.wallet(),{available:2,reserved:1,kind:'test-credits',credits:{available:0,reserved:0}});
  const replay=await service.create(input); assert.equal(replay.job.id,first.job.id);
  const freshKey=await service.create({...input,requestId:randomUUID()}); assert.equal(freshKey.job.id,first.job.id); assert.equal(calls.length,1);
  assert.throws(()=>service.accept(preview.id,'wrong'),/ARTIFACT_MISMATCH/);
  service.accept(preview.id,preview.artifact.id); service.accept(preview.id,preview.artifact.id);
- assert.deepEqual(service.wallet(),{available:2,reserved:0,kind:'test-credits'});
+ assert.deepEqual(service.wallet(),{available:2,reserved:0,kind:'test-credits',credits:{available:0,reserved:0}});
  assert.equal(service.ledger.db.prepare("SELECT count(*) n FROM credit_events WHERE kind='capture'").get().n,1);
  const newVariant=await service.create({...input,requestId:randomUUID()}); await service.waitForIdle();
  assert.notEqual(newVariant.job.id,preview.id); assert.equal(calls.length,2);
@@ -93,7 +124,7 @@ test('reusing an id with changed request conflicts before making another paid re
 test('rejected previews restore credits while supplier cost stays, repeated rejections are bounded',async t=>{
  const {service,calls}=setup(t); const input=body();
  for(let i=0;i<2;i++){ const made=await service.create({...input,requestId:randomUUID()});await service.waitForIdle();service.reject(made.job.id);service.reject(made.job.id); }
- assert.deepEqual(service.wallet(),{available:3,reserved:0,kind:'test-credits'});
+ assert.deepEqual(service.wallet(),{available:3,reserved:0,kind:'test-credits',credits:{available:0,reserved:0}});
  assert.equal(service.ledger.budget(service.period()).spent_micros,imageUsageCost(usage).microUsd*2);
  await assert.rejects(service.create({...input,requestId:randomUUID()}),/REVIEW_REQUIRED/);assert.equal(calls.length,2);
 });
@@ -101,7 +132,7 @@ test('uncertain provider execution releases credits but keeps cost hold and bloc
  let calls=0;const {service}=setup(t,{adapter:{generate:async()=>{calls++;throw new ProviderFailure('secret-key-do-not-expose');}}});
  const input=body();const created=await service.create(input);await service.waitForIdle();
  assert.equal(service.job(created.job.id).state,'uncertain'); assert.equal(service.job(created.job.id).errorCode,'PROVIDER_UNCERTAIN');
- assert.deepEqual(service.wallet(),{available:3,reserved:0,kind:'test-credits'});
+ assert.deepEqual(service.wallet(),{available:3,reserved:0,kind:'test-credits',credits:{available:0,reserved:0}});
  assert.equal(service.ledger.budget(service.period()).held_micros,500000);
  const retried=await service.create({...input,requestId:randomUUID()}); assert.equal(retried.job.id,created.job.id);assert.equal(calls,1);
 });
@@ -116,6 +147,12 @@ test('known upstream refusal restores credits and does not auto retry or expose 
  let calls=0;const {service}=setup(t,{adapter:{generate:async()=>{calls++;throw new ProviderFailure('PROVIDER_REQUEST_FAILED',{uncertain:false,providerStatus:401});}}});
  const made=await service.create(body());await service.waitForIdle();assert.equal(service.job(made.job.id).state,'failed');
  assert.equal(service.wallet().available,3);assert.equal(service.ledger.budget(service.period()).held_micros,0);assert.equal(calls,1);
+});
+for(const code of ['PROVIDER_QUOTA_EXHAUSTED','PROVIDER_TEMPORARY_RATE_LIMIT','PROVIDER_429_UNCLASSIFIED'])test(`classified ${code} preserves refusal accounting and same-key idempotency`,async t=>{
+ let calls=0;const {service}=setup(t,{adapter:{generate:async()=>{calls++;throw new ProviderFailure(code,{uncertain:false,providerStatus:429});}}});
+ const input=body();const made=await service.create(input);await service.waitForIdle();const job=service.job(made.job.id);
+ assert.equal(job.state,'failed');assert.equal(job.errorCode,code);assert.equal(service.wallet().available,3);assert.equal(service.ledger.budget(service.period()).held_micros,0);
+ const replay=await service.create(input);assert.equal(replay.job.id,made.job.id);assert.equal(calls,1);
 });
 test('insufficient supplier budget rejects before credit reservation or external work',async t=>{
  const {service,calls}=setup(t,{budgetMicros:499999});await assert.rejects(service.create(body()),/BUDGET_NOT_AVAILABLE/);
@@ -157,6 +194,29 @@ test('HTTP creation, history, accept and duplicate actions follow server-owned w
  const preview=await (await call(`/api/generations/${created.job.id}`)).json();assert.equal(preview.job.state,'ready');
  const history=await (await call('/api/generations?projectId=project-test-001')).json();assert.equal(history.jobs.length,1);assert.equal(history.jobs[0].artifact,null);
  const accepted=await (await call(`/api/generations/${created.job.id}/accept`,post({artifactId:preview.job.artifact.id}))).json();assert.equal(accepted.wallet.available,2);assert.equal(accepted.job.state,'accepted');
+});
+test('request lookup finds older keys beyond recent history without changing balances or dispatching',async t=>{
+ const {service,call,calls}=await httpSetup(t,{testCredits:0,budgetMicros:10_000_000});service.adminTestUnlimited=true;
+ const first=body();const created=await service.create(first);await service.waitForIdle();service.accept(created.job.id,service.job(created.job.id).artifactId);
+ // Real accepted jobs in the same project push the first record out of LIMIT 30.
+ for(let i=0;i<30;i++){const next=await service.create(body());await service.waitForIdle();service.accept(next.job.id,service.job(next.job.id).artifactId);}
+ const history=await (await call('/api/generations?projectId='+first.projectId)).json();assert.equal(history.jobs.length,30);assert.ok(!history.jobs.some(j=>j.requestIds.includes(first.requestId)));
+ const before=JSON.stringify([service.wallet(),service.status().budget]),count=calls.length;
+ const lookup=await (await call(`/api/generation-requests/${first.requestId}?projectId=${first.projectId}`)).json();
+ assert.deepEqual(lookup,{version:1,requestId:first.requestId,projectId:first.projectId,state:'found',jobId:created.job.id});
+ assert.equal((await call(`/api/generation-requests/${first.requestId}?projectId=another-project`)).status,409);
+ const missing=randomUUID();assert.equal((await (await call(`/api/generation-requests/${missing}?projectId=${first.projectId}`)).json()).state,'not-recorded');
+ assert.equal(calls.length,count);assert.equal(JSON.stringify([service.wallet(),service.status().budget]),before);
+});
+test('unrecorded lookup cannot cause a second dispatch when the original POST resumes late',async t=>{
+ const {service,call,calls}=await httpSetup(t);const input=body();let entered,release;
+ const waiting=new Promise(r=>entered=r),gate=new Promise(r=>release=r);let first=true;
+ service.assertOutputCapacity=async()=>{if(first){first=false;entered();await gate;}};
+ const original=service.create(input);await waiting;
+ const lookup=await (await call(`/api/generation-requests/${input.requestId}?projectId=${input.projectId}`)).json();assert.equal(lookup.state,'not-recorded');assert.equal(calls.length,0);
+ const resumed=await service.create(input);release();const late=await original;await service.waitForIdle();
+ assert.equal(resumed.job.id,late.job.id);assert.equal(calls.length,1);assert.equal(late.reused,true);
+ assert.equal(service.requestStatus(input.requestId,input.projectId).jobId,late.job.id);
 });
 test('image adapter uses background-only generation for original and multipart edits for creative',async()=>{
  const output=await sharp({create:{width:1024,height:1024,channels:4,background:'#ddd'}}).png().toBuffer();
@@ -208,4 +268,40 @@ test('multi-image adapter serializes every input and premium direction as image 
  assert.ok(sent.url.endsWith('/edits'));assert.equal(sent.body.getAll('image[]').length,10);
  assert.match(sent.body.get('prompt'),/FIRST reference/);assert.match(sent.body.get('prompt'),/full-frame luxury brand campaign/);assert.match(sent.body.get('prompt'),/Choose the art direction automatically/);assert.doesNotMatch(sent.body.get('prompt'),/Follow only the selected style/);assert.match(sent.body.get('prompt'),/Honor recorded changes/);
  for(const image of sent.body.getAll('image[]'))assert.deepEqual(Buffer.from(await image.arrayBuffer()),bytes);
+});
+
+
+test('unsupported media is rejected before reservations, idempotency records or provider dispatch',async t=>{
+ const {service,calls}=setup(t);const wallet=service.wallet(),budget=service.ledger.budget(service.period());
+ for(const mediaType of ['video','audio','',null,{},1])for(const location of ['body','request','output']){
+  const input=body();if(location==='body')input.mediaType=mediaType;else if(location==='request')input.request.mediaType=mediaType;else input.request.output.mediaType=mediaType;
+  await assert.rejects(service.create(input),e=>e.code==='UNSUPPORTED_MEDIA');
+ }
+ assert.equal(calls.length,0);assert.deepEqual(service.wallet(),wallet);assert.deepEqual(service.ledger.budget(service.period()),budget);
+ for(const table of ['jobs','generation_keys','attempts','credit_events'])assert.equal(service.db.prepare(`SELECT COUNT(*) n FROM ${table}`).get().n,0);
+ const input=body();const made=await service.create(input);await service.waitForIdle();const replay=await service.create({...input,mediaType:'image',request:{...input.request,mediaType:'image',output:{...input.request.output,mediaType:'image'}}});assert.equal(replay.job.id,made.job.id);assert.equal(calls.length,1);assert.equal(service.ledger.job(made.job.id).kind,'image');
+});
+test('unexpected provider media cannot become a delivered image or capture credits',async t=>{
+ const {service}=setup(t,{adapter:{generate:async()=>({...result(),mediaType:'video'})}});const made=await service.create(body());await service.waitForIdle();const job=service.job(made.job.id);assert.equal(job.state,'uncertain');assert.equal(job.artifact,null);assert.equal(job.creditCaptured,false);
+});
+
+for(const admin of [false,true])test(`edited ready preview retains its original and deduplicates the new request (${admin?'admin':'member'})`,async t=>{
+ const {service,calls}=setup(t,{testCredits:3});service.adminTestUnlimited=admin;
+ const first=body('creative'),a=await service.create(first);await service.waitForIdle();const original=service.job(a.job.id);
+ const next={...first,requestId:randomUUID(),request:{...first.request,brief:'Revised lighting and product arrangement'}};
+ const b=await service.create(next);await service.waitForIdle();
+ const replay=await service.create(next),sameInput=await service.create({...next,requestId:randomUUID()});
+ assert.notEqual(a.job.id,b.job.id);assert.equal(replay.job.id,b.job.id);assert.equal(sameInput.job.id,b.job.id);assert.equal(calls.length,2);
+ assert.deepEqual(service.job(a.job.id),original);assert.equal(original.state,'ready');
+ service.accept(b.job.id,service.job(b.job.id).artifactId);service.accept(b.job.id,service.job(b.job.id).artifactId);
+ assert.equal(calls.length,2);assert.equal(service.wallet().available,admin?3:1);assert.equal(service.wallet().reserved,admin?0:1);
+});
+
+test('lost ready response preserves a durable legacy preview without refund or provider retry',async t=>{
+ const {service,calls}=setup(t);const ready=service.ledger.markReady.bind(service.ledger);
+ service.ledger.markReady=(...args)=>{ready(...args);throw Error('fixture response lost after commit');};
+ const input=body(),made=await service.create(input);await service.waitForIdle();
+ const job=service.job(made.job.id);assert.equal(job.state,'ready');assert.ok(job.artifact);
+ assert.equal(service.wallet().reserved,1);assert.equal(service.wallet().available,2);
+ assert.equal((await service.create({...input,requestId:randomUUID()})).job.id,job.id);assert.equal(calls.length,1);
 });

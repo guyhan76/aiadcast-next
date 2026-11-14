@@ -58,3 +58,49 @@
 .studio-shell .create-page .wizard-error{font-size:14px;line-height:1.6;word-break:keep-all}
 @media(max-width:760px){.studio-shell .create-page .wizard-actions{position:sticky;bottom:calc(79px + env(safe-area-inset-bottom));z-index:20}.studio-shell .create-page .create-steps li{font-size:13px}.studio-shell .create-page .create-heading h1{font-size:25px}}
 @media(max-width:360px){.studio-shell .create-page .create-steps{gap:8px}.studio-shell .create-page .delivery-formats span{font-size:12px}.studio-shell .create-page .dimension-inputs{gap:7px}}
+
+/* One ordered consumer form. Advanced editing stays outside this flow. */
+.studio-shell .consumer-create{max-width:680px;margin:auto}
+.studio-shell .consumer-create .create-heading p{font-size:15px;line-height:1.6;color:var(--brand-muted);margin:10px 0 24px}
+.studio-shell .consumer-create .creation-section{padding:22px 0;border-top:1px solid var(--brand-line)}
+.studio-shell .consumer-create h2,.studio-shell .consumer-create .section-title{display:flex;align-items:center;gap:10px;margin:0;font-size:17px;line-height:1.5;font-weight:650}
+.studio-shell .consumer-create h2>span,.studio-shell .consumer-create .section-title>b{display:grid;place-items:center;width:27px;height:27px;flex-shrink:0;border-radius:50%;background:#f1f2f3;font-size:13px;font-weight:600}
+.studio-shell .consumer-create h2 small,.studio-shell .consumer-create summary small{margin-left:auto;font-size:12px;font-weight:400;color:var(--brand-muted)}
+.studio-shell .consumer-create .field{margin-top:15px}
+.studio-shell .consumer-create .optional-block{padding:0;border:0;background:transparent;margin:0}
+.studio-shell .consumer-create .optional-block summary{display:flex;align-items:center;gap:10px;min-height:30px;cursor:pointer;font-size:15px;list-style:none}
+.studio-shell .consumer-create .optional-block summary:after{content:'+';margin-left:8px;color:#73767a;font-size:18px}
+.studio-shell .consumer-create .optional-block[open] summary:after{content:'−'}
+.studio-shell .consumer-create .company-fields{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+.studio-shell .consumer-create .simple-choice,.studio-shell .consumer-create .ratio-options{display:flex;gap:10px;margin-top:16px}
+.studio-shell .consumer-create .simple-choice button,.studio-shell .consumer-create .ratio-options button{flex:1;min-height:46px;border:1px solid var(--brand-line);border-radius:10px;background:#fff;color:#17191c;padding:12px 8px;font-size:15px;line-height:1.4}
+.studio-shell .consumer-create button[aria-pressed=true]{background:#17191c;color:#fff;border-color:#17191c}
+.studio-shell .consumer-create .ratio-options button{display:flex;flex-direction:column;gap:5px;align-items:center}
+.studio-shell .consumer-create .ratio-options small{font-size:12px;font-weight:400}
+.studio-shell .consumer-create .reference-photos{margin-top:16px}
+.studio-shell .consumer-create .reference-heading{display:none}
+.studio-shell .consumer-create .reference-add{min-height:130px}
+.studio-shell .consumer-create .dimension-form .check-field{margin-top:16px;font-size:14px;display:flex;align-items:center;gap:9px}
+.studio-shell .consumer-create .additional-requests{margin-top:16px}
+.studio-shell .consumer-create .additional-request-example{margin-top:18px;padding:12px 14px;border-left:3px solid #ed6a2c;background:#fafafa;font-size:14px;line-height:1.65;word-break:keep-all;overflow-wrap:anywhere}
+.studio-shell .consumer-create .additional-request-example strong{display:block;font-size:13px}
+.studio-shell .consumer-create .additional-request-example p{margin:7px 0}
+.studio-shell .consumer-create .additional-request-example small{display:block;font-size:12px;color:var(--brand-muted)}
+.studio-shell .consumer-create .additional-request-example+.field{margin-top:12px}
+.studio-shell .consumer-create .submit-help{text-align:center}
+@media(max-width:560px){.studio-shell .consumer-create .company-fields{grid-template-columns:1fr}.studio-shell .consumer-create .creation-section{padding:20px 0}.studio-shell .consumer-create .field textarea{min-height:86px}}
+.studio-shell .consumer-create .company-field{position:relative;display:flex;flex-direction:column}
+.studio-shell .consumer-create .company-visible{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:400;color:#6d7075;margin:1px 0}
+.studio-shell .consumer-create .company-visible input{width:15px;height:15px;min-width:15px;padding:0;margin:0;accent-color:#191b1e}
+
+.input-example-guide{margin:8px 0 18px;border:1px solid #dedede;border-radius:10px;background:#fafafa;color:#333;min-width:0}
+.input-example-guide>summary{padding:12px 14px;cursor:pointer;font-size:14px;font-weight:600;line-height:1.6;overflow-wrap:anywhere}
+.input-example-guide>summary:focus-visible{outline:3px solid #ed6a2c;outline-offset:3px;border-radius:8px}
+.input-example-content{padding:0 14px 14px;font-size:14px;line-height:1.75;text-align:left;word-break:keep-all;overflow-wrap:anywhere}
+.input-example-content p{margin:12px 0}
+.input-example-content blockquote{margin:10px 0;padding:10px 12px;border-left:3px solid #ed6a2c;background:#fff}
+.input-example-content .input-example-note{color:#555;font-size:13px;margin-bottom:0}
+
+.input-example-content .input-example-sentence{margin:0 0 10px}
+.input-example-content .input-example-sentence:last-child{margin-bottom:0}
+.input-example-price{white-space:nowrap}

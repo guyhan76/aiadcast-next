@@ -1,6 +1,7 @@
 // Local server-domain reference. Never import into the browser or expose these
 // methods directly as HTTP handlers. Authentication, store receipt verification,
 // provider callbacks and artifact quality checks belong to trusted server adapters.
+import {cumulativeBudgetView} from './cumulative-budget.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 
@@ -41,61 +42,79 @@ export class BillingLedger {
   job(id) {
     const row = this.db.prepare('SELECT * FROM jobs WHERE id=?').get(id);
     if (!row) throw Error('Job not found');
-    return { ...row };
+    const policy=this.db.prepare('SELECT * FROM job_policies WHERE job_id=?').get(id);
+    return { ...row, unit:policy?.unit??'legacy-ticket', policy:policy?.policy??'legacy-accept-v1', captured:Boolean(policy?.captured), creditExempt: Boolean(this.db.prepare('SELECT job_id FROM admin_test_jobs WHERE job_id=?').get(id)) };
   }
-  wallet(userId) {
-    const row = this.db.prepare('SELECT available,reserved FROM wallets WHERE user_id=?').get(userId);
+  wallet(userId, unit='legacy-ticket') {
+    if(!['legacy-ticket','credit-v2'].includes(unit))throw Error('Invalid credit unit');
+    const row = this.db.prepare(`SELECT available,reserved FROM ${unit==='credit-v2'?'credit_wallets':'wallets'} WHERE user_id=?`).get(userId);
     return row ? { ...row } : { available: 0, reserved: 0 };
   }
   event(key, user, job, kind, credits) {
     this.db.prepare('INSERT INTO credit_events VALUES (?,?,?,?,?)').run(key, user, job, kind, credits);
   }
   // Call only AFTER the server has verified a real purchase/receipt.
-  recordVerifiedPurchase({ purchaseId, userId, credits }) {
+  recordVerifiedPurchase({ purchaseId, userId, credits, unit='legacy-ticket' }) {
+    if(!['legacy-ticket','credit-v2'].includes(unit))throw Error('Invalid credit unit');
+    const table=unit==='credit-v2'?'credit_wallets':'wallets';
     identifier(purchaseId); identifier(userId); integer(credits);
     return this.transaction(() => {
       const previous = this.db.prepare('SELECT * FROM purchases WHERE purchase_id=?').get(purchaseId);
       if (previous) {
-        if (previous.user_id !== userId || previous.credits !== credits) throw Error('Purchase replay mismatch');
-        return this.wallet(userId);
+        if (previous.user_id !== userId || previous.credits !== credits || (this.db.prepare('SELECT unit FROM purchase_units WHERE purchase_id=?').get(purchaseId)?.unit??'legacy-ticket')!==unit) throw Error('Purchase replay mismatch');
+        return this.wallet(userId,unit);
       }
       this.db.prepare('INSERT INTO wallets(user_id) VALUES (?) ON CONFLICT DO NOTHING').run(userId);
       this.db.prepare('INSERT INTO purchases VALUES (?,?,?)').run(purchaseId, userId, credits);
-      this.db.prepare('UPDATE wallets SET available=available+? WHERE user_id=?').run(credits, userId);
+      if(unit==='credit-v2'){this.db.prepare('INSERT INTO credit_wallets(user_id) VALUES (?) ON CONFLICT DO NOTHING').run(userId);this.db.prepare('INSERT INTO purchase_units VALUES (?,?)').run(purchaseId,unit);}
+      this.db.prepare(`UPDATE ${table} SET available=available+? WHERE user_id=?`).run(credits, userId);
       this.event(`purchase:${purchaseId}`, userId, null, 'purchase', credits);
-      return this.wallet(userId);
+      return this.wallet(userId,unit);
     });
   }
   // credits, modelRevision and expiresAt must come from a server-signed quote.
-  reserve({ jobId, userId, credits, requestHash, modelRevision, kind = 'image', expiresAt }) {
+  reserve({ jobId, userId, credits, requestHash, modelRevision, kind = 'image', expiresAt, creditExempt = false, unit='legacy-ticket' }) {
+    if(!['legacy-ticket','credit-v2'].includes(unit)||unit==='credit-v2'&&credits!==10)throw Error('Invalid credit quote');
+    const table=unit==='credit-v2'?'credit_wallets':'wallets';
     [jobId, userId, requestHash, modelRevision].forEach(identifier); integer(credits);
-    if (!['image','video'].includes(kind) || !Number.isSafeInteger(expiresAt)) throw Error('Invalid job');
+    if (!['image','video'].includes(kind) || !Number.isSafeInteger(expiresAt) || typeof creditExempt !== 'boolean') throw Error('Invalid job');
     return this.transaction(() => {
       const old = this.db.prepare('SELECT * FROM jobs WHERE id=?').get(jobId);
       if (old) {
-        if (old.user_id !== userId || old.credits !== credits || old.request_hash !== requestHash || old.model_revision !== modelRevision || old.kind !== kind || old.expires_at !== expiresAt) throw Error('Job replay mismatch');
+        if (old.user_id !== userId || old.credits !== credits || old.request_hash !== requestHash || old.model_revision !== modelRevision || old.kind !== kind || old.expires_at !== expiresAt || this.job(jobId).creditExempt !== creditExempt || this.job(jobId).unit!==unit) throw Error('Job replay mismatch');
         return this.job(jobId);
       }
       if (expiresAt <= this.now()) throw Error('Quote expired');
-      const moved = this.db.prepare('UPDATE wallets SET available=available-?, reserved=reserved+? WHERE user_id=? AND available>=?').run(credits, credits, userId, credits);
-      if (moved.changes !== 1) throw Error('Insufficient credits');
+      if (creditExempt) {
+        this.db.prepare('INSERT INTO wallets(user_id) VALUES (?) ON CONFLICT DO NOTHING').run(userId);
+      } else {
+        const moved = this.db.prepare(`UPDATE ${table} SET available=available-?, reserved=reserved+? WHERE user_id=? AND available>=?`).run(credits, credits, userId, credits);
+        if (moved.changes !== 1) throw Error('Insufficient credits');
+      }
       this.db.prepare('INSERT INTO jobs(id,user_id,credits,request_hash,model_revision,kind,status,expires_at) VALUES (?,?,?,?,?,?,?,?)').run(jobId, userId, credits, requestHash, modelRevision, kind, 'reserved', expiresAt);
-      this.event(`reserve:${jobId}`, userId, jobId, 'reserve', credits);
+      if(unit==='credit-v2')this.db.prepare('INSERT INTO job_policies(job_id,unit,policy) VALUES (?,?,?)').run(jobId,unit,'delivered-2026-10-18');
+      if (creditExempt) this.db.prepare('INSERT INTO admin_test_jobs(job_id) VALUES (?)').run(jobId);
+      this.event(`reserve:${jobId}`, userId, jobId, creditExempt ? 'admin-test-reserve' : 'reserve', credits);
       return this.job(jobId);
     });
   }
-  // Artifact must already be durably stored and pass server-side quality gates.
+  // Artifact must already be durably stored and structurally valid. This does not certify semantic quality.
   markReady(jobId, artifactId) {
     identifier(artifactId);
     return this.transaction(() => {
       const job = this.job(jobId);
       if (!active.includes(job.status)) return job; // Late callbacks cannot charge or revive jobs.
-      if (job.expires_at <= this.now()) return this.releaseInside(job, 'preview_expired');
+      if (!job.captured && job.expires_at <= this.now()) return this.releaseInside(job, 'preview_expired');
       if (job.status === 'uncertain') throw Error('Resolve the provider attempt first');
       if (this.db.prepare("SELECT id FROM attempts WHERE job_id=? AND status IN ('pending','uncertain')").get(jobId)) throw Error('Provider attempt is not settled');
       if (job.status === 'ready') {
         if (job.artifact_id !== artifactId) throw Error('Artifact replay mismatch');
         return job;
+      }
+      if(job.unit==='credit-v2'){
+        if(!job.creditExempt)this.db.prepare('UPDATE credit_wallets SET reserved=reserved-? WHERE user_id=?').run(job.credits,job.user_id);
+        this.db.prepare('UPDATE job_policies SET captured=1 WHERE job_id=?').run(jobId);
+        this.event(`capture:${jobId}`,job.user_id,jobId,'delivered-capture',job.credits);
       }
       this.db.prepare("UPDATE jobs SET status='ready',artifact_id=? WHERE id=?").run(artifactId, jobId);
       return this.job(jobId);
@@ -108,19 +127,19 @@ export class BillingLedger {
       if (job.artifact_id !== artifactId) throw Error('Wrong preview version');
       if (job.status === 'accepted') return job;
       if (job.status !== 'ready') throw Error('Result is not ready for acceptance');
-      if (job.expires_at <= this.now()) return this.releaseInside(job, 'preview_expired');
-      this.db.prepare('UPDATE wallets SET reserved=reserved-? WHERE user_id=?').run(job.credits, userId);
+      if (!job.captured && job.expires_at <= this.now()) return this.releaseInside(job, 'preview_expired');
+      if (!job.creditExempt && !job.captured) this.db.prepare('UPDATE wallets SET reserved=reserved-? WHERE user_id=?').run(job.credits, userId);
       this.db.prepare("UPDATE jobs SET status='accepted' WHERE id=?").run(jobId);
-      this.event(`capture:${jobId}`, userId, jobId, 'capture', job.credits);
+      if(!job.captured)this.event(`capture:${jobId}`, userId, jobId, job.creditExempt ? 'admin-test-accept' : 'capture', job.credits);
       return this.job(jobId);
     });
   }
   releaseInside(job, reason) {
     if (job.status === 'released' || job.status === 'refunded') return job;
     if (job.status === 'accepted') throw Error('Accepted jobs require a confirmed-defect refund');
-    this.db.prepare('UPDATE wallets SET available=available+?, reserved=reserved-? WHERE user_id=?').run(job.credits, job.credits, job.user_id);
+    if (!job.creditExempt && !job.captured) this.db.prepare(`UPDATE ${job.unit==='credit-v2'?'credit_wallets':'wallets'} SET available=available+?, reserved=reserved-? WHERE user_id=?`).run(job.credits, job.credits, job.user_id);
     this.db.prepare("UPDATE jobs SET status='released',reason=? WHERE id=?").run(reason, job.id);
-    this.event(`release:${job.id}`, job.user_id, job.id, 'release', job.credits);
+    this.event(`release:${job.id}`, job.user_id, job.id, job.captured ? 'closed-no-refund' : job.creditExempt ? 'admin-test-release' : 'release', job.credits);
     return this.job(job.id);
   }
   release(jobId, userId, reason) {
@@ -137,21 +156,38 @@ export class BillingLedger {
     return this.transaction(() => {
       const job = this.job(jobId);
       if (job.status === 'refunded') return job;
-      if (job.status !== 'accepted') throw Error('Only captured credits can be refunded');
-      this.db.prepare('UPDATE wallets SET available=available+? WHERE user_id=?').run(job.credits, job.user_id);
+      if (job.status !== 'accepted' && !job.captured) throw Error('Only captured credits can be refunded');
+      if (!job.creditExempt) this.db.prepare(`UPDATE ${job.unit==='credit-v2'?'credit_wallets':'wallets'} SET available=available+? WHERE user_id=?`).run(job.credits, job.user_id);
       this.db.prepare("UPDATE jobs SET status='refunded',reason=? WHERE id=?").run(incidentId, jobId);
-      this.event(`refund:${jobId}`, job.user_id, jobId, 'refund', job.credits);
+      this.event(`refund:${jobId}`, job.user_id, jobId, job.creditExempt ? 'admin-test-refund' : 'refund', job.credits);
       return this.job(jobId);
     });
   }
   expire() {
     return this.transaction(() => {
       const jobs = this.db.prepare("SELECT * FROM jobs WHERE expires_at<=? AND status IN ('reserved','running','uncertain','ready')").all(this.now());
-      return jobs.map(job => this.releaseInside(job, 'preview_expired'));
+      return jobs.map(job => {const current=this.job(job.id);return current.captured?current:this.releaseInside(current,'preview_expired');});
     });
   }
   // USD micro-units (1 USD = 1,000,000); these are NEVER customer credits.
-  beginAttempt({ jobId, attemptId, period, maximumMicros, limitMicros }) {
+  supplierBudget(period, monthlyLimit) {
+    const policy=this.db.prepare('SELECT * FROM supplier_budget_policy WHERE id=1').get();
+    if(!policy)return null;
+    const totals=this.db.prepare('SELECT COALESCE(SUM(spent_micros),0) spent,COALESCE(SUM(held_micros),0) held FROM budgets').get();
+    const external=this.externalBudget?this.externalBudget():{spent:0,held:0};
+    totals.spent+=external.spent;totals.held+=external.held;
+    const view=cumulativeBudgetView(policy,totals,{ownerId:this.budgetOwner,isAdmin:this.budgetAdmin,now:this.now()});
+    const current=this.budget(period);
+    return {...view,monthlyLimitMicros:(current?.spent_micros??0)+(current?.held_micros??0)+view.availableMicros};
+  }
+  reserveSupplierBudget(period, amount, monthlyLimit) {
+    // Caller holds the existing ledger transaction / PostgreSQL advisory lock.
+    const policy=this.supplierBudget(period,monthlyLimit);
+    if(!policy)return monthlyLimit;
+    if(policy.availableMicros<amount)throw Error('Provider budget unavailable');
+    return policy.monthlyLimitMicros;
+  }
+  beginAttempt({ jobId, attemptId, period, maximumMicros, limitMicros, periodScoped=false }) {
     [attemptId, period].forEach(identifier); integer(maximumMicros); integer(limitMicros);
     return this.transaction(() => {
       const old = this.db.prepare('SELECT * FROM attempts WHERE id=?').get(attemptId);
@@ -163,7 +199,10 @@ export class BillingLedger {
       if (!['reserved','running'].includes(job.status) || job.expires_at <= this.now()) throw Error('Job is not dispatchable');
       if (this.db.prepare("SELECT id FROM attempts WHERE job_id=? AND status IN ('pending','uncertain','completed')").get(jobId)) throw Error('Reconcile existing attempt; do not generate again');
       if (this.db.prepare('SELECT count(*) n FROM attempts WHERE job_id=?').get(jobId).n >= 2) throw Error('Retry limit reached');
+      const cumulative=this.supplierBudget(period,limitMicros);
+      limitMicros=this.reserveSupplierBudget(period,maximumMicros,limitMicros);
       this.db.prepare('INSERT INTO budgets(period,limit_micros) VALUES (?,?) ON CONFLICT DO NOTHING').run(period, limitMicros);
+      if(periodScoped||cumulative){if(period!==new Date(this.now()).toISOString().slice(0,7))throw Error('BUDGET_PERIOD_CHANGED');this.db.prepare('UPDATE budgets SET limit_micros=? WHERE period=?').run(limitMicros,period);}
       const held = this.db.prepare('UPDATE budgets SET held_micros=held_micros+? WHERE period=? AND limit_micros=? AND spent_micros+held_micros+?<=limit_micros').run(maximumMicros, period, limitMicros, maximumMicros);
       if (held.changes !== 1) throw Error('Provider budget unavailable');
       this.db.prepare('INSERT INTO attempts(id,job_id,period,maximum_micros,status) VALUES (?,?,?,?,?)').run(attemptId, jobId, period, maximumMicros, 'pending');
@@ -201,3 +240,4 @@ export class BillingLedger {
     return row ? { ...row } : null;
   }
 }
+

@@ -1,0 +1,6 @@
+/* Both the workspace and editor use this brand footer. */
+.brand-footer .footer-brand{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px 12px}
+.brand-footer .brand-lockup{display:inline-flex;align-items:center;font-size:28px;font-weight:850;letter-spacing:-1.5px;line-height:1.3;color:var(--brand-black)}
+.brand-footer .brand-lockup b{color:var(--brand-orange);font-weight:inherit}
+.brand-footer .brand-lockup i{border-left:7px solid var(--brand-orange);border-top:5px solid transparent;border-bottom:5px solid transparent;margin-left:7px}
+.brand-footer .footer-byline{font-size:14px;font-weight:400;letter-spacing:0;line-height:1.5;color:var(--brand-muted)}

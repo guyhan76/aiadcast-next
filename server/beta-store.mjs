@@ -1,3 +1,4 @@
+import {correctedOctoberOwnerLimit} from './october-admin-budget.mjs';
 import {DatabaseSync} from 'node:sqlite';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {mkdirSync,chmodSync} from 'node:fs';
@@ -15,9 +16,12 @@ export class BetaStore {
   this.db.exec(`PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
    CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,label TEXT NOT NULL,budget INTEGER NOT NULL,credits INTEGER NOT NULL,disabled INTEGER NOT NULL DEFAULT 0);
+   CREATE TABLE IF NOT EXISTS monthly_budget_approvals(period TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),total_micros INTEGER NOT NULL,allocation_micros INTEGER NOT NULL,baseline_total INTEGER NOT NULL,baseline_allocation INTEGER NOT NULL,created INTEGER NOT NULL);
+   CREATE TABLE IF NOT EXISTS monthly_demo_support(period TEXT PRIMARY KEY REFERENCES monthly_budget_approvals(period),owner_id TEXT NOT NULL REFERENCES users(id),user_id TEXT NOT NULL REFERENCES users(id),email TEXT NOT NULL,micros INTEGER NOT NULL,credits INTEGER NOT NULL,request_id TEXT NOT NULL,created INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS invites(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS projects(user_id TEXT NOT NULL REFERENCES users(id),id TEXT NOT NULL,revision INTEGER NOT NULL,name TEXT NOT NULL,json TEXT NOT NULL,bytes INTEGER NOT NULL,updated TEXT NOT NULL,PRIMARY KEY(user_id,id));`);
+  if(!this.db.prepare('PRAGMA table_info(users)').all().some(c=>c.name==='role'))this.db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('member','admin'))");
   this.db.prepare("INSERT INTO settings VALUES('budget',?) ON CONFLICT DO NOTHING").run(monthlyBudgetMicros);
   if(this.db.prepare("SELECT value FROM settings WHERE key='budget'").get().value!==monthlyBudgetMicros){this.db.close();throw Error('BETA_BUDGET_CONFIG_CHANGED');}
   this.cap=monthlyBudgetMicros;
@@ -28,12 +32,62 @@ export class BetaStore {
   return this.transaction(()=>{
    const stats=this.db.prepare('SELECT COUNT(*) n,COALESCE(SUM(budget),0) budget FROM users').get();
    if(stats.n>=20||stats.budget+budgetMicros>this.cap)fail('BETA_ALLOCATION_EXCEEDED',409);
+   this.validateMonthAllocation(null,budgetMicros);
    const id=randomUUID();this.db.prepare('INSERT INTO users(id,label,budget,credits) VALUES(?,?,?,?)').run(id,label.trim(),budgetMicros,credits);
    return {userId:id,...this.issueInvite(id)};
   });
  }
  setBudget(micros){if(!Number.isSafeInteger(micros)||micros<this.cap||micros>100_000_000)fail('BUDGET_INCREASE_ONLY');this.db.prepare("UPDATE settings SET value=? WHERE key='budget'").run(micros);this.cap=micros;}
- setAllocation(id,micros){return this.transaction(()=>{const user=this.db.prepare('SELECT budget FROM users WHERE id=? AND disabled=0').get(id);if(!user)fail('USER_NOT_FOUND',404);if(!Number.isSafeInteger(micros)||micros<user.budget)fail('ALLOCATION_INCREASE_ONLY');const total=this.db.prepare('SELECT COALESCE(SUM(budget),0) total FROM users').get().total;if(total-user.budget+micros>this.cap)fail('BETA_ALLOCATION_EXCEEDED',409);this.db.prepare('UPDATE users SET budget=? WHERE id=?').run(micros,id);});}
+ setAllocation(id,micros){return this.transaction(()=>{const user=this.db.prepare('SELECT budget FROM users WHERE id=? AND disabled=0').get(id);if(!user)fail('USER_NOT_FOUND',404);if(!Number.isSafeInteger(micros)||micros<user.budget)fail('ALLOCATION_INCREASE_ONLY');const total=this.db.prepare('SELECT COALESCE(SUM(budget),0) total FROM users').get().total;if(total-user.budget+micros>this.cap)fail('BETA_ALLOCATION_EXCEEDED',409);this.validateMonthAllocation(id,micros);this.db.prepare('UPDATE users SET budget=? WHERE id=?').run(micros,id);});}
+ budgetPeriod(){return new Date(this.now()).toISOString().slice(0,7);}
+ monthApproval(){return this.db.prepare("SELECT * FROM monthly_budget_approvals WHERE period=?").get(this.budgetPeriod());}
+ // Approved 2026-10-19: exact existing account, October only; no persisted allocation edits.
+ approvedDemoMember(){
+  if(this.budgetPeriod()!=='2026-10'||this.now()<Date.UTC(2026,9,19))return null;
+  const id='a3c39e4d-8621-4f0d-9021-2621a8cecdee';
+  const user=this.db.prepare("SELECT id FROM users WHERE id=? AND role='member' AND disabled=0").get(id);
+  if(!user)return null;
+  const identities=this.db.prepare('SELECT user_id FROM email_identities WHERE email=?').all('guyhan76@gmail.com');
+  return identities.length===1&&identities[0].user_id===id?id:null;
+ }
+ effectiveBudget(id,period){
+  if(period!==this.budgetPeriod())fail('BUDGET_PERIOD_CHANGED',409);
+  const u=this.db.prepare('SELECT * FROM users WHERE id=?').get(id);if(!u)fail('USER_NOT_FOUND',404);
+  const a=this.monthApproval(),r=this.db.prepare('SELECT * FROM monthly_demo_support WHERE period=?').get(period);
+  const baseline=a?.user_id===id&&u.role==='admin'&&!u.disabled?a.allocation_micros:u.budget;
+  if(r?.owner_id===id){
+   const owner=this.db.prepare('SELECT user_id FROM email_identities WHERE email=?').get('selluplabs@gmail.com');
+   return correctedOctoberOwnerLimit({now:this.now(),user:u,approval:a,support:r,ownerId:owner?.user_id,demo:Boolean(this.approvedDemoMember()),limit:Math.min(baseline,a.allocation_micros-r.micros)});
+  }
+  const existing=baseline+(r?.user_id===id?r.micros:0);
+  if(id===this.approvedDemoMember()){if(existing>10000000)fail('APPROVED_BUDGET_CONFLICT',409);return 10000000;}
+  return existing;
+ }
+ effectiveCap(){
+  const baseline=this.monthApproval()?.total_micros??this.cap;
+  if(!this.approvedDemoMember())return baseline;
+  const period=this.budgetPeriod(),users=this.db.prepare('SELECT id FROM users').all();
+  const allocated=users.map(u=>this.effectiveBudget(u.id,period)).reduce((sum,value)=>sum+value,0);
+  if(period!==this.budgetPeriod())fail('BUDGET_PERIOD_CHANGED',409);
+  return Math.max(baseline,allocated);
+ }
+ validateMonthAllocation(id,micros){
+  const a=this.monthApproval();if(!a)return;
+  const other=this.db.prepare('SELECT COALESCE(SUM(budget),0) n FROM users WHERE id<>? AND id<>?').get(a.user_id,id??'').n;
+  if(a.allocation_micros+other+(id===a.user_id?0:micros)>a.total_micros)fail('BETA_ALLOCATION_EXCEEDED',409);
+ }
+ activateOctoberBudget(id){
+  return this.transaction(()=>{
+   if(this.budgetPeriod()!=='2026-10')fail('MONTH_APPROVAL_EXPIRED',409);
+   const u=this.db.prepare("SELECT * FROM users WHERE id=? AND role='admin' AND disabled=0").get(id);if(!u)fail('ADMIN_REQUIRED',403);
+   const old=this.db.prepare('SELECT * FROM monthly_budget_approvals WHERE period=?').get('2026-10');
+   if(old){if(old.user_id!==id||old.total_micros!==5000000||old.allocation_micros!==5000000)fail('MONTH_APPROVAL_CONFLICT',409);return old;}
+   const other=this.db.prepare('SELECT COALESCE(SUM(budget),0) n FROM users WHERE id<>?').get(id).n;
+   if(other!==0||this.cap>5000000||u.budget>5000000)fail('MONTH_APPROVAL_CONFLICT',409);
+   this.db.prepare('INSERT INTO monthly_budget_approvals VALUES(?,?,?,?,?,?,?)').run('2026-10',id,5000000,5000000,this.cap,u.budget,this.now());
+   return this.monthApproval();
+  });
+ }
  issueInvite(id){const u=this.db.prepare('SELECT id FROM users WHERE id=? AND disabled=0').get(id);if(!u)fail('USER_NOT_FOUND',404);const invite=code(),expires=this.now()+24*60*60*1000;this.db.prepare('DELETE FROM invites WHERE user_id=? OR expires<=?').run(id,this.now());this.db.prepare('INSERT INTO invites VALUES(?,?,?)').run(digest(invite),id,expires);return {invite,expires};}
  login(invite){
   if(typeof invite!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(invite))fail('INVALID_INVITE',401);
@@ -49,10 +103,11 @@ export class BetaStore {
    const count=this.db.prepare('SELECT COUNT(*) n FROM sessions WHERE user_id=?').get(row.id).n;
    if(count>=5)this.db.prepare('DELETE FROM sessions WHERE hash IN(SELECT hash FROM sessions WHERE user_id=? ORDER BY expires LIMIT 1)').run(row.id);
    const token=code(),expires=this.now()+24*60*60*1000;this.db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(digest(token),row.id,expires);
-   return {token,expires,user:{id:row.id,label:row.label}};
+   return {token,expires,user:{id:row.id,label:row.label,role:row.role??'member'}};
  }
  authenticate(header){if(typeof header!=='string'||!/^Bearer [A-Za-z0-9_-]{43}$/.test(header))fail('AUTH_REQUIRED',401);const u=this.db.prepare('SELECT u.* FROM sessions s JOIN users u ON s.user_id=u.id WHERE s.hash=? AND s.expires>? AND u.disabled=0').get(digest(header.slice(7)),this.now());if(!u)fail('AUTH_REQUIRED',401);return u;}
  logout(header){if(typeof header==='string')this.db.prepare('DELETE FROM sessions WHERE hash=?').run(digest(header.slice(7)));}
+ setRole(id,role){if(!['member','admin'].includes(role))fail('INVALID_ROLE');const result=this.db.prepare('UPDATE users SET role=? WHERE id=? AND disabled=0').run(role,id);if(!result.changes)fail('USER_NOT_FOUND',404);this.db.prepare('DELETE FROM sessions WHERE user_id=?').run(id);}
  revoke(id){this.db.prepare('UPDATE users SET disabled=1 WHERE id=?').run(id);this.db.prepare('DELETE FROM sessions WHERE user_id=?').run(id);this.db.prepare('DELETE FROM invites WHERE user_id=?').run(id);}
  list(userId){return this.db.prepare('SELECT id,revision,name,updated FROM projects WHERE user_id=? ORDER BY updated DESC').all(userId);}
  project(userId,id){if(!validId(id))fail('PROJECT_NOT_FOUND',404);const row=this.db.prepare('SELECT revision,json FROM projects WHERE user_id=? AND id=?').get(userId,id);if(!row)fail('PROJECT_NOT_FOUND',404);return {revision:row.revision,project:JSON.parse(row.json)};}
@@ -72,3 +127,4 @@ export class BetaStore {
  }
  close(){this.db.close();}
 }
+

@@ -1,0 +1,362 @@
+[
+  {
+    "project": {
+      "version": 1,
+      "id": "compatibility-project",
+      "name": "새 프로젝트",
+      "updatedAt": "2026-10-23T00:00:00Z",
+      "locale": "en",
+      "format": "9:16",
+      "product": {
+        "name": "original.png",
+        "data": "data:image/png;base64,AAAA",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "width": 80,
+        "height": 60
+      },
+      "productName": "Original product",
+      "productProfile": {
+        "category": "other",
+        "specType": "rectangular",
+        "material": "User-supplied material"
+      },
+      "generation": {
+        "mode": "original",
+        "brief": "Warm light"
+      },
+      "scale": 1,
+      "background": {
+        "color": "#f4f0e8",
+        "image": null
+      },
+      "ink": "dark",
+      "dimensions": {
+        "width": "300",
+        "depth": "200",
+        "height": "100",
+        "visible": true,
+        "lines": false,
+        "anchors": {
+          "width": [
+            {
+              "x": 0.1,
+              "y": 0.78
+            },
+            {
+              "x": 0.72,
+              "y": 0.94
+            }
+          ],
+          "depth": [
+            {
+              "x": 0.72,
+              "y": 0.94
+            },
+            {
+              "x": 0.94,
+              "y": 0.73
+            }
+          ],
+          "height": [
+            {
+              "x": 0.94,
+              "y": 0.73
+            },
+            {
+              "x": 0.94,
+              "y": 0.12
+            }
+          ]
+        }
+      },
+      "copy": {
+        "ko": {
+          "title": "브랜드의 가치를,\n분명하게 전하세요.",
+          "description": "광고 문구를 입력하고\n원하는 배경과 사진으로 꾸며보세요.",
+          "company": "selluplabs",
+          "contact": "",
+          "website": ""
+        },
+        "en": {
+          "title": "Your story.\nClearly told.",
+          "description": "Tell customers what you offer.\nAdd a message that fits your brand.",
+          "company": "selluplabs",
+          "contact": "",
+          "website": ""
+        }
+      }
+    },
+    "requestHash": "31f70dca7b18611c7d72bfc6eac80047b9d7924f4f26b41c1826a889e883821a",
+    "normalizedHash": "63f40ddf74d069f1fe1c1759ae0d3e4b0695f75e33a3d950af005afee55b03cc"
+  },
+  {
+    "project": {
+      "version": 1,
+      "id": "compatibility-project",
+      "name": "새 프로젝트",
+      "updatedAt": "2026-10-23T00:00:00Z",
+      "locale": "en",
+      "format": "9:16",
+      "product": {
+        "name": "original.png",
+        "data": "data:image/png;base64,AAAA",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "width": 80,
+        "height": 60
+      },
+      "productName": "Original product",
+      "productProfile": {
+        "category": "other",
+        "specType": "rectangular",
+        "material": "User-supplied material"
+      },
+      "generation": {
+        "mode": "creative",
+        "brief": "Warm light"
+      },
+      "scale": 1,
+      "background": {
+        "color": "#f4f0e8",
+        "image": null
+      },
+      "ink": "dark",
+      "dimensions": {
+        "width": "300",
+        "depth": "200",
+        "height": "100",
+        "visible": true,
+        "lines": false,
+        "anchors": {
+          "width": [
+            {
+              "x": 0.1,
+              "y": 0.78
+            },
+            {
+              "x": 0.72,
+              "y": 0.94
+            }
+          ],
+          "depth": [
+            {
+              "x": 0.72,
+              "y": 0.94
+            },
+            {
+              "x": 0.94,
+              "y": 0.73
+            }
+          ],
+          "height": [
+            {
+              "x": 0.94,
+              "y": 0.73
+            },
+            {
+              "x": 0.94,
+              "y": 0.12
+            }
+          ]
+        }
+      },
+      "copy": {
+        "ko": {
+          "title": "브랜드의 가치를,\n분명하게 전하세요.",
+          "description": "광고 문구를 입력하고\n원하는 배경과 사진으로 꾸며보세요.",
+          "company": "selluplabs",
+          "contact": "",
+          "website": ""
+        },
+        "en": {
+          "title": "Your story.\nClearly told.",
+          "description": "Tell customers what you offer.\nAdd a message that fits your brand.",
+          "company": "selluplabs",
+          "contact": "",
+          "website": ""
+        }
+      }
+    },
+    "requestHash": "d45598d3a14f71718c0337cd33407458de2e42e2ac0366d98a104fe9744f77ef",
+    "normalizedHash": "98a1184c0af53d249ec4999321866202861de513378041fdf9e2b987b61e8a2d"
+  },
+  {
+    "project": {
+      "version": 1,
+      "id": "compatibility-project",
+      "name": "새 프로젝트",
+      "updatedAt": "2026-10-23T00:00:00Z",
+      "locale": "ko",
+      "format": "9:16",
+      "product": {
+        "name": "original.png",
+        "data": "data:image/png;base64,AAAA",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "width": 80,
+        "height": 60
+      },
+      "productName": "Original product",
+      "productProfile": {
+        "category": "other",
+        "specType": "rectangular",
+        "material": "User-supplied material"
+      },
+      "generation": {
+        "mode": "original",
+        "brief": "Warm light"
+      },
+      "scale": 1,
+      "background": {
+        "color": "#f4f0e8",
+        "image": null
+      },
+      "ink": "dark",
+      "dimensions": {
+        "width": "300",
+        "depth": "200",
+        "height": "100",
+        "visible": true,
+        "lines": false,
+        "anchors": {
+          "width": [
+            {
+              "x": 0.1,
+              "y": 0.78
+            },
+            {
+              "x": 0.72,
+              "y": 0.94
+            }
+          ],
+          "depth": [
+            {
+              "x": 0.72,
+              "y": 0.94
+            },
+            {
+              "x": 0.94,
+              "y": 0.73
+            }
+          ],
+          "height": [
+            {
+              "x": 0.94,
+              "y": 0.73
+            },
+            {
+              "x": 0.94,
+              "y": 0.12
+            }
+          ]
+        }
+      },
+      "copy": {
+        "ko": {
+          "title": "브랜드의 가치를,\n분명하게 전하세요.",
+          "description": "광고 문구를 입력하고\n원하는 배경과 사진으로 꾸며보세요.",
+          "company": "selluplabs",
+          "contact": "",
+          "website": ""
+        },
+        "en": {
+          "title": "Your story.\nClearly told.",
+          "description": "Tell customers what you offer.\nAdd a message that fits your brand.",
+          "company": "selluplabs",
+          "contact": "",
+          "website": ""
+        }
+      }
+    },
+    "requestHash": "84fad90bcd58609b7b73a39d183a99b5237a7d0b5576aff7e5cfb5f62829defb",
+    "normalizedHash": "ad05be9b43e59832a1e9a8afd03d9b89a1f97aad8101d4ebdc9874e6757387b0"
+  },
+  {
+    "project": {
+      "version": 1,
+      "id": "compatibility-project",
+      "name": "새 프로젝트",
+      "updatedAt": "2026-10-23T00:00:00Z",
+      "locale": "ko",
+      "format": "9:16",
+      "product": {
+        "name": "original.png",
+        "data": "data:image/png;base64,AAAA",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "width": 80,
+        "height": 60
+      },
+      "productName": "Original product",
+      "productProfile": {
+        "category": "other",
+        "specType": "rectangular",
+        "material": "User-supplied material"
+      },
+      "generation": {
+        "mode": "creative",
+        "brief": "Warm light"
+      },
+      "scale": 1,
+      "background": {
+        "color": "#f4f0e8",
+        "image": null
+      },
+      "ink": "dark",
+      "dimensions": {
+        "width": "300",
+        "depth": "200",
+        "height": "100",
+        "visible": true,
+        "lines": false,
+        "anchors": {
+          "width": [
+            {
+              "x": 0.1,
+              "y": 0.78
+            },
+            {
+              "x": 0.72,
+              "y": 0.94
+            }
+          ],
+          "depth": [
+            {
+              "x": 0.72,
+              "y": 0.94
+            },
+            {
+              "x": 0.94,
+              "y": 0.73
+            }
+          ],
+          "height": [
+            {
+              "x": 0.94,
+              "y": 0.73
+            },
+            {
+              "x": 0.94,
+              "y": 0.12
+            }
+          ]
+        }
+      },
+      "copy": {
+        "ko": {
+          "title": "브랜드의 가치를,\n분명하게 전하세요.",
+          "description": "광고 문구를 입력하고\n원하는 배경과 사진으로 꾸며보세요.",
+          "company": "selluplabs",
+          "contact": "",
+          "website": ""
+        },
+        "en": {
+          "title": "Your story.\nClearly told.",
+          "description": "Tell customers what you offer.\nAdd a message that fits your brand.",
+          "company": "selluplabs",
+          "contact": "",
+          "website": ""
+        }
+      }
+    },
+    "requestHash": "97394bbbd7335d2a319ce00cd886b55fc35e3522305a5664dc2738f01fd80a24",
+    "normalizedHash": "3adb44598aef6b2c4afb38f9a8290f75a2471173e7bd827e9b2ff5d371c04212"
+  }
+]

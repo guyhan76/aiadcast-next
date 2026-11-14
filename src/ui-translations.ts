@@ -1,5 +1,12 @@
 // Presentation-only translations. User copy and billing country remain independent.
 export const uiEnglish:Record<string,string>={
+ '광고에 참고할 상품·공간 사진을 추가해주세요.':'Add a product or location photo for this ad.',
+ '디자인 참고 외에 실제 상품 사진을 한 장 이상 추가해주세요.':'Add at least one actual product photo alongside design references.',
+ 'AI 자동 규격 표시는 실제 상품 사진·입력 규격과 AI 새 광고 모드가 필요합니다. 평면 형상 제어와 함께 사용하지 않습니다.':'Automatic dimension display needs an actual product photo, dimensions and creative mode. Turn off flat-shape control.',
+ '규격 기반 생성은 실제 상품 사진과 치수 기준에 맞는 숫자 규격이 필요합니다.':'Dimension-based generation needs an actual product photo and valid measurements for the selected basis.',
+ '평면 비례 자동 적용은 현재 실제 상품의 정면 사진과 가로·세로 규격을 확인한 경우에만 사용합니다.':'Flat proportion control requires a confirmed front product photo and width and height.',
+ '실사 그대로 사용하려면 실제 상품·공간 사진을 대표로 지정해주세요.':'Choose an actual product or location photo as the main photo for original-photo mode.',
+
  '실물·규격 상품':'Physical products',
  '포장재 · 식품 · 의류 · 가전 등':'Packaging · Food · Fashion · Appliances',
 
@@ -393,6 +400,10 @@ export const uiEnglish:Record<string,string>={
  "원본 상품 사진을 추가해주세요.": "Add your original product photo.",
  "사진 없이 만들 광고의 내용과 원하는 분위기를 입력해주세요.": "Describe the ad and the mood you want when starting without a photo.",
  "규격은 0보다 크고 100,000 mm 이하인 숫자로 입력해주세요.": "Enter dimensions greater than 0 and up to 100,000 mm.",
+ "가로 규격을 확인해주세요. 숫자와 소수점(.)으로 0보다 크고 100,000 mm 이하를 입력해주세요.": "Check width. Use digits and a decimal point (.), greater than 0 and at most 100,000 mm.",
+ "세로 규격을 확인해주세요. 숫자와 소수점(.)으로 0보다 크고 100,000 mm 이하를 입력해주세요.": "Check depth. Use digits and a decimal point (.), greater than 0 and at most 100,000 mm.",
+ "높이 규격을 확인해주세요. 숫자와 소수점(.)으로 0보다 크고 100,000 mm 이하를 입력해주세요.": "Check height. Use digits and a decimal point (.), greater than 0 and at most 100,000 mm.",
+ "지름 규격을 확인해주세요. 숫자와 소수점(.)으로 0보다 크고 100,000 mm 이하를 입력해주세요.": "Check diameter. Use digits and a decimal point (.), greater than 0 and at most 100,000 mm.",
  "생성에 참고할 규격은 0보다 크고 100,000 mm 이하로 입력해주세요.": "Enter dimensions greater than 0 and up to 100,000 mm.",
  "대화의 빠른 편집 변경안을 적용하거나 제외한 뒤 생성 요청을 준비해주세요.": "Apply or exclude pending quick edits before preparing a generation request.",
  "상품 인쇄·색상을 수정하려면 실제 상품 사진을 추가해주세요.": "Add an actual product photo before requesting a print or color change.",

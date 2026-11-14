@@ -2,8 +2,10 @@ import {getImageFormat} from './formats.ts';
 import {dimensionAxes,isServiceCategory} from './product.ts';
 import type {Project} from './model.ts';
 import {hasUsableCreative,visualAsset} from './generated.ts';
-import {boxProjectionReady} from './box-projection.ts';
+import {boxProjectionReady,boxProjectionActive} from './box-projection.ts';
 import {artDirectionFor} from './art-direction.ts';
+import {splitAdOffer} from './ad-copy.ts';
+import {campaignAdGeometry} from './campaign-ad.ts';
 type Rect={x:number;y:number;w:number;h:number};
 type TextBox={x:number;y:number;w:number;size:number;lines:number};
 const box=(x:number,y:number,w:number,size:number,lines=1):TextBox=>({x,y,w,size,lines});
@@ -11,6 +13,8 @@ const box=(x:number,y:number,w:number,size:number,lines=1):TextBox=>({x,y,w,size
 // A layout change never crops or stretches the source photo. Annotation anchors stay
 // normalized to that photo, so they follow it when the output format changes.
 export function geometry(p:Project){
+ const campaignVisual=visualAsset(p);
+ if(p.presentation==='campaign'&&campaignVisual&&hasUsableCreative(p)&&!p.dimensions.lines&&!boxProjectionActive(p))return campaignAdGeometry(p,campaignVisual);
  const {width,height}=getImageFormat(p.format);
  let area:Rect,summary:Rect,brand:TextBox,title:TextBox,description:TextBox,company:TextBox,contact:TextBox,footerLine:Rect;
  let markScale=1;
@@ -71,14 +75,24 @@ export function geometry(p:Project){
    title={...title,y:title.y-overlap};description={...description,y:description.y-overlap};
   }
  }
+ const hasOffer=!!splitAdOffer(p.copy[p.locale].description).offer;
+ const campaign=p.presentation==='campaign'&&hasUsableCreative(p);
+ let offer=box(description.x,description.y+description.size*1.4*description.lines+14*markScale,description.w,36*markScale);
+ if(hasOffer){
+  if(!campaign&&!textOnly&&width<=height){description={...description,lines:2};offer=box(description.x,description.y+description.size*2.8+12*markScale,description.w,40*markScale);const extra=Math.max(0,offer.y+offer.size*1.4+24*markScale-area.y);area={...area,y:area.y+extra,h:area.h-extra};}
+  if(campaign&&artDirectionFor(p.productProfile.category,p.format,p.campaign?.creative?.note??'').copyZone==='bottom'){
+   title={...title,y:title.y-65*markScale};description={...description,y:description.y-65*markScale};offer={...offer,y:offer.y-65*markScale};
+  }
+ }
  // The label and value share the same spec block across all layouts.
  const specLabel=box(summary.x+28*markScale,summary.y+summary.h*.175,summary.w-56*markScale,18*markScale);
  const specValue=box(summary.x+28*markScale,summary.y+summary.h*.49,summary.w-56*markScale,(summary.h<100&&markScale===1?26:30)*markScale);
- if(!visual)return {width,height,area,photo:area,brand,title,description,summary,specLabel,specValue,footerLine,company,contact,markScale,textOnly};
+ if(!visual)return {width,height,area,photo:area,brand,title,description,offer,summary,specLabel,specValue,footerLine,company,contact,markScale,textOnly};
  const reference=boxProjectionReady(p)?{width:720,height:540}:visual;
  const fit=Math.min(area.w/reference.width,area.h/reference.height)*(p.presentation==='campaign'&&hasUsableCreative(p)?1:p.scale);
  const w=reference.width*fit,h=reference.height*fit;
  const photo={x:area.x+(area.w-w)/2,y:area.y+(area.h-h)/2,w,h};
- return {width,height,area,photo,brand,title,description,summary,specLabel,specValue,footerLine,company,contact,markScale,textOnly};
+ return {width,height,area,photo,brand,title,description,offer,summary,specLabel,specValue,footerLine,company,contact,markScale,textOnly};
 }
+
 

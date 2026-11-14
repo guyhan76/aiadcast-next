@@ -1,55 +1,20 @@
 import {test,expect} from '@playwright/test';
-
-test('creation essentials and expanded optional fields stay readable on narrow screens',async({page})=>{
- await page.goto('/#create');
- const wizard=page.locator('.create-page'),subject=wizard.locator('.ad-subject-kind');
- await expect(wizard.getByRole('heading',{level:1,name:'광고 만들기',exact:true})).toHaveCount(1);
- await expect(subject.locator('legend')).toHaveText('광고 대상');
- await expect(wizard.getByText('사진과 설명으로 광고를 시작하세요.',{exact:true})).toHaveCount(0);
- await expect(wizard.locator('.brand-footer-settings')).toHaveCount(0);
- await expect(wizard.locator('.create-industry-settings')).not.toHaveAttribute('open');
- await expect(wizard.locator('.create-purpose-settings')).not.toHaveAttribute('open');
- await expect(wizard.getByLabel('상품명',{exact:true})).toHaveAttribute('placeholder','예: 바이탈 골드 콜라겐 토너 150ml 2개');
- for(const width of [320,390,768,1440]){
-  await page.setViewportSize({width,height:900});
-  const upload=await wizard.getByRole('button',{name:'사진 추가',exact:true}).boundingBox(),area=await wizard.locator('.reference-photos').boundingBox();
-  expect(upload).not.toBeNull();expect(area).not.toBeNull();
-  expect(upload!.height).toBeGreaterThanOrEqual(190);
-  expect(upload!.width).toBeGreaterThanOrEqual(area!.width-2);
-  expect(Math.abs(upload!.x+upload!.width/2-area!.x-area!.width/2)).toBeLessThan(1);
-  await expect(wizard.locator('.reference-file-info')).toBeVisible();
-  await expect(wizard.locator('.reference-file-info')).toContainText('PNG · JPG · WebP');
-  await expect(wizard.locator('.reference-file-info')).toContainText('최대 10장');
-  expect(await wizard.getByLabel('상품명',{exact:true}).evaluate(element=>parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
- }
- await wizard.locator('.create-industry-settings>summary').click();
- await wizard.locator('.create-purpose-settings>summary').click();
- await wizard.getByLabel('업종',{exact:true}).selectOption('packaging');
- await wizard.getByLabel('규격 형식',{exact:true}).selectOption('cylindrical');
- await expect(wizard.getByLabel('지름 cm',{exact:true})).toBeVisible();
- await expect(wizard.getByLabel('높이 cm',{exact:true})).toBeVisible();
- await expect(wizard.getByLabel('세로 cm',{exact:true})).toHaveCount(0);
- const request=wizard.getByRole('textbox',{name:'요청사항',exact:true});await request.fill('금색 인쇄를 강조');
- await expect(wizard.locator('.create-note-heading')).toContainText('9 / 600');
- const purpose=wizard.locator('.creative-purpose-card').nth(1);await purpose.click();await expect(purpose).toHaveAttribute('aria-pressed','true');
- const description=await wizard.locator('.creative-purpose-help').textContent();expect(description?.length).toBeGreaterThan(0);
- for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
- await subject.getByRole('button',{name:'서비스',exact:true}).click();
- await expect(wizard.getByLabel('규격 형식',{exact:true})).toHaveCount(0);
- await wizard.getByLabel('업종',{exact:true}).selectOption('yoga');
- await wizard.getByLabel('서비스명',{exact:true}).fill('스튜디오 블룸');
- await wizard.getByRole('button',{name:'다음',exact:true}).click();
- await expect(wizard.locator('.brand-footer-settings')).toHaveCount(1);
- await wizard.locator('.brand-footer-settings>summary').click();
- await wizard.getByRole('textbox',{name:'이메일',exact:true}).fill('hello@brand.com');await wizard.getByRole('checkbox',{name:'이메일',exact:true}).uncheck();
- await wizard.getByRole('button',{name:'이전',exact:true}).click();
- await wizard.locator('.create-purpose-settings>summary').click();await expect(wizard.getByRole('textbox',{name:'요청사항',exact:true})).toHaveValue('금색 인쇄를 강조');
- await wizard.getByRole('button',{name:'다음',exact:true}).click();await wizard.locator('.brand-footer-settings>summary').click();
- await expect(wizard.getByRole('textbox',{name:'이메일',exact:true})).toHaveValue('hello@brand.com');await expect(wizard.getByRole('checkbox',{name:'이메일',exact:true})).not.toBeChecked();
- await wizard.locator('.create-other-ratios>summary').click();await expect(wizard.getByLabel('출력 비율',{exact:true}).locator('option')).toHaveCount(7);
- const footer=page.locator('.app-footer');
- expect(await footer.locator('.brand-lockup b').evaluate(element=>getComputedStyle(element).color)).toBe(await page.locator('.app-header .brand-lockup b').evaluate(element=>getComputedStyle(element).color));
- expect(await footer.locator('.brand-lockup').evaluate(element=>parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(28);
- for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}
+import {protectedScreen,mockSession} from './helpers/authenticated-session';
+// This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
+test.beforeEach(async({page})=>{await protectedScreen(page,mockSession('protected-create-layout'));await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));});
+test('consumer sees the eight inputs in order with compact optional fields on all widths',async({page})=>{
+ await page.goto('/#create');const form=page.locator('.consumer-create');
+ await expect(form.getByRole('heading',{level:1,name:'광고 만들기',exact:true})).toBeVisible();
+ expect(await form.locator('.creation-section').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('data-order')))).toEqual(['1','2','3','4','5','6','7','8']);
+ await expect(page.locator('.account-drawer')).toHaveCount(0);await expect(page.locator('.automatic-proportion')).toHaveCount(0);await expect(page.locator('.editor-container')).toHaveCount(0);
+ await expect(form.getByLabel('산업 선택')).toBeVisible();await expect(form.getByRole('button',{name:'AI가 만들기',exact:true})).toHaveAttribute('aria-pressed','true');
+ await expect(form.getByRole('combobox',{name:'출력 비율',exact:true})).toHaveValue('9:16');await expect(form.locator('.ratio-options,[data-order="8"] summary')).toHaveCount(0);
+ for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);expect(await form.getByLabel('상품명',{exact:true}).evaluate(e=>parseFloat(getComputedStyle(e).fontSize))).toBeGreaterThanOrEqual(16);}
+ await form.getByLabel('산업 선택').selectOption('boxes');await form.getByRole('button',{name:'규격 넣기',exact:true}).click();
+ await form.getByLabel('규격 형식').selectOption('cylindrical');await expect(form.getByLabel('지름 cm',{exact:true})).toBeVisible();await expect(form.getByLabel('높이 cm',{exact:true})).toBeVisible();await expect(form.getByLabel('세로 cm',{exact:true})).toHaveCount(0);
+ await form.getByLabel('산업 선택').selectOption('lodging');await expect(form.getByLabel('규격 형식')).toHaveCount(0);await expect(form.getByText('서비스 광고는 규격 없이 만듭니다.')).toBeVisible();
+ await form.locator('[data-order="2"] summary').click();await form.getByLabel('이메일 주소',{exact:true}).fill('hello@brand.com');
+ await expect(form.getByLabel('출력 비율').locator('option')).toHaveCount(7);
+ await expect(form.getByRole('button',{name:'광고 생성',exact:true})).toBeEnabled();
+ await page.screenshot({path:test.info().outputPath('simple-form.png'),fullPage:true});
 });
