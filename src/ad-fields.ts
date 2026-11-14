@@ -1,6 +1,19 @@
 import type {IndustryKind, ProductCategory} from './industry.ts';
 
-export type IndustryChoice = {id: string; category: ProductCategory; ko: string; en: string};
+export const sportGroups = [
+  {id:'team', ko:'팀 구기', en:'Team ball sports'},
+  {id:'racket', ko:'라켓 스포츠', en:'Racket sports'},
+  {id:'combat', ko:'무도·격투', en:'Martial arts & combat sports'},
+  {id:'track', ko:'육상·달리기', en:'Track & running'},
+  {id:'water', ko:'수상 스포츠', en:'Water sports'},
+  {id:'winter', ko:'빙상·설상', en:'Ice & snow sports'},
+  {id:'outdoor', ko:'보드·자전거·아웃도어', en:'Board, cycling & outdoor sports'},
+  {id:'target', ko:'골프·정밀 스포츠', en:'Golf & precision sports'},
+  {id:'fitness', ko:'피트니스·체조', en:'Fitness & gymnastics'},
+] as const;
+type SportGroup = typeof sportGroups[number]['id'];
+export const customIndustryLimit = 60;
+export type IndustryChoice = {group?:SportGroup; aliases?:string; other?:boolean; id: string; category: ProductCategory; ko: string; en: string};
 export type AdField = {id: string; kind: IndustryKind; ko: string; en: string; items: IndustryChoice[]};
 export const adFields: AdField[] = [
   {id:'fashion', kind:'product', ko:'패션·잡화', en:'Fashion & accessories', items:[
@@ -9,22 +22,38 @@ export const adFields: AdField[] = [
     {id:'bags', category:'bags', ko:'가방', en:'Bags'},
     {id:'accessories', category:'accessories', ko:'패션잡화', en:'Fashion accessories'},
     {id:'jewelry', category:'jewelry', ko:'주얼리', en:'Jewelry'},
+    {id:'activewear', category:'fashion', ko:'스포츠웨어', en:'Activewear'},
+    {id:'kidswear', category:'fashion', ko:'아동복', en:'Children’s clothing'},
+    {id:'watches', category:'accessories', ko:'시계·안경', en:'Watches & eyewear'},
+    {id:'fashion-other', category:'fashion', ko:'기타 패션·잡화', en:'Other fashion & accessories', other:true},
   ]},
   {id:'beauty', kind:'product', ko:'뷰티·건강', en:'Beauty & wellness', items:[
     {id:'skincare', category:'beauty', ko:'화장품·스킨케어', en:'Cosmetics & skincare'},
     {id:'hair', category:'beauty', ko:'헤어·바디용품', en:'Hair & body care'},
     {id:'supplements', category:'food', ko:'건강기능식품', en:'Dietary supplements'},
+    {id:'makeup', category:'beauty', ko:'색조 화장품', en:'Makeup'},
+    {id:'fragrance', category:'beauty', ko:'향수', en:'Fragrance'},
+    {id:'beauty-tools', category:'beauty', ko:'미용 도구', en:'Beauty tools'},
+    {id:'beauty-other', category:'beauty', ko:'기타 뷰티·건강 상품', en:'Other beauty & wellness products', other:true},
   ]},
   {id:'food', kind:'product', ko:'식품·음료', en:'Food & beverages', items:[
     {id:'fresh', category:'food', ko:'농축수산물', en:'Fresh produce, meat & seafood'},
     {id:'meals', category:'food', ko:'가공식품·밀키트', en:'Prepared foods & meal kits'},
     {id:'drinks', category:'food', ko:'음료·커피·차', en:'Drinks, coffee & tea'},
     {id:'snacks', category:'food', ko:'간식·제과', en:'Snacks & confectionery'},
+    {id:'frozen', category:'food', ko:'냉동·간편식', en:'Frozen & convenience foods'},
+    {id:'sauces', category:'food', ko:'소스·조미료', en:'Sauces & seasonings'},
+    {id:'dairy', category:'food', ko:'유제품', en:'Dairy products'},
+    {id:'food-other', category:'food', ko:'기타 식품·음료', en:'Other food & beverages', other:true},
   ]},
   {id:'electronics', kind:'product', ko:'전자기기·가전', en:'Electronics & appliances', items:[
     {id:'small-appliance', category:'electronics', ko:'소형가전', en:'Small appliances'},
     {id:'large-appliance', category:'electronics', ko:'대형가전', en:'Major appliances'},
     {id:'digital', category:'electronics', ko:'컴퓨터·모바일·디지털기기', en:'Computers, mobile & digital devices'},
+    {id:'audio', category:'electronics', ko:'오디오·이어폰', en:'Audio & headphones'},
+    {id:'cameras', category:'electronics', ko:'카메라·촬영기기', en:'Cameras & photography'},
+    {id:'wearables', category:'electronics', ko:'웨어러블 기기', en:'Wearables'},
+    {id:'electronics-other', category:'electronics', ko:'기타 전자기기·가전', en:'Other electronics & appliances', other:true},
   ]},
   {id:'home', kind:'product', ko:'가구·생활', en:'Home & household', items:[
     {id:'furniture', category:'home', ko:'가구·인테리어 소품', en:'Furniture & home decor'},
@@ -32,6 +61,10 @@ export const adFields: AdField[] = [
     {id:'household', category:'other', ko:'생활·청소용품', en:'Household & cleaning supplies'},
     {id:'baby', category:'other', ko:'출산·유아동용품', en:'Baby & kids'},
     {id:'pet-goods', category:'other', ko:'반려동물용품', en:'Pet supplies'},
+    {id:'lighting', category:'home', ko:'조명', en:'Lighting'},
+    {id:'bedding', category:'home', ko:'침구·커튼', en:'Bedding & curtains'},
+    {id:'storage-goods', category:'home', ko:'수납·정리용품', en:'Storage & organizers'},
+    {id:'home-other', category:'home', ko:'기타 가구·생활용품', en:'Other home & household goods', other:true},
   ]},
   {id:'leisure', kind:'product', ko:'문화·취미·스포츠용품', en:'Culture, hobbies & sports goods', items:[
     {id:'books', category:'other', ko:'도서·음반·영상물', en:'Books, music & movies'},
@@ -40,6 +73,12 @@ export const adFields: AdField[] = [
     {id:'office', category:'other', ko:'문구·사무용품', en:'Stationery & office supplies'},
     {id:'golf-goods', category:'other', ko:'골프용품', en:'Golf equipment'},
     {id:'outdoors', category:'other', ko:'스포츠·캠핑용품', en:'Sports & camping gear'},
+    {id:'ball-goods', category:'other', ko:'구기·라켓용품', en:'Ball & racket equipment'},
+    {id:'martial-goods', category:'other', ko:'무도·격투용품', en:'Martial arts equipment'},
+    {id:'fitness-goods', category:'other', ko:'운동·훈련용품', en:'Fitness equipment'},
+    {id:'water-goods', category:'other', ko:'수영·수상용품', en:'Swimming & water sports gear'},
+    {id:'winter-goods', category:'other', ko:'스키·보드용품', en:'Ski & board equipment'},
+    {id:'leisure-other', category:'other', ko:'기타 문화·취미·스포츠용품', en:'Other hobby & sports goods', other:true},
   ]},
   {id:'packaging', kind:'product', ko:'포장재', en:'Packaging', items:[
     {id:'boxes', category:'boxes', ko:'박스', en:'Boxes'},
@@ -49,16 +88,23 @@ export const adFields: AdField[] = [
     {id:'plasticfilm', category:'plasticfilm', ko:'비닐·필름', en:'Plastic film'},
     {id:'pouches', category:'pouches', ko:'파우치', en:'Pouches'},
     {id:'cushion', category:'packaging', ko:'완충재', en:'Protective packaging'},
-    {id:'packaging', category:'packaging', ko:'기타 포장재', en:'Other packaging'},
+    {id:'corrugated', category:'boxes', ko:'골판지·택배박스', en:'Corrugated & shipping boxes'},
+    {id:'gift-box', category:'boxes', ko:'선물·싸바리박스', en:'Gift & rigid boxes'},
+    {id:'folding-carton', category:'boxes', ko:'단상자·칼라박스', en:'Folding cartons & printed boxes'},
+    {id:'shipping-supplies', category:'packaging', ko:'포장 테이프·결속재', en:'Packaging tape & strapping'},
+    {id:'packaging', category:'packaging', ko:'기타 포장재', en:'Other packaging', other:true},
   ]},
   {id:'industrial', kind:'product', ko:'산업재·자동차', en:'Industrial & automotive', items:[
     {id:'equipment', category:'industrial', ko:'산업 기계·설비', en:'Industrial machinery'},
     {id:'parts', category:'industrial', ko:'부품·공구·자재', en:'Parts, tools & materials'},
     {id:'vehicles', category:'automotive', ko:'자동차·이륜차 판매', en:'Vehicle sales'},
     {id:'car-goods', category:'automotive', ko:'자동차용품', en:'Vehicle accessories'},
+    {id:'safety-gear', category:'industrial', ko:'산업 안전용품', en:'Industrial safety supplies'},
+    {id:'measuring', category:'industrial', ko:'측정·검사 장비', en:'Measurement & inspection equipment'},
+    {id:'industrial-other', category:'industrial', ko:'기타 산업재·자동차 상품', en:'Other industrial & automotive goods', other:true},
   ]},
   {id:'other-product', kind:'product', ko:'기타 상품', en:'Other products', items:[
-    {id:'other', category:'other', ko:'기타 실물 상품', en:'Other physical products'},
+    {id:'other', category:'other', ko:'기타 실물 상품', en:'Other physical products', other:true},
   ]},
   {id:'home-services', kind:'service', ko:'생활·시공 서비스', en:'Home & personal services', items:[
     {id:'cleaning', category:'services', ko:'청소', en:'Cleaning'},
@@ -67,16 +113,29 @@ export const adFields: AdField[] = [
     {id:'repair', category:'services', ko:'수리·설치', en:'Repair & installation'},
     {id:'pet-care', category:'services', ko:'반려동물 돌봄·미용', en:'Pet care & grooming'},
     {id:'beauty-care', category:'services', ko:'미용실·피부관리·네일', en:'Hair, skin & nail services'},
+    {id:'laundry', category:'services', ko:'세탁·의류수선', en:'Laundry & alterations'},
+    {id:'gardening', category:'services', ko:'조경·정원 관리', en:'Landscaping & garden care'},
+    {id:'pest-control', category:'services', ko:'방역·해충 관리', en:'Pest control'},
+    {id:'home-services-other', category:'services', ko:'기타 생활·시공 서비스', en:'Other home & personal services', other:true},
   ]},
   {id:'dining', kind:'service', ko:'음식·카페', en:'Dining & cafes', items:[
     {id:'restaurant', category:'restaurant', ko:'음식점', en:'Restaurants'},
     {id:'cafe', category:'cafe', ko:'카페·디저트 매장', en:'Cafes & dessert shops'},
+    {id:'korean-dining', category:'restaurant', ko:'한식당', en:'Korean restaurants'},
+    {id:'global-dining', category:'restaurant', ko:'중식·일식·양식당', en:'Chinese, Japanese & Western restaurants'},
+    {id:'bakery', category:'cafe', ko:'베이커리', en:'Bakeries'},
+    {id:'catering', category:'restaurant', ko:'케이터링·도시락', en:'Catering & boxed meals'},
+    {id:'dining-other', category:'restaurant', ko:'기타 음식·카페', en:'Other dining services', other:true},
   ]},
   {id:'travel', kind:'service', ko:'여행·숙박·문화', en:'Travel, stays & culture', items:[
     {id:'lodging', category:'lodging', ko:'호텔·숙박', en:'Hotels & accommodation'},
     {id:'tour', category:'travel', ko:'여행·투어', en:'Travel & tours'},
     {id:'flights', category:'travel', ko:'항공권', en:'Flights'},
     {id:'tickets', category:'services', ko:'공연·전시 티켓', en:'Show & exhibition tickets'},
+    {id:'guesthouse', category:'lodging', ko:'펜션·게스트하우스', en:'Pensions & guesthouses'},
+    {id:'campsites', category:'lodging', ko:'캠핑장·글램핑', en:'Campsites & glamping'},
+    {id:'local-experience', category:'travel', ko:'지역 체험·관광', en:'Local experiences & sightseeing'},
+    {id:'travel-other', category:'travel', ko:'기타 여행·숙박·문화', en:'Other travel, stays & culture', other:true},
   ]},
   {id:'education', kind:'service', ko:'교육·강의', en:'Education', items:[
     {id:'language', category:'education', ko:'어학', en:'Language classes'},
@@ -84,19 +143,74 @@ export const adFields: AdField[] = [
     {id:'music', category:'education', ko:'악기 레슨', en:'Music lessons'},
     {id:'craft', category:'education', ko:'공예 클래스', en:'Craft classes'},
     {id:'education', category:'education', ko:'학원·기타 교육', en:'Academies & other education'},
+    {id:'tutoring', category:'education', ko:'교과·입시 교육', en:'School subjects & exam prep'},
+    {id:'coding', category:'education', ko:'코딩·AI 교육', en:'Coding & AI classes'},
+    {id:'art-class', category:'education', ko:'미술·디자인 교육', en:'Art & design classes'},
+    {id:'education-other', category:'education', ko:'기타 교육', en:'Other classes', other:true},
   ]},
   {id:'sports', kind:'service', ko:'스포츠·운동', en:'Sports & fitness', items:[
-    {id:'fitness', category:'fitness', ko:'헬스·PT', en:'Gyms & personal training'},
-    {id:'yoga', category:'yoga', ko:'요가', en:'Yoga'},
-    {id:'pilates', category:'pilates', ko:'필라테스', en:'Pilates'},
-    {id:'swimming', category:'swimming', ko:'수영', en:'Swimming'},
-    {id:'tennis', category:'tennis', ko:'테니스', en:'Tennis'},
-    {id:'golf', category:'golf', ko:'골프 레슨·연습장', en:'Golf lessons & ranges'},
-    {id:'sports', category:'sports', ko:'기타 스포츠 수업', en:'Other sports lessons'},
+    {id:'football', category:'sports', ko:'축구', en:'Football (soccer)', group:'team', aliases:'사커 soccer'},
+    {id:'futsal', category:'sports', ko:'풋살', en:'Futsal', group:'team'},
+    {id:'basketball', category:'sports', ko:'농구', en:'Basketball', group:'team'},
+    {id:'baseball', category:'sports', ko:'야구', en:'Baseball', group:'team'},
+    {id:'softball', category:'sports', ko:'소프트볼', en:'Softball', group:'team'},
+    {id:'volleyball', category:'sports', ko:'배구', en:'Volleyball', group:'team'},
+    {id:'handball', category:'sports', ko:'핸드볼', en:'Handball', group:'team'},
+    {id:'rugby', category:'sports', ko:'럭비', en:'Rugby', group:'team'},
+    {id:'jokgu', category:'sports', ko:'족구', en:'Jokgu (foot volleyball)', group:'team'},
+    {id:'tennis', category:'tennis', ko:'테니스', en:'Tennis', group:'racket'},
+    {id:'badminton', category:'sports', ko:'배드민턴', en:'Badminton', group:'racket'},
+    {id:'table-tennis', category:'sports', ko:'탁구', en:'Table tennis', group:'racket'},
+    {id:'squash', category:'sports', ko:'스쿼시', en:'Squash', group:'racket'},
+    {id:'pickleball', category:'sports', ko:'피클볼', en:'Pickleball', group:'racket'},
+    {id:'taekwondo', category:'sports', ko:'태권도', en:'Taekwondo', group:'combat'},
+    {id:'judo', category:'sports', ko:'유도', en:'Judo', group:'combat'},
+    {id:'hapkido', category:'sports', ko:'합기도', en:'Hapkido', group:'combat'},
+    {id:'jiu-jitsu', category:'sports', ko:'주짓수', en:'Brazilian jiu-jitsu', group:'combat', aliases:'주짓츠 주지수 BJJ'},
+    {id:'wrestling', category:'sports', ko:'레슬링', en:'Wrestling', group:'combat'},
+    {id:'boxing', category:'sports', ko:'복싱', en:'Boxing', group:'combat', aliases:'권투'},
+    {id:'kickboxing', category:'sports', ko:'킥복싱', en:'Kickboxing', group:'combat'},
+    {id:'mma', category:'sports', ko:'종합격투기', en:'Mixed martial arts (MMA)', group:'combat', aliases:'MMA 이종격투기'},
+    {id:'kendo', category:'sports', ko:'검도', en:'Kendo', group:'combat'},
+    {id:'ssireum', category:'sports', ko:'씨름', en:'Ssireum', group:'combat'},
+    {id:'running', category:'sports', ko:'러닝', en:'Running', group:'track', aliases:'런닝 달리기 조깅 jogging'},
+    {id:'marathon', category:'sports', ko:'마라톤', en:'Marathon', group:'track', aliases:'풀코스 하프마라톤'},
+    {id:'track-field', category:'sports', ko:'육상', en:'Track & field', group:'track'},
+    {id:'trail-running', category:'sports', ko:'트레일 러닝', en:'Trail running', group:'track'},
+    {id:'swimming', category:'swimming', ko:'수영', en:'Swimming', group:'water'},
+    {id:'surfing', category:'sports', ko:'서핑', en:'Surfing', group:'water'},
+    {id:'diving', category:'sports', ko:'스쿠버·프리다이빙', en:'Scuba & freediving', group:'water'},
+    {id:'paddling', category:'sports', ko:'카약·카누', en:'Kayaking & canoeing', group:'water'},
+    {id:'ice-skating', category:'sports', ko:'아이스스케이트', en:'Ice skating', group:'winter', aliases:'빙상 쇼트트랙 피겨 스피드스케이팅'},
+    {id:'ice-hockey', category:'sports', ko:'아이스하키', en:'Ice hockey', group:'winter'},
+    {id:'skiing', category:'sports', ko:'스키', en:'Skiing', group:'winter', aliases:'스킹'},
+    {id:'snowboarding', category:'sports', ko:'스노보드', en:'Snowboarding', group:'winter', aliases:'스노우보드 snowboard'},
+    {id:'curling', category:'sports', ko:'컬링', en:'Curling', group:'winter'},
+    {id:'skateboarding', category:'sports', ko:'스케이트보드', en:'Skateboarding', group:'outdoor'},
+    {id:'inline-skating', category:'sports', ko:'인라인·롤러스케이트', en:'Inline & roller skating', group:'outdoor'},
+    {id:'cycling', category:'sports', ko:'자전거·사이클', en:'Cycling', group:'outdoor'},
+    {id:'bmx', category:'sports', ko:'BMX', en:'BMX', group:'outdoor'},
+    {id:'climbing', category:'sports', ko:'클라이밍', en:'Climbing', group:'outdoor'},
+    {id:'hiking', category:'sports', ko:'등산·트레킹', en:'Hiking & trekking', group:'outdoor'},
+    {id:'golf', category:'golf', ko:'골프 레슨·연습장', en:'Golf lessons & ranges', group:'target'},
+    {id:'bowling', category:'sports', ko:'볼링', en:'Bowling', group:'target'},
+    {id:'archery', category:'sports', ko:'양궁', en:'Archery', group:'target'},
+    {id:'billiards', category:'sports', ko:'당구', en:'Billiards', group:'target'},
+    {id:'fitness', category:'fitness', ko:'헬스·PT', en:'Gyms & personal training', group:'fitness'},
+    {id:'yoga', category:'yoga', ko:'요가', en:'Yoga', group:'fitness'},
+    {id:'pilates', category:'pilates', ko:'필라테스', en:'Pilates', group:'fitness'},
+    {id:'gymnastics', category:'sports', ko:'체조', en:'Gymnastics', group:'fitness'},
+    {id:'jump-rope', category:'sports', ko:'줄넘기', en:'Jump rope', group:'fitness'},
+    {id:'dance-sport', category:'sports', ko:'댄스스포츠', en:'Dancesport', group:'fitness'},
+    {id:'sports', category:'sports', ko:'기타 스포츠 수업', en:'Other sports lessons', other:true},
   ]},
   {id:'health', kind:'service', ko:'의료·바이오', en:'Healthcare & biotech', items:[
     {id:'hospital', category:'hospital', ko:'병원·의원', en:'Hospitals & clinics'},
     {id:'biotech', category:'biotech', ko:'바이오 연구·기술 서비스', en:'Biotech research & services'},
+    {id:'dentistry', category:'hospital', ko:'치과', en:'Dental clinics'},
+    {id:'korean-medicine', category:'hospital', ko:'한의원', en:'Korean medicine clinics'},
+    {id:'health-screening', category:'hospital', ko:'건강검진센터', en:'Health screening centers'},
+    {id:'health-other', category:'hospital', ko:'기타 의료·바이오', en:'Other healthcare & biotech services', other:true},
   ]},
   {id:'property', kind:'service', ko:'부동산 서비스', en:'Real estate services', items:[
     {id:'new-property', category:'realestate', ko:'분양', en:'New property sales'},
@@ -107,7 +221,9 @@ export const adFields: AdField[] = [
     {id:'auctions', category:'realestate', ko:'경매·공매', en:'Auctions'},
     {id:'property-advice', category:'realestate', ko:'부동산 컨설팅', en:'Real estate consulting'},
     {id:'facility', category:'realestate', ko:'건물·시설 관리', en:'Property management'},
-    {id:'realestate', category:'realestate', ko:'기타 부동산', en:'Other real estate'},
+    {id:'homes', category:'realestate', ko:'주택·아파트', en:'Homes & apartments'},
+    {id:'industrial-property', category:'realestate', ko:'공장·창고 부동산', en:'Industrial & warehouse properties'},
+    {id:'realestate', category:'realestate', ko:'기타 부동산', en:'Other real estate', other:true},
   ]},
   {id:'finance', kind:'service', ko:'금융·보험', en:'Finance & insurance', items:[
     {id:'insurance', category:'insurance', ko:'보험', en:'Insurance'},
@@ -115,7 +231,9 @@ export const adFields: AdField[] = [
     {id:'stocks', category:'stocks', ko:'주식 정보', en:'Stock information'},
     {id:'crypto', category:'crypto', ko:'디지털 자산 서비스', en:'Digital asset services'},
     {id:'banking', category:'banking', ko:'은행', en:'Banking'},
-    {id:'finance', category:'finance', ko:'기타 금융 서비스', en:'Other financial services'},
+    {id:'auto-insurance', category:'insurance', ko:'자동차보험', en:'Car insurance'},
+    {id:'business-insurance', category:'insurance', ko:'사업자보험', en:'Business insurance'},
+    {id:'finance', category:'finance', ko:'기타 금융 서비스', en:'Other financial services', other:true},
   ]},
   {id:'lease-rental', kind:'service', ko:'리스·렌탈', en:'Leasing & rentals', items:[
     {id:'auto-lease', category:'lease', ko:'자동차 리스', en:'Vehicle leasing'},
@@ -124,6 +242,9 @@ export const adFields: AdField[] = [
     {id:'appliance-rental', category:'rental', ko:'생활가전 렌탈', en:'Appliance rental'},
     {id:'gear-rental', category:'rental', ko:'장비·용품 대여', en:'Equipment rental'},
     {id:'space-rental', category:'rental', ko:'공간 대여', en:'Space rental'},
+    {id:'photo-rental', category:'rental', ko:'촬영 장비 대여', en:'Camera equipment rental'},
+    {id:'event-rental', category:'rental', ko:'행사 물품 대여', en:'Event equipment rental'},
+    {id:'lease-rental-other', category:'rental', ko:'기타 리스·렌탈', en:'Other leasing & rentals', other:true},
   ]},
   {id:'logistics', kind:'service', ko:'물류·배송·배달', en:'Logistics, shipping & delivery', items:[
     {id:'freight', category:'logistics', ko:'화물운송·주선', en:'Freight & forwarding'},
@@ -131,6 +252,9 @@ export const adFields: AdField[] = [
     {id:'parcel', category:'logistics', ko:'택배·퀵배송', en:'Parcel & courier services'},
     {id:'international', category:'logistics', ko:'국제물류·해외배송', en:'International shipping'},
     {id:'food-delivery', category:'delivery', ko:'음식 배달·배달대행', en:'Food delivery & dispatch'},
+    {id:'cold-chain', category:'logistics', ko:'냉장·냉동 배송', en:'Refrigerated & frozen delivery'},
+    {id:'storage-service', category:'logistics', ko:'보관·창고 임대', en:'Storage & warehouse rental'},
+    {id:'logistics-other', category:'logistics', ko:'기타 물류·배송', en:'Other logistics & delivery', other:true},
   ]},
   {id:'brand-pr', kind:'service', ko:'기업·브랜드 홍보', en:'Company & brand promotion', items:[
     {id:'company-intro', category:'corporate', ko:'기업·사업 소개', en:'Company & business introduction'},
@@ -138,6 +262,9 @@ export const adFields: AdField[] = [
     {id:'company-event', category:'corporate', ko:'기업 행사 홍보', en:'Corporate event promotion'},
     {id:'brand-story', category:'brand', ko:'브랜드 스토리', en:'Brand storytelling'},
     {id:'brand-campaign', category:'brand', ko:'브랜드 캠페인', en:'Brand campaigns'},
+    {id:'brand-launch', category:'brand', ko:'신제품·브랜드 론칭', en:'Product & brand launches'},
+    {id:'trade-shows', category:'corporate', ko:'전시회·박람회 홍보', en:'Trade show promotion'},
+    {id:'brand-pr-other', category:'brand', ko:'기타 기업·브랜드 홍보', en:'Other company & brand promotion', other:true},
   ]},
   {id:'professional', kind:'service', ko:'비즈니스·전문 서비스', en:'Business & professional services', items:[
     {id:'design', category:'services', ko:'디자인', en:'Design'},
@@ -148,6 +275,10 @@ export const adFields: AdField[] = [
     {id:'tax', category:'services', ko:'세무', en:'Tax'},
     {id:'legal', category:'services', ko:'법무', en:'Legal'},
     {id:'consulting', category:'services', ko:'컨설팅', en:'Consulting'},
+    {id:'photo-video', category:'services', ko:'사진·영상 제작', en:'Photography & video production'},
+    {id:'print-production', category:'services', ko:'인쇄·출판 서비스', en:'Printing & publishing services'},
+    {id:'hr', category:'services', ko:'인사·노무 서비스', en:'HR & labor services'},
+    {id:'professional-other', category:'services', ko:'기타 비즈니스·전문 서비스', en:'Other professional services', other:true},
   ]},
   {id:'digital', kind:'service', ko:'디지털·구독 서비스', en:'Digital & subscription services', items:[
     {id:'streaming', category:'services', ko:'OTT·영상 구독', en:'Video streaming'},
@@ -155,21 +286,44 @@ export const adFields: AdField[] = [
     {id:'music-streaming', category:'services', ko:'음원 스트리밍', en:'Music streaming'},
     {id:'membership', category:'services', ko:'멤버십', en:'Memberships'},
     {id:'saas', category:'services', ko:'소프트웨어 구독', en:'Software subscriptions'},
+    {id:'apps', category:'services', ko:'모바일 앱 서비스', en:'Mobile app services'},
+    {id:'cloud', category:'services', ko:'클라우드·호스팅', en:'Cloud & hosting'},
+    {id:'digital-other', category:'services', ko:'기타 디지털·구독 서비스', en:'Other digital subscriptions', other:true},
   ]},
   {id:'fortune', kind:'service', ko:'사주·운세', en:'Fortune telling', items:[
     {id:'tarot', category:'tarot', ko:'타로', en:'Tarot'},
     {id:'astrology', category:'astrology', ko:'별자리', en:'Astrology'},
     {id:'myeongri', category:'myeongri', ko:'명리학', en:'Four pillars'},
     {id:'sinjeom', category:'sinjeom', ko:'신점', en:'Shamanic readings'},
+    {id:'naming', category:'myeongri', ko:'작명·개명 상담', en:'Name consultations'},
+    {id:'fortune-other', category:'services', ko:'기타 사주·운세', en:'Other fortune services', other:true},
   ]},
   {id:'other-service', kind:'service', ko:'기타 서비스', en:'Other services', items:[
-    {id:'services', category:'services', ko:'기타 서비스', en:'Other services'},
+    {id:'services', category:'services', ko:'기타 서비스', en:'Other services', other:true},
   ]},
 ];
 
-export function findAdField(category: ProductCategory, detail?: string) {
-  for (const field of adFields) {
-    const item = field.items.find(entry => entry.category === category && entry.ko === detail);
-    if (item) return {field, item};
+// Keep the established Korean detail label stable in project exports and requests.
+export function formatIndustryDetail(item:IndustryChoice, custom=''):string {
+  return item.other && custom ? item.ko+' · '+custom : item.ko;
+}
+export function findAdField(category:ProductCategory, detail?:string) {
+  if(typeof detail!=='string')return;
+  for(const field of adFields){
+    for(const item of field.items){
+      if(item.category!==category)continue;
+      if(item.ko===detail)return {field,item,custom:''};
+      if(!item.other)continue;
+      const prefix=item.ko+' · ';
+      if(!detail.startsWith(prefix))continue;
+      const custom=detail.slice(prefix.length);
+      if(custom.length<=customIndustryLimit && !/[\r\n]/.test(custom))return {field,item,custom};
+    }
   }
+}
+const searchTerm=(value:string)=>value.toLowerCase().replace(/[\s·-]/g,'');
+export function matchesSport(item:IndustryChoice, query:string):boolean {
+  const group=sportGroups.find(group=>group.id===item.group);
+  const term=searchTerm(query);
+  return [item.ko,item.en,item.aliases,group?.ko,group?.en].some(value=>value && searchTerm(value).includes(term));
 }

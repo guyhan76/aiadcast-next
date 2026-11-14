@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {adFields} from '../src/ad-fields.ts';
+import {adFields,customIndustryLimit,findAdField,formatIndustryDetail,matchesSport,sportGroups} from '../src/ad-fields.ts';
 import {productCategories,industryKindFor} from '../src/industry.ts';
 import {newProject} from '../src/model.ts';
 import {withCategory,parseProfile} from '../src/product.ts';
@@ -24,4 +24,40 @@ test('every selectable detail has one parent and preserves the advertised subjec
     }
   }
   assert.deepEqual(categories,new Set(productCategories.map(([id])=>id)));
+});
+
+test('every field has its own Other entry that survives project import',()=>{
+  for(const field of adFields){
+    const others=field.items.filter(item=>item.other);
+    assert.equal(others.length,1,field.id);
+    const item=others[0];
+    assert.equal(field.items.at(-1),item,field.id);
+    for(const entry of field.items) assert.equal(findAdField(entry.category,entry.ko)?.item.id,entry.id);
+    const project=withCategory(newProject(),item.category);
+    const detail=formatIndustryDetail(item,'직접 입력한 분야');
+    project.productProfile=parseProfile({...project.productProfile,industryDetail:detail});
+    assert.equal(project.productProfile.industryDetail,detail);
+    assert.equal(findAdField(item.category,detail)?.field.id,field.id);
+    assert.equal(findAdField(item.category,detail)?.custom,'직접 입력한 분야');
+    assert.equal(findAdField(item.category,formatIndustryDetail(item,'가'.repeat(customIndustryLimit+1))),undefined);
+    if(field.kind==='service'){
+      project.productName='광고 테스트';
+      assert.equal(buildGenerationRequest(project).productProfile.industryDetail,detail);
+    }
+  }
+});
+
+test('sports groups and aliases lead to the selected sport',()=>{
+  const sports=adFields.find(field=>field.id==='sports');
+  const items=sports.items.filter(item=>!item.other);
+  assert.ok(items.every(item=>sportGroups.some(group=>group.id===item.group)));
+  assert.ok(sportGroups.every(group=>items.some(item=>item.group===group.id)));
+  for(const [query,id,group] of [
+    ['런닝','running','track'],['BJJ','jiu-jitsu','combat'],['라켓','table-tennis','racket'],
+    ['스노우보드','snowboarding','winter'],['스케이트','skateboarding','outdoor'],['배드민턴','badminton','racket'],
+  ]){
+    const item=items.find(item=>item.id===id);
+    assert.equal(item.group,group);
+    assert.ok(matchesSport(item,query),query);
+  }
 });

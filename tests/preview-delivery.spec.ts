@@ -149,3 +149,35 @@ test('save a verified device edit and reopen its project without another generat
  await expect(page.getByRole('heading',{name:'사용 확정한 광고'})).toBeVisible();
  expect(posts).toBe(1);
 });
+
+test('find sports by group or alias and enter an unlisted industry',async({page})=>{
+  await protectedScreen(page,mockSession('sports-fields'));
+  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
+  await page.goto('/#create');
+  const picker=page.locator('.ad-field-picker');
+  const fields=picker.getByLabel('분야',{exact:true});
+  const items=picker.getByLabel('세부 업종',{exact:true});
+  const custom=picker.getByLabel('세부 항목 직접 입력 (선택)',{exact:true});
+  await picker.getByRole('button',{name:'서비스',exact:true}).click();
+  await fields.selectOption('sports');
+  await expect(items.locator('optgroup')).toHaveCount(9);
+  const search=picker.getByRole('searchbox',{name:'종목 검색'});
+  await search.fill('런닝');
+  await expect(items.locator('option[value="running"]')).toHaveCount(1);
+  await expect(items.locator('option[value="football"]')).toHaveCount(0);
+  await items.selectOption('running');
+  await expect(search).toHaveValue('');
+  await search.fill('추크볼');
+  await expect(picker.getByRole('status')).toContainText('기타');
+  await items.selectOption({label:'기타'});
+  await custom.fill('추크볼 클럽');
+  await expect(custom).toHaveValue('추크볼 클럽');
+  await items.selectOption('taekwondo');
+  await expect(custom).toHaveCount(0);
+  await picker.getByRole('button',{name:'상품',exact:true}).click();
+  await fields.selectOption('packaging');
+  await items.selectOption({label:'기타'});
+  await expect(custom).toHaveValue('');
+  await custom.fill('보냉 포장재');
+  await expect(custom).toHaveValue('보냉 포장재');
+});
