@@ -1,3 +1,4 @@
+import {planAdBatch} from './automatic-image-skills.mjs';
 import {batchPrice,validBatch} from '../src/batch-price.ts';
 import {verifiedPreservation} from '../src/selective-preservation.ts';
 import {prepareSelectiveEdit,compositeSelectiveEdit} from './selective-image-edit.mjs';
@@ -299,6 +300,7 @@ export class GenerationService {
     const images=[...(source?[source]:[]),...references];
     await this.assertOutputCapacity(request,images);
     for(const image of images) this.storeAsset(image);
+    const plannedRequests=planAdBatch(request,count);
     const jobIds=[];
     this.ledger.transaction(()=>{
       const duplicate=this.db.prepare('SELECT fingerprint FROM ad_batches WHERE id=?').get(id);
@@ -310,10 +312,11 @@ export class GenerationService {
       const created=this.now();
       for(let i=0;i<count;i++){
         const jobId=randomUUID(), projectId=id+'-'+(i+1);
-        const key=hashBytes(JSON.stringify({projectId,request,sourceHash:source?.sha256??null,revision:IMAGE_REVISION}));
+        const plannedRequest=plannedRequests[i];
+        const key=hashBytes(JSON.stringify({projectId,request:plannedRequest,sourceHash:source?.sha256??null,revision:IMAGE_REVISION}));
         const legacy=price.admin||i<price.ticketsUsed;
         this.ledger.reserve({jobId,userId:LOCAL_USER,kind:imageMediaType,unit:legacy?'legacy-ticket':'credit-v2',credits:legacy?1:10,creditExempt:price.admin,requestHash:key,modelRevision:IMAGE_REVISION,expiresAt:created+86400000});
-        this.db.prepare('INSERT INTO generation_records(id,project_id,fingerprint,request_json,source_hash,created_at) VALUES (?,?,?,?,?,?)').run(jobId,projectId,key,JSON.stringify(request),source?.sha256??null,created);
+        this.db.prepare('INSERT INTO generation_records(id,project_id,fingerprint,request_json,source_hash,created_at) VALUES (?,?,?,?,?,?)').run(jobId,projectId,key,JSON.stringify(plannedRequest),source?.sha256??null,created);
         this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(projectId,key,jobId);
         jobIds.push(jobId);
       }
@@ -321,7 +324,7 @@ export class GenerationService {
     });
     if(jobIds.length){
       // One server-owned queue. Each dispatch retains the existing supplier budget and failure settlement.
-      const work=(async()=>{for(const jobId of jobIds)await this.dispatch(jobId,request,source,references);})();
+      const work=(async()=>{for(const [i,jobId] of jobIds.entries())await this.dispatch(jobId,plannedRequests[i],source,references);})();
       this.tasks.add(work);
       work.then(()=>this.tasks.delete(work),()=>this.tasks.delete(work));
     }
