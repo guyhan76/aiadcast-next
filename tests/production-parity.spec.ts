@@ -31,7 +31,8 @@ test('web and native clients submit identical briefs and display the same delive
           AiadcastNative:{postMessage:()=>{}}
         }));
       }
-      await protectedScreen(page,mockSession('parity-member'));
+      const session={...mockSession('parity-member'),...(native?{origin:'https://aiadcast-next.onrender.com'}:{})};
+      await protectedScreen(page,session);
       await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
       const jobs:any[]=[];
       let batchId='',count=0,submitted:any;
