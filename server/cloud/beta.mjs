@@ -11,7 +11,6 @@ import {singleBoxService} from '../vision-evaluation/single-box-service.mjs';
 import {SingleBoxLedger,readSingleBoxEvaluation} from '../vision-evaluation/single-box-ledger.mjs';
 import {dimensionAnalysisService} from '../vision-evaluation/service.mjs';
 import {CloudVisionLedger,readCloudEvaluation} from '../vision-evaluation/cloud-ledger.mjs';
-import {randomUUID} from 'node:crypto';
 import {BetaStore} from './beta-store-base.mjs';
 import {GenerationService} from './generation-base.mjs';
 import {PostgresDatabase,postgresConfiguration,createPool,cloudSchema,acquireInstanceLock} from './postgres.mjs';
@@ -27,36 +26,7 @@ import {readFileSync} from 'node:fs';
 const fail=(code,status=400)=>{throw new ApiFailure(code,status);};
 export class CloudBetaStore extends BetaStore {
  async list(userId){return this.db.prepare('SELECT id,revision,name,updated,expires_at AS "expiresAt" FROM projects WHERE user_id=? AND expires_at>now() ORDER BY updated DESC').all(userId);}
- async save(userId,id,body){
-  if((await this.membership.policy({id:userId})).plan==='free')fail('DEVICE_ONLY',403);
-  const p=body?.project,revision=body?.revision;
-  if(!/^[A-Za-z0-9_-]{8,100}$/.test(id??'')||!p||p.version!==1||p.id!==id||typeof p.name!=='string'||p.name.length>80||!Number.isSafeInteger(revision)||revision<0)fail('INVALID_PROJECT');
-  const bytes=Buffer.from(JSON.stringify(p));if(bytes.length>40000000)fail('PROJECT_TOO_LARGE',413);
-  const name='project-'+id+'-'+randomUUID()+'.json';
-  const path=await this.storage.put(userId,name,bytes,'application/json');
-  let oldPath;
-  try{
-   const result=await this.transaction(async()=>{
-    const old=await this.db.prepare('SELECT revision,bytes,json,expires_at FROM projects WHERE user_id=? AND id=?').get(userId,id);
-    if((old?.revision??0)!==revision)fail('PROJECT_CONFLICT',409);
-    if(old&&new Date(old.expires_at)<=new Date())fail('PROJECT_EXPIRED',410);
-    const policy=await this.membership.policy({id:userId});
-    if(policy.plan==='free')fail('DEVICE_ONLY',403);
-    if(policy.usedBytes-(old?.bytes??0)+bytes.length>policy.limitBytes)fail('PROJECT_QUOTA',413);
-    oldPath=old?JSON.parse(old.json).storagePath:undefined;
-    const next=revision+1,updated=new Date(this.now()).toISOString();
-    const ref=JSON.stringify({storagePath:path,sha256:hashBytes(bytes)});
-    await this.db.prepare('INSERT INTO projects(user_id,id,revision,name,json,bytes,updated) VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id,id) DO UPDATE SET revision=excluded.revision,name=excluded.name,json=excluded.json,bytes=excluded.bytes,updated=excluded.updated').run(userId,id,next,p.name,ref,bytes.length,updated);
-    await this.db.prepare('UPDATE storage_objects SET expires_at=(SELECT expires_at FROM projects WHERE user_id=? AND id=?) WHERE path=? AND user_id=?').run(userId,id,path,userId);
-    return {revision:next,updated};
-   });
-   if(oldPath)void this.storage.remove(userId,oldPath).catch(()=>{});
-   return result;
-  }catch(e){
-   // A confirmed conflict was rolled back. Unknown database outcomes retain the object.
-   if(e instanceof ApiFailure)void this.storage.remove(userId,path).catch(()=>{});throw e;
-  }
- }
+ async save(){fail('DEVICE_ONLY',403);}
  async project(userId,id){
   const live=await this.db.prepare('SELECT id FROM projects WHERE user_id=? AND id=? AND expires_at>now()').get(userId,id);
   if(!live)fail('PROJECT_NOT_FOUND',404);
@@ -77,6 +47,24 @@ export function guardedImageAdapter(adapter,guard,gate){return {
  editRegion:options=>{guard();if(adapter.selectiveEditReady!==true||typeof adapter.editRegion!=='function')fail('REGION_EDIT_NOT_AVAILABLE',503);return gate(()=>adapter.editRegion(options));}
 };}
 export class CloudGenerationService extends GenerationService {
+ deliveryDeadline(row,billing){
+  return row.created_at<this.membership.cutover?this.membership.cutover+30*86400000:billing.expires_at;
+ }
+ async jobView(row,billing,requestIds,defectReport,options){
+  const expires=this.deliveryDeadline(row,billing);
+  if(row.artifact_hash && expires<=this.now()){
+   const summary=await super.jobView(row,billing,requestIds,defectReport,{includeArtifact:false});
+   return {...summary,state:'expired',artifact:null,artifactId:null,downloadExpiresAt:new Date(expires).toISOString()};
+  }
+  const result=await super.jobView(row,billing,requestIds,defectReport,options);
+  if(row.artifact_hash && ['ready','accepted'].includes(result.state))result.downloadExpiresAt=new Date(expires).toISOString();
+  return result;
+ }
+ async defectEvidence(id){
+  const info=await this.job(id,{includeArtifact:false});
+  if(info.state==='expired')fail('PROJECT_EXPIRED',410);
+  return super.defectEvidence(id);
+ }
  async history(projectId){return readGenerationHistory(this,projectId);}
  async create(body,options){
   if(typeof body?.requestId==='string'&&this.membership){
@@ -138,6 +126,9 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
    instance?.assert();const db=await readinessMeasure('schema_setup',()=>new PostgresDatabase(pool,cloudSchema(user.id),{guard}).initialize());
    const s=new CloudGenerationService();s.storage=storage;s.cloudUser=user.id;s.membership=membership;
    await readinessMeasure('generation_initialize',()=>s.initialize({db,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:config.enabled,assistantEnabled:config.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter),adapter:guardedImageAdapter(adapter,()=>instance?.assert(),gate),assistantAdapter:options=>{instance?.assert();return gate(()=>assistCopy({...options,apiKey:config.key}));}}));
+   // cloudSchema validates the UUID before embedding it as the fixed trigger argument.
+   await db.exec(`CREATE OR REPLACE TRIGGER first_result_delivery BEFORE UPDATE OF status ON jobs
+     FOR EACH ROW EXECUTE FUNCTION aiadcast_accounts.set_delivery_deadline('${user.id}')`);
    s.ledger.externalBudget=()=>readExternalSupplierBudget(db,user.id);
    await readinessMeasure('table_protection',()=>db.protectTables());membership.jobs.set(user.id,s);return s;
   }});

@@ -8,7 +8,7 @@ ALTER TABLE users ALTER COLUMN joined_at SET DEFAULT now();
 ALTER TABLE users ADD COLUMN IF NOT EXISTS storage_plan text NOT NULL DEFAULT 'free' CHECK(storage_plan IN ('free','standard'));
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS expires_at timestamptz;
 UPDATE projects SET expires_at=(SELECT started_at FROM retention_settings WHERE id=1)+interval '30 days' WHERE expires_at IS NULL;
-ALTER TABLE projects ALTER COLUMN expires_at SET DEFAULT (now()+interval '30 days');
+ALTER TABLE projects ALTER COLUMN expires_at SET DEFAULT (now()+interval '24 hours');
 ALTER TABLE projects ALTER COLUMN expires_at SET NOT NULL;
 ALTER TABLE storage_objects ADD COLUMN IF NOT EXISTS expires_at timestamptz;
 UPDATE storage_objects SET expires_at=(SELECT started_at FROM retention_settings WHERE id=1)+interval '30 days' WHERE expires_at IS NULL;
@@ -36,3 +36,21 @@ CREATE TABLE IF NOT EXISTS protected_complaints (
 CREATE TABLE IF NOT EXISTS retired_generation_keys (
  digest text PRIMARY KEY, expires_at timestamptz NOT NULL
 );
+
+-- Stamp delivery in the same transaction that first makes the result available.
+-- Jobs keep independent deadlines when identical bytes are generated twice.
+CREATE OR REPLACE FUNCTION set_delivery_deadline() RETURNS trigger LANGUAGE plpgsql
+ SET search_path=pg_catalog,aiadcast_accounts AS $delivery$
+DECLARE deadline timestamptz; raw_hash text;
+BEGIN
+ IF NEW.status='ready' AND OLD.status IS DISTINCT FROM 'ready' AND OLD.artifact_id IS NULL THEN
+  NEW.expires_at := ceil(extract(epoch FROM (clock_timestamp()+interval '24 hours'))*1000)::bigint;
+  deadline := to_timestamp(NEW.expires_at/1000.0);
+  EXECUTE format('SELECT metadata_json::json->''planarReport''->>''originalHash'' FROM %I.generation_records WHERE id=$1',TG_TABLE_SCHEMA)
+    INTO raw_hash USING NEW.id;
+  UPDATE storage_objects SET expires_at=greatest(expires_at,deadline)
+   WHERE user_id=TG_ARGV[0] AND split_part(split_part(path,'/',2),'.',1) IN (NEW.artifact_id,raw_hash);
+ END IF;
+ RETURN NEW;
+END $delivery$;
+REVOKE ALL ON FUNCTION set_delivery_deadline() FROM PUBLIC;

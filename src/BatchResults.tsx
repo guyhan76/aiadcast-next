@@ -1,3 +1,4 @@
+import {DownloadDeadline} from './Membership';
 import {PrecisionEditAction} from './PrecisionEditAction';
 import {useEffect,useRef,useState} from 'react';
 import type {Project} from './model';
@@ -49,7 +50,7 @@ export function BatchResults({project,batch,onEdit,renderDetail}:{project:Projec
      if(job.id!==summary.id||job.projectId!==summary.projectId||job.requestFingerprint!==fingerprint||job.composition!=='complete-ad'||job.compositionKey!==completeAdKey(p)||job.sourceHash!==generationSourceHash(p)||!job.artifact)throw Error('INVALID_ARTIFACT');
      const asset=await verifiedArtifact(job),display=await parseAiDimensionDisplay(job.dimensionDisplay);
      if(aiDimensionRequested(p)?display?.inputKey!==projectAiDimensionKey(p):!!display)throw Error('INVALID_ARTIFACT');
-     const composed=projectWithGenerated({...p,id:job.projectId},{jobId:job.id,mode:job.mode,sourceHash:job.sourceHash,asset,role:job.artifact.role,model:job.model,createdAt:job.createdAt,specificationKey:generatedCompatibilityKey(p),composition:job.composition,compositionKey:job.compositionKey,...(display?{dimensionDisplay:display}:{}),...(job.dimensionReview?{dimensionReview:job.dimensionReview}:{})});
+     const composed=projectWithGenerated({...p,id:job.projectId},{downloadExpiresAt:job.downloadExpiresAt,jobId:job.id,mode:job.mode,sourceHash:job.sourceHash,asset,role:job.artifact.role,model:job.model,createdAt:job.createdAt,specificationKey:generatedCompatibilityKey(p),composition:job.composition,compositionKey:job.compositionKey,...(display?{dimensionDisplay:display}:{}),...(job.dimensionReview?{dimensionReview:job.dimensionReview}:{})});
      const canvas=document.createElement('canvas'),issues=await render(canvas,composed,undefined,manualBaseExport(composed));
      if(issues.length)throw Error('RENDER_FAILED');
      const png=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('PNG')),'image/png'));
@@ -90,6 +91,7 @@ export function BatchResults({project,batch,onEdit,renderDetail}:{project:Projec
   <ol className="batch-grid">{jobs.map((j,i)=><li key={j.id}>
    {images[j.id]&&['ready','accepted'].includes(j.state)&&<button type="button" aria-label={t(`${i+1}번 이미지 확대`,`Enlarge image ${i+1}`)} onClick={()=>setZoom(images[j.id].url)}><img src={images[j.id].url} alt=""/></button>}
    <label><input type="checkbox" checked={chosen.some(x=>x.id===j.id)} disabled={busy||!eligible.some(x=>x.id===j.id)} onChange={e=>setSelected(ids=>e.target.checked?[...ids,j.id]:ids.filter(x=>x!==j.id))}/>{t(`광고 ${i+1}`,`Ad ${i+1}`)}</label>
+   <DownloadDeadline value={j.downloadExpiresAt}/>
    {images[j.id]&&eligible.some(item=>item.id===j.id)&&<PrecisionEditAction getInput={()=>({file:images[j.id].file,name:project.name+' '+(i+1)})}/>}
    {['ready','accepted'].includes(j.state)?<button onClick={()=>setDetail(images[j.id]?.accepted??{...project,id:j.projectId,adBatch:undefined,generated:undefined})}>{t('검수 · 수정','Review · edit')}</button>:<small>{j.state==='running'?t('생성 중','Generating'):j.state==='rejected'?t('반려됨','Rejected'):t('생성 종료 · 결과 없음','Finished without an image')}</small>}
   </li>)}</ol>

@@ -10,7 +10,7 @@ BEGIN
   IF member.id !~ '^[a-f0-9-]{36}$' THEN CONTINUE; END IF;
   tenant := 'aiadcast_user_'||replace(member.id,'-','');
   IF to_regclass(format('%I.generation_records',tenant)) IS NOT NULL THEN
-   EXECUTE format('SELECT EXISTS(SELECT 1 FROM %I.generation_records WHERE CASE WHEN to_timestamp(created_at/1000.0)<$1 THEN $1+interval ''30 days'' ELSE to_timestamp(created_at/1000.0)+interval ''24 hours'' END<=now())',tenant) INTO due USING started;
+   EXECUTE format('SELECT EXISTS(SELECT 1 FROM %I.generation_records g JOIN %I.jobs j ON j.id=g.id WHERE CASE WHEN to_timestamp(g.created_at/1000.0)<$1 THEN $1+interval ''30 days'' ELSE to_timestamp(j.expires_at/1000.0) END<=now())',tenant,tenant) INTO due USING started;
    IF due THEN RETURN true; END IF;
   END IF;
   IF to_regclass(format('%I.assistant_requests',tenant)) IS NOT NULL THEN

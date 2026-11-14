@@ -27,7 +27,7 @@ export function existingAppRecommendationApi({store,pool,storage,adapter,origin,
   const service=await new PostgresRecommendationService().initialize(db,{enabled,executionMode,policy,outputProvenance,version,sharedBudget,adapter,reservationMicros,budgetMicros:0,resolveOwnedImage:async(userId,generationId)=>{
    if(userId!==owner)throw Error('NOT_FOUND');
    // The schema is chosen exclusively from the authenticated account ID.
-   const row=await db.prepare("SELECT g.request_json,g.artifact_hash FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.id=? AND j.status IN ('ready','accepted') AND g.artifact_hash IS NOT NULL").get(generationId);
+   const row=await db.prepare("SELECT g.request_json,g.artifact_hash FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.id=? AND j.status IN ('ready','accepted') AND g.artifact_hash IS NOT NULL AND CASE WHEN to_timestamp(g.created_at/1000.0)<(SELECT started_at FROM aiadcast_accounts.retention_settings WHERE id=1) THEN (SELECT started_at+interval '30 days' FROM aiadcast_accounts.retention_settings WHERE id=1) ELSE to_timestamp(j.expires_at/1000.0) END>now()").get(generationId);
    if(!row)throw Error('NOT_FOUND');
    const request=JSON.parse(row.request_json),asset=await CloudGenerationService.prototype.asset.call({db,storage,cloudUser:owner},row.artifact_hash);
    if(!asset?.dataUrl)throw Error('OWNED_PERSISTED_IMAGE_REQUIRED');

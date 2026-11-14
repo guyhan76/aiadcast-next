@@ -14,7 +14,7 @@ import {completeAdKey} from './complete-ad.ts';
 
 export type GeneratedAsset = {
  editParent?:{jobId:string;projectId:string;artifactId:string};
- acceptedAt?:string;
+ acceptedAt?:string;downloadExpiresAt?:string;
  dimensionDisplay?:AiDimensionDisplay;dimensionReview?:AiDimensionReview;inputMode?:'text-example';jobId:string;mode:'original'|'creative';sourceHash:string|null;asset:Asset;
  role:'background'|'creative';model:string;createdAt:string;specificationKey:string;marketingPlan?:MarketingPlan;
  composition?:'complete-ad'|'photo-plate';compositionKey?:string;dimensionPlan?:DimensionPlan;planarReport?:PlanarReport;planarOriginal?:Asset;
@@ -119,7 +119,9 @@ export async function parseGenerated(value:unknown,readAsset:(value:unknown)=>Pr
  if(r.dimensionReview&&(!dimensionDisplay||!validAiDimensionReview(r.dimensionReview,dimensionDisplay,asset.sha256)))throw Error('INVALID_AI_DIMENSION_REVIEW');
  if(planarReport?.outputRatio&&Math.abs(asset.width/asset.height-planarReport.outputRatio)>1e-9)throw Error('INVALID_PLANAR_REPORT');
  if(r.acceptedAt!==undefined&&(!Number.isFinite(Date.parse(r.acceptedAt))||new Date(r.acceptedAt).toISOString()!==r.acceptedAt))throw Error('INVALID_ACCEPTANCE');
- return {...(editParent?{editParent}:{}),...(r.acceptedAt?{acceptedAt:r.acceptedAt}:{}),...(dimensionDisplay?{dimensionDisplay}:{}),...(r.dimensionReview?{dimensionReview:r.dimensionReview}:{}),...(r.inputMode?{inputMode:r.inputMode}:{}),...(dimensionPlan?{dimensionPlan}:{}),...(planarReport?{planarReport,planarOriginal:planarOriginal!}:{}),jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey,...(marketingPlan?{marketingPlan}:{}),...(r.composition?{composition:r.composition}:{}),...(compositionKey?{compositionKey}:{})};
+ const expiry=r.downloadExpiresAt;
+ if(expiry!==undefined&&(typeof expiry!=='string'||!Number.isFinite(Date.parse(expiry))))throw Error('INVALID_DELIVERY_TIME');
+ return {...(expiry?{downloadExpiresAt:new Date(expiry).toISOString()}:{}),...(editParent?{editParent}:{}),...(r.acceptedAt?{acceptedAt:r.acceptedAt}:{}),...(dimensionDisplay?{dimensionDisplay}:{}),...(r.dimensionReview?{dimensionReview:r.dimensionReview}:{}),...(r.inputMode?{inputMode:r.inputMode}:{}),...(dimensionPlan?{dimensionPlan}:{}),...(planarReport?{planarReport,planarOriginal:planarOriginal!}:{}),jobId,mode:r.mode,sourceHash:r.sourceHash,asset,role:r.role,model,createdAt,specificationKey,...(marketingPlan?{marketingPlan}:{}),...(r.composition?{composition:r.composition}:{}),...(compositionKey?{compositionKey}:{})};
 }
 
 

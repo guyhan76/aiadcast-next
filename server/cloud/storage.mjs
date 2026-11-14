@@ -23,8 +23,8 @@ export class SupabaseStorage {
  async accountLimit(userId){
   // Storage allowance only: read the current server role, never client claims
   // or a cached session role. This does not change supplier/credit budgets.
-  const user=await this.db.prepare('SELECT role,storage_plan FROM users WHERE id=? AND disabled=0').get(userId);
-  return user?.role==='admin'||user?.storage_plan==='standard'?600000000:100000000;
+  const user=await this.db.prepare('SELECT role FROM users WHERE id=? AND disabled=0').get(userId);
+  return user?.role==='admin'?600000000:100000000;
  }
  async assertGenerationCapacity(userId,originals,outputBytes){
   let needed=outputBytes;

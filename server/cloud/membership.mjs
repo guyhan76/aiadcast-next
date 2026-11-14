@@ -4,11 +4,14 @@ import {cloudSchema} from './postgres.mjs';
 import {ApiFailure} from '../generation-service.mjs';
 
 const fail=(code,status)=>{throw new ApiFailure(code,status);};
-const mb=1000000;
 const projectId = id=>typeof id==='string' && /^[A-Za-z0-9_-]{8,100}$/.test(id);
 export class Membership {
  constructor(store,storage){this.store=store;this.db=store.db;this.storage=storage;this.active=new Map();this.jobs=new Map();this.cleaning=new Set();}
- async initialize(){await this.db.transaction(()=>this.db.exec(readFileSync(new URL('./membership.sql',import.meta.url),'utf8')));}
+ async initialize(){
+  await this.db.transaction(()=>this.db.exec(readFileSync(new URL('./membership.sql',import.meta.url),'utf8')));
+  const {started_at}=await this.db.prepare('SELECT started_at FROM retention_settings WHERE id=1').get();
+  this.cutover=new Date(started_at).getTime();
+ }
  // Authentication and lease acquisition are separated by an await. Reject a lease
  // while cleanup holds the owner, and recheck access after taking it.
  async enter(user){
@@ -23,11 +26,27 @@ export class Membership {
   const member=await this.db.prepare('SELECT role,storage_plan FROM users WHERE id=? AND disabled=0').get(user.id);
   if(!member)fail('AUTH_REQUIRED',401);
   const standard=member.role==='admin'||member.storage_plan==='standard';
-  const usage=await this.db.prepare('SELECT COALESCE(SUM(bytes),0) bytes FROM projects WHERE user_id=? AND expires_at>now()').get(user.id);
-  return {plan:standard?'standard':'free',limitBytes:standard?500*mb:0,usedBytes:usage.bytes};
+  return {plan:standard?'standard':'free',storage:'device',downloadWindowHours:24,limitBytes:0,usedBytes:0};
  }
  async route(user,method,path,body){
   if(path==='/api/membership'&&method==='GET')return this.policy(user);
+  if(path==='/api/membership/downloads' && method==='GET'){
+   const tenant=cloudSchema(user.id);
+   if(!await this.exists(tenant,'generation_records'))return {downloads:[]};
+   // Read metadata only. The authenticated generation endpoint verifies each download.
+   const rows=await this.db.prepare(`SELECT g.id,g.created_at AS created,
+    g.request_json::json->>'productName' AS name,j.status,
+    j.expires_at AS deadline,p.captured,COALESCE(p.unit,'legacy-ticket') AS unit,
+    a.job_id IS NOT NULL AS exempt FROM "${tenant}".generation_records g
+    JOIN "${tenant}".jobs j ON j.id=g.id
+    LEFT JOIN "${tenant}".job_policies p ON p.job_id=j.id
+    LEFT JOIN "${tenant}".admin_test_jobs a ON a.job_id=j.id
+    WHERE j.status IN ('ready','accepted') AND g.artifact_hash IS NOT NULL AND g.error_code IS NULL
+    AND (CASE WHEN g.created_at<? THEN ? ELSE j.expires_at END)>extract(epoch FROM now())*1000
+    ORDER BY g.created_at DESC,g.id DESC`).all(this.cutover,this.cutover+30*86400000);
+   return {downloads:rows.map(r=>({id:r.id,name:r.name,expiresAt:new Date(r.created<this.cutover?this.cutover+30*86400000:r.deadline).toISOString(),
+    reviewRequired:r.status==='ready'&&!r.captured&&!r.exempt}))};
+  }
   if(path==='/api/membership/withdraw'&&method==='POST'){
    if(body?.confirm!=='delete-my-account')fail('CONFIRM_DELETION',400);
    return this.withdraw(user);
@@ -97,7 +116,9 @@ export class Membership {
   for(const {path} of objects)await this.storage.remove(id,path);
   if(!await this.exists(tenant,'generation_records'))return;
   await this.store.transaction(async()=>{
-   const expired='SELECT id FROM '+q+'generation_records WHERE (CASE WHEN to_timestamp(created_at/1000.0) < ?::timestamptz THEN ?::timestamptz ELSE to_timestamp(created_at/1000.0)+interval \'24 hours\' END)<=now()';
+   const expired=`SELECT g.id FROM ${q}generation_records g JOIN ${q}jobs j ON j.id=g.id WHERE
+    CASE WHEN to_timestamp(g.created_at/1000.0) < ?::timestamptz THEN ?::timestamptz
+         ELSE to_timestamp(j.expires_at/1000.0) END<=now()`;
    const args=[deadlines.cutover,deadlines.grace];
    if(await this.exists(tenant,'recommendation_jobs')){
     const subset='SELECT id FROM '+q+'recommendation_jobs WHERE generation_id IN ('+expired+')';

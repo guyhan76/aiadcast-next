@@ -1,51 +1,66 @@
-import {saveCloudSnapshot} from './membership-client';
-import {useEffect,useState} from 'react';
-import {apiRequest,ApiRequestFailure} from './generation-client';
+import {exportBatch} from './batch-export';
+import {useEffect,useState,useRef} from 'react';
+import {apiRequest,verifiedArtifact,type GenerationJob} from './generation-client';
 import {betaSession,setBetaSession,storageNamespace} from './beta-session';
 import {offlineDemo} from './demo-mode';
 import {importProject,type Project} from './model';
 import {useUiLanguage} from './ui-language';
 
-type Policy={plan:'free'|'standard';usedBytes:number;limitBytes:number};
 type CloudProject={id:string;name:string;expiresAt:string;revision:number};
 const changed='aiadcast-cloud-project-change';
-function usePolicy(enabled:boolean){
- const [value,setValue]=useState<Policy|null>(null);
- useEffect(()=>{if(!enabled||offlineDemo()||!betaSession())return;let live=true;
-  const refresh=()=>{void apiRequest<Policy>('/api/membership').then(v=>{if(live)setValue(v);}).catch(()=>{if(live)setValue(null);});};
-  refresh();window.addEventListener(changed,refresh);return()=>{live=false;window.removeEventListener(changed,refresh);};
- },[enabled]);return value;
+export function DownloadDeadline({value}:{value?:string}){
+ const {t}=useUiLanguage();
+ return value?<small>{t('서버 다운로드 기한','Server download deadline')} · <time dateTime={value}>{new Date(value).toLocaleString()}</time></small>:null;
 }
-export function SaveCloudProject({project}:{project:Project}){
- const {t}=useUiLanguage(),policy=usePolicy(true),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
- if(!policy)return null;
- if(policy.plan==='free')return <p>{t('무료회원 · 나중에 보려면 이 기기에 저장하세요.','Free plan · Save a copy on this device for later.')}</p>;
- async function save(){
-  setBusy(true);setMessage('');
-  try{await saveCloudSnapshot(project);setMessage(t('내 프로젝트에 저장했습니다.','Saved to My projects.'));
-  }catch(e){setMessage(e instanceof ApiRequestFailure&&e.code==='PROJECT_CONFLICT'?t('다른 기기에 저장된 버전이 있습니다. 내 프로젝트에서 서버 보관본을 먼저 열어주세요.','Open the latest server copy from My projects first.'):t('서버에 저장하지 못했습니다. 보관 용량을 확인하거나 기기에 저장하세요.','Could not save to the server. Check storage or save to your device.'));}
-  finally{setBusy(false);}
- }
- return <div><button type="button" disabled={busy} onClick={()=>void save()}>{t('내 프로젝트에 저장','Save to My projects')}</button>{message&&<p role="status">{message}</p>}</div>;
-}
+type Delivery={id:string;name:string;expiresAt:string;reviewRequired:boolean};
 export function CloudLibrary({onOpen}:{onOpen:(p:Project)=>Promise<boolean>}){
- const {t}=useUiLanguage(),policy=usePolicy(true),[items,setItems]=useState<CloudProject[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- useEffect(()=>{if(!policy)return;let live=true;apiRequest<{projects:CloudProject[]}>('/api/projects').then(v=>{if(live){setItems(v.projects);setError('');}}).catch(()=>{if(live)setError(t('서버 목록을 불러오지 못했습니다.','Could not load server projects.'));});return()=>{live=false;};},[policy]);
- if(!policy&&!error)return null;
+ const {t}=useUiLanguage(),[items,setItems]=useState<CloudProject[]>([]),[downloads,setDownloads]=useState<Delivery[]>([]);
+ const [error,setError]=useState(''),[busy,setBusy]=useState(false),[refresh,setRefresh]=useState(0);
+ const active=useRef<AbortController|null>(null),token=betaSession()?.token;
+ useEffect(()=>{
+  if(!token||offlineDemo())return;
+  const controller=new AbortController();active.current=controller;
+  Promise.all([apiRequest<{projects:CloudProject[]}>('/api/projects',undefined,controller.signal),
+   apiRequest<{downloads:Delivery[]}>('/api/membership/downloads',undefined,controller.signal)]).then(([legacy,current])=>{
+    if(!controller.signal.aborted){setItems(legacy.projects);setDownloads(current.downloads);setError('');}
+   }).catch(()=>{if(!controller.signal.aborted)setError(t('다운로드 목록을 불러오지 못했습니다.','Could not load downloads.'));});
+  const update=()=>setRefresh(n=>n+1);window.addEventListener(changed,update);
+  return ()=>{controller.abort();window.removeEventListener(changed,update);};
+ },[token,refresh]);
+ if(!token||offlineDemo())return null;
+ async function download(item:Delivery){
+  const signal=active.current?.signal;if(!signal||signal.aborted)return;
+  setBusy(true);setError('');
+  try{
+   const {job}=await apiRequest<{job:GenerationJob}>('/api/generations/'+item.id,undefined,signal);
+   if(!['ready','accepted'].includes(job.state)||!job.artifact)throw Error('EXPIRED');
+   const asset=await verifiedArtifact(job);
+   const blob=await (await fetch(asset.data,{signal})).blob();signal.throwIfAborted();
+   if(item.reviewRequired && job.state==='ready'){
+    if(!window.confirm(t('이 결과를 사용 확정하고 원본을 저장할까요? 예약된 이용권이 사용됩니다.','Confirm use of this result and download the original? Your reserved ticket will be used.')))return;
+    await apiRequest('/api/generations/'+item.id+'/accept',{artifactId:job.artifactId},signal);
+   }
+   if(betaSession()?.token!==token)return;
+   await exportBatch([new File([blob],'aiadcast-'+item.id+'.'+(blob.type.split('/')[1]||'png'),{type:blob.type})],'save',signal);
+  }catch{if(!signal.aborted)setError(t('원본을 저장하지 못했습니다. 다운로드 기한을 확인해 주세요.','Could not save the original. Check the download deadline.'));}finally{if(!signal.aborted)setBusy(false);}
+ }
  async function open(item:CloudProject){
   setBusy(true);setError('');
   try{const data=await apiRequest<{project:Project;revision:number}>('/api/projects/'+item.id);
-   const p={...await importProject(data.project),id:item.id};if(await onOpen(p))sessionStorage.setItem('aiadcast.cloud-revision:'+storageNamespace()+':'+p.id,String(data.revision));
+   const p={...await importProject(data.project),id:item.id};await onOpen(p);
   }catch{setError(t('보관본을 열지 못했습니다. 목록을 다시 확인해주세요.','Could not open this copy. Check the list again.'));}finally{setBusy(false);}
  }
  async function remove(item:CloudProject){
   if(!window.confirm(t('이 서버 보관본을 삭제할까요?','Delete this server copy?')))return;
-  setBusy(true);try{await apiRequest('/api/membership/remove-project',{id:item.id});sessionStorage.removeItem('aiadcast.cloud-revision:'+storageNamespace()+':'+item.id);window.dispatchEvent(new Event(changed));}
+  setBusy(true);try{await apiRequest('/api/membership/remove-project',{id:item.id});window.dispatchEvent(new Event(changed));}
   catch{setError(t('삭제하지 못했습니다. 다시 시도해주세요.','Deletion failed. Try again.'));}finally{setBusy(false);}
  }
- return <section className="membership-panel"><h2>{t('서버 보관함','Server storage')}</h2>
- <p>{policy?.plan==='standard'?t('일반회원 · 최초 저장일부터 30일','Standard · 30 days from first save')+' · '+(Number(policy.usedBytes)/1e6).toFixed(1)+' / 500 MB':t('무료회원 · 새 광고는 기기에 저장하고 공유할 수 있습니다.','Free plan · Save and share new ads on your device.')}</p>
- {items.map(item=><div key={item.id} className="membership-row"><button disabled={busy} onClick={()=>void open(item)}>{item.name} · {new Date(item.expiresAt).toLocaleDateString()} {t('삭제 예정','expires')}</button><button disabled={busy} onClick={()=>void remove(item)}>{t('삭제','Delete')}</button></div>)}{error&&<p role="alert">{error}</p>}</section>;
+ return <section className="membership-panel"><h2>{t('임시 다운로드','Temporary downloads')}</h2>
+ <p>{t('새 결과는 생성 완료 후 24시간 동안 내려받을 수 있습니다. 보관하려면 기기에 저장하세요.','Download new results within 24 hours of completion. Save a copy on your device to keep it.')}</p>
+ {downloads.map(item=><div className="membership-row" key={item.id}><span>{item.name} · <DownloadDeadline value={item.expiresAt}/></span>
+  <button disabled={busy} onClick={()=>void download(item)}>{item.reviewRequired?t('사용 확정 후 원본 저장','Confirm and save original'):t('원본 저장','Save original')}</button></div>)}
+ {items.length>0&&<h3>{t('정책 변경 전에 저장한 프로젝트','Projects saved before the policy change')}</h3>}
+ {items.map(item=><div key={item.id} className="membership-row"><button disabled={busy} onClick={()=>void open(item)}>{item.name} · {new Date(item.expiresAt).toLocaleDateString()} {t('삭제 예정','expires')}</button><button disabled={busy} onClick={()=>void remove(item)}>{t('삭제','Delete')}</button></div>)}{error&&<p role="alert">{error} <button onClick={()=>setRefresh(n=>n+1)}>{t('다시 확인','Retry')}</button></p>}</section>;
 }
 export function Withdrawal(){
  const {t}=useUiLanguage(),[confirm,setConfirm]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
@@ -70,7 +85,7 @@ export function MemberHistory({labels}:{labels:{id:string;label:string}[]}){
  const names={joined:t('가입 완료','Joined'),requested:t('탈퇴 접수','Withdrawal requested'),completed:t('삭제 완료','Deleted'),retry:t('삭제 재시도 중','Retrying deletion')};
  async function refresh(){try{setData(await apiRequest<Audit>('/api/membership/admin'));setError('');}catch{setError(t('이력을 불러오지 못했습니다.','Could not load membership history.'));}}
  async function plan(id:string,value:string){setBusy(true);try{await apiRequest('/api/membership/plan',{userId:id,plan:value});await refresh();}catch{setError(t('등급을 변경하지 못했습니다.','Could not update membership.'));}finally{setBusy(false);}}
- return <details className="admin-card" onToggle={e=>{if(e.currentTarget.open)void refresh();}}><summary>{t('가입·탈퇴 이력 및 보관 등급','Membership history and storage plans')}</summary>
- {data?.members.map(m=><div key={m.id} className="membership-row"><span>{labels.find(l=>l.id===m.id)?.label} · {m.joined_at?new Date(m.joined_at).toLocaleString():t('기존 회원 · 가입일 미기록','Existing member · join date unavailable')}</span>{m.role==='admin'?t('관리자','Admin'):<select aria-label={t('보관 등급','Storage plan')} value={m.storage_plan} disabled={busy} onChange={e=>void plan(m.id,e.target.value)}><option value="free">{t('무료회원','Free')}</option><option value="standard">{t('일반회원','Standard')}</option></select>}</div>)}
+ return <details className="admin-card" onToggle={e=>{if(e.currentTarget.open)void refresh();}}><summary>{t('가입·탈퇴 이력 및 회원 등급','Membership history and plans')}</summary>
+ {data?.members.map(m=><div key={m.id} className="membership-row"><span>{labels.find(l=>l.id===m.id)?.label} · {m.joined_at?new Date(m.joined_at).toLocaleString():t('기존 회원 · 가입일 미기록','Existing member · join date unavailable')}</span>{m.role==='admin'?t('관리자','Admin'):<select aria-label={t('회원 등급','Membership plan')} value={m.storage_plan} disabled={busy} onChange={e=>void plan(m.id,e.target.value)}><option value="free">{t('무료회원','Free')}</option><option value="standard">{t('일반회원','Standard')}</option></select>}</div>)}
  <button onClick={()=>void refresh()}>{t('새로고침','Refresh')}</button><ul>{data?.events.map(e=><li key={e.receipt+e.kind}>{new Date(e.happened_at).toLocaleString()} · {names[e.kind]} · {e.receipt}</li>)}</ul>{error&&<p role="alert">{error}</p>}</details>;
 }
