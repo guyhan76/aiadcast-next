@@ -122,6 +122,8 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
    if(project&&req.method==='GET'){send(res,200,store.project(user.id,project[1]),cors);return;}
    if(project&&req.method==='POST'){send(res,200,store.save(user.id,project[1],await read(req,40_001_000)),cors);return;}
    if(req.method==='GET'&&url.pathname==='/api/status'){const instance=readinessMeasure('service_initialization',()=>service(user)),s=instance.status();send(res,200,{...s,mode:password.available()?'test-account-beta':'invite-beta',limitations:s.limitations.filter(x=>!['local-single-user','no-production-auth'].includes(x)).concat([password.available()?'test-email-unverified':'invite-only','single-instance-beta','no-live-payment']),user:{id:user.id,label:user.label}},cors);return;}
+   const batch=/^\/api\/ad-batches\/(ads-[a-f0-9]{64})$/.exec(url.pathname);
+   if(req.method==='GET'&&batch){send(res,200,service(user).batchSummary(batch[1]),cors);return;}
    if(req.method==='GET'&&url.pathname==='/api/generations'){send(res,200,service(user).history(url.searchParams.get('projectId')??undefined),cors);return;}
    const requestLookup=/^\/api\/generation-requests\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
    if(req.method==='GET'&&requestLookup){send(res,200,service(user).requestStatus(requestLookup[1],url.searchParams.get('projectId')),cors);return;}

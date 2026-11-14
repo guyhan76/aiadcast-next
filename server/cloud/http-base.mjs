@@ -331,6 +331,11 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 send(res, 200, { ...s, mode: password.available() ? 'test-account-beta' : 'invite-beta', limitations: s.limitations.filter(x => !['local-single-user', 'no-production-auth'].includes(x)).concat([password.available() ? 'test-email-unverified' : 'invite-only', 'single-instance-beta', 'no-live-payment']), user: { id: user.id, label: user.label } }, cors);
                 return;
             }
+            const batch = /^\/api\/ad-batches\/(ads-[a-f0-9]{64})$/.exec(url.pathname);
+            if (req.method === 'GET' && batch) {
+                send(res, 200, await (await service(user)).batchSummary(batch[1]), cors);
+                return;
+            }
             if (req.method === 'GET' && url.pathname === '/api/generations') {
                 send(res, 200, await (await service(user)).history(url.searchParams.get('projectId') ?? undefined), cors);
                 return;

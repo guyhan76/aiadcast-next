@@ -1,3 +1,4 @@
+import {batchPrice,validBatch} from '../src/batch-price.ts';
 import {plannedAdText} from '../src/planned-ad-text.ts';
 import {exactAdText,plannedTextInput} from '../src/exact-ad-text.ts';
 import {submissionStage} from './submission-observation.mjs';
@@ -140,6 +141,7 @@ export class GenerationService {
       CREATE TABLE IF NOT EXISTS generation_assets(hash TEXT PRIMARY KEY, mime TEXT NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, bytes BLOB NOT NULL);
       CREATE TABLE IF NOT EXISTS generation_records(id TEXT PRIMARY KEY REFERENCES jobs(id), project_id TEXT NOT NULL, fingerprint TEXT NOT NULL, request_json TEXT NOT NULL, source_hash TEXT, artifact_hash TEXT, artifact_role TEXT, error_code TEXT, metadata_json TEXT, created_at INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS generation_fingerprints ON generation_records(fingerprint);
+      CREATE TABLE IF NOT EXISTS ad_batches(id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, job_ids TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS generation_keys(request_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, job_id TEXT NOT NULL REFERENCES generation_records(id));
       CREATE TABLE IF NOT EXISTS local_development_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS assistant_requests(request_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, period TEXT NOT NULL, held_micros INTEGER NOT NULL, actual_micros INTEGER, state TEXT NOT NULL, response_json TEXT, error_code TEXT, created_at INTEGER NOT NULL);
@@ -232,7 +234,7 @@ export class GenerationService {
     const wallet=readinessMeasure('wallet',()=>this.wallet());
     const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : (cumulative?.limitMicros??limit) < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : !this.adminTestUnlimited && wallet.available < 1 && wallet.credits.available < 10 ? 'NO_TEST_CREDITS' : null;
     const assistantReason = !this.assistantEnabled ? 'ASSISTANT_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : (cumulative?.availableMicros??(this.budgetMicros-(budget?.spent_micros??0)-(budget?.held_micros??0))) < TEXT_MAX_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : null;
-    return { mode: 'local-development', commercialReady: false, generation: { creditQuote:this.creditQuote(wallet), enabled: reason === null, exactAdText:false, plannedAdText:false, manualDimensionOverlay:true, aiDimensionDisplay: true, photoPurposes: true, textExamples: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet, budget: { currency: 'USD', period, limitMicros: limit, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false, ...(cumulative?{scope:cumulative.scope,historyMode:cumulative.historyMode,activatedAt:cumulative.activatedAt,limitMicros:cumulative.limitMicros,spentMicros:cumulative.spentMicros,heldMicros:cumulative.heldMicros,availableMicros:cumulative.availableMicros}:{}) }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
+    return { mode: 'local-development', commercialReady: false, generation: { batchVersion:1, creditQuote:this.creditQuote(wallet), enabled: reason === null, exactAdText:false, plannedAdText:false, manualDimensionOverlay:true, aiDimensionDisplay: true, photoPurposes: true, textExamples: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet, budget: { currency: 'USD', period, limitMicros: limit, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false, ...(cumulative?{scope:cumulative.scope,historyMode:cumulative.historyMode,activatedAt:cumulative.activatedAt,limitMicros:cumulative.limitMicros,spentMicros:cumulative.spentMicros,heldMicros:cumulative.heldMicros,availableMicros:cumulative.availableMicros}:{}) }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
   }
   storeAsset(asset) {
     this.db.prepare('INSERT INTO generation_assets VALUES (?,?,?,?,?) ON CONFLICT(hash) DO NOTHING').run(asset.sha256, asset.mime, asset.width, asset.height, asset.bytes);
@@ -273,6 +275,56 @@ export class GenerationService {
     const rows = projectId ? this.db.prepare('SELECT id FROM generation_records WHERE project_id=? ORDER BY created_at DESC LIMIT 30').all(projectId) : this.db.prepare('SELECT id FROM generation_records ORDER BY created_at DESC LIMIT 30').all();
     return { jobs: rows.map(row => this.job(row.id, { includeArtifact: false })), wallet: this.wallet() };
   }
+
+  batchSummary(id) {
+    if(!/^ads-[a-f0-9]{64}$/.test(id))fail('INVALID_BATCH');
+    const row=this.db.prepare('SELECT job_ids FROM ad_batches WHERE id=?').get(id);
+    if(!row)fail('BATCH_NOT_FOUND',404);
+    const jobs=JSON.parse(row.job_ids).map(jobId=>this.job(jobId,{includeArtifact:false}));
+    return {id,jobs,wallet:this.wallet()};
+  }
+  async createBatch(body,request,source,references) {
+    const {id,count,quote}=body.batch??{};
+    if(!validBatch({id,count})||body.projectId!==id||body.requestId!==id||!quote||request.mode!=='creative'||request.inputMode||request.proportionControl||request.selectiveEdit||request.output?.exactText||request.creativeDirection?.visual?.id!=='auto'||!request.output.compositionKey)fail('INVALID_BATCH');
+    const fingerprint=hashBytes(JSON.stringify({count,request,revision:IMAGE_REVISION}));
+    const existing=this.db.prepare('SELECT fingerprint FROM ad_batches WHERE id=?').get(id);
+    if(existing){
+      if(existing.fingerprint!==fingerprint)fail('IDEMPOTENCY_CONFLICT',409);
+      return this.batchSummary(id);
+    }
+    const status=this.status();
+    if(!status.generation.enabled)fail(status.generation.reason,409);
+    const images=[...(source?[source]:[]),...references];
+    await this.assertOutputCapacity(request,images);
+    for(const image of images) this.storeAsset(image);
+    const jobIds=[];
+    this.ledger.transaction(()=>{
+      const duplicate=this.db.prepare('SELECT fingerprint FROM ad_batches WHERE id=?').get(id);
+      if(duplicate){if(duplicate.fingerprint!==fingerprint)fail('IDEMPOTENCY_CONFLICT',409);return;}
+      if(this.tasks.size||this.db.prepare("SELECT id FROM jobs WHERE kind=? AND user_id=? AND status IN ('reserved','running') LIMIT 1").get(imageMediaType,LOCAL_USER))fail('GENERATION_ALREADY_RUNNING',409);
+      const price=batchPrice(this.wallet(),count);
+      if(Object.keys(price).some(key=>price[key]!==quote[key]))fail('CREDIT_QUOTE_CHANGED',409);
+      if(price.creditsAfter<0)fail('NO_TEST_CREDITS',409);
+      const created=this.now();
+      for(let i=0;i<count;i++){
+        const jobId=randomUUID(), projectId=id+'-'+(i+1);
+        const key=hashBytes(JSON.stringify({projectId,request,sourceHash:source?.sha256??null,revision:IMAGE_REVISION}));
+        const legacy=price.admin||i<price.ticketsUsed;
+        this.ledger.reserve({jobId,userId:LOCAL_USER,kind:imageMediaType,unit:legacy?'legacy-ticket':'credit-v2',credits:legacy?1:10,creditExempt:price.admin,requestHash:key,modelRevision:IMAGE_REVISION,expiresAt:created+86400000});
+        this.db.prepare('INSERT INTO generation_records(id,project_id,fingerprint,request_json,source_hash,created_at) VALUES (?,?,?,?,?,?)').run(jobId,projectId,key,JSON.stringify(request),source?.sha256??null,created);
+        this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(projectId,key,jobId);
+        jobIds.push(jobId);
+      }
+      this.db.prepare('INSERT INTO ad_batches(id,fingerprint,job_ids) VALUES (?,?,?)').run(id,fingerprint,JSON.stringify(jobIds));
+    });
+    if(jobIds.length){
+      // One server-owned queue. Each dispatch retains the existing supplier budget and failure settlement.
+      const work=(async()=>{for(const jobId of jobIds)await this.dispatch(jobId,request,source,references);})();
+      this.tasks.add(work);
+      work.then(()=>this.tasks.delete(work),()=>this.tasks.delete(work));
+    }
+    return this.batchSummary(id);
+  }
   async assertOutputCapacity(request, originals) { /* Local disk implementation has no cloud quota. */ }
   async create(body) {
     submissionStage('input_validation');
@@ -292,6 +344,7 @@ export class GenerationService {
     if((!source&&references.length)||new Set(all.map(a=>a.sha256)).size!==all.length||all.reduce((n,a)=>n+a.bytes.length,0)>10*1024*1024)fail('INVALID_IMAGE');
     if (!source && request.subjectType === 'physical-product' && request.inputMode!=='text-example') fail('SOURCE_REQUIRED');
     if(request.proportionControl){try{await preparePlanarSource(source.bytes,requestPlanarRatio(request));}catch{fail('PLANAR_SOURCE_UNCONFIRMED');}}
+    if(body.batch!==undefined)return this.createBatch(body,request,source,references);
     const fingerprint = hashBytes(JSON.stringify({ projectId: body.projectId, request, sourceHash: source?.sha256 ?? null, revision: IMAGE_REVISION }));
     submissionStage('request_deduplication');
     const previous = this.db.prepare('SELECT * FROM generation_keys WHERE request_id=?').get(body.requestId);
