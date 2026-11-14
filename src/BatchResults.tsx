@@ -15,7 +15,7 @@ import {storageNamespace} from './beta-session';
 import {useUiLanguage} from './ui-language';
 import './ad-batch.css';
 
-type Preview={file:File;url:string;artifact:string};
+type Preview={file:File;url:string;artifact:string;accepted?:Project};
 type Summary={id:string;jobs:GenerationJob[]};
 export function BatchResults({project,batch,onEdit,renderDetail}:{project:Project;batch:AdBatch;onEdit:()=>void;renderDetail:(item:Project,back:()=>void)=>React.ReactNode}){
  const {t}=useUiLanguage(),[jobs,setJobs]=useState<GenerationJob[]>([]),[images,setImages]=useState<Record<string,Preview>>({});
@@ -42,7 +42,8 @@ export function BatchResults({project,batch,onEdit,renderDetail}:{project:Projec
     const fingerprint=await dimensionInputHash(generationMatchKey(buildGenerationRequest(p)));
     for(const [index,summary] of result.jobs.entries()){
      if(!live())return;
-     if(!['accepted','ready'].includes(summary.state)||cache.current[summary.id]?.artifact===summary.artifactId)continue;
+     const cached=cache.current[summary.id];
+     if(!['accepted','ready'].includes(summary.state)||cached?.artifact===summary.artifactId&&(summary.state!=='accepted'||cached?.accepted))continue;
      const {job}=await apiRequest<{job:GenerationJob}>('/api/generations/'+summary.id,undefined,signal);
      if(job.id!==summary.id||job.projectId!==summary.projectId||job.requestFingerprint!==fingerprint||job.composition!=='complete-ad'||job.compositionKey!==completeAdKey(p)||job.sourceHash!==generationSourceHash(p)||!job.artifact)throw Error('INVALID_ARTIFACT');
      const asset=await verifiedArtifact(job),display=await parseAiDimensionDisplay(job.dimensionDisplay);
@@ -53,7 +54,9 @@ export function BatchResults({project,batch,onEdit,renderDetail}:{project:Projec
      const png=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('PNG')),'image/png'));
      if(!live())return;
      const file=new File([png],`aiadcast-${batch.id.slice(4,12)}-${String(index+1).padStart(2,'0')}.png`,{type:'image/png'});
-     cache.current[job.id]={file,url:URL.createObjectURL(file),artifact:asset.sha256};setImages({...cache.current});
+     if(cached)URL.revokeObjectURL(cached.url);
+     const accepted=job.state==='accepted'?{...composed,adBatch:undefined,generated:{...composed.generated!,acceptedAt:job.createdAt}}:undefined;
+     cache.current[job.id]={file,url:URL.createObjectURL(file),artifact:asset.sha256,accepted};setImages({...cache.current});
     }
     if(live()&&result.jobs.some(j=>j.state==='running'))timer=setTimeout(()=>void poll(),2500);
    }catch{if(live())setError(t('결과를 불러오지 못했습니다. 다시 확인해주세요.','Could not load the results. Check again.'));}
@@ -86,7 +89,7 @@ export function BatchResults({project,batch,onEdit,renderDetail}:{project:Projec
   <ol className="batch-grid">{jobs.map((j,i)=><li key={j.id}>
    {images[j.id]&&['ready','accepted'].includes(j.state)&&<button type="button" aria-label={t(`${i+1}번 이미지 확대`,`Enlarge image ${i+1}`)} onClick={()=>setZoom(images[j.id].url)}><img src={images[j.id].url} alt=""/></button>}
    <label><input type="checkbox" checked={chosen.some(x=>x.id===j.id)} disabled={busy||!eligible.some(x=>x.id===j.id)} onChange={e=>setSelected(ids=>e.target.checked?[...ids,j.id]:ids.filter(x=>x!==j.id))}/>{t(`광고 ${i+1}`,`Ad ${i+1}`)}</label>
-   {['ready','accepted'].includes(j.state)?<button onClick={()=>setDetail({...project,id:j.projectId,adBatch:undefined,generated:undefined})}>{t('검수 · 수정','Review · edit')}</button>:<small>{j.state==='running'?t('생성 중','Generating'):j.state==='rejected'?t('반려됨','Rejected'):t('생성 종료 · 결과 없음','Finished without an image')}</small>}
+   {['ready','accepted'].includes(j.state)?<button onClick={()=>setDetail(images[j.id]?.accepted??{...project,id:j.projectId,adBatch:undefined,generated:undefined})}>{t('검수 · 수정','Review · edit')}</button>:<small>{j.state==='running'?t('생성 중','Generating'):j.state==='rejected'?t('반려됨','Rejected'):t('생성 종료 · 결과 없음','Finished without an image')}</small>}
   </li>)}</ol>
   {jobs.some(j=>j.dimensionDisplay&&!j.dimensionReview&&j.state==='ready')&&<p>{t('규격을 표시한 이미지는 검수 후 선택할 수 있습니다.','Review the dimensions to select these images.')}</p>}
   {chosen.some(j=>j.creditUnit==='legacy-ticket'&&j.creditCost&&j.state==='ready')&&<p>{t('저장하거나 공유하면 선택한 광고의 사용이 확정됩니다.','Saving or sharing confirms use of the selected ads.')}</p>}

@@ -1,3 +1,7 @@
+import {createHash} from 'node:crypto';
+import sharp from 'sharp';
+import {normalizeGenerationRequest} from '../server/generation-service.mjs';
+import {generationMatchKey} from '../src/generation-match';
 import {test,expect} from '@playwright/test';
 import {protectedScreen,mockSession} from './helpers/authenticated-session';
 
@@ -10,6 +14,8 @@ test('category menus separate products and services and keep every image count',
   await expect(picker.getByRole('searchbox')).toHaveCount(0);
   const products=picker.getByRole('button',{name:'상품',exact:true});
   const services=picker.getByRole('button',{name:'서비스',exact:true});
+  const heading=await form.locator('[data-order="1"] h2').boundingBox(),button=await products.boundingBox();
+  expect(button!.y-(heading!.y+heading!.height)).toBeGreaterThanOrEqual(16);
   await products.click();
   await expect(products).toHaveAttribute('aria-pressed','true');
   const fields=picker.getByLabel('분야',{exact:true}), items=picker.getByLabel('세부 업종',{exact:true});
@@ -51,9 +57,16 @@ test('category menus separate products and services and keep every image count',
 test('confirm the complete credit amount before submitting a batch',async({page})=>{
  await protectedScreen(page,mockSession('batch-member'));
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
- let writes=0;
+ let writes=0,id='';const jobs:any[]=[];
+ const png=await sharp({create:{width:864,height:1536,channels:4,background:'#325484'}}).png().toBuffer(),hash=createHash('sha256').update(png).digest('hex');
+ await page.route('**/api/ad-batches/*',r=>r.fulfill({json:{id,jobs:jobs.map(j=>({...j,artifact:null}))}}));
+ await page.route('**/api/generations/mock-ad-*',r=>r.fulfill({json:{job:jobs.find(j=>r.request().url().endsWith(j.id))}}));
+ await page.addInitScript(()=>{Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>true});Object.defineProperty(navigator,'share',{configurable:true,value:async({files}:{files:File[]})=>{sessionStorage.setItem('shared-names',JSON.stringify(files.map(f=>f.name)));}});});
  await page.route('**/api/status',route=>route.fulfill({json:{generation:{enabled:true,batchVersion:1,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:80,reserved:0}},budget:{limitMicros:8000000}}}));
- await page.route('**/api/generations',route=>{if(route.request().method()==='POST'){writes++;const body=route.request().postDataJSON();expect(body.batch.count).toBe(4);expect(body.batch.quote.creditsUsed).toBe(40);return route.fulfill({json:{id:body.batch.id}});}return route.fulfill({json:{jobs:[]}});});
+ await page.route('**/api/generations',route=>{if(route.request().method()==='POST'){writes++;const body=route.request().postDataJSON();expect(body.batch.count).toBe(4);expect(body.batch.quote.creditsUsed).toBe(40);id=body.batch.id;
+ const fingerprint=createHash('sha256').update(generationMatchKey(normalizeGenerationRequest(body.request))).digest('hex');
+ for(let index=0;index<4;index++)jobs.push({id:'mock-ad-'+index,projectId:id+'-'+(index+1),mode:'creative',state:'ready',sourceHash:null,requestFingerprint:fingerprint,artifactId:hash,composition:'complete-ad',compositionKey:body.request.output.compositionKey,model:'test',createdAt:new Date().toISOString(),creditUnit:'credit-v2',artifact:{id:hash,sha256:hash,width:864,height:1536,role:'creative',dataUrl:'data:image/png;base64,'+png.toString('base64')}});
+ return route.fulfill({json:{id}});}return route.fulfill({json:{jobs:[]}});});
  await page.goto('/#create');const form=page.locator('.consumer-create');
  await form.getByRole('button',{name:'서비스',exact:true}).click();
  await form.getByLabel('분야',{exact:true}).selectOption('logistics');await form.getByLabel('세부 업종',{exact:true}).selectOption('parcel');
@@ -64,4 +77,11 @@ test('confirm the complete credit amount before submitting a batch',async({page}
  await form.getByRole('button',{name:'4',exact:true}).click();await form.getByRole('button',{name:'광고 생성',exact:true}).click();
  await expect(dialog).toContainText('이미지 4장');await expect(dialog.locator('dd')).toHaveText(['80','40','40']);expect(writes).toBe(0);
  await dialog.getByRole('button',{name:'확인',exact:true}).click();await expect.poll(()=>writes).toBe(1);
+ const results=page.locator('.batch-results');await expect(results.locator('.batch-grid img')).toHaveCount(4);
+ await results.getByLabel('전체 선택',{exact:true}).check();await expect(results.getByRole('button',{name:'선택 저장 (4)'})).toBeEnabled();
+ await results.getByLabel('광고 2',{exact:true}).uncheck();await results.getByLabel('광고 4',{exact:true}).uncheck();
+ const download=page.waitForEvent('download');await results.getByRole('button',{name:'선택 저장 (2)'}).click();expect((await download).suggestedFilename()).toBe('aiadcast-images.zip');
+ await results.getByRole('button',{name:'선택 공유 (2)'}).click();
+ const names=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('shared-names')??'[]'));expect(names).toHaveLength(2);expect(names[0]).toMatch(/-01\.png$/);expect(names[1]).toMatch(/-03\.png$/);
+ expect(writes).toBe(1);
 });
