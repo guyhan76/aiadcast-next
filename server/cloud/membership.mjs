@@ -83,6 +83,7 @@ export class Membership {
     else await this.expire(id);
    }catch{console.error('Member cleanup deferred');}finally{this.cleaning.delete(id);}
   }
+  await this.db.prepare('DELETE FROM retired_generation_keys WHERE expires_at<=now()').run();
   await this.db.prepare('DELETE FROM protected_complaints WHERE erase_at<=now()').run();
   await this.db.prepare("DELETE FROM member_events e WHERE happened_at < now()-interval '30 days' AND NOT EXISTS(SELECT 1 FROM deletion_requests r WHERE r.receipt=e.receipt)").run();
  }
@@ -105,6 +106,7 @@ export class Membership {
    }
    await this.db.prepare("INSERT INTO protected_complaints(case_id,received_at,description,resolution,erase_at) SELECT id,to_timestamp(created_at/1000.0),description,resolution,to_timestamp(created_at/1000.0)+interval '3 years' FROM "+q+"defect_reports WHERE job_id IN ("+expired+") AND to_timestamp(created_at/1000.0)+interval '3 years'>now() ON CONFLICT DO NOTHING").run(...args);
    await this.db.prepare('DELETE FROM '+q+'defect_reports WHERE job_id IN ('+expired+')').run(...args);
+   await this.db.prepare("INSERT INTO retired_generation_keys(digest,expires_at) SELECT encode(sha256(convert_to(?||':'||request_id,'UTF8')),'hex'),now()+interval '30 days' FROM "+q+"generation_keys WHERE job_id IN ("+expired+") ON CONFLICT DO NOTHING").run(id,...args);
    await this.db.prepare('DELETE FROM '+q+'generation_keys WHERE job_id IN ('+expired+')').run(...args);
    await this.db.prepare('DELETE FROM '+q+'generation_records WHERE id IN ('+expired+')').run(...args);
    await this.db.prepare("DELETE FROM "+q+"ad_batches b WHERE NOT EXISTS (SELECT 1 FROM json_array_elements_text(b.job_ids::json) j JOIN "+q+"generation_records g ON g.id=j.value)").run();

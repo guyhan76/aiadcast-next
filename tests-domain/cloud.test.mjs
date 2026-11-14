@@ -603,3 +603,25 @@ test('membership rejects free server saves, fixes the first expiry, isolates wit
  assert.ok((await events()).includes('completed'));assert.ok(![...s.bucket.objects.keys()].some(p=>p.startsWith(member.user.id+'/')));
  assert.equal((await s.call('/api/membership',{token:other.token})).status,200);
 });
+test('expiration removes temporary bytes and self-contained snapshots without extending revisions or touching another owner',async t=>{
+ const s=await setup(t),a=await s.member('Retention'),other=await s.member('Unrelated');
+ const store=s.app.store,db=store.db,storage=s.app.storage;
+ await db.prepare("UPDATE users SET storage_plan='standard' WHERE id=?").run(a.user.id);
+ const before=await s.call('/api/membership',{token:a.token});assert.equal(before.data.limitBytes,500000000);
+ const bytes=Buffer.from('temporary fixture'),hash=hashBytes(bytes);
+ const p1=await storage.put(a.user.id,hash+'.png',bytes,'image/png');
+ const p2=await storage.put(other.user.id,hash+'.png',bytes,'image/png');
+ const id='expire-project-fixture',project={id,version:1,name:'Expiry'};
+ await store.save(a.user.id,id,{project,revision:0});
+ const row=await db.prepare('SELECT json FROM projects WHERE user_id=? AND id=?').get(a.user.id,id);
+ const path=JSON.parse(row.json).storagePath;
+ await db.prepare("UPDATE projects SET expires_at=now()-interval '1 second' WHERE user_id=?").run(a.user.id);
+ await db.prepare("UPDATE storage_objects SET expires_at=now()-interval '1 second' WHERE user_id=?").run(a.user.id);
+ assert.equal((await s.call('/api/projects/'+id,{token:a.token})).status,404);
+ assert.deepEqual(await store.list(a.user.id),[]);
+ await store.membership.run();
+ assert.ok(!s.bucket.objects.has(p1));assert.ok(!s.bucket.objects.has(path));assert.ok(s.bucket.objects.has(p2));
+ await db.prepare("INSERT INTO projects(user_id,id,revision,name,json,bytes,updated) VALUES(?,?,1,'quota','{}',500000000,'2026-11-01')").run(a.user.id,'quota-fixture');
+ const full=await s.call('/api/projects/'+id,{token:a.token,body:{project,revision:0}});
+ assert.equal(full.status,413);assert.equal(full.data.error.code,'PROJECT_QUOTA');
+});

@@ -123,7 +123,7 @@ export function GoogleGate({children}:{children:ReactNode}){
  // Deliberate device-only simulation uses its own adapter and account namespace.
  // Signed demo sessions still pass the same session check above.
  if(demoAuth)return <EmailAccountPage mode={route==='#signup'?'signup':'login'} preserve={async()=>{}} returnPage="home"/>;
- if(route.startsWith('#verify'))return <><div className="auth-language"><LanguageSwitcher/></div><VerifyEmailPage/></>;
+ if(route.startsWith('#verify'))return <><p><a href="https://www.selluplabs.com/privacy/" target="_blank" rel="noreferrer">{t('개인정보처리방침','Privacy policy')}</a> · <a href="/account-deletion.html" target="_blank" rel="noreferrer">{t('자료 보관 및 탈퇴','Storage and deletion')}</a></p><div className="auth-language"><LanguageSwitcher/></div><VerifyEmailPage/></>;
  // Existing ownership verification is a recovery route, never the default signup path.
  if(recovery&&!signed)return <div className="google-recovery"><div className="auth-language"><LanguageSwitcher/></div><EmailAccountPage mode="login" preserve={async()=>{}} returnPage="home"/></div>;
  if(signed&&checked&&!reply&&!link)return <>{children}</>;

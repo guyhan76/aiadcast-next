@@ -79,6 +79,10 @@ export function guardedImageAdapter(adapter,guard,gate){return {
 export class CloudGenerationService extends GenerationService {
  async history(projectId){return readGenerationHistory(this,projectId);}
  async create(body,options){
+  if(typeof body?.requestId==='string'&&this.membership){
+   const expired=await this.membership.db.prepare("SELECT 1 FROM retired_generation_keys WHERE digest=encode(sha256(convert_to(?||':'||?,'UTF8')),'hex') AND expires_at>now()").get(this.cloudUser,body.requestId);
+   if(expired)fail('PROJECT_EXPIRED',410);
+  }
   submissionStage('admission_queue');
   // The local implementation has synchronous admission. Cloud reads yield: serialize
   // admission so concurrent retries see the persisted job before reserving again.
@@ -132,7 +136,7 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
   if(!injectedAccounts&&supabaseMail)accounts.sendMail=options=>storage.sendAuthEmail(options);
   app=await createBetaServer({store,recommendations:recommendationRuntime({store,pool,storage,origin:config.publicUrl,extraOrigins:['https://appassets.androidplatform.net',...extraOrigins],apiKey:config.key,policy:config.recommendationPolicy,transport:recommendationTransport,guard:()=>instance?.assert()}),generationHistoryReader:(actor,search)=>readAdminGenerationPage({pool,guard,actor,search}),overviewReader:(actor,admin,options)=>readAdminOverview({pool,guard,actor,admin,...options,enabled:config.enabled,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter)}),publicUrl:config.publicUrl,singleBox:singleBoxService({apiKey:config.key,statusReader:(actor,id)=>readSingleBoxEvaluation(accountsDb,actor,id),ledgerFactory:()=>new SingleBoxLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),dimensionAnalysis:dimensionAnalysisService({evaluationEnabled:true,apiKey:config.key,statusReader:(actor,id)=>readCloudEvaluation(accountsDb,actor,id),ledgerFactory:()=>new CloudVisionLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),extraOrigins,staticDirectory,accounts,serviceFactory:async user=>{
    instance?.assert();const db=await readinessMeasure('schema_setup',()=>new PostgresDatabase(pool,cloudSchema(user.id),{guard}).initialize());
-   const s=new CloudGenerationService();s.storage=storage;s.cloudUser=user.id;
+   const s=new CloudGenerationService();s.storage=storage;s.cloudUser=user.id;s.membership=membership;
    await readinessMeasure('generation_initialize',()=>s.initialize({db,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:config.enabled,assistantEnabled:config.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter),adapter:guardedImageAdapter(adapter,()=>instance?.assert(),gate),assistantAdapter:options=>{instance?.assert();return gate(()=>assistCopy({...options,apiKey:config.key}));}}));
    s.ledger.externalBudget=()=>readExternalSupplierBudget(db,user.id);
    await readinessMeasure('table_protection',()=>db.protectTables());membership.jobs.set(user.id,s);return s;

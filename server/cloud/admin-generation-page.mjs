@@ -9,7 +9,7 @@ export async function readAdminGenerationPage({pool,actor,search='',guard=()=>{}
   client=await Promise.race([pool.connect().then(c=>{if(expired){c.release();throw Error('TIMEOUT');}return c;}),new Promise((_,reject)=>{timer=setTimeout(()=>{expired=true;reject(Error('TIMEOUT'));},2000);})]);clearTimeout(timer);
   await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
   await client.query("SET LOCAL statement_timeout='2500ms'; SET LOCAL lock_timeout='750ms'; SET LOCAL idle_in_transaction_session_timeout='8000ms'");
-  const members=(await client.query('SELECT id,label FROM aiadcast_accounts.users WHERE disabled=0 ORDER BY id LIMIT 201')).rows;
+  const members=(await client.query('SELECT id,label FROM aiadcast_accounts.users u WHERE NOT EXISTS(SELECT 1 FROM aiadcast_accounts.deletion_requests d WHERE d.user_id=u.id) ORDER BY id LIMIT 201')).rows;
   if(members.length>200)throw new ApiFailure('ADMIN_OVERVIEW_MEMBER_LIMIT',503);
   const catalog=await client.query("SELECT n.nspname,array_agg(c.relname::text) tables FROM pg_catalog.pg_namespace n JOIN pg_catalog.pg_class c ON c.relnamespace=n.oid WHERE n.nspname=ANY($1::text[]) AND c.relname IN ('generation_records','jobs') GROUP BY n.nspname",[members.map(u=>cloudSchema(u.id))]);
   const schemas=new Map(catalog.rows.map(r=>[r.nspname,r.tables]));

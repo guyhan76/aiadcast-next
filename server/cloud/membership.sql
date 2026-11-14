@@ -33,3 +33,6 @@ CREATE TABLE IF NOT EXISTS protected_complaints (
  case_id text PRIMARY KEY, received_at timestamptz NOT NULL, description text NOT NULL,
  resolution text, erase_at timestamptz NOT NULL
 );
+CREATE TABLE IF NOT EXISTS retired_generation_keys (
+ digest text PRIMARY KEY, expires_at timestamptz NOT NULL
+);
