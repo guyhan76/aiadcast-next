@@ -743,3 +743,47 @@ test('cloud upload reviews the composited pose and delivers the same artifact af
  assert.equal((await s.call('/api/status',{token})).data.budget.heldMicros,580000);
  assert.equal(steps.filter(stage=>stage==='image').length,2);
 });
+
+test('precision edit recovers an empty person location and uses rejected pose feedback on explicit retry',async t=>{
+ const prompt='오른쪽 남자 캐릭터를 다른 포즈의 남성 캐릭터로 변경하고 캐릭터는 3D애니메이션으로 해주세요. 날씨는 먹구름 가득한 하늘로 변경해주세요.';
+ const steps=[],polygon=[[350,0],[950,0],[950,950],[350,950]],imagePrompts=[];
+ const adapter=new OpenAIImageAdapter({apiKey:'fixture',enableEdits:true,fetchImpl:async(url,options)=>{
+  if(url.endsWith('/images/edits')){
+   steps.push('image');imagePrompts.push(options.body.get('prompt'));
+   const png=await sharp({create:{width:1024,height:1024,channels:4,background:'green'}}).png().toBuffer();
+   return Response.json({data:[{b64_json:png.toString('base64')}],usage:{input_tokens:2,input_tokens_details:{text_tokens:1,image_tokens:1},output_tokens:1}});
+  }
+  const stage=JSON.parse(options.body).response_format.json_schema.name;
+  steps.push(stage);
+  const answers={
+   locate_person_areas:{edit:[],protect:[]},
+   ad_edit_region:{located:true,changesPose:true,edit:[polygon],protect:[]},
+   audit_pose_mask:{complete:true,add:[],protect:[]},
+   review_composited_pose:{poseMatchesRequest:true,coherentLimbs:true,previousGestureResolved:imagePrompts.length===2,allOtherRequestedEditsCorrect:true,unrelatedContentPreserved:true}
+  };
+  assert.ok(answers[stage],stage);
+  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(answers[stage])}}],usage:{prompt_tokens:100,completion_tokens:60}});
+ }});
+ const s=await setup(t,{adapter}),{token}=await s.member('Edit feedback',1_000_000,3);
+ const quote=(await s.call('/api/status',{token})).data.generation.creditQuote;
+ const body={original:{width:8,height:8,sha256:hash,dataUrl:source.data},sourceHash:hash,prompt,mask:{mode:'instruction'},requestId:randomUUID(),projectId:randomUUID(),creditQuote:quote};
+ async function run(request){
+  const posted=await s.call('/api/selective-edits/upload',{token,body:request});assert.equal(posted.status,202,JSON.stringify(posted.data));
+  for(let i=0;i<200;i++){
+   const job=(await s.call('/api/generations/'+posted.data.job.id,{token})).data.job;
+   if(job.state!=='running')return job;
+   await new Promise(r=>setTimeout(r,10));
+  }
+  assert.fail('edit did not finish');
+ }
+ const first=await run(body);
+ assert.equal(first.state,'failed');assert.equal(first.creditCaptured,false);assert.equal(first.artifact,null);
+ assert.deepEqual(first.editReview.failedChecks,['previousGestureResolved']);assert.ok(first.editReview.preview.startsWith('data:image/jpeg;base64,'));
+ assert.deepEqual(steps,['locate_person_areas','ad_edit_region','audit_pose_mask','image','review_composited_pose']);
+ await s.restart();
+ assert.equal((await run(body)).id,first.id);assert.equal(imagePrompts.length,1);
+ const second=await run({...body,requestId:randomUUID(),projectId:randomUUID()});
+ assert.equal(second.state,'ready');assert.equal(second.preservation.changedOutsidePixels,0);
+ assert.deepEqual(steps.slice(5),['ad_edit_region','audit_pose_mask','image','review_composited_pose']);
+ assert.equal(imagePrompts.length,2);assert.ok(imagePrompts[1].includes('whole old arm, cuff and fingertips'));
+});

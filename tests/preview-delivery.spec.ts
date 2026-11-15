@@ -155,6 +155,27 @@ test('reopen a released edit, restore its instructions and wait for explicit res
  await expect.poll(()=>new Set(ids).size).toBe(2);
 });
 
+test('inspect a rejected pose without charging or accepting it, and return to area selection',async({page})=>{
+ await protectedScreen(page,mockSession('edit-review-preview'));
+ await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
+ const quote={unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'};
+ await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,selectiveEditProofVersion:1,creditQuote:quote},wallet:{available:0,reserved:0,credits:{available:30,reserved:0}},budget:{limitMicros:2000000}}}));
+ const png=await sharp({create:{width:64,height:48,channels:4,background:'blue'}}).png().toBuffer();
+ const jpg=await sharp(png).jpeg().toBuffer();let posts=0;
+ await page.route('**/api/selective-edits/upload',async r=>{
+  posts++;const b=r.request().postDataJSON(),sourceId='upload-'+b.sourceHash;
+  await r.fulfill({status:202,json:{job:{id:'review-fixture',projectId:b.projectId,requestId:b.requestId,state:'failed',errorCode:'EDIT_POSE_QUALITY_FAILED',artifact:null,creditCaptured:false,
+   selectiveEdit:{sourceHash:b.sourceHash,sourceJobId:sourceId,sourceProjectId:sourceId,prompt:b.prompt},editReview:{version:1,failedChecks:['previousGestureResolved'],preview:'data:image/jpeg;base64,'+jpg.toString('base64')}}}});
+ });
+ await page.goto('/#projects');await page.getByLabel('편집할 사진 또는 백업 파일').setInputFiles({name:'ad.png',mimeType:'image/png',buffer:png});
+ const dialog=page.getByRole('dialog',{name:'정밀 편집'});await dialog.getByRole('textbox').fill('인물 포즈 변경');
+ page.once('dialog',d=>d.accept());await dialog.getByRole('button',{name:'수정하기 · 10 크레딧'}).click();
+ await expect(dialog.getByLabel('원본과 수정본 비교')).toBeVisible();await expect(dialog.getByText(/이전 자세의 흔적/)).toBeVisible();
+ await expect(dialog.getByRole('button',{name:'수정본 사용 · 저장'})).toHaveCount(0);
+ await dialog.getByRole('button',{name:'영역 직접 선택'}).click();await expect(dialog.getByLabel('원본과 수정본 비교')).toHaveCount(0);
+ await expect(dialog.getByRole('textbox')).toHaveValue('인물 포즈 변경');expect(posts).toBe(1);
+});
+
 test('save a verified device edit and reopen its project without another generation',async({page})=>{
  await protectedScreen(page,mockSession('precision-save'));
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));

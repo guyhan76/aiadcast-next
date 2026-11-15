@@ -45,6 +45,10 @@ export function SelectiveImageEditor({source,project,quote,onClose,uploaded}:{so
     setMessage(t('수정본을 저장하지 못해 요청이 종료됐습니다. 크레딧은 차감되지 않았습니다. 같은 내용으로 다시 수정할 수 있습니다.','This edit ended without a saved result. No credits were charged. You can retry the same instructions.'));
     return;
    }
+   if(next.editReview){
+    setMessage(t('이 시안은 크레딧 차감 없이 보류됐습니다. 같은 문구로 다시 수정하거나 영역을 선택할 수 있습니다.','No credits were charged. Retry the instructions or select the areas to edit.'));
+    return;
+   }
    setMessage(next.errorCode==='EDIT_POSE_QUALITY_FAILED'?t('요청한 자세나 함께 바꿀 내용이 정확히 반영되지 않았습니다. 크레딧은 차감되지 않았습니다.','The pose or another requested detail did not pass review. No credits were charged.'):next.errorCode==='EDIT_TARGET_UNCLEAR'?t('수정 대상을 구분하지 못했습니다. 원본에서 바꿀 영역을 직접 선택할 수 있습니다. 크레딧은 차감되지 않았습니다.','Could not distinguish the target. You can select the areas directly on the original. No credits were charged.'):next.errorCode==='EDIT_NO_CHANGE'?t('이미지가 변경되지 않았습니다. 크레딧은 차감되지 않습니다.','The image was unchanged. No credits were charged.'):t('수정 요청이 종료됐습니다.','This edit request has ended.'));
    return;
   }
@@ -118,8 +122,16 @@ export function SelectiveImageEditor({source,project,quote,onClose,uploaded}:{so
  const working=!!pending.current&&!result;
  return createPortal(<dialog ref={dialog} className="selective-editor" onCancel={e=>{e.preventDefault();onClose();}} aria-label={t('정밀 편집','Precision edit')}>
   <header><h2>{t('정밀 편집','Precision edit')}</h2><button type="button" aria-label={t('닫기','Close')} onClick={onClose}>×</button></header>
+  {job?.state==='failed'&&job.editReview&&!picking&&original&&<div role="status">
+   <p>{t('검수에서 보류된 시안','Draft that needs revision')}</p>
+   <SelectiveComparison original={original} result={job.editReview.preview} width={source.artifact!.width} height={source.artifact!.height}/>
+   <p>{t('다시 확인할 부분','Check these details')} · {job.editReview.failedChecks.map(check=>({
+    poseMatchesRequest:t('요청한 자세','Requested pose'),coherentLimbs:t('팔·다리 연결','Limb connections'),previousGestureResolved:t('이전 자세의 흔적','Remnants of the previous pose'),
+    allOtherRequestedEditsCorrect:t('함께 요청한 변경','Other requested changes'),unrelatedContentPreserved:t('기존 문구와 배경','Original text and background')
+   })[check]).filter(Boolean).join(', ')}</p>
+  </div>}
   {result?<SelectiveComparison original={original} result={result} width={source.artifact!.width} height={source.artifact!.height}/>:
-   original&&picking&&!working?<EditRegionPicker original={original} width={source.artifact!.width} height={source.artifact!.height} regions={regions} onChange={setRegions}/>:original&&<img className="edit-original" src={original} alt={t('원본 광고','Original ad')}/>}
+   original&&picking&&!working?<EditRegionPicker original={original} width={source.artifact!.width} height={source.artifact!.height} regions={regions} onChange={setRegions}/>:original&&!(job?.state==='failed'&&job.editReview)&&<img className="edit-original" src={original} alt={t('원본 광고','Original ad')}/>}
   {!result&&!working&&<>
 
    {original&&<button type="button" className="edit-area-toggle" disabled={busy} onClick={()=>{setPicking(!picking);setRegions([]);setMessage('');}}>{picking?t('자동 선택으로 돌아가기','Return to automatic selection'):t('영역 직접 선택','Select areas directly')}</button>}
