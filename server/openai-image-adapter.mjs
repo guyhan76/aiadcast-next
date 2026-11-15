@@ -344,7 +344,7 @@ export function promptFor(request){
 
 // Only fixed enums and bounded identifiers enter operational diagnostics. Never error messages/bodies.
 export function generationFailureDiagnostic({jobId,stage,error}) {
- const stages=['reserve','provider','persist-image','persist-metadata','usage','settle','ready'];
+ const stages=['reserve','provider','edit-finalize','persist-image','persist-metadata','usage','settle','ready'];
  const codes=['PROVIDER_TIMEOUT','PROVIDER_NETWORK','PROVIDER_BODY_TIMEOUT','PROVIDER_BODY_NETWORK','PROVIDER_HTTP','PROVIDER_INVALID_RESPONSE','PROVIDER_INVALID_IMAGE','PROVIDER_USAGE_UNCERTAIN','UNSUPPORTED_PROVIDER_MEDIA','STORAGE_LIMIT','SUPABASE_CONNECTION_FAILED','SUPABASE_UPLOAD_FAILED','STORAGE_CONTENT_CONFLICT','EDIT_TARGET_UNCLEAR','EDIT_POSE_QUALITY_FAILED','EDIT_PERSON_AREAS_UNRESOLVED','EDIT_SKY_AREAS_UNRESOLVED','EDIT_SCENE_UNBOUNDED'];
  const d=error?.transportDiagnostic??{},safeNumber=n=>Number.isSafeInteger(n)&&n>=0&&n<=3600000?n:null;
  const transport={elapsedMs:safeNumber(d.elapsedMs),timeoutMs:safeNumber(d.timeoutMs),endpoint:['edits','generations'].includes(d.endpoint)?d.endpoint:null,providerRequestId:typeof d.providerRequestId==='string'&&/^req_[A-Za-z0-9_-]{1,160}$/.test(d.providerRequestId)?d.providerRequestId:null};

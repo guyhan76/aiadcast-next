@@ -10,7 +10,7 @@ import sharp from 'sharp';
 import pg from 'pg';
 import {PostgresDatabase,postgresConfiguration,cloudSchema,acquireInstanceLock} from '../server/cloud/postgres.mjs';
 import {createCloudBackend} from '../server/cloud/beta.mjs';
-import {ProviderFailure,IMAGE_MODEL,IMAGE_REVISION,hashBytes,imageUsageCost} from '../server/openai-image-adapter.mjs';
+import {OpenAIImageAdapter,ProviderFailure,IMAGE_MODEL,IMAGE_REVISION,hashBytes,imageUsageCost} from '../server/openai-image-adapter.mjs';
 import {betaStartupCode} from '../server/beta-server.mjs';
 const origin='https://beta.example.com',ref='sxpzbfapbizlmsuqlrfu';
 const env={SUPABASE_URL:`https://${ref}.supabase.co`,SUPABASE_SECRET_KEY:'sb_secret_test_fixture'};
@@ -679,4 +679,67 @@ test('download previews and deletion are owner-scoped, preserve shared objects, 
  await s.app.store.membership.run();
  assert.equal(s.bucket.objects.has(owner.user.id+'/'+hash+'.png'),false);
  await s.restart();assert.deepEqual((await s.call('/api/membership/downloads',{token:owner.token})).data.downloads,[]);
+});
+
+
+test('cloud upload reviews the composited pose and delivers the same artifact after restart',async t=>{
+ const prompt='오른쪽 남자 캐릭터를 다른 포즈의 남성 캐릭터로 변경하고 캐릭터는 3D애니메이션으로 해주세요. 날씨는 먹구름 가득한 하늘로 변경해주세요.';
+ const steps=[],person=[500,250,750,900],sky=[0,0,1000,500],drone=[750,0,1000,250];
+ const adapter=new OpenAIImageAdapter({apiKey:'fixture',enableEdits:true,fetchImpl:async(url,options)=>{
+  if(url.endsWith('/images/edits')){
+   steps.push('image');
+   assert.ok(options.body.get('prompt').includes(prompt));
+   const edited=await sharp({create:{width:1024,height:1024,channels:4,background:'red'}}).png().toBuffer();
+   return Response.json({data:[{b64_json:edited.toString('base64')}],usage:{input_tokens:2,input_tokens_details:{text_tokens:1,image_tokens:1},output_tokens:1}});
+  }
+  const request=JSON.parse(options.body),stage=request.response_format.json_schema.name;
+  steps.push(stage);
+  const answers={locate_person_areas:{edit:[person],protect:[]},locate_sky_areas:{edit:[sky],protect:[person,drone]},
+   review_composited_pose:{poseMatchesRequest:true,coherentLimbs:true,previousGestureResolved:true,allOtherRequestedEditsCorrect:true,unrelatedContentPreserved:true}};
+  assert.ok(answers[stage],stage);
+  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(answers[stage])}}],usage:{prompt_tokens:100,completion_tokens:60}});
+ }});
+ const s=await setup(t,{adapter}),{token}=await s.member('Precision edit',1_000_000,3);
+ const status=await s.call('/api/status',{token});
+ const body={original:{width:8,height:8,sha256:hash,dataUrl:source.data},sourceHash:hash,prompt,mask:{mode:'instruction'},requestId:randomUUID(),projectId:randomUUID(),creditQuote:status.data.generation.creditQuote};
+ const submitted=await s.call('/api/selective-edits/upload',{token,body});
+ assert.equal(submitted.status,202,JSON.stringify(submitted.data));
+ const path='/api/generations/'+submitted.data.job.id;
+ let job;
+ for(let i=0;i<150;i++){
+  job=(await s.call(path,{token})).data.job;
+  if(job.state!=='running')break;
+  await new Promise(r=>setTimeout(r,10));
+ }
+ assert.deepEqual(steps,['locate_person_areas','locate_sky_areas','image','review_composited_pose']);
+ assert.equal(job.state,'ready');assert.equal(job.preservation.changedOutsidePixels,0);
+ assert.ok(job.preservation.changedSelectedPixels>0);
+ assert.equal(hashBytes(Buffer.from(job.artifact.dataUrl.split(',')[1],'base64')),job.artifactId);
+ await s.restart();
+ const accepted=await s.call(path+'/accept',{token,body:{artifactId:job.artifactId}});
+ assert.equal(accepted.status,200,JSON.stringify(accepted.data));
+ assert.equal(accepted.data.job.state,'accepted');
+ assert.equal(accepted.data.job.artifactId,job.artifactId);
+ assert.equal((await s.call('/api/selective-edits/upload',{token,body})).data.job.id,job.id);
+ assert.equal(steps.length,4);
+
+ // Reproduce the old adapter crash and recover that persisted job after another restart.
+ adapter.reviewPose=()=>{throw new TypeError('missing final review');};
+ const interrupted={...body,requestId:randomUUID(),projectId:randomUUID(),prompt:prompt+' 왼쪽의 글씨를 유지해주세요.'};
+ const second=await s.call('/api/selective-edits/upload',{token,body:interrupted});
+ assert.equal(second.status,202,JSON.stringify(second.data));
+ const interruptedPath='/api/generations/'+second.data.job.id;
+ let ended;
+ for(let i=0;i<150;i++){
+  ended=(await s.call(interruptedPath,{token})).data.job;
+  if(ended.state!=='running')break;
+  await new Promise(r=>setTimeout(r,10));
+ }
+ assert.equal(ended.state,'failed');assert.equal(ended.errorCode,'EDIT_NOT_DELIVERED');
+ assert.equal(ended.creditCaptured,false);assert.equal(ended.artifact,null);
+ await s.restart();
+ assert.equal((await s.call(interruptedPath,{token})).data.job.errorCode,'EDIT_NOT_DELIVERED');
+ assert.equal((await s.call('/api/selective-edits/upload',{token,body:interrupted})).data.job.id,ended.id);
+ assert.equal((await s.call('/api/status',{token})).data.budget.heldMicros,580000);
+ assert.equal(steps.filter(stage=>stage==='image').length,2);
 });

@@ -64,7 +64,13 @@ export async function compositeSelectiveEdit(original,mask,generated,sourceArtif
 
 export async function finalizeSelectiveEdit(adapter,region,generated,attemptId){
  const final=await compositeSelectiveEdit(region.source,region.mask,generated,region.sourceHash);
- if(generated.checkPose&&final.preservation.changedSelectedPixels>0)return adapter.reviewPose(region,final,attemptId);
+ if(generated.checkPose&&final.preservation.changedSelectedPixels>0){
+  try{return await adapter.reviewPose(region,final,attemptId);}
+  catch(error){
+   if(error instanceof ProviderFailure&&!error.uncertain&&error.knownCostMicros==null)error.knownCostMicros=final.cost?.microUsd;
+   throw error;
+  }
+ }
  return final;
 }
 

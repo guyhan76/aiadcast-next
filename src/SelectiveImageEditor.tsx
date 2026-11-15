@@ -40,6 +40,11 @@ export function SelectiveImageEditor({source,project,quote,onClose,uploaded}:{so
   setJob(next);setMessage('');
   if(['failed','rejected','expired','refunded'].includes(next.state)){
    setPreservation(null);setResult('');remember(null);
+   setPrompt(current=>current||next.selectiveEdit?.prompt||'');
+   if(next.errorCode==='EDIT_NOT_DELIVERED'){
+    setMessage(t('수정본을 저장하지 못해 요청이 종료됐습니다. 크레딧은 차감되지 않았습니다. 같은 내용으로 다시 수정할 수 있습니다.','This edit ended without a saved result. No credits were charged. You can retry the same instructions.'));
+    return;
+   }
    setMessage(next.errorCode==='EDIT_POSE_QUALITY_FAILED'?t('요청한 자세나 함께 바꿀 내용이 정확히 반영되지 않았습니다. 크레딧은 차감되지 않았습니다.','The pose or another requested detail did not pass review. No credits were charged.'):next.errorCode==='EDIT_TARGET_UNCLEAR'?t('수정 대상을 구분하지 못했습니다. 원본에서 바꿀 영역을 직접 선택할 수 있습니다. 크레딧은 차감되지 않았습니다.','Could not distinguish the target. You can select the areas directly on the original. No credits were charged.'):next.errorCode==='EDIT_NO_CHANGE'?t('이미지가 변경되지 않았습니다. 크레딧은 차감되지 않습니다.','The image was unchanged. No credits were charged.'):t('수정 요청이 종료됐습니다.','This edit request has ended.'));
    return;
   }
