@@ -21,5 +21,5 @@ export function useLibrarySelection(ids:string[],remove:(ids:string[])=>Promise<
    <button type="button" onClick={close} disabled={busy}>{t('취소','Cancel')}</button></>}
   {error&&<p role="alert">{error}</p>}
  </div>;
- return {editing,busy,tools,selected,toggle,erase};
+ return {editing,busy,error,tools,selected,toggle,erase};
 }

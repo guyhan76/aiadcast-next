@@ -43,7 +43,16 @@ function failure(error:unknown,t:Translate){
  if(code==='EXPORT_FAILED'||code==='EXPORT_TIMEOUT')return t('기기에 저장하지 못했습니다. 다시 시도해 주세요.','Could not save to this device. Please retry.');
  return t('원본을 내려받지 못했습니다. 다시 시도해 주세요.','Could not download the original. Please retry.');
 }
-function DownloadPreview({item}:{item:Delivery}){
+type PreviewProps={
+ item:Delivery;
+ onSave:()=>void;
+ onDelete:()=>void;
+ saveLabel:string;
+ saveDisabled:boolean;
+ deleteDisabled:boolean;
+ feedback:string;
+};
+function DownloadPreview({item,onSave,onDelete,saveLabel,saveDisabled,deleteDisabled,feedback}:PreviewProps){
  const {t}=useUiLanguage(),[image,setImage]=useState(''),[failed,setFailed]=useState(false),[attempt,setAttempt]=useState(0),dialog=useRef<HTMLDialogElement>(null),element=useRef<HTMLButtonElement>(null);
  useEffect(()=>{
   const ctrl=new AbortController();let started=false;setImage('');setFailed(false);
@@ -58,7 +67,15 @@ function DownloadPreview({item}:{item:Delivery}){
  },[item.id,attempt]);
  return <><button type="button" ref={element} className="delivery-preview" aria-label={item.name+' '+(failed?t('미리보기 다시 불러오기','Retry preview'):t('미리보기','Preview'))} onClick={()=>{if(image)dialog.current?.showModal();else setAttempt(v=>v+1);}}>
   {image?<img alt="" src={image}/>:<ImageIcon size={24} aria-hidden="true"/>}</button>
-  {image&&<dialog ref={dialog} className="delivery-lightbox" aria-label={item.name}><button type="button" onClick={()=>dialog.current?.close()}>{t('닫기','Close')}</button><img src={image} alt={item.name}/></dialog>}</>;
+  {image&&<dialog ref={dialog} className="delivery-lightbox" aria-label={item.name}>
+   <button type="button" onClick={()=>dialog.current?.close()}>{t('닫기','Close')}</button>
+   <img src={image} alt={item.name}/>
+   <div className="preview-actions">
+    <button type="button" disabled={saveDisabled} onClick={onSave}>{saveLabel}</button>
+    <button type="button" disabled={deleteDisabled} onClick={onDelete}>{t('삭제','Delete')}</button>
+   </div>
+   {feedback&&<p role="status">{feedback}</p>}
+  </dialog>}</>;
 }
 export function DownloadList({items,onRemoved}:{items:Delivery[];onRemoved:(ids:string[])=>void}){
  const {language,t}=useUiLanguage();
@@ -132,12 +149,17 @@ export function DownloadList({items,onRemoved}:{items:Delivery[];onRemoved:(ids:
    <button type="button" className="library-more" disabled={all||selection.editing||selection.busy} onClick={()=>void saveAll()}>{t('전체 저장','Save all')}</button></div>
   {!all&&!busy.size&&selection.tools}
   {summary&&<p role="status" className="download-feedback">{summary}</p>}
-  <ul className="download-list delivery-list">{items.slice(0,limit).map(item=><li key={item.id}>
-   <DownloadPreview item={item}/><div><strong>{item.name||t('이름 없는 광고','Untitled ad')}</strong>
+  <ul className="download-list delivery-list">{items.slice(0,limit).map(item=>{
+   const saving=busy.has(item.id);
+   const saveLabel=saving?t('저장 중…','Saving…'):item.reviewRequired?t('사용 확정 후 저장','Confirm and save'):t('원본 저장','Save original');
+   return <li key={item.id}>
+   <DownloadPreview item={item} onSave={()=>void save(item)} onDelete={()=>void selection.erase([item.id])}
+    saveLabel={saveLabel} saveDisabled={all||saving||selection.busy||selection.editing}
+    deleteDisabled={all||busy.size>0||selection.busy||selection.editing} feedback={selection.error||rows[item.id]||''}/><div><strong>{item.name||t('이름 없는 광고','Untitled ad')}</strong>
     <time dateTime={item.expiresAt}>{t('기한','Until')} {new Date(item.expiresAt).toLocaleString(language==='ko'?'ko-KR':'en-US',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time>
     {rows[item.id]&&<span role="status" className="download-feedback">{rows[item.id]}</span>}</div>
-   {selection.editing?<input type="checkbox" aria-label={item.name+' '+t('선택','select')} checked={selection.selected.has(item.id)} disabled={selection.busy} onChange={()=>selection.toggle(item.id)}/>:<button type="button" disabled={all||busy.has(item.id)} onClick={()=>void save(item)}>{busy.has(item.id)?t('저장 중…','Saving…'):item.reviewRequired?t('사용 확정 후 저장','Confirm and save'):t('원본 저장','Save original')}</button>}
-  </li>)}</ul>
+   {selection.editing?<input type="checkbox" aria-label={item.name+' '+t('선택','select')} checked={selection.selected.has(item.id)} disabled={selection.busy} onChange={()=>selection.toggle(item.id)}/>:<button type="button" disabled={all||busy.has(item.id)} onClick={()=>void save(item)}>{saveLabel}</button>}
+  </li>;})}</ul>
   {limit<items.length&&<button type="button" className="library-more" onClick={()=>setLimit(n=>n+5)}>{t('다운로드 더 보기','Show more downloads')}</button>}
  </>;
 }

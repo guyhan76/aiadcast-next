@@ -70,3 +70,8 @@
  .studio-shell .projects-page .project-thumb>span{font-size:11px;bottom:3px;right:3px}
  .studio-shell .projects-page .project-tile-caption{padding:0}.studio-shell .projects-page .project-tile-caption>strong{font-size:16px}
 }
+
+.delivery-lightbox .preview-actions{display:flex;gap:8px;margin-top:12px}
+.delivery-lightbox .preview-actions button{flex:1;justify-content:center;margin:0}
+.delivery-lightbox .preview-actions button:first-child{background:var(--brand-black);border-color:var(--brand-black);color:white}
+.delivery-lightbox .preview-actions button:disabled{opacity:.5}

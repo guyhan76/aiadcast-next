@@ -24,8 +24,8 @@ export function ProjectLibrary({items,error,onRemove,onNew,onOpen,onOpenServer,s
  const {language,t}=useUiLanguage();
  const [filter,setFilter]=useState(''),[view,setView]=useState<'saved'|'downloads'>('saved');
  const saved=items.filter(p=>hasSavedAcceptedAd(p)||p.presentation==='campaign'&&!!p.productName.trim());
- const selection=useLibrarySelection(saved.map(p=>p.id),onRemove,'device');
  const filtered=saved.filter(p=>(p.name+' '+p.productName).toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
+ const selection=useLibrarySelection(filtered.map(p=>p.id),onRemove,'device');
  return <>
   <div className="projects-heading"><h1>{t('내 프로젝트','My projects')}</h1><button className="primary-action" onClick={onNew}><Plus size={18}/>{t('새 광고','New ad')}</button></div>
   {showDownloads&&<div className="library-views" role="group" aria-label={t('프로젝트 보기','Project view')}>
