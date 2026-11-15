@@ -75,3 +75,9 @@
 .delivery-lightbox .preview-actions button{flex:1;justify-content:center;margin:0}
 .delivery-lightbox .preview-actions button:first-child{background:var(--brand-black);border-color:var(--brand-black);color:white}
 .delivery-lightbox .preview-actions button:disabled{opacity:.5}
+
+.delivery-list li{grid-template-columns:clamp(56px,17vw,88px) minmax(0,1fr)}
+.delivery-list li:has(.delivery-check){grid-template-columns:clamp(56px,17vw,88px) minmax(0,1fr) 44px}
+.delivery-check{display:grid;place-items:center;min-height:44px;cursor:pointer}
+.download-selecting .library-manage{justify-content:flex-start}
+.download-selecting .save-chosen{background:var(--brand-black);border-color:var(--brand-black);color:white}

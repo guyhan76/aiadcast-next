@@ -197,6 +197,7 @@ for(const native of [false,true])test('save separate originals and the entire do
   const files=await Promise.all(formats.map(format=>sharp({create:{width:16,height:12,channels:3,background:'#e39146'}}).toFormat(format).toBuffer()));
   const items=Array.from({length:12},(_,i)=>({id:'delivery-'+String(i).padStart(4,'0'),name:'테스트 광고 '+i,expiresAt:new Date(Date.now()+86400000).toISOString(),reviewRequired:i===10}));
   let accepted=0,release!:()=>void,hold=true;
+  const requested:number[]=[];
   const delay=new Promise<void>(resolve=>{release=resolve;});
   if(native)await page.addInitScript(()=>{
     const nativeFetch=window.fetch.bind(window);
@@ -223,9 +224,11 @@ for(const native of [false,true])test('save separate originals and the entire do
   await page.route('**/api/projects',r=>r.fulfill({json:{projects:[]}}));
   await page.route('**/api/membership/downloads',r=>r.fulfill({json:{downloads:items}}));
   await page.route('**/api/generations/delivery-*/accept',async r=>{accepted++;await r.fulfill({json:{ok:true}});});
+  await page.route('**/api/membership/downloads/*/preview',r=>r.fulfill({json:{preview:'data:image/webp;base64,'+files[2].toString('base64')}}));
   const unavailable=7;
   await page.route('**/api/generations/delivery-*',async r=>{
     const i=Number(r.request().url().split('-').pop());
+    requested.push(i);
     if(i===0&&hold)await delay;
     if(i===unavailable)return r.fulfill({status:404,json:{error:{code:'STORAGE_NOT_FOUND'}}});
     const data=files[i%3],hash=createHash('sha256').update(data).digest('hex');
@@ -235,25 +238,41 @@ for(const native of [false,true])test('save separate originals and the entire do
   await page.getByRole('button',{name:'다운로드',exact:true}).click();
   const list=page.locator('.download-library');
   const row=(i:number)=>list.locator('li').filter({has:page.getByText(items[i].name,{exact:true})});
-  const save=(i:number)=>row(i).getByRole('button',{name:/^(원본 저장|저장 중…|사용 확정 후 저장)$/});
-  await save(0).click();
-  await expect(save(0)).toBeDisabled();
-  await expect(save(1)).toBeEnabled();
-  await expect(list.getByRole('button',{name:'전체 저장'})).toBeEnabled();
-  const second=native?null:page.waitForEvent('download');
-  await save(1).click();
-  if(second){const d=await second;expect(d.suggestedFilename()).toBe('aiadcast-'+items[1].id+'.jpg');expect((await readFile((await d.path())!)).equals(files[1])).toBe(true);}
-  else await expect(row(1)).toContainText('갤러리');
-  const first=native?null:page.waitForEvent('download');
+  const button=(name:string|RegExp)=>list.getByRole('button',{name,exact:typeof name==='string'});
+  await expect(button('원본 저장')).toHaveCount(0);
+  await expect(button('전체 저장')).toHaveCount(0);
+  await button('선택').click();
+  await expect(button(/선택 저장/)).toBeDisabled();
+  await row(1).getByRole('checkbox').check();
+  const single=native?null:page.waitForEvent('download');
+  await button(/선택 저장/).click();
+  if(single){
+   const download=await single;
+   expect(download.suggestedFilename()).toBe('aiadcast-'+items[1].id+'.jpg');
+   expect((await readFile((await download.path())!)).equals(files[1])).toBe(true);
+  }
+  await expect(button('선택')).toBeVisible();expect(requested).toEqual([1]);
+  await button('선택').click();
+  await row(0).getByRole('checkbox').check();await row(2).getByRole('checkbox').check();
+  const subset=native?null:page.waitForEvent('download');
+  await button(/선택 저장.*2/).click();
+  await expect.poll(()=>requested).toEqual([1,0]);
+  await expect(button(/선택 삭제/)).toBeDisabled();await expect(row(0).getByRole('checkbox')).toBeDisabled();
   hold=false;release();
-  if(first){const d=await first;expect((await readFile((await d.path())!)).equals(files[0])).toBe(true);}
-  await expect(save(0)).toBeEnabled();
+  if(subset){
+   const download=await subset;expect(download.suggestedFilename()).toBe('aiadcast-images.zip');
+   const bytes=await readFile((await download.path())!);
+   expect(bytes.readUInt16LE(bytes.length-12)).toBe(2);
+   expect(bytes.includes(Buffer.from('aiadcast-'+items[0].id+'.png'))).toBe(true);
+   expect(bytes.includes(Buffer.from('aiadcast-'+items[2].id+'.webp'))).toBe(true);
+  }
+  await expect(button('선택')).toBeVisible();expect(requested).toEqual([1,0,2]);
+  await button('선택').click();await button('전체 선택').click();
   page.once('dialog',dialog=>dialog.dismiss());
-  await list.getByRole('button',{name:'전체 저장'}).click();
-  expect(accepted).toBe(0);
+  await button(/전체 저장.*12/).click();expect(accepted).toBe(0);expect(requested).toEqual([1,0,2]);
   page.once('dialog',dialog=>dialog.accept());
   const zip=native?null:page.waitForEvent('download');
-  await list.getByRole('button',{name:'전체 저장'}).click();
+  await button(/전체 저장.*12/).click();
   const expected=items.filter((_,i)=>i!==unavailable);
   await expect(list).toContainText('미저장 1건');
   expect(accepted).toBe(1);
@@ -275,11 +294,12 @@ for(const native of [false,true])test('save separate originals and the entire do
     expect(offset).toBe(data.readUInt32LE(end+16));
   }else{
     const written=await page.evaluate(()=>(window as any).exportedFiles as {name:string;base64:string}[]);
-    expect(written.map(f=>f.base64)).toEqual([1,0,...expected.map(item=>items.indexOf(item))].map(i=>files[i%3].toString('base64')));
+    expect(written.map(f=>f.base64)).toEqual([1,0,2,...expected.map(item=>items.indexOf(item))].map(i=>files[i%3].toString('base64')));
   }
   await list.getByRole('button',{name:'다운로드 더 보기'}).click();
   await expect(row(unavailable)).toContainText('서버에서 원본을 찾을 수 없습니다.');
-  await expect(save(unavailable)).toBeEnabled();
+  await expect(row(unavailable).getByRole('checkbox')).toBeChecked();
+  await expect(button(/선택 저장.*1/)).toBeEnabled();
 });
 
 for(const native of [false,true])test('instruction editing, credit consent and illustrated download selection on '+(native?'Android':'web'),async({page})=>{
@@ -293,13 +313,25 @@ for(const native of [false,true])test('instruction editing, credit consent and i
  await page.route('**/api/membership/downloads',r=>r.fulfill({json:{downloads:items.filter(item=>!removed.includes(item.id))}}));
  await page.route('**/api/membership/downloads/*/preview',r=>r.fulfill({json:{preview:thumb}}));
  await page.route('**/api/membership/remove-downloads',r=>{removed.push(...r.request().postDataJSON().ids);return r.fulfill({json:{removed}});});
+ let polls=0,manualReady=false,releaseLookup!:()=>void;
+ const lookupHeld=new Promise<void>(resolve=>{releaseLookup=resolve;});
+ let sourceInfo:{projectId:string;requestId:string;sourceJobId:string;sourceHash:string};
+ function editJob(state:'running'|'ready'){
+  const maskHash='a'.repeat(64),{projectId,requestId,sourceJobId,sourceHash}=sourceInfo;
+  const job={id:'instruction-job',projectId,requestId,state,selectiveEdit:{sourceJobId,sourceProjectId:sourceJobId,sourceHash,maskHash}};
+  if(state==='running')return job;
+  return {...job,artifactId:editedHash,artifact:{id:editedHash,sha256:editedHash,width:32,height:48,dataUrl:'data:image/png;base64,'+edited.toString('base64')},
+   preservation:{version:1,sourceHash,maskHash,resultHash:editedHash,width:32,height:48,selectedPixels:1536,changedSelectedPixels:1536,changedOutsidePixels:0,bounds:{x:0,y:0,width:32,height:48},semanticQuality:'not-assessed'}};
+ }
  await page.route('**/api/selective-edits/upload',r=>{
-  const body=r.request().postDataJSON();expect(body.mask).toEqual({mode:'instruction'});expect(body.prompt).toBe('가격을 599,000원으로, 하늘은 화창하게');expect(body.creditQuote.amount).toBe(10);edits++;
-  const maskHash='a'.repeat(64);
-  return r.fulfill({json:{job:{id:'instruction-job',projectId:body.projectId,requestId:body.requestId,state:'ready',
-   artifactId:editedHash,artifact:{id:editedHash,sha256:editedHash,width:32,height:48,dataUrl:'data:image/png;base64,'+edited.toString('base64')},
-   selectiveEdit:{sourceJobId:body.sourceJobId,sourceProjectId:body.sourceJobId,sourceHash:body.sourceHash,maskHash},
-   preservation:{version:1,sourceHash:body.sourceHash,maskHash,resultHash:editedHash,width:32,height:48,selectedPixels:1536,changedSelectedPixels:1536,changedOutsidePixels:0,bounds:{x:0,y:0,width:32,height:48},semanticQuality:'not-assessed'}}}});
+  const body=r.request().postDataJSON();expect(body.mask).toEqual({mode:'instruction'});expect(body.prompt).toBe('가격을 599,000원으로, 하늘은 화창하게');expect(body.creditQuote.amount).toBe(10);
+  sourceInfo=body;edits++;return r.fulfill({json:{job:editJob('running')}});
+ });
+ await page.route('**/api/generations/instruction-job',async r=>{
+  const attempt=++polls;
+  const state=manualReady?'ready':'running';
+  if(attempt===1)await lookupHeld;
+  return r.fulfill({json:{job:editJob(state)}});
  });
  await page.goto(origin+'/#projects');
  await page.getByText('프로젝트 도구',{exact:true}).click();
@@ -307,10 +339,29 @@ for(const native of [false,true])test('instruction editing, credit consent and i
  const edit=page.getByRole('dialog',{name:'정밀 편집'});await expect(edit).toBeVisible();
  await expect(edit.locator('canvas')).toHaveCount(0);
  await edit.getByRole('textbox').fill('가격을 599,000원으로, 하늘은 화창하게');
+ await page.clock.install();
  const submit=edit.getByRole('button',{name:/수정하기.*10 크레딧/});
  page.once('dialog',d=>{expect(d.message()).toContain('10 크레딧');return d.dismiss();});await submit.click();expect(edits).toBe(0);
  page.once('dialog',d=>d.accept());await submit.click();await expect.poll(()=>edits).toBe(1);
+ const retry=edit.getByRole('button',{name:'결과 확인',exact:true});
+ await expect(edit.getByText('수정 시안 생성 중',{exact:true})).toBeVisible();await expect(retry).toHaveCount(0);
+ await page.clock.fastForward(3100);await expect.poll(()=>polls).toBe(1);await expect(retry).toHaveCount(0);
+ const firstPoll=page.waitForResponse(r=>r.url().endsWith('/api/generations/instruction-job'));releaseLookup();await firstPoll;
+ await page.clock.fastForward(121000);
+ await expect(retry).toBeVisible();await expect(retry).toBeEnabled();
+ // The timeout stops background checks. A manual check only reads the same job.
+ manualReady=true;await retry.click();
  await expect(edit.getByRole('img',{name:'수정 결과'})).toBeVisible();await expect(edit.getByRole('button',{name:'수정본 사용 · 저장'})).toBeEnabled();
+ expect(edits).toBe(1);await expect(edit.getByText('슬라이드를 움직여 보세요')).toBeVisible();
+ const slider=edit.getByRole('slider',{name:'원본과 수정본 비교'});
+ const previewImage=edit.locator('.selective-wipe');
+ for(const [key,label,rgb] of [['Home','원본',[53,129,145]],['End','수정본',[137,199,229]]] as const){
+  await slider.press(key);await expect(slider).toHaveAttribute('aria-valuetext',label);
+  const shot=await previewImage.screenshot();
+  const {data,info}=await sharp(shot).removeAlpha().raw().toBuffer({resolveWithObject:true});
+  const offset=(Math.floor(info.height/2)*info.width+Math.floor(info.width/2))*info.channels;
+  expect([...data.subarray(offset,offset+3)]).toEqual([...rgb]);
+ }
  await edit.getByRole('button',{name:'닫기'}).click();
  await page.getByRole('button',{name:'다운로드',exact:true}).click();
  const list=page.locator('.download-library');

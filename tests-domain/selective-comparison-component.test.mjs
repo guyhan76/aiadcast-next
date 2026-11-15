@@ -11,8 +11,12 @@ test('wipe endpoints and cropped view retain identical original/result geometry'
  try{
   await act(()=>{r=create(React.createElement(SelectiveComparison,props));});
   const images=()=>r.root.findAllByType('img'),after=()=>r.root.findByProps({className:'selective-wipe-after'});
-  assert.deepEqual(images()[0].props.style,images()[1].props.style);assert.equal(after().props.style.clipPath,'inset(0 0 0 50%)');
-  for(const value of [0,100]){await act(()=>r.root.findByType('input').props.onChange({target:{value:String(value)}}));assert.equal(after().props.style.clipPath,`inset(0 0 0 ${value}%)`);}
+  assert.deepEqual(images()[0].props.style,images()[1].props.style);assert.equal(after().props.style.clipPath,'inset(0 50% 0 0)');
+  for(const [value,clip,label] of [[0,'inset(0 100% 0 0)','원본'],[100,'inset(0 0% 0 0)','수정본']]){
+   await act(()=>r.root.findByType('input').props.onChange({target:{value:String(value)}}));
+   assert.equal(after().props.style.clipPath,clip);
+   assert.equal(r.root.findByType('input').props['aria-valuetext'],label);
+  }
   await act(()=>r.root.findByType('button').props.onClick());assert.deepEqual(images()[0].props.style,images()[1].props.style);assert.ok(parseFloat(images()[0].props.style.width)>100);assert.ok(parseFloat(images()[0].props.style.left)<0);assert.equal(images()[0].props.src,props.original);assert.equal(images()[1].props.src,props.result);
   await act(()=>r.root.findByType('button').props.onClick());assert.equal(images()[0].props.style.width,'100%');assert.equal(images()[0].props.style.left,'0%');assert.deepEqual(props,before);
  }finally{if(r)await act(()=>r.unmount());}

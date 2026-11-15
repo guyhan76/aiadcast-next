@@ -13,3 +13,7 @@
 .precision-launch{padding:10px 18px;background:white;color:#171717;border:1px solid #ccc}
 .selective-wipe{position:relative;overflow:hidden;width:100%;max-width:620px;margin:auto;background:#eee}.selective-wipe img{position:absolute;max-width:none;height:auto;display:block}.selective-wipe-after{position:absolute;inset:0;overflow:hidden}.selective-wipe-line{position:absolute;top:0;bottom:0;width:2px;background:white;box-shadow:0 0 2px #000;pointer-events:none}.selective-comparison input[type=range]{display:block;width:100%;min-height:44px}
 @media(max-width:600px){.selective-editor{max-height:100dvh;border-radius:0}.selective-editor header{margin-bottom:8px}}
+
+.comparison-slider>span:first-child{display:block;text-align:center}
+.comparison-ends{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.selective-comparison input[type=range]{box-sizing:border-box;margin:0}
