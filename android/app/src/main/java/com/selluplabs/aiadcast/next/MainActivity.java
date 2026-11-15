@@ -209,15 +209,20 @@ public final class MainActivity extends ComponentActivity {
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> result, FileChooserParams parameters) {
                 if (filePicker != null) filePicker.onReceiveValue(null);
                 filePicker = result;
-                String[] accepted = parameters.getAcceptTypes();
-                boolean json = accepted.length == 1 && accepted[0].contains("json");
-                filePickerMultiple = !json && parameters.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE;
+                SelectedDocuments.FileKind kind = SelectedDocuments.fileKind(parameters.getAcceptTypes());
+                boolean photosOnly = kind == SelectedDocuments.FileKind.PHOTOS;
+                filePickerMultiple = photosOnly && parameters.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE;
                 Intent fallback = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
-                    .setType(json ? "application/json" : "image/*")
                     .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, filePickerMultiple);
-                if (!json) fallback.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/jpeg", "image/png", "image/webp"});
+                if (photosOnly) {
+                    fallback.setType("image/*").putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/jpeg", "image/png", "image/webp"});
+                } else if (kind == SelectedDocuments.FileKind.BACKUP) {
+                    fallback.setType("application/json");
+                } else {
+                    fallback.setType("*/*").putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/jpeg", "image/png", "image/webp", "application/json"});
+                }
                 Intent intent = fallback;
-                if (!json && Build.VERSION.SDK_INT >= 33) {
+                if (photosOnly && Build.VERSION.SDK_INT >= 33) {
                     intent = new Intent(MediaStore.ACTION_PICK_IMAGES).setType("image/*");
                     if (filePickerMultiple) intent.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, Math.min(10, MediaStore.getPickImagesMaxLimit()));
                 }

@@ -108,9 +108,8 @@ test('open a device image and confirm a text-directed edit on mobile and desktop
   await r.fulfill({status:409,json:{error:{code:'GENERATION_ALREADY_RUNNING'}}});
  });
  await page.goto('/#projects');
- await page.locator('.project-tools summary').click();
- await expect(page.getByRole('button',{name:'기기 사진 정밀 편집'})).toBeVisible();
- await page.getByLabel('편집할 기기 사진').setInputFiles({name:'sky.png',mimeType:'image/png',buffer:png});
+ await expect(page.getByRole('button',{name:'사진·백업 불러와 정밀 편집'})).toBeInViewport();
+ await page.getByLabel('편집할 사진 또는 백업 파일').setInputFiles({name:'sky.png',mimeType:'image/png',buffer:png});
  const dialog=page.getByRole('dialog',{name:'정밀 편집'});
  await expect(dialog.getByAltText('원본 광고')).toBeVisible();
  await expect(dialog.locator('canvas')).toHaveCount(0);
@@ -142,8 +141,7 @@ test('save a verified device edit and reopen its project without another generat
  });
  await page.route('**/api/generations/edit-proof-fixture/accept',r=>{job.state='accepted';return r.fulfill({json:{job,wallet}});});
  await page.goto('/#projects');
- await page.locator('.project-tools summary').click();
- await page.getByLabel('편집할 기기 사진').setInputFiles({name:'Harbor.png',mimeType:'image/png',buffer:original});
+ await page.getByLabel('편집할 사진 또는 백업 파일').setInputFiles({name:'Harbor.png',mimeType:'image/png',buffer:original});
  const dialog=page.getByRole('dialog',{name:'정밀 편집'});
  await expect(dialog.getByAltText('원본 광고')).toBeVisible();
  await dialog.getByRole('textbox').fill('하늘을 흐리게');

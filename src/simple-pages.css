@@ -36,11 +36,6 @@
 .library-views button[aria-pressed="true"]{border-bottom-color:var(--brand-black);color:var(--brand-black);font-weight:650}
 .projects-page .project-empty{min-height:180px;gap:12px;padding:28px 12px}
 .projects-page .project-empty h2{font-size:18px;margin:0}
-.project-tools{border-top:1px solid var(--brand-line);margin-top:20px}
-.project-tools summary{min-height:48px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;list-style:none;font-size:16px}
-.project-tools summary::-webkit-details-marker{display:none}
-.project-tools[open]>summary svg{transform:rotate(180deg)}
-.project-tools>.precision-launch,.project-tools>a{display:flex;align-items:center;gap:8px;min-height:44px;width:fit-content;font:inherit;font-size:15px;text-align:left;text-decoration:none;border:0;background:none;color:var(--brand-black);padding:6px 0}
 .download-library .download-notice,.download-library .download-empty{color:var(--brand-muted);font-size:16px;line-height:1.55;margin:16px 0}
 .download-library h2{font-size:18px;margin:24px 0 0}
 .download-list{margin:0;padding:0;list-style:none}
@@ -85,3 +80,9 @@
 .delivery-check{display:grid;place-items:center;min-height:44px;cursor:pointer}
 .download-selecting .library-manage{justify-content:flex-start}
 .download-selecting .save-chosen{background:var(--brand-black);border-color:var(--brand-black);color:white}
+
+.studio-shell .projects-page .projects-heading { margin-bottom:16px; }
+.project-import { margin:0 0 16px; }
+.studio-shell .project-import .precision-launch { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; min-height:48px; padding:10px 16px; border:1px solid var(--brand-line); border-radius:12px; background:white; color:var(--brand-black); font:inherit; font-weight:650; cursor:pointer; }
+.studio-shell .project-import .precision-launch:focus-visible { outline:2px solid var(--brand-black); outline-offset:3px; }
+.project-import [role=alert] { margin:8px 0 0; }

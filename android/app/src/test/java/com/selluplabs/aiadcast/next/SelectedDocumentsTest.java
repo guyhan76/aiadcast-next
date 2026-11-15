@@ -6,6 +6,12 @@ import java.util.ArrayList;
 import static org.junit.Assert.*;
 
 public class SelectedDocumentsTest {
+    @Test public void libraryPickerOffersPhotosAndBackupsForBothWebViewAcceptEncodings() {
+        assertEquals(SelectedDocuments.FileKind.PHOTOS_AND_BACKUP, SelectedDocuments.fileKind(new String[]{"image/png", "image/jpeg", "image/webp", "application/json", ".json"}));
+        assertEquals(SelectedDocuments.FileKind.PHOTOS_AND_BACKUP, SelectedDocuments.fileKind(new String[]{"image/png,image/webp,application/json,.json"}));
+        assertEquals(SelectedDocuments.FileKind.BACKUP, SelectedDocuments.fileKind(new String[]{"application/json", ".json"}));
+        assertEquals(SelectedDocuments.FileKind.PHOTOS, SelectedDocuments.fileKind(new String[]{"image/*"}));
+    }
     @Test public void clipOnlyPhotoResultsAreReturnedInFull() {
         assertEquals(List.of("content://photos/1", "content://photos/2", "content://photos/3"),
             SelectedDocuments.collect(null, List.of("content://photos/1", "content://photos/2", "content://photos/3"), true));
