@@ -130,3 +130,55 @@ test('ready and accepted receipts bind to the resolved mask and keep a stable re
  assert.equal(accepted.preservation.requestMaskHash,first.job.selectiveEdit.maskHash);
  assert.equal((await s.createSelectiveEdit(request)).job.id,ready.id);assert.equal(calls,1);
 });
+
+const characterInstructions=[
+ '모든 배경과 글씨는 그대로 하고 캐릭터를 3D 애니메이션 다른 캐릭터로 변경해줘.',
+ '모든 배경과 글씨는 그대로 하고 우측 남자 캐릭터를 3D 애니메이션 다른 남자 캐릭터로 변경해줘.'
+];
+for(const prompt of characterInstructions)test('character outline recovered in crop coordinates: '+prompt,async()=>{
+ const width=80,height=64;
+ const source=await sharp({create:{width,height,channels:4,background:'#34778e'}}).png().toBuffer();
+ const input=await prepareSelectiveEdit({width,height,sha256:hashBytes(source),dataUrl:'data:image/png;base64,'+source.toString('base64')},{mode:'instruction'});
+ const stages=[];
+ const adapter=new OpenAIImageAdapter({apiKey:'test',enableEdits:true,fetchImpl:async(url,options)=>{
+  if(url.endsWith('/chat/completions')){
+   const body=JSON.parse(options.body),stage=body.response_format.json_schema.name;
+   stages.push(stage);
+   assert.equal(JSON.parse(body.messages[1].content[0].text).requestedChange,prompt);
+   const proposal=stage==='ad_edit_region'?{located:false,edit:[],protect:[]}:
+    stage==='locate_subject'?{identified:true,left:500,top:250,right:900,bottom:950}:
+    {located:true,edit:[[[80,110],[750,80],[910,900],[300,960]]],protect:[[[400,420],[650,420],[650,650],[400,650]]]};
+   return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(proposal)}}],usage:{prompt_tokens:100,completion_tokens:60}});
+  }
+  assert.equal(url,'https://api.openai.com/v1/images/edits');stages.push('image');
+  assert.match(options.body.get('prompt'),/different face/);
+  const changed=await sharp({create:{width:1024,height:1024,channels:4,background:'red'}}).png().toBuffer();
+  return Response.json({data:[{b64_json:changed.toString('base64')}],usage:{input_tokens:2,input_tokens_details:{text_tokens:1,image_tokens:1},output_tokens:1}});
+ }});
+ const result=await adapter.editRegion({...input,prompt,attemptId:'person-test'});
+ const final=await compositeSelectiveEdit(input.source,input.mask,result);
+ assert.deepEqual(stages,['ad_edit_region','locate_subject','trace_subject','image']);
+ assert.equal(result.cost.localizationMicros,3*345);
+ assert.equal(final.preservation.changedOutsidePixels,0);
+ assert.ok(final.preservation.changedSelectedPixels>0);
+ const actual=await sharp(final.bytes).ensureAlpha().raw().toBuffer();
+ const expected=await sharp(source).ensureAlpha().raw().toBuffer();
+ const pixel=(data,x,y)=>data.readUInt32BE((y*width+x)*4);
+ assert.equal(pixel(actual,13,35),pixel(expected,13,35),'outside the person, on the left');
+ assert.equal(pixel(actual,57,38),pixel(expected,57,38),'protected object in front of the figure');
+ assert.notEqual(pixel(actual,55,48),pixel(expected,55,48),'inside the figure');
+});
+test('a missing person or a full-crop rectangle never dispatches an image edit; all location costs settle',async()=>{
+ for(const identified of [false,true]){
+  let calls=0;
+  const adapter=new OpenAIImageAdapter({apiKey:'test',enableEdits:true,fetchImpl:async url=>{
+   assert.ok(url.endsWith('/chat/completions'));calls++;
+   const proposal=calls===1?{located:false,edit:[],protect:[]}:calls===2?{identified,left:450,top:150,right:900,bottom:900}:
+    {located:true,edit:[[[0,0],[1000,0],[1000,1000],[0,1000]]],protect:[]};
+   return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(proposal)}}],usage:{prompt_tokens:100,completion_tokens:60}});
+  }});
+  const input=await prepareSelectiveEdit(asset,{mode:'instruction'});
+  await assert.rejects(adapter.editRegion({...input,prompt:characterInstructions[0],attemptId:'unclear'}),e=>e.code==='EDIT_TARGET_UNCLEAR'&&e.knownCostMicros===(identified?3:2)*345);
+  assert.equal(calls,identified?3:2);
+ }
+});
