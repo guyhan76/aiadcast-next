@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {adFields,customIndustryLimit,findAdField,formatIndustryDetail,matchesSport,searchSportSections,sportGroups} from '../src/ad-fields.ts';
 import {productCategories,industryKindFor} from '../src/industry.ts';
 import {newProject} from '../src/model.ts';
-import {withCategory,parseProfile} from '../src/product.ts';
+import {withCategory,parseProfile,restoreDraftProfile} from '../src/product.ts';
 import {buildGenerationRequest} from '../src/generation.ts';
 
 test('every selectable detail has one parent and preserves the advertised subject',()=>{
@@ -87,4 +87,26 @@ test('dance styles persist with their sport and reach generation requests',()=>{
   assert.deepEqual(hits('Cha Cha'),['dance-cha-cha-cha']);
   assert.deepEqual(hits('스케이트'),[]);
   assert.equal(findAdField('sports','댄스스포츠 · 기타 · '+'가'.repeat(61)),undefined);
+});
+
+test('restored industry headers become structured selection and never supply description facts',()=>{
+  const base={category:'services',specType:'none'};
+  const text='업종: 여행·티켓·렌탈 > 공연·전시 티켓';
+  const previous={...base,material:text};
+  const clean=restoreDraftProfile(previous);
+  assert.deepEqual(clean,{...base,industryDetail:'공연·전시 티켓',material:''});
+  assert.equal(previous.material,text);
+  assert.equal(restoreDraftProfile(clean),clean);
+  assert.equal(restoreDraftProfile({...base,material:text+'\r\n \n'}).material,'');
+  const facts='직접 작성한 좌석과 가격\r\n  둘째 줄  ';
+  assert.equal(restoreDraftProfile({...base,material:'업종: 여행 · 티켓 · 렌탈 > 공연 · 전시 티켓\r\n'+facts}).material,facts);
+  const product=restoreDraftProfile({category:'beauty',specType:'none',material:'Industry: Beauty & wellness > Cosmetics & skincare\nMade in Korea.'});
+  assert.equal(product.material,'Made in Korea.');
+  assert.equal(product.industryDetail,'화장품·스킨케어');
+  const changed={category:'beauty',specType:'none',industryDetail:'화장품·스킨케어',material:text};
+  assert.deepEqual(restoreDraftProfile(changed),{...changed,material:''});
+  for(const material of ['업종: 고객이 직접 쓴 설명','업종: 여행·티켓·렌탈 > 고객이 직접 쓴 설명','소개\n'+text]){
+    const custom={...base,material};
+    assert.equal(restoreDraftProfile(custom),custom);
+  }
 });

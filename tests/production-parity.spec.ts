@@ -6,9 +6,16 @@ import {normalizeGenerationRequest} from '../server/generation-service.mjs';
 import {mockSession,protectedScreen} from './helpers/authenticated-session';
 import sharp from 'sharp';
 import {reloadDraft} from './helpers/workspace';
+import {restoreOwnedWorkspace} from './helpers/owned-workspace';
+import {starterProject} from '../src/consumer-campaign';
+import {campaignFieldExamples} from '../src/campaign-field-examples';
+
+function parityOrigin(native:boolean) {
+  return native ? 'https://appassets.androidplatform.net' : (process.env.AIADCAST_PARITY_WEB_ORIGIN || 'http://127.0.0.1:4180');
+}
 
 async function prepareParityPage(page:Page,native:boolean) {
-  const origin = native ? 'https://appassets.androidplatform.net' : (process.env.AIADCAST_PARITY_WEB_ORIGIN || 'http://127.0.0.1:4180');
+  const origin = parityOrigin(native);
   if (native) {
     // Mirror the Android asset loader under its real origin, using the assets from the Android package.
     await page.route(origin+'/**', async route => {
@@ -136,5 +143,50 @@ for (const service of [false,true]) {
       } finally { await context.close(); }
     }
     expect(observed[1]).toEqual(observed[0]);
+  });
+}
+
+for (const native of [false,true]) {
+  test('restored industry-only description on '+(native?'Android':'web'), async ({browser}) => {
+    const context = await browser.newContext({baseURL:parityOrigin(native),
+      viewport:{width:native?390:1440,height:900},locale:'ko-KR',serviceWorkers:'block'});
+    try {
+      const page = await context.newPage();
+      await prepareParityPage(page,native);
+      const owner = 'parity-member';
+      const scope = native ? owner+'@'+encodeURIComponent('https://aiadcast-next.onrender.com') : owner;
+      const previous = starterProject('services');
+      const header = '업종: 여행·티켓·렌탈 > 공연·전시 티켓';
+      previous.productProfile.material = header;
+      await restoreOwnedWorkspace(page,previous,owner,'create',undefined,
+        {step:0,project:previous,industryChosen:true},scope);
+      const form = page.locator('.consumer-create');
+      const section = form.locator('[data-order="5"]');
+      const description = section.getByRole('textbox',{name:'상세설명',exact:true});
+      await expect(form.getByLabel('세부 업종',{exact:true})).toHaveValue('tickets');
+      for (const kind of ['service','product'] as const) {
+        await form.getByRole('button',{name:kind==='service'?'서비스':'상품',exact:true}).click();
+        await expect(description).toHaveAttribute('placeholder',campaignFieldExamples.ko[kind].description);
+        await expect(description).toHaveValue('');
+        expect(await description.evaluate(el=>el.matches(':placeholder-shown'))).toBe(true);
+        await page.evaluate(()=>document.fonts.ready);
+        expect(await description.evaluate(el=>el.scrollHeight-el.clientHeight)).toBeLessThanOrEqual(2);
+        await section.screenshot({path:test.info().outputPath((native?'android':'web')+'-'+kind+'-restored-section-5.png')});
+      }
+      await reloadDraft(page);
+      await expect(description).toHaveValue('');
+      await expect(form.getByRole('button',{name:'상품',exact:true})).toHaveAttribute('aria-pressed','true');
+      const facts='업종: 고객이 직접 작성한 소개\n공연은 오후 6시에 시작합니다.';
+      previous.productProfile.material=header+'\n'+facts;
+      await restoreOwnedWorkspace(page,previous,owner,'create',undefined,
+        {step:0,project:previous,industryChosen:true},scope);
+      await expect(description).toHaveValue(facts);
+      await form.getByRole('button',{name:'상품',exact:true}).click();
+      await form.getByLabel('분야',{exact:true}).selectOption('beauty');
+      await form.getByLabel('세부 업종',{exact:true}).selectOption('skincare');
+      await expect(description).toHaveValue(facts);
+      await reloadDraft(page);
+      await expect(description).toHaveValue(facts);
+    } finally { await context.close(); }
   });
 }

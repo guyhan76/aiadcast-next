@@ -1,6 +1,6 @@
 import {dimensionUnit,fromMillimeters,type DimensionUnit} from './dimension-units.ts';
 import type {Project} from './model.ts';
-import {findAdField,formatIndustryDetail} from './ad-fields.ts';
+import {adFields,findAdField,formatIndustryDetail} from './ad-fields.ts';
 import {isPhysicalCategory,resolveIndustryCategory} from './industry.ts';
 import type {ProductCategory} from './industry.ts';
 export {productCategories} from './industry.ts';
@@ -15,6 +15,21 @@ export function withCategory(p:Project,category:ProductCategory):Project {
   const noSpecsByDefault=isServiceCategory(category)||category==='automotive';
   return {...p,...(noSpecsByDefault&&p.generation.dimensionBased?{generation:{...p.generation,dimensionBased:false,planarSourceHash:undefined}}:{}),productProfile:{material:p.productProfile.material,category,specType:noSpecsByDefault?'none':p.productProfile.specType},dimensions:noSpecsByDefault?{...p.dimensions,visible:false,lines:false}:p.dimensions};
 }
+// Older creation forms stored the selected field and industry on the first description line.
+export function restoreDraftProfile(profile:ProductProfile):ProductProfile {
+  const header=/^(?:업종|Industry):[ \t]+([^>\r\n]+)>[ \t]*([^>\r\n]+)(?:\r\n|\n|$)/.exec(profile.material);
+  if(!header)return profile;
+  const label=(value:string)=>value.trim().replace(/[ \t]*·[ \t]*/g,'·');
+  const group=label(header[1]), detail=label(header[2]);
+  const field=adFields.find(f=>label(f.ko)===group || f.en===group
+    || (f.id==='travel' && group==='여행·티켓·렌탈'));
+  const item=field?.items.find(i=>label(i.ko)===detail || i.en===detail);
+  if(!item)return profile;
+  const rest=profile.material.slice(header[0].length);
+  return {...profile,material:rest.trim() ? rest : '',
+    ...(!profile.industryDetail && item.category===profile.category ? {industryDetail:formatIndustryDetail(item)} : {})};
+}
+
 export function parseProfile(value:unknown):ProductProfile {
   if(value===undefined)return defaultProfile(); // Earlier project files remain compatible.
   if(!value||typeof value!=='object')throw Error('상품 정보 형식이 올바르지 않습니다.');
