@@ -117,7 +117,7 @@ export function SelectiveImageEditor({source,project,quote,onClose,uploaded}:{so
    original&&picking&&!working?<EditRegionPicker original={original} width={source.artifact!.width} height={source.artifact!.height} regions={regions} onChange={setRegions}/>:original&&<img className="edit-original" src={original} alt={t('원본 광고','Original ad')}/>}
   {!result&&!working&&<>
 
-   {(picking||job?.errorCode==='EDIT_TARGET_UNCLEAR'||job?.errorCode==='EDIT_POSE_QUALITY_FAILED')&&<button type="button" className="edit-area-toggle" disabled={busy} onClick={()=>{setPicking(!picking);setRegions([]);setMessage('');}}>{picking?t('자동 선택으로 돌아가기','Return to automatic selection'):t('영역 직접 선택','Select areas directly')}</button>}
+   {original&&<button type="button" className="edit-area-toggle" disabled={busy} onClick={()=>{setPicking(!picking);setRegions([]);setMessage('');}}>{picking?t('자동 선택으로 돌아가기','Return to automatic selection'):t('영역 직접 선택','Select areas directly')}</button>}
    <label>{t('무엇을 바꿀까요?','What would you like to change?')}<textarea maxLength={2000} value={prompt} disabled={busy} onChange={e=>setPrompt(e.target.value)} placeholder={t('예: 가격을 599,000원으로 바꾸고 하늘을 화창하게 해주세요.','For example, change the price to $599 and make the sky sunny.')}/></label>
    <button className="primary-action" disabled={!ready||busy||!prompt.trim()||(picking&&!regions.length)} onClick={()=>void submit()}>{t('수정하기','Edit')} · {charge}</button>
   </>}
