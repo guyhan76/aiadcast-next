@@ -426,7 +426,21 @@ for(const native of [false,true])test('delete selected saved projects and the ac
   await section.getByRole('button',{name:'선택',exact:true}).click();
   await section.getByRole('button',{name:'전체 선택'}).click();
   await expect(section.getByRole('button',{name:'전체 삭제 (2)',exact:true})).toBeVisible();
-  await section.locator('.project-tile').filter({hasText:'첫 번째 저장 광고'}).click();
+  const first=section.getByRole('button',{name:/첫 번째 저장 광고/});
+  const second=section.getByRole('button',{name:/두 번째 저장 광고/});
+  for(const tile of [first,second]){
+   await expect(tile).toHaveAttribute('aria-pressed','true');
+   await expect(tile).toHaveCSS('outline-style','none');
+   await expect(tile.locator('.selection-dot')).toHaveText('✓');
+  }
+  await first.click();
+  await expect(first).toHaveAttribute('aria-pressed','false');
+  await expect(first.locator('.selection-dot')).toBeEmpty();
+  await expect(second).toHaveCSS('outline-style','none');
+  await expect(second.locator('.selection-dot')).toHaveText('✓');
+  await page.keyboard.press('Tab');await expect(second).toBeFocused();
+  await expect(second).toHaveCSS('outline-style','none');
+  await expect(second.locator('.selection-dot')).toHaveCSS('outline-style','solid');
   page.once('dialog',d=>d.accept());await section.getByRole('button',{name:/선택 삭제/}).click();
   await search.fill('');
   await expect(section.locator('.project-tile')).toHaveCount(2);
