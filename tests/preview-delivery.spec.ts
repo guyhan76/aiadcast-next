@@ -60,6 +60,10 @@ test('confirm the complete credit amount before submitting a batch',async({page}
  let writes=0,id='';const jobs:any[]=[];
  const png=await sharp({create:{width:864,height:1536,channels:4,background:'#325484'}}).png().toBuffer(),hash=createHash('sha256').update(png).digest('hex');
  await page.route('**/api/ad-batches/*',r=>r.fulfill({json:{id,jobs:jobs.map(j=>({...j,artifact:null}))}}));
+ await page.route('**/api/generations/mock-ad-*/accept',async r=>{
+  const id=new URL(r.request().url()).pathname.split('/').at(-2),job=jobs.find(j=>j.id===id);
+  expect(r.request().postDataJSON().artifactId).toBe(job.artifactId);job.state='accepted';await r.fulfill({json:{job}});
+ });
  await page.route('**/api/generations/mock-ad-*',r=>r.fulfill({json:{job:jobs.find(j=>r.request().url().endsWith(j.id))}}));
  await page.addInitScript(()=>{Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>true});Object.defineProperty(navigator,'share',{configurable:true,value:async({files}:{files:File[]})=>{sessionStorage.setItem('shared-names',JSON.stringify(files.map(f=>f.name)));}});});
  await page.route('**/api/status',route=>route.fulfill({json:{generation:{enabled:true,batchVersion:1,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:80,reserved:0}},budget:{limitMicros:8000000}}}));
@@ -83,6 +87,8 @@ test('confirm the complete credit amount before submitting a batch',async({page}
  const download=page.waitForEvent('download');await results.getByRole('button',{name:'선택 저장 (2)'}).click();expect((await download).suggestedFilename()).toBe('aiadcast-images.zip');
  await results.getByRole('button',{name:'선택 공유 (2)'}).click();
  const names=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('shared-names')??'[]'));expect(names).toHaveLength(2);expect(names[0]).toMatch(/-01\.png$/);expect(names[1]).toMatch(/-03\.png$/);
+ await page.goto('/#projects');
+ await expect(page.getByText('택배',{exact:true}).first()).toBeVisible();
  expect(writes).toBe(1);
 });
 

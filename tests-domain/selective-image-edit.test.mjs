@@ -70,23 +70,48 @@ test('uploaded pixels and mask use one reservation and preserve the original siz
  assert.equal(s.accept(job.id,job.artifactId).job.state,'accepted');
 });
 
-test('text instructions edit a whole tall ad without a brush or another billed request',async()=>{
+test('a text edit locates disjoint regions, masks the provider and preserves every protected pixel in a tall ad',async()=>{
  const width=1080,height=1920;
  const original=await sharp({create:{width,height,channels:4,background:'#276485'}}).png().toBuffer();
  const input=await prepareSelectiveEdit({width,height,sha256:hashBytes(original),dataUrl:'data:image/png;base64,'+original.toString('base64')},{mode:'instruction'});
- let calls=0;
- const adapter=new OpenAIImageAdapter({apiKey:'test-only',fetchImpl:async(url,options)=>{
-  calls++;
-  assert.equal(url,'https://api.openai.com/v1/images/edits');assert.equal(options.body.has('mask'),false);
-  assert.match(options.body.get('prompt'),/599,000원/);assert.match(options.body.get('prompt'),/화창/);
-  const baseline=Buffer.from(await options.body.get('image').arrayBuffer());
-  const changed=await sharp(baseline).composite([{input:await sharp({create:{width:540,height:230,channels:4,background:'skyblue'}}).png().toBuffer(),left:220,top:40}]).png().toBuffer();
-  return Response.json({data:[{b64_json:changed.toString('base64')}],usage:{input_tokens:1,output_tokens:1}});
+ const box=(l,t,r,b)=>[[l,t],[r,t],[r,b],[l,b]];
+ const proposal={located:true,edit:[box(0,0,1000,590),box(285,740,525,795)],protect:[box(150,80,250,190)]};
+ const calls=[];
+ const adapter=new OpenAIImageAdapter({apiKey:'test-only',enableEdits:true,fetchImpl:async(url,options)=>{
+  calls.push(url);
+  if(url.endsWith('/chat/completions')){
+   const body=JSON.parse(options.body);assert.equal(body.response_format.json_schema.strict,true);
+   assert.match(body.messages[1].content[0].text,/599,000원/);
+   return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(proposal)}}],usage:{prompt_tokens:100,completion_tokens:60}});
+  }
+  assert.equal(url,'https://api.openai.com/v1/images/edits');assert.ok(options.body.get('mask'));
+  const [w,h]=options.body.get('size').split('x').map(Number);
+  const changed=await sharp({create:{width:w,height:h,channels:4,background:'red'}}).png().toBuffer();
+  return Response.json({data:[{b64_json:changed.toString('base64')}],usage:{input_tokens:2,input_tokens_details:{text_tokens:1,image_tokens:1},output_tokens:1}});
  }});
- adapter.selectiveEditReady=true;
  const result=await adapter.editRegion({...input,prompt:'가격은 599,000원, 하늘은 화창하게',attemptId:'text-edit-test'});
- assert.equal(calls,1);assert.equal(result.width,width);assert.equal(result.height,height);
- const rgba=await sharp(result.bytes).ensureAlpha().raw().toBuffer(),before=await sharp(original).ensureAlpha().raw().toBuffer();
- assert.ok(rgba.subarray((height-30)*width*4).equals(before.subarray((height-30)*width*4)));
- assert.notEqual(hashBytes(rgba),hashBytes(before));
+ const final=await compositeSelectiveEdit(input.source,input.mask,result);
+ assert.equal(calls.length,2);assert.equal(result.cost.microUsd,388);assert.equal(final.preservation.maskHash,result.locatedMask.sha256);
+ assert.notEqual(final.preservation.maskHash,input.mask.sha256);assert.equal(final.preservation.changedOutsidePixels,0);
+ const rgba=await sharp(final.bytes).ensureAlpha().raw().toBuffer(),before=await sharp(original).ensureAlpha().raw().toBuffer();
+ for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+  const nx=(x+.5)*1000/width,ny=(y+.5)*1000/height,offset=(y*width+x)*4;
+  const editable=ny<590&&!(nx>=150&&nx<250&&ny>=80&&ny<190)||nx>=285&&nx<525&&ny>=740&&ny<795;
+  if(!editable&&rgba.readUInt32BE(offset)!==before.readUInt32BE(offset))assert.fail('Protected pixel changed');
+ }
+ assert.ok(final.preservation.changedSelectedPixels>0);
+ await assert.rejects(compositeSelectiveEdit(input.source,input.mask,{...result,locatedMask:null}),/EDIT_PRESERVATION_FAILED/);
+});
+test('ambiguous or whole-canvas proposals never dispatch image editing; supplier localization cost is retained',async t=>{
+ for(const proposal of [{located:false,edit:[],protect:[]},{located:true,edit:[[[0,0],[1000,0],[1000,1000],[0,1000]]],protect:[]}]){
+  const {s,body}=await fixture(t);let calls=0;
+  s.adapter=new OpenAIImageAdapter({apiKey:'mock',enableEdits:true,fetchImpl:async url=>{
+   calls++;assert.ok(url.endsWith('/chat/completions'));
+   return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(proposal)}}],usage:{prompt_tokens:100,completion_tokens:60}});
+  }});
+  const before=s.status().budget.spentMicros;
+  const a=await s.createSelectiveEdit({...body,mask:{mode:'instruction'}});await s.waitForIdle();
+  const job=s.job(a.job.id);assert.equal(job.errorCode,'EDIT_TARGET_UNCLEAR');assert.equal(calls,1);
+  assert.equal(s.status().budget.spentMicros-before,345);assert.equal(job.creditCaptured,false);
+ }
 });

@@ -1,4 +1,5 @@
-import {DownloadDeadline} from './Membership';
+import {Check, Download, Share2} from 'lucide-react';
+import {saveProjectSet} from './storage';
 import {PrecisionEditAction} from './PrecisionEditAction';
 import {useEffect,useRef,useState} from 'react';
 import type {Project} from './model';
@@ -17,15 +18,17 @@ import {storageNamespace} from './beta-session';
 import {useUiLanguage} from './ui-language';
 import './ad-batch.css';
 
-type Preview={file:File;url:string;artifact:string;accepted?:Project};
+type Preview={file:File;url:string;artifact:string;item:Project;accepted:boolean};
 type Summary={id:string;jobs:GenerationJob[]};
 export function BatchResults({project,batch,onEdit,renderDetail}:{project:Project;batch:AdBatch;onEdit:()=>void;renderDetail:(item:Project,back:()=>void)=>React.ReactNode}){
  const {t}=useUiLanguage(),[jobs,setJobs]=useState<GenerationJob[]>([]),[images,setImages]=useState<Record<string,Preview>>({});
  const [selected,setSelected]=useState<string[]>([]),[error,setError]=useState(''),[notice,setNotice]=useState(''),[retry,setRetry]=useState(0);
  const [detail,setDetail]=useState<Project>(),[busy,setBusy]=useState(false),lock=useRef(false),lifetime=useRef(new AbortController());
- const source=useRef(project),cache=useRef<Record<string,Preview>>({}),exported=useRef(new Set<string>());
+ const source=useRef(project),cache=useRef<Record<string,Preview>>({}),confirmed=useRef(new Map<string,GenerationJob>()),autoSelected=useRef(false),owner=useRef(storageNamespace());
+ const [reviews,setReviews]=useState<Record<string,NonNullable<GenerationJob['dimensionReview']>>>({});
+ const [reviewItem,setReviewItem]=useState<string>();
  const [zoom,setZoom]=useState<string>(),zoomDialog=useRef<HTMLDialogElement>(null);
- useEffect(()=>{if(zoom)zoomDialog.current?.showModal();},[zoom]);
+ useEffect(()=>{if(zoom||reviewItem)zoomDialog.current?.showModal();},[zoom,reviewItem]);
  useEffect(()=>{
   const session=new AbortController();lifetime.current=session;
   const cancel=()=>session.abort();window.addEventListener('aiadcast-session-change',cancel);window.addEventListener('hashchange',cancel);
@@ -57,49 +60,66 @@ export function BatchResults({project,batch,onEdit,renderDetail}:{project:Projec
      if(!live())return;
      const file=new File([png],`aiadcast-${batch.id.slice(4,12)}-${String(index+1).padStart(2,'0')}.png`,{type:'image/png'});
      if(cached)URL.revokeObjectURL(cached.url);
-     const accepted=job.state==='accepted'?{...composed,adBatch:undefined,generated:{...composed.generated!,acceptedAt:job.createdAt}}:undefined;
-     cache.current[job.id]={file,url:URL.createObjectURL(file),artifact:asset.sha256,accepted};setImages({...cache.current});
+     const item={...composed,adBatch:undefined,resultSet:undefined,requestedImageCount:1 as const};
+     cache.current[job.id]={file,url:URL.createObjectURL(file),artifact:asset.sha256,item,accepted:job.state==='accepted'};setImages({...cache.current});
+     if(batch.count===1&&!autoSelected.current){autoSelected.current=true;setSelected([job.id]);}
     }
     if(live()&&result.jobs.some(j=>j.state==='running'))timer=setTimeout(()=>void poll(),2500);
    }catch{if(live())setError(t('결과를 불러오지 못했습니다. 다시 확인해주세요.','Could not load the results. Check again.'));}
   }
   void poll();return()=>{controller.abort();clearTimeout(timer);};
  },[batch.id,batch.count,retry,detail]);
- const eligible=jobs.filter(j=>images[j.id]&&['accepted','ready'].includes(j.state)&&(!j.dimensionDisplay||validAiDimensionReview(j.dimensionReview,j.dimensionDisplay,j.artifactId!)));
+ const eligible=jobs.filter(j=>images[j.id]&&['accepted','ready'].includes(j.state)&&images[j.id].artifact===j.artifactId);
  const chosen=eligible.filter(j=>selected.includes(j.id));
+ const displayed=eligible.find(j=>j.id===(reviewItem??zoom));
  async function deliver(mode:'save'|'share'){
-  if(lock.current||!chosen.length)return;lock.current=true;setBusy(true);setError('');setNotice('');
+  if(lock.current||!chosen.length)return;
+  const unchecked=chosen.find(j=>j.dimensionDisplay&&!validAiDimensionReview(reviews[j.id]??j.dimensionReview,j.dimensionDisplay,j.artifactId!));
+  if(unchecked){setReviewItem(unchecked.id);return;}
+  lock.current=true;setBusy(true);setError('');setNotice('');
   const signal=lifetime.current.signal;
   try{
+   const copies:Project[]=[];
    for(const j of chosen){
-    if(j.creditUnit==='legacy-ticket'&&j.creditCost&&j.state==='ready'&&!exported.current.has(j.id)){
-     await apiRequest('/api/generations/'+j.id+'/accept',{artifactId:j.artifactId,...(j.dimensionReview?{dimensionReview:j.dimensionReview}:{})},signal);
-     exported.current.add(j.id);
+    const image=images[j.id];
+    let receipt=confirmed.current.get(j.id)??j;
+    if(receipt.state==='ready'&&(mode==='save'||j.dimensionDisplay||j.creditUnit==='legacy-ticket'&&j.creditCost)){
+     const review=reviews[j.id]??j.dimensionReview;
+     const response=await apiRequest<{job:GenerationJob}>('/api/generations/'+j.id+'/accept',{artifactId:j.artifactId,...(review?{dimensionReview:review}:{})},signal);
+     receipt=response.job;
+     if(receipt?.id!==j.id||receipt.projectId!==j.projectId||receipt.artifactId!==image.artifact||receipt.state!=='accepted'||j.dimensionDisplay&&!validAiDimensionReview(receipt.dimensionReview,j.dimensionDisplay,image.artifact))throw Error('INVALID_RECEIPT');
+     confirmed.current.set(j.id,receipt);
+    }
+    if(mode==='save'){
+     const now=new Date().toISOString();
+     copies.push({...image.item,updatedAt:now,generated:{...image.item.generated!,acceptedAt:now,...(receipt.dimensionReview?{dimensionReview:receipt.dimensionReview}:{})}});
     }
    }
+   if(copies.length){await saveProjectSet(copies,owner.current,signal);window.dispatchEvent(new Event('aiadcast-project-copy-saved'));}
    await exportBatch(chosen.map(j=>images[j.id].file),mode,signal);
-   if(!signal.aborted)setNotice(mode==='save'?t('선택한 이미지 저장을 요청했습니다.','Selected images sent to downloads.'):t('공유할 앱에서 전송을 완료해주세요.','Finish sharing in the selected app.'));
-  }catch(e){if(!signal.aborted&&!(e instanceof Error&&e.name==='AbortError'))setError(e instanceof Error&&e.message==='SHARE_UNAVAILABLE'?t('이 브라우저는 파일 공유를 지원하지 않습니다. 선택 저장을 이용해주세요.','This browser cannot share files. Use Save selected.'):t('선택한 이미지를 내보내지 못했습니다. 다시 눌러주세요.','Could not export the selected images. Please try again.'));}
+   if(!signal.aborted)setNotice(mode==='save'?t('저장한 광고에서 다시 열 수 있습니다.','Available in Saved ads.'):t('공유할 앱에서 전송을 완료해주세요.','Finish sharing in the selected app.'));
+  }catch(e){if(!signal.aborted&&!(e instanceof Error&&e.name==='AbortError'))setError(e instanceof Error&&e.message==='SHARE_UNAVAILABLE'?t('이 브라우저는 파일 공유를 지원하지 않습니다. 저장을 이용해주세요.','This browser cannot share files. Use Save.'):t('완료하지 못했습니다. 선택한 이미지로 다시 시도해주세요.','Could not finish. Retry with the selected images.'));}
   finally{lock.current=false;if(!signal.aborted)setBusy(false);}
  }
  function back(){setDetail(undefined);setRetry(n=>n+1);}
  if(detail)return <>{renderDetail(detail,back)}</>;
- const count=jobs.filter(j=>['ready','accepted'].includes(j.state)).length;
- return <section className="batch-results"><h2>{t('생성된 광고 이미지','Generated ad images')}</h2>
-  <p role="status">{t(`${batch.count}장 중 ${count}장 완료`,`${count} of ${batch.count} images ready`)}</p>
-  <label><input type="checkbox" disabled={busy||!eligible.length} checked={!!eligible.length&&chosen.length===eligible.length} onChange={e=>setSelected(e.target.checked?eligible.map(j=>j.id):[])}/> {t('전체 선택','Select all')}</label>
-  <ol className="batch-grid">{jobs.map((j,i)=><li key={j.id}>
-   {images[j.id]&&['ready','accepted'].includes(j.state)&&<button type="button" aria-label={t(`${i+1}번 이미지 확대`,`Enlarge image ${i+1}`)} onClick={()=>setZoom(images[j.id].url)}><img src={images[j.id].url} alt=""/></button>}
-   <label><input type="checkbox" checked={chosen.some(x=>x.id===j.id)} disabled={busy||!eligible.some(x=>x.id===j.id)} onChange={e=>setSelected(ids=>e.target.checked?[...ids,j.id]:ids.filter(x=>x!==j.id))}/>{t(`광고 ${i+1}`,`Ad ${i+1}`)}</label>
-   <DownloadDeadline value={j.downloadExpiresAt}/>
-   {images[j.id]&&eligible.some(item=>item.id===j.id)&&<PrecisionEditAction getInput={()=>({file:images[j.id].file,name:project.name+' '+(i+1)})}/>}
-   {['ready','accepted'].includes(j.state)?<button onClick={()=>setDetail(images[j.id]?.accepted??{...project,id:j.projectId,adBatch:undefined,generated:undefined})}>{t('검수 · 수정','Review · edit')}</button>:<small>{j.state==='running'?t('생성 중','Generating'):j.state==='rejected'?t('반려됨','Rejected'):t('생성 종료 · 결과 없음','Finished without an image')}</small>}
-  </li>)}</ol>
-  {jobs.some(j=>j.dimensionDisplay&&!j.dimensionReview&&j.state==='ready')&&<p>{t('규격을 표시한 이미지는 검수 후 선택할 수 있습니다.','Review the dimensions to select these images.')}</p>}
-  {chosen.some(j=>j.creditUnit==='legacy-ticket'&&j.creditCost&&j.state==='ready')&&<p>{t('저장하거나 공유하면 선택한 광고의 사용이 확정됩니다.','Saving or sharing confirms use of the selected ads.')}</p>}
-  <div className="batch-actions"><button disabled={busy||!chosen.length} onClick={()=>void deliver('save')}>{t(`선택 저장 (${chosen.length})`,`Save selected (${chosen.length})`)}</button><button disabled={busy||!chosen.length} onClick={()=>void deliver('share')}>{t(`선택 공유 (${chosen.length})`,`Share selected (${chosen.length})`)}</button></div>
-  {error&&<p role="alert">{error} <button onClick={()=>{setError('');setRetry(n=>n+1);}}>{t('다시 확인','Check again')}</button></p>}{notice&&<p role="status">{notice}</p>}
-  <button type="button" onClick={onEdit}>{t('입력 내용 수정','Edit details')}</button>
-  {zoom&&<dialog ref={zoomDialog} onClose={()=>setZoom(undefined)}><img style={{maxWidth:'80vw',maxHeight:'70vh'}} src={zoom} alt={t('광고 미리보기','Ad preview')}/><button onClick={()=>zoomDialog.current?.close()}>{t('닫기','Close')}</button></dialog>}
+ const count=eligible.length;
+ return <section className="batch-results"><header className="gallery-heading"><h2>{t('생성된 광고 이미지','Generated ad images')}</h2>
+  {batch.count>1&&<label><input type="checkbox" disabled={busy||!count} checked={!!count&&chosen.length===count} onChange={e=>setSelected(e.target.checked?eligible.map(j=>j.id):[])}/>{t('전체 선택','Select all')}</label>}</header>
+  {!jobs.length&&!error&&<p role="status">{t('이미지 불러오는 중…','Loading images…')}</p>}
+  <ol className="batch-grid">{jobs.map((j,i)=>{const image=images[j.id],available=eligible.some(x=>x.id===j.id);return <li key={j.id}>
+   {available?<><button className="gallery-image" type="button" aria-label={t(`${i+1}번 이미지 확대`,`Enlarge image ${i+1}`)} onClick={()=>setZoom(j.id)}><img src={image.url} alt={t(`광고 ${i+1} 미리보기`,`Ad ${i+1} preview`)} /></button>
+   <label className="gallery-pick"><input type="checkbox" aria-label={t(`광고 ${i+1}`,`Ad ${i+1}`)} checked={selected.includes(j.id)} disabled={busy} onChange={e=>setSelected(ids=>e.target.checked?[...ids,j.id]:ids.filter(id=>id!==j.id))}/><span aria-hidden="true"><Check size={16}/></span></label></>:<p className="gallery-pending">{t(`광고 ${i+1}`,`Ad ${i+1}`)} · {['ready','accepted','running'].includes(j.state)?t('준비 중…','Preparing…'):t('결과 없음','No image')}</p>}
+  </li>})}</ol>
+  {error&&<p role="alert">{error} <button onClick={()=>{setError('');setRetry(n=>n+1);}}>{t('다시 확인','Retry')}</button></p>}{notice&&<p role="status">{notice}</p>}
+  {jobs.length>0&&!count&&!jobs.some(j=>['running','ready','accepted'].includes(j.state))&&<button onClick={onEdit}>{t('입력 내용 수정','Edit details')}</button>}
+  {!!count&&<div className="batch-actions gallery-actions"><span aria-live="polite">{t(`${chosen.length}장 선택`,`${chosen.length} selected`)}</span><button disabled={busy||!chosen.length} aria-label={t(`선택 저장 (${chosen.length})`,`Save selected (${chosen.length})`)} onClick={()=>void deliver('save')}><Download size={17}/>{t('저장','Save')}</button><button disabled={busy||!chosen.length} aria-label={t(`선택 공유 (${chosen.length})`,`Share selected (${chosen.length})`)} onClick={()=>void deliver('share')}><Share2 size={17}/>{t('공유','Share')}</button></div>}
+  {displayed&&<dialog className="gallery-preview" ref={zoomDialog} onClose={()=>{setZoom(undefined);setReviewItem(undefined);}} aria-label={reviewItem?t('규격 확인','Check dimensions'):t('광고 미리보기','Ad preview')}>
+   <button className="gallery-close" autoFocus onClick={()=>zoomDialog.current?.close()}>{t('닫기','Close')}</button>
+   <img src={images[displayed.id].url} alt={t('광고 미리보기','Ad preview')}/>
+   {reviewItem&&displayed.dimensionDisplay?<button onClick={()=>{
+    setReviews(r=>({...r,[displayed.id]:{inputHash:displayed.dimensionDisplay!.inputHash,artifactHash:displayed.artifactId!,values:true,axes:true,complete:true}}));zoomDialog.current?.close();
+   }}>{t('규격의 수치·단위·축·누락 확인 완료','Confirm values, units, axes and completeness')}</button>:<div className="gallery-options"><PrecisionEditAction getInput={()=>({file:images[displayed.id].file,name:project.name})}/><button onClick={()=>{setZoom(undefined);setDetail(confirmed.current.has(displayed.id)||images[displayed.id].accepted?{...images[displayed.id].item,generated:{...images[displayed.id].item.generated!,acceptedAt:displayed.createdAt}}:{...project,id:displayed.projectId,adBatch:undefined,generated:undefined});}}>{t('광고 상세','Ad details')}</button></div>}
+  </dialog>}
  </section>;
 }

@@ -20,6 +20,10 @@ export async function prepareSelectiveEdit(original,mask){
  return {source:{...meta,bytes},mask:selected,selectedPixels:count};
 }
 export async function compositeSelectiveEdit(original,mask,generated,sourceArtifactHash=original.sha256){
+ if(mask.instruction){
+  if(!generated.locatedMask?.localized)throw new ProviderFailure('EDIT_PRESERVATION_FAILED');
+  mask=generated.locatedMask;
+ }
  // Never resize or recolor the original. Copy complete RGBA tuples only where alpha=0.
  const meta=await validateImage(generated.bytes,'image/png',{maximumPixels:MAX_PIXELS,maximumBytes:16000000});
  if(meta.width!==original.width||meta.height!==original.height)throw new ProviderFailure('PROVIDER_INVALID_IMAGE');
@@ -32,6 +36,7 @@ export async function compositeSelectiveEdit(original,mask,generated,sourceArtif
  try{await validateImage(bytes,'image/png',{maximumPixels:MAX_PIXELS});}catch{throw new ProviderFailure('PROVIDER_INVALID_IMAGE');}
  const decoded=await sharp(bytes).ensureAlpha().raw().toBuffer();
  const preservation=inspectSelectivePixels(a,m,decoded,original.width,original.height);
+ if(mask.localized&&preservation.selectedPixels===original.width*original.height)throw new ProviderFailure('EDIT_PRESERVATION_FAILED');
  return {...generated,bytes,mime:'image/png',width:original.width,height:original.height,sha256:hashBytes(bytes),role:'creative',composition:'complete-ad',preservation:{version:1,sourceHash:sourceArtifactHash,maskHash:mask.sha256,resultHash:hashBytes(bytes),...preservation,semanticQuality:'not-assessed'}};
 }
 
@@ -97,6 +102,9 @@ export function selectiveCanvasPlan(width,height){
  if(!canvas)throw new ProviderFailure('UNSUPPORTED_EDIT_SIZE',{uncertain:false});
  return {width,height,canvasWidth:canvas[0],canvasHeight:canvas[1],left:Math.floor((canvas[0]-width)/2),top:Math.floor((canvas[1]-height)/2)};
 }
+function fitsSelectedCanvas(width,height){
+ try{selectiveCanvasPlan(width,height);return true;}catch{return false;}
+}
 export function validateSelectiveOriginal({model,source,mask}){
  if(!SELECTIVE_EDIT_MODELS.has(model))throw new ProviderFailure('UNSUPPORTED_EDIT_MODEL',{uncertain:false});
  const w=source?.width,h=source?.height;
@@ -149,14 +157,14 @@ export async function prepareSelectiveProviderInput({model,source,mask,reference
  }
  if(x1<0)throw new ProviderFailure('EMPTY_EDIT_MASK',{uncertain:false});
  let roi=null,scaled=false,input={source,mask};
- if(!fullPlan&&mask.instruction){
+ if(!fullPlan&&(mask.instruction||mask.localized&&!fitsSelectedCanvas(x1-x0+1,y1-y0+1))){
   // Fit the complete advertisement into a supported canvas, including very tall stories.
   const portrait=source.height>=source.width;
   const scale=Math.min((portrait?1024:1536)/source.width,(portrait?1536:1024)/source.height);
   const width=Math.max(1,Math.floor(source.width*scale)),height=Math.max(1,Math.floor(source.height*scale));
   const parts=[];
   for(const asset of [source,mask]){
-   const bytes=await sharp(asset.bytes).resize(width,height,{fit:'fill'}).png().toBuffer();
+   const bytes=await sharp(asset.bytes).resize(width,height,{fit:'fill',...(asset===mask?{kernel:'nearest'}:{})}).png().toBuffer();
    parts.push({...await validateImage(bytes,'image/png'),bytes});
   }
   input={source:parts[0],mask:parts[1]};scaled=true;

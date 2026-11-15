@@ -75,6 +75,11 @@ test('web and native clients submit identical briefs and display the same delive
       await page.getByRole('dialog').getByRole('button',{name:'확인',exact:true}).click();
       const images=page.locator('.batch-grid img');
       await expect(images).toHaveCount(2);
+      const first=await images.nth(0).boundingBox(),second=await images.nth(1).boundingBox();
+      expect(first!.width).toBeGreaterThan(300);expect(second!.y).toBeGreaterThanOrEqual(first!.y+first!.height-1);
+      expect(first!.width/first!.height).toBeCloseTo(9/16,2);
+      await expect(page.locator('.batch-results')).not.toContainText('서버 다운로드 기한');
+      await expect(page.locator('.batch-results')).not.toContainText('검수 · 수정');
       const displayed=await images.evaluateAll(async nodes=>Promise.all(nodes.map(async node=>{
         const bytes=await (await fetch((node as HTMLImageElement).src)).arrayBuffer();
         return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)));

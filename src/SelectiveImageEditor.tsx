@@ -13,7 +13,7 @@ import {completeAdKey} from './complete-ad';
 import {useUiLanguage} from './ui-language';
 import './selective-image-editor.css';
 type Pending={requestId:string;projectId:string;sourceHash:string;maskHash?:string;jobId?:string};
-export function SelectiveImageEditor({source,project,quote,onClose,uploaded,reduced}:{source:Pick<GenerationJob,'id'|'artifactId'|'artifact'|'projectId'>;project:Project;quote:CreditQuote;onClose:()=>void;uploaded?:Asset;reduced?:boolean}){
+export function SelectiveImageEditor({source,project,quote,onClose,uploaded}:{source:Pick<GenerationJob,'id'|'artifactId'|'artifact'|'projectId'>;project:Project;quote:CreditQuote;onClose:()=>void;uploaded?:Asset}){
  const dialog=useRef<HTMLDialogElement>(null);
  const [preservation,setPreservation]=useState<SelectivePreservation|null>(null),inspection=useRef(0);
  useEffect(()=>{dialog.current?.showModal();return()=>dialog.current?.close();},[]);
@@ -38,7 +38,7 @@ export function SelectiveImageEditor({source,project,quote,onClose,uploaded,redu
   setJob(next);setMessage('');
   if(['failed','rejected','expired','refunded'].includes(next.state)){
    setPreservation(null);setResult('');remember(null);
-   setMessage(next.errorCode==='EDIT_NO_CHANGE'?t('이미지가 변경되지 않았습니다. 크레딧은 차감되지 않습니다.','The image was unchanged. No credits were charged.'):t('수정 요청이 종료됐습니다.','This edit request has ended.'));
+   setMessage(next.errorCode==='EDIT_TARGET_UNCLEAR'?t('수정할 위치를 찾지 못했습니다. 예를 들어 “하단 분홍색 가격”처럼 위치를 적어주세요. 크레딧은 차감되지 않았습니다.','Could not locate the target. Describe its position and try again. No credits were charged.'):next.errorCode==='EDIT_NO_CHANGE'?t('이미지가 변경되지 않았습니다. 크레딧은 차감되지 않습니다.','The image was unchanged. No credits were charged.'):t('수정 요청이 종료됐습니다.','This edit request has ended.'));
    return;
   }
   if(!next.artifact){
@@ -113,7 +113,7 @@ export function SelectiveImageEditor({source,project,quote,onClose,uploaded,redu
   {result?<SelectiveComparison original={original} result={result} width={source.artifact!.width} height={source.artifact!.height}/>:
    original&&<img className="edit-original" src={original} alt={t('원본 광고','Original ad')}/>}
   {!result&&!working&&<>
-   {reduced&&<p>{t('편집용 이미지','Working image')} · {source.artifact?.width} × {source.artifact?.height}</p>}
+
    <label>{t('무엇을 바꿀까요?','What would you like to change?')}<textarea maxLength={2000} value={prompt} disabled={busy} onChange={e=>setPrompt(e.target.value)} placeholder={t('예: 가격을 599,000원으로 바꾸고 하늘을 화창하게 해주세요.','For example, change the price to $599 and make the sky sunny.')}/></label>
    <button className="primary-action" disabled={!ready||busy||!prompt.trim()} onClick={()=>void submit()}>{t('수정하기','Edit')} · {charge}</button>
   </>}

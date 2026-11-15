@@ -1,3 +1,4 @@
+import {locateEditRegion} from './locate-edit-region.mjs';
 import {selectiveEditForm,validateSelectiveOriginal,prepareSelectiveProviderInput,restoreSelectiveProviderResult,verifyPreparedSelectiveInput} from './selective-image-edit.mjs';
 import {providerHttpError,safeProviderEnum} from './provider-http-error.mjs';
 import {preparePlanarSource,requestPlanarRatio,controlPlanarResult} from './planar-proportion.mjs';
@@ -200,6 +201,18 @@ export class OpenAIImageAdapter {
     if(!this.selectiveEditReady)throw new ProviderFailure('REGION_EDIT_NOT_AVAILABLE',{uncertain:false});
     source={...source,bytes:Buffer.isBuffer(source?.bytes)?Buffer.from(source.bytes):source?.bytes};
     mask={...mask,bytes:Buffer.isBuffer(mask?.bytes)?Buffer.from(mask.bytes):mask?.bytes};
+    if(mask.instruction){
+      if(providerInput)verifyPreparedSelectiveInput(providerInput,source,mask,IMAGE_MODEL,references);
+      const located=await locateEditRegion({source,prompt,attemptId,apiKey:this.apiKey,fetchImpl:this.fetchImpl,timeoutMs:this.timeoutMs,readResponse:responseJsonLimited});
+      try{
+        const edit=await this.editRegion({source,mask:located.mask,prompt,attemptId,references});
+        const microUsd=edit.cost?edit.cost.microUsd+located.microUsd:null;
+        return {...edit,locatedMask:located.mask,cost:microUsd===null?null:{...edit.cost,microUsd,usd:microUsd/1e6,localizationMicros:located.microUsd}};
+      }catch(error){
+        if(error instanceof ProviderFailure&&!error.uncertain)error.knownCostMicros=located.microUsd;
+        throw error;
+      }
+    }
     const prepared=providerInput?verifyPreparedSelectiveInput(providerInput,source,mask,IMAGE_MODEL,references):await this.prepareSelectiveInput({source,mask,references});
     const body=selectiveEditForm({model:IMAGE_MODEL,source:prepared.source,mask:prepared.mask,prompt,references:prepared.references,instruction:prepared.binding.instruction});
     if(!this.apiKey)throw new ProviderFailure('PROVIDER_NOT_CONFIGURED',{uncertain:false});
