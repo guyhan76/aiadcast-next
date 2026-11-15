@@ -22,6 +22,22 @@ public final class ExportPolicy {
         return cleaned;
     }
 
+    public static String batchMime(String name) {
+        if (name == null || !name.matches("aiadcast-[0-9a-f]{8}-[0-9]{2}\\.(png|jpg|webp)")) return null;
+        if (name.endsWith(".png")) return "image/png";
+        return name.endsWith(".jpg") ? "image/jpeg" : "image/webp";
+    }
+
+    public static boolean validBatchImage(String name, byte[] bytes) {
+        String mime = batchMime(name);
+        if (mime == null || bytes == null || bytes.length > MAX_BYTES) return false;
+        if ("image/png".equals(mime)) return validContent(bytes, mime);
+        if ("image/jpeg".equals(mime)) return bytes.length >= 3 &&
+            (bytes[0] & 255) == 255 && (bytes[1] & 255) == 216 && (bytes[2] & 255) == 255;
+        return bytes.length >= 12 && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F' &&
+            bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P';
+    }
+
     public static boolean validContent(byte[] bytes, String mime) {
         if (bytes == null || bytes.length == 0 || bytes.length > MAX_BYTES || !supportsMime(mime)) return false;
         if ("image/png".equals(mime)) {

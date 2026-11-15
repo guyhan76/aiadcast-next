@@ -1,7 +1,6 @@
-import {validAiDimensionReview} from './ai-dimension-display';
-import {exportBatch} from './batch-export';
-import {useEffect,useState,useRef} from 'react';
-import {apiRequest,verifiedArtifact,type GenerationJob} from './generation-client';
+import {DownloadList,type Delivery} from './DownloadList';
+import {useEffect,useState} from 'react';
+import {apiRequest} from './generation-client';
 import {betaSession,setBetaSession,storageNamespace} from './beta-session';
 import {offlineDemo} from './demo-mode';
 import {importProject,type Project} from './model';
@@ -19,15 +18,14 @@ function LibraryExpiry({value}:{value:string}){
  return <time dateTime={value} title={date.toLocaleString(locale)}>{t('기한','Until')} {date.toLocaleString(locale,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time>;
 }
 const downloadPageSize=5;
-type Delivery={id:string;name:string;expiresAt:string;reviewRequired:boolean};
 export function CloudLibrary({onOpen}:{onOpen:(p:Project)=>Promise<boolean>}){
  const {t}=useUiLanguage(),[items,setItems]=useState<CloudProject[]>([]),[downloads,setDownloads]=useState<Delivery[]>([]);
  const [error,setError]=useState(''),[busy,setBusy]=useState(false),[refresh,setRefresh]=useState(0);
- const [loaded,setLoaded]=useState(false),[shownDownloads,setShownDownloads]=useState(downloadPageSize),[shownProjects,setShownProjects]=useState(downloadPageSize);
- const active=useRef<AbortController|null>(null),token=betaSession()?.token;
+ const [loaded,setLoaded]=useState(false),[shownProjects,setShownProjects]=useState(downloadPageSize);
+ const token=betaSession()?.token;
  useEffect(()=>{
   if(!token||offlineDemo())return;
-  const controller=new AbortController();active.current=controller;
+  const controller=new AbortController();
   Promise.all([apiRequest<{projects:CloudProject[]}>('/api/projects',undefined,controller.signal),
    apiRequest<{downloads:Delivery[]}>('/api/membership/downloads',undefined,controller.signal)]).then(([legacy,current])=>{
     if(!controller.signal.aborted){setItems(legacy.projects);setDownloads(current.downloads);setError('');}
@@ -36,25 +34,6 @@ export function CloudLibrary({onOpen}:{onOpen:(p:Project)=>Promise<boolean>}){
   return ()=>{controller.abort();window.removeEventListener(changed,update);};
  },[token,refresh]);
  if(!token||offlineDemo())return null;
- async function download(item:Delivery){
-  const signal=active.current?.signal;if(!signal||signal.aborted)return;
-  setBusy(true);setError('');
-  try{
-   const {job}=await apiRequest<{job:GenerationJob}>('/api/generations/'+item.id,undefined,signal);
-   if(!['ready','accepted'].includes(job.state)||!job.artifact)throw Error('EXPIRED');
-   if(job.dimensionDisplay && !validAiDimensionReview(job.dimensionReview,job.dimensionDisplay,job.artifactId!)){
-    setError(t('광고 결과 화면에서 규격 표시를 검수하고 사용 확정한 뒤 저장해 주세요.','Review the dimensions and confirm use on the ad result screen before saving.'));return;
-   }
-   const asset=await verifiedArtifact(job);
-   const blob=await (await fetch(asset.data,{signal})).blob();signal.throwIfAborted();
-   if(item.reviewRequired && job.state==='ready'){
-    if(!window.confirm(t('이 결과를 사용 확정하고 원본을 저장할까요? 예약된 이용권이 사용됩니다.','Confirm use of this result and download the original? Your reserved ticket will be used.')))return;
-    await apiRequest('/api/generations/'+item.id+'/accept',{artifactId:job.artifactId,...(job.dimensionReview?{dimensionReview:job.dimensionReview}:{})},signal);
-   }
-   if(betaSession()?.token!==token)return;
-   await exportBatch([new File([blob],'aiadcast-'+item.id+'.'+(blob.type.split('/')[1]||'png'),{type:blob.type})],'save',signal);
-  }catch{if(!signal.aborted)setError(t('원본을 저장하지 못했습니다. 다운로드 기한을 확인해 주세요.','Could not save the original. Check the download deadline.'));}finally{if(!signal.aborted)setBusy(false);}
- }
  async function open(item:CloudProject){
   setBusy(true);setError('');
   try{const data=await apiRequest<{project:Project;revision:number}>('/api/projects/'+item.id);
@@ -69,14 +48,7 @@ export function CloudLibrary({onOpen}:{onOpen:(p:Project)=>Promise<boolean>}){
  return <section className="download-library" aria-label={t('다운로드 목록','Available downloads')}>
   {!loaded&&<p role="status">{t('불러오는 중…','Loading…')}</p>}
   {loaded&&!error&&!downloads.length&&!items.length&&<p className="download-empty">{t('다운로드할 파일이 없습니다.','No files to download.')}</p>}
-  {downloads.length>0&&<>
-   <p className="download-notice">{t('새 광고는 생성 후 24시간 동안 다운로드할 수 있습니다.','New ads are available to download for 24 hours after creation.')}</p>
-   <ul className="download-list">{downloads.slice(0,shownDownloads).map(item=><li key={item.id}>
-    <div><strong>{item.name||t('이름 없는 광고','Untitled ad')}</strong><LibraryExpiry value={item.expiresAt}/></div>
-    <button type="button" disabled={busy} onClick={()=>void download(item)}>{item.reviewRequired?t('사용 확정 후 저장','Confirm and save'):t('원본 저장','Save original')}</button>
-   </li>)}</ul>
-   {shownDownloads<downloads.length&&<button type="button" className="library-more" onClick={()=>setShownDownloads(n=>n+downloadPageSize)}>{t('다운로드 더 보기','Show more downloads')}</button>}
-  </>}
+  {downloads.length>0&&<DownloadList key={token} items={downloads}/>}
   {items.length>0&&<>
    <h2>{t('이전 보관본','Previously saved projects')}</h2>
    <ul className="download-list">{items.slice(0,shownProjects).map(item=><li key={item.id}>

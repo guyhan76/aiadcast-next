@@ -553,7 +553,7 @@ public final class MainActivity extends ComponentActivity {
     private final List<File> batchFiles = new ArrayList<>();
     private File batchFolder;
 
-    // The bridge streams one PNG at a time; even ten full-size images need only one decoded buffer.
+    // The bridge streams one image at a time; even ten full-size images need only one decoded buffer.
     private void receiveBatch(JSONObject req) {
         final String id=req.optString("id"), owner=req.optString("owner");
         if (!id.matches("[0-9a-fA-F-]{36}") || !owner.equals(exportOwner)) return;
@@ -572,9 +572,9 @@ public final class MainActivity extends ComponentActivity {
                     if(!id.equals(batchId)||!owner.equals(batchOwner))throw new java.io.IOException();
                     if("file".equals(op)){
                         if(req.getInt("index")!=batchFiles.size()||batchFiles.size()>=batchCount)throw new java.io.IOException();
-                        String name=req.getString("name");if(!name.matches("aiadcast-[0-9a-f]{8}-[0-9]{2}\\.png"))throw new java.io.IOException();
+                        String name=req.getString("name");
                         byte[] bytes=Base64.decode(req.getString("base64"),Base64.DEFAULT);
-                        if(!ExportPolicy.validContent(bytes,"image/png"))throw new java.io.IOException();
+                        if(!ExportPolicy.validBatchImage(name,bytes))throw new java.io.IOException();
                         File f=new File(batchFolder,name);if(!f.createNewFile())throw new java.io.IOException();
                         try(OutputStream out=new FileOutputStream(f)){out.write(bytes);}batchFiles.add(f);
                     }else if("finish".equals(op)){
@@ -612,7 +612,7 @@ public final class MainActivity extends ComponentActivity {
             for(File file:batchFiles){
                 if(!owner.equals(exportOwner)||isDestroyed())throw new java.io.IOException();
                 android.content.ContentValues row=new android.content.ContentValues();
-                row.put(MediaStore.MediaColumns.DISPLAY_NAME,file.getName());row.put(MediaStore.MediaColumns.MIME_TYPE,"image/png");
+                row.put(MediaStore.MediaColumns.DISPLAY_NAME,file.getName());row.put(MediaStore.MediaColumns.MIME_TYPE,ExportPolicy.batchMime(file.getName()));
                 row.put(MediaStore.MediaColumns.RELATIVE_PATH,android.os.Environment.DIRECTORY_PICTURES+"/aiadcast");
                 row.put(MediaStore.MediaColumns.IS_PENDING,1);
                 Uri uri=getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,row);
