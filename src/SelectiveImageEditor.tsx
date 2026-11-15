@@ -38,7 +38,7 @@ export function SelectiveImageEditor({source,project,quote,onClose,uploaded}:{so
   setJob(next);setMessage('');
   if(['failed','rejected','expired','refunded'].includes(next.state)){
    setPreservation(null);setResult('');remember(null);
-   setMessage(next.errorCode==='EDIT_TARGET_UNCLEAR'?t('수정 대상을 구분하지 못했습니다. 대상의 옷 색이나 가까운 글자 등 눈에 띄는 특징을 하나 더 적어주세요. 크레딧은 차감되지 않았습니다.','Could not distinguish the target. Add a visible detail, such as its color or nearby text. No credits were charged.'):next.errorCode==='EDIT_NO_CHANGE'?t('이미지가 변경되지 않았습니다. 크레딧은 차감되지 않습니다.','The image was unchanged. No credits were charged.'):t('수정 요청이 종료됐습니다.','This edit request has ended.'));
+   setMessage(next.errorCode==='EDIT_POSE_QUALITY_FAILED'?t('요청한 자세나 함께 바꿀 내용이 정확히 반영되지 않았습니다. 크레딧은 차감되지 않았습니다.','The pose or another requested detail did not pass review. No credits were charged.'):next.errorCode==='EDIT_TARGET_UNCLEAR'?t('수정 대상을 구분하지 못했습니다. 대상의 옷 색이나 가까운 글자 등 눈에 띄는 특징을 하나 더 적어주세요. 크레딧은 차감되지 않았습니다.','Could not distinguish the target. Add a visible detail, such as its color or nearby text. No credits were charged.'):next.errorCode==='EDIT_NO_CHANGE'?t('이미지가 변경되지 않았습니다. 크레딧은 차감되지 않습니다.','The image was unchanged. No credits were charged.'):t('수정 요청이 종료됐습니다.','This edit request has ended.'));
    return;
   }
   if(!next.artifact){
