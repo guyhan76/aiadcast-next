@@ -12,6 +12,9 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.util.Base64;
+import android.webkit.WebChromeClient;
+import android.webkit.WebView;
+import java.util.concurrent.atomic.AtomicReference;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.lang.reflect.Field;
@@ -69,6 +72,8 @@ public final class DownloadInstrumentation extends Instrumentation {
             });
             ((ExecutorService) executor.get(activity)).submit(() -> {}).get(30, TimeUnit.SECONDS);
             for (int i = 0; i < 3; i++) verify(activity.getContentResolver(), names[i], mimes[i], bytes[i]);
+            verifyPrecisionPicker(activity);
+            result.putString("picker", "photos and JSON in one document picker");
             runOnMainSync(activity::finish);
             result.putString("files", "3 originals reopened from Pictures/aiadcast");
             finish(Activity.RESULT_OK, result);
@@ -77,6 +82,37 @@ public final class DownloadInstrumentation extends Instrumentation {
             finish(Activity.RESULT_CANCELED, result);
         }
     }
+    private void verifyPrecisionPicker(MainActivity activity) throws Exception {
+        Field field = MainActivity.class.getDeclaredField("webView");
+        field.setAccessible(true);
+        WebView webView = (WebView) field.get(activity);
+        AtomicReference<Intent> launched = new AtomicReference<>();
+        ActivityMonitor monitor = new ActivityMonitor() {
+            @Override public ActivityResult onStartActivity(Intent intent) {
+                launched.set(new Intent(intent));
+                return new ActivityResult(Activity.RESULT_CANCELED, null);
+            }
+        };
+        addMonitor(monitor);
+        try {
+            runOnMainSync(() -> webView.getWebChromeClient().onShowFileChooser(webView, ignored -> {}, new WebChromeClient.FileChooserParams() {
+                @Override public int getMode() { return MODE_OPEN; }
+                @Override public String[] getAcceptTypes() { return new String[]{"image/png", "image/jpeg", "image/webp", "application/json", ".json"}; }
+                @Override public boolean isCaptureEnabled() { return false; }
+                @Override public CharSequence getTitle() { return null; }
+                @Override public String getFilenameHint() { return null; }
+                @Override public Intent createIntent() { return new Intent(Intent.ACTION_GET_CONTENT); }
+            }));
+        } finally { removeMonitor(monitor); }
+        Intent intent = launched.get();
+        if (intent == null || !Intent.ACTION_OPEN_DOCUMENT.equals(intent.getAction()) || !"*/*".equals(intent.getType())
+                || intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, true) || !intent.hasCategory(Intent.CATEGORY_OPENABLE))
+            throw new AssertionError("Expected a single document picker for photos and backups");
+        String[] types = intent.getStringArrayExtra(Intent.EXTRA_MIME_TYPES);
+        if (types == null || !Arrays.asList(types).containsAll(Arrays.asList("application/json", "image/png", "image/jpeg", "image/webp")))
+            throw new AssertionError("Missing supported photo or backup types");
+    }
+
     private static JSONObject message(String id, String owner, String op) throws Exception {
         return new JSONObject().put("id", id).put("owner", owner).put("op", op);
     }

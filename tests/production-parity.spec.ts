@@ -7,6 +7,8 @@ import {mockSession,protectedScreen} from './helpers/authenticated-session';
 import sharp from 'sharp';
 import {reloadDraft} from './helpers/workspace';
 import {restoreOwnedWorkspace} from './helpers/owned-workspace';
+import {completeAdKey} from '../src/complete-ad';
+import {generatedCompatibilityKey} from '../src/generated';
 import {starterProject} from '../src/consumer-campaign';
 import {campaignFieldExamples} from '../src/campaign-field-examples';
 
@@ -365,8 +367,10 @@ for(const native of [false,true])test('instruction editing, credit consent and i
   return r.fulfill({json:{job:editJob(state)}});
  });
  await page.goto(origin+'/#projects');
- await page.getByText('프로젝트 도구',{exact:true}).click();
- await page.locator('input[type=file][aria-label="편집할 기기 사진"]').setInputFiles({name:'여행.png',mimeType:'image/png',buffer:source});
+ const openImage=page.getByRole('button',{name:'사진·백업 불러와 정밀 편집'});
+ await expect(openImage).toBeInViewport();
+ const chooser=page.waitForEvent('filechooser');await openImage.click();
+ await (await chooser).setFiles({name:'여행.png',mimeType:'image/png',buffer:source});
  const edit=page.getByRole('dialog',{name:'정밀 편집'});await expect(edit).toBeVisible();
  await expect(edit.locator('canvas')).toHaveCount(0);
  await edit.getByRole('textbox').fill('가격을 599,000원으로, 하늘은 화창하게');
@@ -459,4 +463,35 @@ for(const native of [false,true])test('delete selected saved projects and the ac
   await expect(section.getByText('저장한 광고가 없습니다.')).toBeVisible();await reloadDraft(page);
   await expect(section.getByText('저장한 광고가 없습니다.')).toBeVisible();
  }finally{await ctx.close();}
+});
+
+for(const native of [false,true])test('open a finished ad from a local backup in the projects tab on '+(native?'Android':'web'),async({page})=>{
+ const origin=await prepareParityPage(page,native);
+ await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}}}}));
+ await page.route('**/api/membership/downloads',r=>r.fulfill({json:{downloads:[]}}));
+ let posts=0;await page.route('**/api/selective-edits/**',r=>{posts++;return r.abort();});
+ const asset=async(color:string)=>{
+  const width=36,height=64,bytes=await sharp({create:{width,height,channels:4,background:color}}).png().toBuffer();
+  return {width,height,data:'data:image/png;base64,'+bytes.toString('base64'),name:'ad.png',sha256:createHash('sha256').update(bytes).digest('hex')};
+ };
+ const photo=await asset('#bb4100'),ad=await asset('#11779a');
+ const initial=starterProject();
+ const project={...initial,name:'여행 광고',productName:'여행',product:photo,format:'9:16' as const};
+ const complete={...project,generated:{jobId:'expired-ad',createdAt:'2026-10-10T00:00:00.000Z',downloadExpiresAt:'2026-10-11T00:00:00.000Z',acceptedAt:'2026-10-10T00:00:00.000Z',model:'test',mode:'creative',role:'creative',sourceHash:photo.sha256,specificationKey:generatedCompatibilityKey(project),composition:'complete-ad',compositionKey:completeAdKey(project),asset:ad}};
+ await page.goto(origin+'/#projects');
+ const launch=page.getByRole('button',{name:'사진·백업 불러와 정밀 편집'}),edit=page.getByRole('dialog',{name:'정밀 편집'});
+ const pick=async(content:string)=>{
+  await expect(launch).toBeInViewport();
+  const waiting=page.waitForEvent('filechooser');await launch.click();const picker=await waiting;
+  expect(picker.isMultiple()).toBe(false);expect(await picker.element().getAttribute('accept')).toContain('application/json');
+  await picker.setFiles({name:'aiadcast-project.json',mimeType:'application/json',buffer:Buffer.from(content)});
+ };
+ await expect(page.getByText('프로젝트 도구',{exact:true})).toHaveCount(0);
+ await pick(JSON.stringify(complete));await expect(edit.getByAltText('원본 광고')).toHaveAttribute('src',ad.data);
+ await expect(page).toHaveURL(/#projects$/);await edit.getByRole('button',{name:'닫기'}).click();
+ await page.getByRole('button',{name:'다운로드',exact:true}).click();
+ await pick('{"version":1}');await expect(page.getByRole('alert').filter({hasText:'백업 파일을 읽지 못했습니다'})).toBeVisible();
+ await pick(JSON.stringify(initial));await expect(page.getByRole('alert').filter({hasText:'백업에는 이미지가 없습니다'})).toBeVisible();
+ await pick(JSON.stringify(project));await expect(edit.getByAltText('원본 광고')).toHaveAttribute('src',photo.data);
+ await expect(page).toHaveURL(/#projects$/);expect(posts).toBe(0);
 });

@@ -7,6 +7,21 @@ import java.util.List;
 
 /** Handles photo/document pickers that return data, ClipData, or both. */
 final class SelectedDocuments {
+    enum FileKind { PHOTOS, BACKUP, PHOTOS_AND_BACKUP }
+    static FileKind fileKind(String[] acceptTypes) {
+        boolean images = false, json = false;
+        for (String group : acceptTypes) {
+            if (group == null) continue;
+            for (String raw : group.split(",")) {
+                String type = raw.trim().toLowerCase(java.util.Locale.ROOT);
+                if (type.equals("application/json") || type.equals(".json")) json = true;
+                if (type.startsWith("image/") || type.matches("\\.(png|jpe?g|webp)")) images = true;
+            }
+        }
+        if (!json) return FileKind.PHOTOS;
+        return images ? FileKind.PHOTOS_AND_BACKUP : FileKind.BACKUP;
+    }
+
     static List<String> collect(String single, List<String> clips, boolean multiple) {
         LinkedHashSet<String> selected = new LinkedHashSet<>();
         if (single != null) add(selected, single);
