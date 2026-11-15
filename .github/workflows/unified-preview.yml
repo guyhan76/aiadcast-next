@@ -2,14 +2,16 @@ name: Unified web and Android Preview
 
 on:
   push:
-    paths-ignore:
-      - 'tests/**'
-      - 'docs/**'
-      - 'AGENTS.md'
-      - 'playwright.config.ts'
-      - 'scripts/check-live-web-release.mjs'
-      - '.github/workflows/**'
-    branches: [feat/patent-product-generation-20261021, feat/member-storage-20261115, feat/sport-industry-options-20261115, feat/dancesport-disciplines-20261115, feat/clean-projects-20261115, fix/campaign-type-examples-20261115, fix/restore-description-20261115, fix/original-downloads-20261115, feat/instruction-edit-projects-20261115, feat/download-selection-edit-comparison]
+    paths:
+      - '**'
+      - '!tests/**'
+      - '!docs/**'
+      - '!AGENTS.md'
+      - '!playwright.config.ts'
+      - '!scripts/check-live-web-release.mjs'
+      - '!.github/workflows/**'
+      - '.github/workflows/unified-preview.yml'
+    branches: [feat/patent-product-generation-20261011, feat/member-storage-20261115, feat/sport-industry-options-20261115, feat/dancesport-disciplines-20261115, feat/clean-projects-20261115, fix/campaign-type-examples-20261115, fix/restore-description-20261115, fix/original-downloads-20261115, feat/instruction-edit-projects-20261115, feat/download-selection-edit-comparison]
   workflow_dispatch:
 
 permissions:
@@ -117,7 +119,7 @@ jobs:
             adb shell am instrument -w com.selluplabs.aiadcast.next.preview.test/com.selluplabs.aiadcast.next.DownloadInstrumentation | tee "$RUNNER_TEMP/original-downloads.txt"
             grep -F 'files=3 originals reopened from Pictures/aiadcast' "$RUNNER_TEMP/original-downloads.txt"
       - name: Keep the signed candidate for publication after the web deploy
-        if: github.ref_name == 'feat/patent-product-generation-20261021'
+        if: github.ref_name == 'feat/patent-product-generation-20261011'
         uses: actions/upload-artifact@v4
         with:
           name: signed-preview-${{ github.sha }}
@@ -129,7 +131,7 @@ jobs:
         run: rm -f "$RUNNER_TEMP/preview.p12"
 
   publish:
-    if: github.ref_name == 'feat/patent-product-generation-20261021'
+    if: github.ref_name == 'feat/patent-product-generation-20261011'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
