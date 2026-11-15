@@ -20,7 +20,8 @@ import {OpenAIImageAdapter,hashBytes} from '../openai-image-adapter.mjs';
 import {ApiFailure} from '../generation-service.mjs';
 import {assistCopy} from '../text-assistant.mjs';
 import {accountConfiguration} from '../account-providers.mjs';
-import {providerGate} from '../beta-server.mjs';
+import {providerGate,guardedImageAdapter} from '../beta-server.mjs';
+export {guardedImageAdapter} from '../beta-server.mjs';
 import {resolve} from 'node:path';
 import {readFileSync} from 'node:fs';
 const fail=(code,status=400)=>{throw new ApiFailure(code,status);};
@@ -38,14 +39,6 @@ export class CloudBetaStore extends BetaStore {
   return {revision:record.revision,project};
  }
 }
-// Keep selective edits behind the same instance ownership and provider concurrency gate.
-export function guardedImageAdapter(adapter,guard,gate){return {
- prepareSelectiveInput:input=>{guard();return adapter.prepareSelectiveInput?.(input);},
- validateSelectiveInput:input=>{guard();return adapter.validateSelectiveInput?.(input);},
- get selectiveEditReady(){return adapter.selectiveEditReady===true&&typeof adapter.editRegion==='function';},
- generate:options=>{guard();return gate(()=>adapter.generate(options));},
- editRegion:options=>{guard();if(adapter.selectiveEditReady!==true||typeof adapter.editRegion!=='function')fail('REGION_EDIT_NOT_AVAILABLE',503);return gate(()=>adapter.editRegion(options));}
-};}
 export class CloudGenerationService extends GenerationService {
  deliveryDeadline(row,billing){
   return row.created_at<this.membership.cutover?this.membership.cutover+30*86400000:billing.expires_at;

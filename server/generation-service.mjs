@@ -259,8 +259,11 @@ export class GenerationService {
   }
   jobView(row,billing,requestIds,defectReport,{includeArtifact=true}={}) {
     const id=row.id,metadata=row.metadata_json?JSON.parse(row.metadata_json):null,request=JSON.parse(row.request_json);
-    const state = row.error_code === 'PROVIDER_UNCERTAIN' ? 'uncertain' : row.error_code ? 'failed' : billing.status === 'released' ? (billing.reason === 'customer_rejected' ? 'rejected' : 'expired') : billing.status === 'refunded' ? 'refunded' : billing.status === 'reserved' ? 'running' : billing.status;
-    return { id, ...(request.selectiveEdit?{selectiveEdit:metadata?.preservation?.requestMaskHash===request.selectiveEdit.maskHash?{...request.selectiveEdit,maskHash:metadata.preservation.maskHash}:request.selectiveEdit,...(metadata?.preservation?{preservation:metadata.preservation}:{})}:{}), requestFingerprint:hashBytes(Buffer.from(generationMatchKey(request))), ...(request.dimensionDisplay?{dimensionDisplay:request.dimensionDisplay,...(metadata?.dimensionReview?{dimensionReview:metadata.dimensionReview}:{})}:{}), ...(request.inputMode==='text-example'?{inputMode:'text-example'}:{}),...(request.dimensionPlan?{dimensionPlan:request.dimensionPlan}:{}), ...(metadata?.planarReport?{planarReport:metadata.planarReport,...(includeArtifact?{planarOriginal:this.asset(metadata.planarReport.originalHash)}:{})}:{}), creditUnit:billing.unit,creditPolicy:billing.creditExempt?'admin-unlimited':billing.policy,creditCost:billing.creditExempt?0:billing.credits,creditCaptured:billing.captured,...(defectReport?{defectReport}:{}), requestId: requestIds[0] ?? null, requestIds, projectId: row.project_id, state, mode: request.mode, sourceHash: row.source_hash, createdAt: new Date(row.created_at).toISOString(), model: metadata?.model??IMAGE_MODEL, quality: 'high', outputFormat: request.output.format, ...(metadata?.composition?{composition:metadata.composition,...(metadata.composition==='complete-ad'?{compositionKey:request.output.compositionKey}:{})}:{}), artifact: ['ready','accepted'].includes(state) && includeArtifact && row.artifact_hash ? { ...this.asset(row.artifact_hash), role: row.artifact_role } : null, artifactId: row.artifact_hash, errorCode: row.error_code, usage: metadata?.usage ?? null, cost: metadata?.cost ?? null, providerRequestId: metadata?.providerRequestId ?? null, marketingPlan: request.marketingPlan ?? null, review: 'human-review-required', billingStatus: billing.status, expiresAt: billing.expires_at };
+    // The supplier cost can remain unknown after a customer edit has ended without delivery.
+    const editEnded=request.selectiveEdit && row.error_code==='PROVIDER_UNCERTAIN' && billing.status==='released' && billing.reason==='system_error' && !billing.artifact_id;
+    const errorCode=editEnded?'EDIT_NOT_DELIVERED':row.error_code;
+    const state = errorCode === 'PROVIDER_UNCERTAIN' ? 'uncertain' : errorCode ? 'failed' : billing.status === 'released' ? (billing.reason === 'customer_rejected' ? 'rejected' : 'expired') : billing.status === 'refunded' ? 'refunded' : billing.status === 'reserved' ? 'running' : billing.status;
+    return { id, ...(request.selectiveEdit?{selectiveEdit:metadata?.preservation?.requestMaskHash===request.selectiveEdit.maskHash?{...request.selectiveEdit,maskHash:metadata.preservation.maskHash}:request.selectiveEdit,...(metadata?.preservation?{preservation:metadata.preservation}:{})}:{}), requestFingerprint:hashBytes(Buffer.from(generationMatchKey(request))), ...(request.dimensionDisplay?{dimensionDisplay:request.dimensionDisplay,...(metadata?.dimensionReview?{dimensionReview:metadata.dimensionReview}:{})}:{}), ...(request.inputMode==='text-example'?{inputMode:'text-example'}:{}),...(request.dimensionPlan?{dimensionPlan:request.dimensionPlan}:{}), ...(metadata?.planarReport?{planarReport:metadata.planarReport,...(includeArtifact?{planarOriginal:this.asset(metadata.planarReport.originalHash)}:{})}:{}), creditUnit:billing.unit,creditPolicy:billing.creditExempt?'admin-unlimited':billing.policy,creditCost:billing.creditExempt?0:billing.credits,creditCaptured:billing.captured,...(defectReport?{defectReport}:{}), requestId: requestIds[0] ?? null, requestIds, projectId: row.project_id, state, mode: request.mode, sourceHash: row.source_hash, createdAt: new Date(row.created_at).toISOString(), model: metadata?.model??IMAGE_MODEL, quality: 'high', outputFormat: request.output.format, ...(metadata?.composition?{composition:metadata.composition,...(metadata.composition==='complete-ad'?{compositionKey:request.output.compositionKey}:{})}:{}), artifact: ['ready','accepted'].includes(state) && includeArtifact && row.artifact_hash ? { ...this.asset(row.artifact_hash), role: row.artifact_role } : null, artifactId: editEnded?null:row.artifact_hash, errorCode, usage: metadata?.usage ?? null, cost: metadata?.cost ?? null, providerRequestId: metadata?.providerRequestId ?? null, marketingPlan: request.marketingPlan ?? null, review: 'human-review-required', billingStatus: billing.status, expiresAt: billing.expires_at };
   }
   requestStatus(requestId, projectId) {
     if (!identifier(requestId) || !identifier(projectId)) fail('INVALID_REQUEST');
@@ -423,7 +426,12 @@ export class GenerationService {
       submissionStage('existing_response');
       return { job: this.job(previous.job_id), wallet: this.wallet(), reused: true };
     }
-    const matching = this.db.prepare(`SELECT g.id FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND (j.status IN ('reserved','running','uncertain','ready'${region?",'accepted'":""}) OR g.error_code='PROVIDER_UNCERTAIN') ORDER BY g.created_at DESC LIMIT 1`).get(fingerprint);
+    // Replays of a request ID always return its job. A new user submission can
+    // retry a released edit, while the original supplier reservation stays held.
+    const reusableJobs=region
+      ? "(j.status IN ('reserved','running','uncertain','ready','accepted') OR (g.error_code='PROVIDER_UNCERTAIN' AND NOT (j.status='released' AND j.reason='system_error' AND j.artifact_id IS NULL)))"
+      : "(j.status IN ('reserved','running','uncertain','ready') OR g.error_code='PROVIDER_UNCERTAIN')";
+    const matching = this.db.prepare(`SELECT g.id FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND ${reusableJobs} ORDER BY g.created_at DESC LIMIT 1`).get(fingerprint);
     if (matching) {
       this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(body.requestId, fingerprint, matching.id);
       submissionStage('existing_response');
@@ -457,7 +465,7 @@ export class GenerationService {
           if(existing.fingerprint!==fingerprint)fail('IDEMPOTENCY_CONFLICT',409);
           reusedJobId=existing.job_id;return;
         }
-        const duplicate=this.db.prepare(`SELECT g.id FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND (j.status IN ('reserved','running','uncertain','ready'${region?",'accepted'":""}) OR g.error_code='PROVIDER_UNCERTAIN') ORDER BY g.created_at DESC LIMIT 1`).get(fingerprint);
+        const duplicate=this.db.prepare(`SELECT g.id FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND ${reusableJobs} ORDER BY g.created_at DESC LIMIT 1`).get(fingerprint);
         if(duplicate){
           this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(body.requestId,fingerprint,duplicate.id);
           reusedJobId=duplicate.id;return;
@@ -486,7 +494,10 @@ export class GenerationService {
       began = true;
       stage='provider';
       let result = region ? await this.adapter.editRegion({...region,attemptId}) : await this.adapter.generate({ request, source: request.mode === 'creative' ? source : null, references:request.mode==='creative'?references:[], attemptId });
-      if(region)result=await finalizeSelectiveEdit(this.adapter,region,result,attemptId);
+      if(region){
+        stage='edit-finalize';
+        result=await finalizeSelectiveEdit(this.adapter,region,result,attemptId);
+      }
       if(!supportsImageMedia(result.mediaType))throw new ProviderFailure('UNSUPPORTED_PROVIDER_MEDIA');
       // Persist provider metadata before any customer capture. Pixel validity is not semantic quality approval.
       stage='persist-image';

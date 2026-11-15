@@ -157,6 +157,21 @@ export function betaConfig(env=process.env){
  const key=env.AIADCAST_BETA_OPENAI_KEY_FILE?readFileSync(env.AIADCAST_BETA_OPENAI_KEY_FILE,'utf8').trim():env.AIADCAST_NEXT_STAGING_OPENAI_API_KEY;
  return {recommendationPolicy:recommendationPolicyFromEnv(env),publicUrl,directory,monthlyBudgetMicros:budgetUsd*1e6,port,key,enabled:env.AIADCAST_BETA_ENABLE_GENERATION==='true',assistantEnabled:env.AIADCAST_BETA_ENABLE_ASSISTANT==='true'};
 }
+// Both HTTP entry points must run the final review against the composited image.
+export function guardedImageAdapter(adapter,guard,gate){
+ const run=task=>{guard();return gate(task);};
+ return {
+  prepareSelectiveInput:input=>{guard();return adapter.prepareSelectiveInput?.(input);},
+  validateSelectiveInput:input=>{guard();return adapter.validateSelectiveInput?.(input);},
+  get selectiveEditReady(){return adapter.selectiveEditReady===true&&typeof adapter.editRegion==='function';},
+  generate:options=>run(()=>adapter.generate(options)),
+  editRegion:options=>run(()=>{
+   if(adapter.selectiveEditReady!==true||typeof adapter.editRegion!=='function')throw new ApiFailure('REGION_EDIT_NOT_AVAILABLE',503);
+   return adapter.editRegion(options);
+  }),
+  reviewPose:(region,final,attemptId)=>run(()=>adapter.reviewPose(region,final,attemptId))
+ };
+}
 async function main(){
  if(process.env.AIADCAST_BETA_PROCESS_LOCKED!=='1')throw Error('USE_BETA_LAUNCHER');
  if(process.env.SUPABASE_URL||process.env.SUPABASE_SECRET_KEY||process.env.DATABASE_URL){
@@ -168,7 +183,7 @@ async function main(){
  }
  const c=betaConfig(),store=new BetaStore(c.directory,c),gate=providerGate(2);
  const adapter=new OpenAIImageAdapter({apiKey:c.key,enableEdits:c.enabled});
- const app=createBetaServer({store,publicUrl:c.publicUrl,accounts:accountConfiguration(),staticDirectory:resolve('dist'),serviceFactory:user=>new GenerationService({databasePath:join(c.directory,'users',user.id+'.sqlite'),databaseLockManagedExternally:true,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:c.enabled,assistantEnabled:c.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(c.key),adapter:{selectiveEditReady:adapter.selectiveEditReady,prepareSelectiveInput:input=>adapter.prepareSelectiveInput(input),editRegion:options=>gate(()=>adapter.editRegion(options)),generate:options=>gate(()=>adapter.generate(options))},assistantAdapter:options=>gate(()=>assistCopy({...options,apiKey:c.key}))})});
+ const app=createBetaServer({store,publicUrl:c.publicUrl,accounts:accountConfiguration(),staticDirectory:resolve('dist'),serviceFactory:user=>new GenerationService({databasePath:join(c.directory,'users',user.id+'.sqlite'),databaseLockManagedExternally:true,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:c.enabled,assistantEnabled:c.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(c.key),adapter:guardedImageAdapter(adapter,()=>{},gate),assistantAdapter:options=>gate(()=>assistCopy({...options,apiKey:c.key}))})});
  app.server.listen(c.port,'0.0.0.0',()=>console.log('Invite beta server started; real payments disabled.'));
  let closing=false;const stop=async()=>{if(closing)return;closing=true;await app.close();store.close();};process.once('SIGTERM',()=>void stop());process.once('SIGINT',()=>void stop());
 }
