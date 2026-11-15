@@ -1,20 +1,27 @@
 import {useEffect,useRef,useState} from 'react';
 import {validAiDimensionReview} from './ai-dimension-display';
 import {exportBatch,hasNativeExport} from './batch-export';
-import {apiRequest,ApiRequestFailure,verifiedArtifact,type GenerationJob} from './generation-client';
+import {apiRequest,ApiRequestFailure,verifiedOriginalBlob,type GenerationJob} from './generation-client';
 import {useUiLanguage} from './ui-language';
 
 export type Delivery={id:string;name:string;expiresAt:string;reviewRequired:boolean};
 type Translate=(ko:string,en:string)=>string;
 
-async function original(item:Delivery,signal:AbortSignal,consent:()=>boolean){
+async function original(item:Delivery,lifetime:AbortSignal,consent:()=>boolean){
+ lifetime.throwIfAborted();
+ const request=new AbortController(),abort=()=>request.abort();
+ lifetime.addEventListener('abort',abort,{once:true});
+ const timer=setTimeout(abort,90000);
+ try{return await readOriginal(item,request.signal,consent);}
+ finally{clearTimeout(timer);lifetime.removeEventListener('abort',abort);}
+}
+async function readOriginal(item:Delivery,signal:AbortSignal,consent:()=>boolean){
  const path='/api/generations/'+encodeURIComponent(item.id);
  const {job}=await apiRequest<{job:GenerationJob}>(path,undefined,signal);
  if(job.state==='expired')throw Error('PROJECT_EXPIRED');
  if(!['ready','accepted'].includes(job.state)||!job.artifact?.dataUrl)throw Error('ORIGINAL_MISSING');
  if(job.dimensionDisplay&&!validAiDimensionReview(job.dimensionReview,job.dimensionDisplay,job.artifactId!))throw Error('REVIEW_DIMENSIONS');
- const asset=await verifiedArtifact(job);
- const blob=await (await fetch(asset.data,{signal})).blob();
+ const blob=await verifiedOriginalBlob(job);
  signal.throwIfAborted();
  if(item.reviewRequired&&job.state==='ready'&&!job.creditCaptured&&job.creditPolicy!=='admin-unlimited'){
   if(!consent())return;
@@ -48,7 +55,7 @@ export function DownloadList({items}:{items:Delivery[]}){
   message(item.id,'');setSummary('');
   const work=(async()=>{
    try{
-    const file=await original(item,AbortSignal.any([signal,AbortSignal.timeout(90000)]),
+    const file=await original(item,signal,
      ()=>window.confirm(t('이 결과를 사용 확정하고 저장할까요? 예약된 이용권이 사용됩니다.','Confirm use and save the original? Your reserved ticket will be used.')));
     if(file){await exportBatch([file],'save',signal);if(!signal.aborted)message(item.id,saved());}
     return file;
@@ -71,7 +78,7 @@ export function DownloadList({items}:{items:Delivery[]}){
     signal.throwIfAborted();
     const existing=inFlight.get(item.id);
     try{
-     const file=existing?await existing:await original(item,AbortSignal.any([signal,AbortSignal.timeout(90000)]),()=>true);
+     const file=existing?await existing:await original(item,signal,()=>true);
      if(file){
       if(native){if(!existing)await exportBatch([file],'save',signal);done++;}
       else files.push(file);

@@ -199,6 +199,9 @@ for(const native of [false,true])test('save separate originals and the entire do
   let accepted=0,release!:()=>void,hold=true;
   const delay=new Promise<void>(resolve=>{release=resolve;});
   if(native)await page.addInitScript(()=>{
+    const nativeFetch=window.fetch.bind(window);
+    window.fetch=(input,init)=>typeof input==='string'&&input.startsWith('data:')?
+      Promise.reject(new Error('data URL transport is unavailable')):nativeFetch(input,init);
     const out:{name:string;base64:string}[]=[];
     Object.assign(window,{exportedFiles:out});
     let session='',content:{name:string;base64:string}[]=[];

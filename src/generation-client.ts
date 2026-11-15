@@ -7,7 +7,8 @@ import {demoRequest} from './local-demo';
 import type {MarketingPlan} from './marketing-plan';
 import {betaSession,setBetaSession} from './beta-session';
 import {configuredApiOrigin} from './api-origin';
-import {imageFile} from './model';
+import {loadImage} from './model';
+import {maximumReferenceBytes} from './reference-limits';
 import type {Asset} from './model';
 export type GenerationJob={downloadExpiresAt?:string;preservation?:SelectivePreservation;selectiveEdit?:{sourceProjectId:string;sourceJobId:string;sourceHash:string;maskHash:string;prompt:string;version:1};requestFingerprint?:string;dimensionDisplay?:AiDimensionDisplay;dimensionReview?:AiDimensionReview;inputMode?:'text-example';dimensionPlan?:DimensionPlan;planarReport?:PlanarReport;planarOriginal?:{dataUrl:string;sha256:string;width:number;height:number};creditUnit?:'legacy-ticket'|'credit-v2';creditCaptured?:boolean;defectReport?:{state:string};creditPolicy?:'admin-unlimited'|'legacy-accept-v1'|'delivered-2026-10-18';creditCost?:number;id:string;projectId:string;requestId?:string;requestIds?:string[];state:'running'|'ready'|'accepted'|'rejected'|'failed'|'uncertain'|'expired'|'refunded';mode:'original'|'creative';sourceHash:string|null;createdAt:string;model:string;artifactId:string|null;artifact:{id:string;sha256:string;dataUrl:string;width:number;height:number;role:'background'|'creative'}|null;errorCode:string|null;marketingPlan?:MarketingPlan|null;composition?:'complete-ad'|'photo-plate';compositionKey?:string};
 export type CreditQuote={unit:'legacy-ticket'|'credit-v2';amount:number;policy:string};
@@ -31,10 +32,32 @@ export async function apiRequest<T>(path:string,body?:unknown,signal?:AbortSigna
  if(path==='/api/status'&&data.generation.creditQuote){const q=data.generation.creditQuote,c=data.wallet.credits;if(!['legacy-ticket','credit-v2'].includes(q.unit)||!c||![c.available,c.reserved].every(v=>Number.isSafeInteger(v)&&v>=0)||q.unit==='credit-v2'&&(q.amount!==10||q.policy!=='delivered-2026-10-18'))throw Error('API_UNAVAILABLE');}
  return data as T;
 }
-export async function verifiedArtifact(job:Pick<GenerationJob,'artifact'|'artifactId'|'id'>):Promise<Asset>{
- const artifact=job.artifact;if(!artifact||!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(artifact.dataUrl)||artifact.dataUrl.length>14_000_000)throw Error('INVALID_ARTIFACT');
- const response=await fetch(artifact.dataUrl);const blob=await response.blob();const asset=await imageFile(new File([blob],`aiadcast-${job.id}.png`,{type:blob.type}));
- if(asset.sha256!==artifact.sha256||asset.sha256!==artifact.id||asset.sha256!==job.artifactId||asset.width!==artifact.width||asset.height!==artifact.height)throw Error('ARTIFACT_MISMATCH');
- return asset;
-}
+type DeliveredArtifact=Pick<GenerationJob,'artifact'|'artifactId'|'id'>;
 
+export async function verifiedOriginalBlob(job:DeliveredArtifact):Promise<Blob>{
+ const a=job.artifact;
+ if(!a||typeof a.dataUrl!=='string'||a.dataUrl.length>14_000_000)throw Error('INVALID_ARTIFACT');
+ const prefix=/^data:(image\/(?:png|jpeg|webp));base64,/.exec(a.dataUrl);
+ if(!prefix)throw Error('INVALID_ARTIFACT');
+ const encoded=a.dataUrl.slice(prefix[0].length);
+ if(!encoded.length||!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded))throw Error('INVALID_ARTIFACT');
+ const raw=atob(encoded);
+ if(raw.length>maximumReferenceBytes||a.width*a.height>30_000_000)throw Error('INVALID_ARTIFACT');
+ const bytes=new Uint8Array(raw.length);
+ for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+ const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
+ if(hash!==a.sha256||hash!==a.id||hash!==job.artifactId)throw Error('ARTIFACT_MISMATCH');
+ const blob=new Blob([bytes],{type:prefix[1]});
+ // blob URLs are local to this document, including under the Android WebView asset loader.
+ const url=URL.createObjectURL(blob);
+ try{
+  const image=await loadImage(url);
+  if(image.naturalWidth!==a.width||image.naturalHeight!==a.height)throw Error('ARTIFACT_MISMATCH');
+ }finally{URL.revokeObjectURL(url);}
+ return blob;
+}
+export async function verifiedArtifact(job:DeliveredArtifact):Promise<Asset>{
+ await verifiedOriginalBlob(job);
+ const a=job.artifact!;
+ return {name:`aiadcast-${job.id}.png`,data:a.dataUrl,width:a.width,height:a.height,sha256:a.sha256};
+}
