@@ -438,9 +438,10 @@ for(const native of [false,true])test('delete selected saved projects and the ac
   await expect(first.locator('.selection-dot')).toBeEmpty();
   await expect(second).toHaveCSS('outline-style','none');
   await expect(second.locator('.selection-dot')).toHaveText('✓');
-  await page.keyboard.press('Tab');await expect(second).toBeFocused();
-  await expect(second).toHaveCSS('outline-style','none');
-  await expect(second.locator('.selection-dot')).toHaveCSS('outline-style','solid');
+  const tiles=section.locator('.project-tile');
+  await tiles.first().press('Tab');await expect(tiles.last()).toBeFocused();
+  await expect(tiles.last()).toHaveCSS('outline-style','none');
+  await expect(tiles.last().locator('.selection-dot')).toHaveCSS('outline-style','solid');
   page.once('dialog',d=>d.accept());await section.getByRole('button',{name:/선택 삭제/}).click();
   await search.fill('');
   await expect(section.locator('.project-tile')).toHaveCount(2);
