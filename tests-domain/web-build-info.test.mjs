@@ -1,10 +1,11 @@
+import manifest from '../package.json' with {type:'json'};
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createWebBuild} from '../scripts/web-build-info.mjs';
 const sha='a'.repeat(40),now=()=>new Date('2026-10-25T00:00:00Z');
 test('Render build records only explicit metadata, never secrets',()=>{const b=createWebBuild({env:{RENDER_GIT_COMMIT:sha,SECRET:'never-expose'},runGit:()=>{throw Error('no git');},now,version:'0.1.0'});assert.deepEqual(b,{schemaVersion:1,version:'0.1.0',commit:sha,commitSource:'render',dirty:false,builtAt:now().toISOString()});assert.ok(!JSON.stringify(b).includes('never-expose'));});
 test('local source preserves dirty provenance',()=>{const b=createWebBuild({env:{},runGit:args=>args[0]==='rev-parse'?sha:' M src/App.tsx',now});assert.equal(b.commit,sha);assert.equal(b.dirty,true);assert.equal(b.commitSource,'git');});
-test('missing or invalid source stays unknown without invented server identity',()=>{for(const value of ['', 'invalid']){const b=createWebBuild({env:{RENDER_GIT_COMMIT:value},runGit:()=>{throw Error('missing');},now});assert.equal(b.commit,null);assert.equal(b.commitSource,'unavailable');assert.equal(b.dirty,null);assert.equal(b.version,'0.1.0');}});
+test('missing or invalid source stays unknown without invented server identity',()=>{for(const value of ['', 'invalid']){const b=createWebBuild({env:{RENDER_GIT_COMMIT:value},runGit:()=>{throw Error('missing');},now});assert.equal(b.commit,null);assert.equal(b.commitSource,'unavailable');assert.equal(b.dirty,null);assert.equal(b.version,manifest.version);}});
 test('Android metadata preparation preserves web identity and rejects missing provenance before replacing assets',async()=>{
  const {mkdtemp,mkdir,writeFile,readFile,copyFile,rm}=await import('node:fs/promises');const {fileURLToPath}=await import('node:url');const {join}=await import('node:path');const {execFileSync}=await import('node:child_process');
  const dir=await mkdtemp(join(fileURLToPath(new URL('../',import.meta.url)),'.build-metadata-'));

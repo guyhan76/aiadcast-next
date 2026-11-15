@@ -1,3 +1,4 @@
+import manifest from '../package.json' with {type:'json'};
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
@@ -335,7 +336,7 @@ test('cloud AI dimension review is owner-only, atomic, durable and never repeats
  await s.restart();assert.deepEqual((await s.call('/api/generations/'+id,{token})).data.job.dimensionReview,dimensionReview);assert.equal((await s.call('/api/generations',{token,body})).data.job.id,id);const status=(await s.call('/api/status',{token})).data;assert.equal(status.wallet.available,2);assert.equal(status.wallet.reserved,0);assert.equal(status.budget.spentMicros,1);assert.equal(calls,1);
 });
 
-test('cloud public version read returns build identity without provider or account operations',async t=>{const s=await setup(t);const r=await s.call('/api/version');assert.equal(r.status,200);assert.deepEqual(Object.keys(r.data).sort(),['commit','schemaVersion','service','version']);assert.equal(r.data.schemaVersion,1);assert.equal(r.data.service,'aiadcast-next');assert.equal(r.data.version,'0.1.0');});
+test('cloud public version read returns build identity without provider or account operations',async t=>{const s=await setup(t);const r=await s.call('/api/version');assert.equal(r.status,200);assert.deepEqual(Object.keys(r.data).sort(),['commit','schemaVersion','service','version']);assert.equal(r.data.schemaVersion,1);assert.equal(r.data.service,'aiadcast-next');assert.equal(r.data.version,manifest.version);});
 
 test('v2 delivery, concurrent retries, restart, and human defect review preserve separate balances and authority',async t=>{
  let payment;const provider={lookup:async()=>{if(!payment){const e=Error('PAYMENT_NOT_FOUND');e.code='PAYMENT_NOT_FOUND';throw e;}return payment;},confirm:async q=>payment={...q,currency:'KRW',totalAmount:q.amount,status:'DONE'}};
