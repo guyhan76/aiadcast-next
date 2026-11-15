@@ -261,9 +261,10 @@ export class GenerationService {
     const id=row.id,metadata=row.metadata_json?JSON.parse(row.metadata_json):null,request=JSON.parse(row.request_json);
     // The supplier cost can remain unknown after a customer edit has ended without delivery.
     const editEnded=request.selectiveEdit && row.error_code==='PROVIDER_UNCERTAIN' && billing.status==='released' && billing.reason==='system_error' && !billing.artifact_id;
+    const editReview=includeArtifact && request.selectiveEdit && row.error_code==='EDIT_POSE_QUALITY_FAILED' && billing.expires_at>this.now() ? metadata?.editReview : null;
     const errorCode=editEnded?'EDIT_NOT_DELIVERED':row.error_code;
     const state = errorCode === 'PROVIDER_UNCERTAIN' ? 'uncertain' : errorCode ? 'failed' : billing.status === 'released' ? (billing.reason === 'customer_rejected' ? 'rejected' : 'expired') : billing.status === 'refunded' ? 'refunded' : billing.status === 'reserved' ? 'running' : billing.status;
-    return { id, ...(request.selectiveEdit?{selectiveEdit:metadata?.preservation?.requestMaskHash===request.selectiveEdit.maskHash?{...request.selectiveEdit,maskHash:metadata.preservation.maskHash}:request.selectiveEdit,...(metadata?.preservation?{preservation:metadata.preservation}:{})}:{}), requestFingerprint:hashBytes(Buffer.from(generationMatchKey(request))), ...(request.dimensionDisplay?{dimensionDisplay:request.dimensionDisplay,...(metadata?.dimensionReview?{dimensionReview:metadata.dimensionReview}:{})}:{}), ...(request.inputMode==='text-example'?{inputMode:'text-example'}:{}),...(request.dimensionPlan?{dimensionPlan:request.dimensionPlan}:{}), ...(metadata?.planarReport?{planarReport:metadata.planarReport,...(includeArtifact?{planarOriginal:this.asset(metadata.planarReport.originalHash)}:{})}:{}), creditUnit:billing.unit,creditPolicy:billing.creditExempt?'admin-unlimited':billing.policy,creditCost:billing.creditExempt?0:billing.credits,creditCaptured:billing.captured,...(defectReport?{defectReport}:{}), requestId: requestIds[0] ?? null, requestIds, projectId: row.project_id, state, mode: request.mode, sourceHash: row.source_hash, createdAt: new Date(row.created_at).toISOString(), model: metadata?.model??IMAGE_MODEL, quality: 'high', outputFormat: request.output.format, ...(metadata?.composition?{composition:metadata.composition,...(metadata.composition==='complete-ad'?{compositionKey:request.output.compositionKey}:{})}:{}), artifact: ['ready','accepted'].includes(state) && includeArtifact && row.artifact_hash ? { ...this.asset(row.artifact_hash), role: row.artifact_role } : null, artifactId: editEnded?null:row.artifact_hash, errorCode, usage: metadata?.usage ?? null, cost: metadata?.cost ?? null, providerRequestId: metadata?.providerRequestId ?? null, marketingPlan: request.marketingPlan ?? null, review: 'human-review-required', billingStatus: billing.status, expiresAt: billing.expires_at };
+    return { id, ...(editReview?{editReview}:{}), ...(request.selectiveEdit?{selectiveEdit:metadata?.preservation?.requestMaskHash===request.selectiveEdit.maskHash?{...request.selectiveEdit,maskHash:metadata.preservation.maskHash}:request.selectiveEdit,...(metadata?.preservation?{preservation:metadata.preservation}:{})}:{}), requestFingerprint:hashBytes(Buffer.from(generationMatchKey(request))), ...(request.dimensionDisplay?{dimensionDisplay:request.dimensionDisplay,...(metadata?.dimensionReview?{dimensionReview:metadata.dimensionReview}:{})}:{}), ...(request.inputMode==='text-example'?{inputMode:'text-example'}:{}),...(request.dimensionPlan?{dimensionPlan:request.dimensionPlan}:{}), ...(metadata?.planarReport?{planarReport:metadata.planarReport,...(includeArtifact?{planarOriginal:this.asset(metadata.planarReport.originalHash)}:{})}:{}), creditUnit:billing.unit,creditPolicy:billing.creditExempt?'admin-unlimited':billing.policy,creditCost:billing.creditExempt?0:billing.credits,creditCaptured:billing.captured,...(defectReport?{defectReport}:{}), requestId: requestIds[0] ?? null, requestIds, projectId: row.project_id, state, mode: request.mode, sourceHash: row.source_hash, createdAt: new Date(row.created_at).toISOString(), model: metadata?.model??IMAGE_MODEL, quality: 'high', outputFormat: request.output.format, ...(metadata?.composition?{composition:metadata.composition,...(metadata.composition==='complete-ad'?{compositionKey:request.output.compositionKey}:{})}:{}), artifact: ['ready','accepted'].includes(state) && includeArtifact && row.artifact_hash ? { ...this.asset(row.artifact_hash), role: row.artifact_role } : null, artifactId: editEnded?null:row.artifact_hash, errorCode, usage: metadata?.usage ?? null, cost: metadata?.cost ?? null, providerRequestId: metadata?.providerRequestId ?? null, marketingPlan: request.marketingPlan ?? null, review: 'human-review-required', billingStatus: billing.status, expiresAt: billing.expires_at };
   }
   requestStatus(requestId, projectId) {
     if (!identifier(requestId) || !identifier(projectId)) fail('INVALID_REQUEST');
@@ -437,6 +438,13 @@ export class GenerationService {
       submissionStage('existing_response');
       return { job: this.job(matching.id), wallet: this.wallet(), reused: true };
     }
+    if(region){
+      const prior=this.db.prepare("SELECT g.metadata_json FROM generation_records g WHERE g.fingerprint=? AND g.error_code='EDIT_POSE_QUALITY_FAILED' ORDER BY g.created_at DESC LIMIT 1").get(fingerprint);
+      if(prior){
+        region.retryPoseReview=true;
+        region.repairChecks=JSON.parse(prior.metadata_json??'{}').editReview?.failedChecks;
+      }
+    }
     const rejected = this.db.prepare("SELECT count(*) n FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND j.reason='customer_rejected'").get(fingerprint).n;
     if (rejected >= 2 && !this.adminTestUnlimited && this.creditQuote().unit==='legacy-ticket') fail('REVIEW_REQUIRED_AFTER_REJECTIONS', 409);
     submissionStage('admission_readiness');
@@ -530,7 +538,9 @@ export class GenerationService {
           else this.ledger.markAttemptUncertain(attemptId);
         }
         this.ledger.release(id, LOCAL_USER, 'system_error');
-        this.db.prepare('UPDATE generation_records SET error_code=? WHERE id=?').run(code, id);
+        if(code==='EDIT_POSE_QUALITY_FAILED'&&error.editReview){
+          this.db.prepare('UPDATE generation_records SET error_code=?,metadata_json=? WHERE id=?').run(code,JSON.stringify({editReview:error.editReview}),id);
+        }else this.db.prepare('UPDATE generation_records SET error_code=? WHERE id=?').run(code, id);
       } catch { /* Persistent recovery will reconcile interrupted work on restart. */ }
     }
   }

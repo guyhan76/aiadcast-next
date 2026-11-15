@@ -1,7 +1,7 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {randomUUID} from 'node:crypto';import sharp from 'sharp';
 import {GenerationService} from '../server/generation-service.mjs';import {hashBytes,ProviderFailure,OpenAIImageAdapter} from '../server/openai-image-adapter.mjs';
 import {rasterizeEditRegion} from '../server/locate-edit-region.mjs';
-import {prepareSelectiveEdit,compositeSelectiveEdit,selectiveEditForm} from '../server/selective-image-edit.mjs';
+import {prepareSelectiveEdit,prepareSelectiveProviderInput,compositeSelectiveEdit,selectiveEditForm} from '../server/selective-image-edit.mjs';
 const bytes=await sharp({create:{width:8,height:8,channels:4,background:'#345678'}}).png().toBuffer(),sha=hashBytes(bytes);
 const asset={width:8,height:8,sha256:sha,dataUrl:'data:image/png;base64,'+bytes.toString('base64')};
 async function mask(alpha=0,width=8){const b=await sharp({create:{width,height:8,channels:4,background:{r:0,g:0,b:0,alpha}}}).png().toBuffer();return {width,height:8,sha256:hashBytes(b),data:'data:image/png;base64,'+b.toString('base64')};}
@@ -84,7 +84,9 @@ test('uploaded pixels and mask use one reservation and preserve the original siz
 
 test('a text edit locates disjoint regions, masks the provider and preserves every protected pixel in a tall ad',async()=>{
  const width=1080,height=1920;
- const original=await sharp({create:{width,height,channels:4,background:'#276485'}}).png().toBuffer();
+ const texture=Buffer.alloc(width*height*4,255);
+ for(let i=0;i<texture.length;i+=4){texture[i]=(i/4)%2?25:215;texture[i+1]=110;texture[i+2]=80;}
+ const original=await sharp(texture,{raw:{width,height,channels:4}}).png().toBuffer();
  const input=await prepareSelectiveEdit({width,height,sha256:hashBytes(original),dataUrl:'data:image/png;base64,'+original.toString('base64')},{mode:'instruction'});
  const box=(l,t,r,b)=>[[l,t],[r,t],[r,b],[l,b]];
  const proposal={located:true,edit:[box(0,0,1000,590),box(285,740,525,795)],protect:[box(150,80,250,190)]};
@@ -110,6 +112,7 @@ test('a text edit locates disjoint regions, masks the provider and preserves eve
   const nx=(x+.5)*1000/width,ny=(y+.5)*1000/height,offset=(y*width+x)*4;
   const editable=ny<590&&!(nx>=150&&nx<250&&ny>=80&&ny<190)||nx>=285&&nx<525&&ny>=740&&ny<795;
   if(!editable&&rgba.readUInt32BE(offset)!==before.readUInt32BE(offset))assert.fail('Protected pixel changed');
+  if(editable&&rgba.readUInt32BE(offset)!==0xff0000ff)assert.fail('A repainted pixel retained old texture');
  }
  assert.ok(final.preservation.changedSelectedPixels>0);
  await assert.rejects(compositeSelectiveEdit(input.source,input.mask,{...result,locatedMask:null}),/EDIT_PRESERVATION_FAILED/);
@@ -251,6 +254,9 @@ for(const defect of [null,'previousGestureResolved','allOtherRequestedEditsCorre
  assert.equal(s.status().budget.spentMicros-before,3*345+43);
  if(defect){
   assert.equal(job.state,'failed');assert.equal(job.errorCode,'EDIT_POSE_QUALITY_FAILED');
+  assert.deepEqual(job.editReview.failedChecks,[defect]);assert.match(job.editReview.preview,/^data:image\/jpeg;base64,/);
+  assert.equal(s.job(job.id,{includeArtifact:false}).editReview,undefined);
+  assert.throws(()=>s.accept(job.id,job.artifactId));
   assert.ok(!job.artifactId);assert.equal(job.creditCaptured,false);assert.equal(s.wallet().reserved,0);
  }else{
   assert.equal(job.state,'ready');assert.equal(job.preservation.changedOutsidePixels,0);
@@ -301,4 +307,13 @@ test('explicit selections reject empty, invalid and full-frame masks',async()=>{
  for(const regions of [[],[[900,100,100,600]],[[0,0,500,1000],[500,0,1000,1000]],[[0,0,2000,500]]]){
   await assert.rejects(prepareSelectiveEdit(asset,{mode:'regions',regions}),/INVALID_EDIT_MASK/);
  }
+});
+
+test('a compound edit on a 1080 square ad keeps the whole composition on a square provider canvas',async()=>{
+ const w=1080,sourceBytes=await sharp({create:{width:w,height:w,channels:4,background:'#2786a2'}}).png().toBuffer();
+ const original={width:w,height:w,sha256:hashBytes(sourceBytes),dataUrl:'data:image/png;base64,'+sourceBytes.toString('base64')};
+ const {source}=await prepareSelectiveEdit(original,{mode:'instruction'});
+ const mask=await rasterizeEditRegion({located:true,edit:[[[350,0],[960,0],[960,900],[350,900]]],protect:[]},w,w);
+ const {binding,plan}=await prepareSelectiveProviderInput({model:'gpt-image-2.6-sunburst',source,mask:{...mask,wholeScene:true}});
+ assert.equal(binding.scaled,true);assert.equal(binding.roi,null);assert.equal(plan.width,1024);assert.equal(plan.height,1024);
 });

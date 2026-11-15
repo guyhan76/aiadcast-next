@@ -184,7 +184,7 @@ export async function prepareSelectiveProviderInput({model,source,mask,reference
  }
  if(x1<0)throw new ProviderFailure('EMPTY_EDIT_MASK',{uncertain:false});
  let roi=null,scaled=false,input={source,mask};
- if(!fullPlan&&(mask.instruction||mask.localized&&!fitsSelectedCanvas(x1-x0+1,y1-y0+1))){
+ if(!fullPlan&&(mask.instruction||mask.localized&&(mask.wholeScene||!fitsSelectedCanvas(x1-x0+1,y1-y0+1)))){
   // Fit the complete advertisement into a supported canvas, including very tall stories.
   const portrait=source.height>=source.width;
   const scale=Math.min((portrait?1024:1536)/source.width,(portrait?1536:1024)/source.height);
@@ -229,8 +229,11 @@ export async function restoreSelectiveProviderResult(bytes,prepared,source,mask)
   const baseline=await cropSelectiveProviderResult(expected.source.bytes,expected.plan);
   const expand=asset=>sharp(asset.bytes).resize(source.width,source.height,{fit:'fill'}).ensureAlpha().raw().toBuffer();
   const [before,after,original]=await Promise.all([expand(baseline),expand(cropped),checkedPixels(source)]);
-  // Apply the edit at original resolution; an untouched area retains its high-frequency detail.
-  for(let i=0;i<original.length;i++)original[i]=Math.max(0,Math.min(255,original[i]+after[i]-before[i]));
+  // Old fingers and lettering contain high-frequency edges. Adding the old
+  // detail to a newly painted surface can reintroduce the gesture we erased.
+  for(let i=0;i<original.length;i+=4){
+   if(before.readUInt32BE(i)!==after.readUInt32BE(i))after.copy(original,i,i,i+4);
+  }
   const output=await sharp(original,{raw:{width:source.width,height:source.height,channels:4}}).png().toBuffer();
   return {...await validateImage(output,'image/png',{maximumPixels:MAX_PIXELS}),bytes:output};
  }
