@@ -5,6 +5,7 @@ on:
     paths:
       - '**'
       - '!tests/**'
+      - 'tests/production-parity.spec.ts'
       - '!docs/**'
       - '!AGENTS.md'
       - '!playwright.config.ts'
