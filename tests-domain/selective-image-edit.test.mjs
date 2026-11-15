@@ -1,5 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {randomUUID} from 'node:crypto';import sharp from 'sharp';
 import {GenerationService} from '../server/generation-service.mjs';import {hashBytes,ProviderFailure,OpenAIImageAdapter} from '../server/openai-image-adapter.mjs';
+import {rasterizeEditRegion} from '../server/locate-edit-region.mjs';
 import {prepareSelectiveEdit,compositeSelectiveEdit,selectiveEditForm} from '../server/selective-image-edit.mjs';
 const bytes=await sharp({create:{width:8,height:8,channels:4,background:'#345678'}}).png().toBuffer(),sha=hashBytes(bytes);
 const asset={width:8,height:8,sha256:sha,dataUrl:'data:image/png;base64,'+bytes.toString('base64')};
@@ -9,7 +10,7 @@ const result={bytes,width:8,height:8,mime:'image/png',sha256:sha,role:'creative'
 async function fixture(t,generated=result){let calls=0;const s=new GenerationService({enabled:true,providerConfigured:true,budgetMicros:2000000,adapter:{selectiveEditReady:true,generate:async()=>generated,editRegion:async()=>{calls++;return {...result,bytes:editBytes,sha256:hashBytes(editBytes)};}}});t.after(()=>s.close());const request={version:1,mode:'creative',operation:'image-product-concept',subjectType:'physical-product',productName:'컵',productProfile:{category:'other'},brief:'test',source:{sha256:sha},references:[],copy:{},specifications:[],output:{format:'1:1',locale:'ko',compositionKey:'{}'}};const p=await s.create({requestId:randomUUID(),projectId:randomUUID(),request,source:{...asset,data:asset.dataUrl}});await s.waitForIdle();s.accept(p.job.id,generated.sha256);s.selectiveEditingEnabled=true;return {s,calls:()=>calls,body:{requestId:randomUUID(),projectId:randomUUID(),sourceJobId:p.job.id,sourceHash:generated.sha256,prompt:'배경을 파랗게',mask:await mask()}};}
 test('binary alpha mask preserves every unselected RGBA byte including transparency',async()=>{const raw=Buffer.alloc(8*8*4);for(let i=0;i<raw.length;i++)raw[i]=(i*37)%256;const original=await sharp(raw,{raw:{width:8,height:8,channels:4}}).png().toBuffer();const mraw=Buffer.alloc(8*8*4,255);mraw[3]=0;const mb=await sharp(mraw,{raw:{width:8,height:8,channels:4}}).png().toBuffer();const p=await prepareSelectiveEdit({...asset,dataUrl:'data:image/png;base64,'+original.toString('base64'),sha256:hashBytes(original)},{data:'data:image/png;base64,'+mb.toString('base64'),width:8,height:8,sha256:hashBytes(mb)});const output=await compositeSelectiveEdit(p.source,p.mask,result);const decoded=await sharp(output.bytes).ensureAlpha().raw().toBuffer();assert.deepEqual(decoded.subarray(4),raw.subarray(4));assert.deepEqual(decoded.subarray(0,4),(await sharp(bytes).raw().toBuffer()).subarray(0,4));assert.equal(output.width,8);});
 test('empty, nonbinary, wrong-size/hash, malformed masks reject before transport',async()=>{for(const m of [await mask(1),await mask(.5),await mask(0,7),{...await mask(),sha256:'0'.repeat(64)},{data:'https://evil.invalid'}])await assert.rejects(prepareSelectiveEdit(asset,m));});
-test('form has correct mask alpha contract and no response_format/markup; unsupported model fails closed',async()=>{const b=await sharp({create:{width:1024,height:1024,channels:4,background:'blue'}}).png().toBuffer(),m=await sharp({create:{width:1024,height:1024,channels:4,background:{r:0,g:0,b:0,alpha:0}}}).png().toBuffer();const p=await prepareSelectiveEdit({dataUrl:'data:image/png;base64,'+b.toString('base64'),sha256:hashBytes(b),width:1024,height:1024},{data:'data:image/png;base64,'+m.toString('base64'),sha256:hashBytes(m),width:1024,height:1024});const f=selectiveEditForm({...p,model:'gpt-image-2.5-sunburst',prompt:'edit'});assert.equal(f.get('n'),'1');assert.equal(f.has('response_format'),false);assert.equal(f.has('markup'),false);assert.equal(f.get('mask').type,'image/png');assert.throws(()=>selectiveEditForm({...p,model:'unknown'}));let n=0;await assert.rejects(new OpenAIImageAdapter({apiKey:'mock',fetchImpl:()=>n++}).editRegion(p),/REGION_EDIT_NOT_AVAILABLE/);assert.equal(n,0);});
+test('form has correct mask alpha contract and no response_format/markup; unsupported model fails closed',async()=>{const b=await sharp({create:{width:1024,height:1024,channels:4,background:'blue'}}).png().toBuffer(),m=await sharp({create:{width:1024,height:1024,channels:4,background:{r:0,g:0,b:0,alpha:0}}}).png().toBuffer();const p=await prepareSelectiveEdit({dataUrl:'data:image/png;base64,'+b.toString('base64'),sha256:hashBytes(b),width:1024,height:1024},{data:'data:image/png;base64,'+m.toString('base64'),sha256:hashBytes(m),width:1024,height:1024});const f=selectiveEditForm({...p,model:'gpt-image-2.5-sunburst',prompt:'edit'});assert.equal(f.get('n'),'1');assert.equal(f.has('response_format'),false);assert.equal(f.has('markup'),false);assert.throws(()=>selectiveEditForm({...p,model:'gpt-image-2.5-sunburst',instruction:true,prompt:'edit'}),/EDIT_TARGET_UNCLEAR/);assert.equal(f.get('mask').type,'image/png');assert.throws(()=>selectiveEditForm({...p,model:'unknown'}));let n=0;await assert.rejects(new OpenAIImageAdapter({apiKey:'mock',fetchImpl:()=>n++}).editRegion(p),/REGION_EDIT_NOT_AVAILABLE/);assert.equal(n,0);});
 test('copy and original are distinct, same ID idempotent, original bytes and record unchanged',async t=>{const {s,body,calls}=await fixture(t),before=JSON.stringify(s.job(body.sourceJobId));const a=await s.createSelectiveEdit(body);await s.waitForIdle();const b=await s.createSelectiveEdit(body);assert.equal(a.job.id,b.job.id);assert.equal(calls(),1);assert.notEqual(a.job.projectId,s.job(body.sourceJobId).projectId);assert.equal(JSON.stringify(s.job(body.sourceJobId)),before);assert.equal(s.job(a.job.id).selectiveEdit.sourceHash,sha);s.selectiveEditingEnabled=false;assert.equal(s.job(a.job.id).state,'ready');s.accept(a.job.id,s.job(a.job.id).artifactId);assert.equal(s.job(a.job.id).state,'accepted');});
 test('foreign job, forged URL, same project and disabled gate never call provider',async t=>{const {s,body,calls}=await fixture(t);for(const change of [{sourceJobId:randomUUID()},{source:'https://evil.invalid'},{projectId:s.job(body.sourceJobId).projectId},{sourceHash:'0'.repeat(64)}])await assert.rejects(s.createSelectiveEdit({...body,...change}));s.selectiveEditingEnabled=false;await assert.rejects(s.createSelectiveEdit(body),/REGION_EDIT_NOT_AVAILABLE/);assert.equal(calls(),0);});
 test('concurrent identical requests share one reservation/provider attempt',async t=>{const {s,body,calls}=await fixture(t);const [a,b]=await Promise.all([s.createSelectiveEdit(body),s.createSelectiveEdit(body)]);await s.waitForIdle();assert.equal(a.job.id,b.job.id);assert.equal(calls(),1);assert.equal(s.status().budget.spentMicros,200);});
@@ -70,23 +71,62 @@ test('uploaded pixels and mask use one reservation and preserve the original siz
  assert.equal(s.accept(job.id,job.artifactId).job.state,'accepted');
 });
 
-test('text instructions edit a whole tall ad without a brush or another billed request',async()=>{
+test('a text edit locates disjoint regions, masks the provider and preserves every protected pixel in a tall ad',async()=>{
  const width=1080,height=1920;
  const original=await sharp({create:{width,height,channels:4,background:'#276485'}}).png().toBuffer();
  const input=await prepareSelectiveEdit({width,height,sha256:hashBytes(original),dataUrl:'data:image/png;base64,'+original.toString('base64')},{mode:'instruction'});
- let calls=0;
- const adapter=new OpenAIImageAdapter({apiKey:'test-only',fetchImpl:async(url,options)=>{
-  calls++;
-  assert.equal(url,'https://api.openai.com/v1/images/edits');assert.equal(options.body.has('mask'),false);
-  assert.match(options.body.get('prompt'),/599,000원/);assert.match(options.body.get('prompt'),/화창/);
-  const baseline=Buffer.from(await options.body.get('image').arrayBuffer());
-  const changed=await sharp(baseline).composite([{input:await sharp({create:{width:540,height:230,channels:4,background:'skyblue'}}).png().toBuffer(),left:220,top:40}]).png().toBuffer();
-  return Response.json({data:[{b64_json:changed.toString('base64')}],usage:{input_tokens:1,output_tokens:1}});
+ const box=(l,t,r,b)=>[[l,t],[r,t],[r,b],[l,b]];
+ const proposal={located:true,edit:[box(0,0,1000,590),box(285,740,525,795)],protect:[box(150,80,250,190)]};
+ const calls=[];
+ const adapter=new OpenAIImageAdapter({apiKey:'test-only',enableEdits:true,fetchImpl:async(url,options)=>{
+  calls.push(url);
+  if(url.endsWith('/chat/completions')){
+   const body=JSON.parse(options.body);assert.equal(body.response_format.json_schema.strict,true);
+   assert.match(body.messages[1].content[0].text,/599,000원/);
+   return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(proposal)}}],usage:{prompt_tokens:100,completion_tokens:60}});
+  }
+  assert.equal(url,'https://api.openai.com/v1/images/edits');assert.ok(options.body.get('mask'));
+  const [w,h]=options.body.get('size').split('x').map(Number);
+  const changed=await sharp({create:{width:w,height:h,channels:4,background:'red'}}).png().toBuffer();
+  return Response.json({data:[{b64_json:changed.toString('base64')}],usage:{input_tokens:2,input_tokens_details:{text_tokens:1,image_tokens:1},output_tokens:1}});
  }});
- adapter.selectiveEditReady=true;
  const result=await adapter.editRegion({...input,prompt:'가격은 599,000원, 하늘은 화창하게',attemptId:'text-edit-test'});
- assert.equal(calls,1);assert.equal(result.width,width);assert.equal(result.height,height);
- const rgba=await sharp(result.bytes).ensureAlpha().raw().toBuffer(),before=await sharp(original).ensureAlpha().raw().toBuffer();
- assert.ok(rgba.subarray((height-30)*width*4).equals(before.subarray((height-30)*width*4)));
- assert.notEqual(hashBytes(rgba),hashBytes(before));
+ const final=await compositeSelectiveEdit(input.source,input.mask,result);
+ assert.equal(calls.length,2);assert.equal(result.cost.microUsd,388);assert.equal(final.preservation.maskHash,result.locatedMask.sha256);
+ assert.notEqual(final.preservation.maskHash,input.mask.sha256);assert.equal(final.preservation.changedOutsidePixels,0);
+ const rgba=await sharp(final.bytes).ensureAlpha().raw().toBuffer(),before=await sharp(original).ensureAlpha().raw().toBuffer();
+ for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+  const nx=(x+.5)*1000/width,ny=(y+.5)*1000/height,offset=(y*width+x)*4;
+  const editable=ny<590&&!(nx>=150&&nx<250&&ny>=80&&ny<190)||nx>=285&&nx<525&&ny>=740&&ny<795;
+  if(!editable&&rgba.readUInt32BE(offset)!==before.readUInt32BE(offset))assert.fail('Protected pixel changed');
+ }
+ assert.ok(final.preservation.changedSelectedPixels>0);
+ await assert.rejects(compositeSelectiveEdit(input.source,input.mask,{...result,locatedMask:null}),/EDIT_PRESERVATION_FAILED/);
+});
+test('ambiguous or whole-canvas proposals never dispatch image editing; supplier localization cost is retained',async t=>{
+ for(const proposal of [{located:false,edit:[],protect:[]},{located:true,edit:[[[0,0],[1000,0],[1000,1000],[0,1000]]],protect:[]}]){
+  const {s,body}=await fixture(t);let calls=0;
+  s.adapter=new OpenAIImageAdapter({apiKey:'mock',enableEdits:true,fetchImpl:async url=>{
+   calls++;assert.ok(url.endsWith('/chat/completions'));
+   return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(proposal)}}],usage:{prompt_tokens:100,completion_tokens:60}});
+  }});
+  const before=s.status().budget.spentMicros;
+  const a=await s.createSelectiveEdit({...body,mask:{mode:'instruction'}});await s.waitForIdle();
+  const job=s.job(a.job.id);assert.equal(job.errorCode,'EDIT_TARGET_UNCLEAR');assert.equal(calls,1);
+  assert.equal(s.status().budget.spentMicros-before,345);assert.equal(job.creditCaptured,false);
+ }
+});
+test('ready and accepted receipts bind to the resolved mask and keep a stable request identity on retry',async t=>{
+ const {s,body}=await fixture(t);
+ const locatedMask=await rasterizeEditRegion({located:true,edit:[[[0,500],[1000,500],[1000,1000],[0,1000]]],protect:[]},8,8);
+ let calls=0;
+ s.adapter.editRegion=async()=>{calls++;return {...result,bytes:editBytes,locatedMask};};
+ const request={...body,mask:{mode:'instruction'}},first=await s.createSelectiveEdit(request);
+ await s.waitForIdle();
+ const ready=s.job(first.job.id);
+ assert.equal(ready.state,'ready');assert.equal(ready.selectiveEdit.maskHash,locatedMask.sha256);
+ assert.equal(ready.preservation.selectedPixels,32);assert.equal(ready.preservation.changedOutsidePixels,0);
+ const accepted=s.accept(ready.id,ready.artifactId).job;assert.equal(accepted.state,'accepted');
+ assert.equal(accepted.preservation.requestMaskHash,first.job.selectiveEdit.maskHash);
+ assert.equal((await s.createSelectiveEdit(request)).job.id,ready.id);assert.equal(calls,1);
 });
