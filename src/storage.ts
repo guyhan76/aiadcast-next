@@ -39,3 +39,15 @@ export async function saveProjectCopy(p:Project,scope=storageNamespace(),signal?
   read.onsuccess=()=>{if(!read.result){store.add(p);inserted=true;}};
  });}finally{database.close();}
 }
+
+export async function deleteProjects(ids:string[],scope=storageNamespace()){
+ const database=await db(scope);
+ try{
+  if(scope!==storageNamespace())throw Error('OWNER_CHANGED');
+  await new Promise<void>((resolve,reject)=>{
+   const tx=database.transaction('projects','readwrite'),store=tx.objectStore('projects');
+   tx.oncomplete=()=>resolve();tx.onabort=()=>reject(tx.error??Error('DELETE_CANCELLED'));tx.onerror=()=>reject(tx.error);
+   for(const id of new Set(ids))store.delete(id);
+  });
+ }finally{database.close();}
+}

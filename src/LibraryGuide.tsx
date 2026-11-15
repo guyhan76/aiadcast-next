@@ -1,3 +1,4 @@
+import {useLibrarySelection} from './LibrarySelection';
 import {CloudLibrary} from './Membership';
 import {PrecisionEditAction} from './PrecisionEditAction';
 import {useEffect,useRef,useState} from 'react';
@@ -17,12 +18,13 @@ function ProjectPreview({project}:{project:Project}){
  },[project]);
  return <div className="project-thumb"><canvas ref={canvas} hidden={!ready} aria-label={t('저장한 광고 미리보기','Saved ad preview')}/>{!ready&&(project.generated?.composition==='complete-ad'&&project.generated.asset?.data?<img src={project.generated.asset.data} alt={t('과거 광고 원본','Previous ad original')}/>:project.product?<img src={project.product.data} alt={t('참조사진 · 제작 중','Reference photo · in progress')}/>:<strong>{project.productName||project.copy[project.locale].title}</strong>)}<span>{project.format}</span></div>;
 }
-type LibraryProps={items:Project[];error:string;onNew:()=>void;onOpen:(p:Project)=>void;
+type LibraryProps={onRemove:(ids:string[])=>Promise<void>;items:Project[];error:string;onNew:()=>void;onOpen:(p:Project)=>void;
  onOpenServer:(p:Project)=>Promise<boolean>;showDownloads:boolean};
-export function ProjectLibrary({items,error,onNew,onOpen,onOpenServer,showDownloads}:LibraryProps){
+export function ProjectLibrary({items,error,onRemove,onNew,onOpen,onOpenServer,showDownloads}:LibraryProps){
  const {language,t}=useUiLanguage();
  const [filter,setFilter]=useState(''),[view,setView]=useState<'saved'|'downloads'>('saved');
  const saved=items.filter(p=>hasSavedAcceptedAd(p)||p.presentation==='campaign'&&!!p.productName.trim());
+ const selection=useLibrarySelection(saved.map(p=>p.id),onRemove,'device');
  const filtered=saved.filter(p=>(p.name+' '+p.productName).toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
  return <>
   <div className="projects-heading"><h1>{t('내 프로젝트','My projects')}</h1><button className="primary-action" onClick={onNew}><Plus size={18}/>{t('새 광고','New ad')}</button></div>
@@ -32,8 +34,9 @@ export function ProjectLibrary({items,error,onNew,onOpen,onOpenServer,showDownlo
   </div>}
   {showDownloads&&view==='downloads'?<CloudLibrary onOpen={onOpenServer}/>:<>
    {saved.length>0&&<label className="project-search"><Search size={20}/><input aria-label={t('프로젝트 검색','Search projects')} placeholder={t('광고 이름 검색','Search ad names')} value={filter} onChange={e=>setFilter(e.target.value)}/></label>}
+   {selection.tools}
    {error&&<p role="alert">{error}</p>}
-   {filtered.length>0?<div className="project-grid">{filtered.map(p=><button key={p.id} className="project-tile" onClick={()=>onOpen(p)}><ProjectPreview project={p}/><div className="project-tile-caption"><strong>{p.name||p.productName||t('이름 없는 광고','Untitled ad')}</strong><ArrowUpRight size={18}/><small>{!hasSavedAcceptedAd(p)&&t('제작 중 · ','Draft · ')}{new Date(p.updatedAt).toLocaleDateString(language==='ko'?'ko-KR':'en-US')}</small></div></button>)}</div>
+   {filtered.length>0?<div className="project-grid">{filtered.map(p=><button key={p.id} className={"project-tile"+(selection.editing&&selection.selected.has(p.id)?" is-selected":"")} disabled={selection.busy} aria-pressed={selection.editing?selection.selected.has(p.id):undefined} onClick={()=>selection.editing?selection.toggle(p.id):onOpen(p)}><ProjectPreview project={p}/><div className="project-tile-caption"><strong>{p.name||p.productName||t('이름 없는 광고','Untitled ad')}</strong>{selection.editing?<span aria-hidden="true" className="selection-dot">{selection.selected.has(p.id)?'✓':''}</span>:<ArrowUpRight size={18}/>}<small>{!hasSavedAcceptedAd(p)&&t('제작 중 · ','Draft · ')}{new Date(p.updatedAt).toLocaleDateString(language==='ko'?'ko-KR':'en-US')}</small></div></button>)}</div>
     :!error&&<div className="project-empty"><FolderOpen size={30} aria-hidden="true"/><h2>{saved.length?t('검색 결과가 없습니다.','No matches.'):t('저장한 광고가 없습니다.','No saved ads yet.')}</h2>{saved.length>0&&<button onClick={()=>setFilter('')}>{t('검색 초기화','Clear search')}</button>}</div>}
    <details className="project-tools"><summary>{t('프로젝트 도구','Project tools')}<ChevronDown aria-hidden="true" size={18}/></summary>
     <PrecisionEditAction label={t('기기 사진 정밀 편집','Edit a device image')}/>

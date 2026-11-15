@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
+import {Pencil} from 'lucide-react';
 import type {Asset,Project} from './model';
 import {imageFile,loadImage} from './model';
 import {starterProject} from './consumer-campaign';
@@ -41,7 +42,9 @@ export function PrecisionEditAction({getInput,label}:{getInput?:()=>EditInput|Pr
    const {file,data,name}=await input();
    let selected=file;
    if(!selected&&data?.startsWith('data:image/')){
-    const blob=await (await fetch(data,{signal:controller.signal})).blob();
+    const match=/^data:(image\/(?:png|jpeg|webp));base64,/.exec(data);if(!match)throw Error('FILE');
+    const raw=atob(data.slice(match[0].length));const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
+    const blob=new Blob([bytes],{type:match[1]});
     selected=new File([blob],name||'aiadcast.png',{type:blob.type});
    }
    if(!selected)throw Error('FILE');
@@ -58,7 +61,7 @@ export function PrecisionEditAction({getInput,label}:{getInput?:()=>EditInput|Pr
   }catch(e){if(!controller.signal.aborted)setError(e instanceof Error&&e.message==='NO_TEST_CREDITS'?t('편집에 사용할 크레딧이 부족합니다.','Insufficient credits for an edit.'):e instanceof Error&&e.message==='FILE'?t('25MB 이하 PNG·JPG·WebP 사진을 선택해주세요.','Choose a PNG, JPG or WebP image up to 25 MB.'):t('이미지와 편집 서버 연결을 확인하고 다시 시도해주세요.','Check the image and editing connection, then retry.'));}
   finally{if(request.current===controller){request.current=null;setBusy(false);}}
  }
- return <><button className="precision-launch" type="button" disabled={busy} onClick={()=>getInput?void open(getInput):picker.current?.click()}>{busy?t('이미지 여는 중…','Opening image…'):label||t('정밀 편집','Edit selected area')}</button>
+ return <><button className="precision-launch" type="button" disabled={busy} onClick={()=>getInput?void open(getInput):picker.current?.click()}><Pencil size={18} aria-hidden="true"/>{busy?t('이미지 여는 중…','Opening image…'):label||t('정밀 편집','Edit selected area')}</button>
  {!getInput&&<input hidden ref={picker} accept="image/png,image/jpeg,image/webp" type="file" aria-label={t('편집할 기기 사진','Device image to edit')} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void open(()=>({file}));}}/>}
  {error&&<p role="alert">{error}</p>}{editor&&<SelectiveImageEditor source={editor.source} project={editor.project} quote={editor.quote} uploaded={editor.image} reduced={editor.reduced} onClose={()=>setEditor(undefined)}/>}</>;
 }

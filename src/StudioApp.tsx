@@ -35,7 +35,7 @@ import {SimpleAdResult} from './SimpleAdResult';
 import {CreateCampaign} from './CreateCampaign';
 import {newProject} from './model';
 import type {Project} from './model';
-import {projects,saveProject,saveProjectSet} from './storage';
+import {deleteProjects,projects,saveProject,saveProjectSet} from './storage';
 import './studio.css';
 import './premium.css';
 import './campaign-cover.css';
@@ -125,6 +125,16 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
   setWizardSeed({project:next,step:0});setWizard({project:next,step:0});setWizardKey(k=>k+1);setGenerationIntent(undefined);go('create');
  }
  const simpleStudio=page==='studio'&&current.presentation==='campaign';
+ async function removeSaved(ids:string[]){
+  await deleteProjects(ids,workspaceScope);
+  if(storageNamespace()!==workspaceScope)return;
+  const deleted=new Set(ids),empty={...newProject(),locale:language};
+  screenHistory.forgetProjects(deleted,empty);
+  if(deleted.has(current.id)){setCurrent(empty);setSeed(empty);setGenerationIntent(undefined);setEditorKey(k=>k+1);}
+  if(wizard&&deleted.has(wizard.project.id)){setWizard(undefined);setWizardSeed(undefined);setWizardKey(k=>k+1);}
+  if(submittedWizard.current&&deleted.has(submittedWizard.current))submittedWizard.current=undefined;
+  setItems(list=>list.filter(p=>!deleted.has(p.id)));
+ }
  const libraryItems=current.presentation==='campaign'||JSON.stringify(current)!==JSON.stringify(seed)?[current,...items.filter(p=>p.id!==current.id)]:items;
 
  return <div className={`studio-shell ${(page==='editor'||page==='studio'&&!simpleStudio)?'editor-route':''}`}>
@@ -141,7 +151,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
    </div>
    {page==='portfolio'&&<div className="app-page"><PortfolioPage/></div>}
    <div hidden={page!=='create'} className="app-page"><CreateCampaign active={page==='create'} key={wizardKey} onReady={ready} draft={wizardSeed} onDraft={setWizard}/></div>
-   <div hidden={page!=='projects'} className="app-page projects-page">{page==='projects'&&<ProjectLibrary items={libraryItems} error={libraryError} onNew={begin} onOpen={p=>void open(p)} onOpenServer={p=>open(p,true)} showDownloads={!!betaSession()&&!offlineDemo()}/>}</div>
+   <div hidden={page!=='projects'} className="app-page projects-page">{page==='projects'&&<ProjectLibrary onRemove={removeSaved} items={libraryItems} error={libraryError} onNew={begin} onOpen={p=>void open(p)} onOpenServer={p=>open(p,true)} showDownloads={!!betaSession()&&!offlineDemo()}/>}</div>
    <div hidden={page!=='guide'} className="app-page guide-page"><UsageGuide onNew={begin}/></div>
    {(page==='signup'||page==='login')&&<div className="app-page"><EmailAccountPage key={page} mode={page} preserve={preserve} returnPage={returnPage}/></div>}
    {page==='admin'&&<div className="app-page"><AdminPage backHref={adminBack.current}/></div>}

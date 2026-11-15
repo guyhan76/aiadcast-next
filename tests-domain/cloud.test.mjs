@@ -655,3 +655,28 @@ test('new downloads keep one 24-hour deadline after delivery, across owners, rea
  const after=await s.call(path,{token:owner.token});
  assert.ok(after.status===404 || after.data.job?.artifact===null);
 });
+
+test('download previews and deletion are owner-scoped, preserve shared objects, release only reserved tickets and survive restart',async t=>{
+ const s=await setup(t),owner=await s.member('Original owner',1_000_000,3),other=await s.member('Other owner');
+ const make=async name=>{
+  const body=generation();body.request.productName=name;
+  const created=await s.call('/api/generations',{token:owner.token,body});assert.equal(created.status,202);
+  const id=created.data.job.id;await s.app.store.membership.jobs.get(owner.user.id).waitForIdle();return id;
+ };
+ const first=await make('첫 광고'),second=await make('두 번째 광고');
+ const preview=(token,id)=>s.call('/api/membership/downloads/'+id+'/preview',{token});
+ const remove=(token,ids)=>s.call('/api/membership/remove-downloads',{token,body:{ids}});
+ assert.equal((await preview(other.token,first)).status,404);
+ const thumb=await preview(owner.token,first);assert.equal(thumb.status,200);
+ const meta=await sharp(Buffer.from(thumb.data.preview.split(',')[1],'base64')).metadata();assert.equal(meta.format,'webp');
+ assert.equal((await remove(other.token,[first])).status,200);
+ const accepted=await s.call('/api/generations/'+first+'/accept',{token:owner.token,body:{artifactId:hash}});assert.equal(accepted.status,200);
+ assert.equal((await remove(owner.token,[first])).status,200);assert.equal((await preview(owner.token,first)).status,404);
+ assert.equal((await s.call('/api/generations/'+first,{token:owner.token})).data.job.artifact,null);
+ assert.equal((await preview(owner.token,second)).status,200);
+ assert.equal((await remove(owner.token,[first,second])).status,200);assert.equal((await remove(owner.token,[second])).status,200);
+ assert.equal((await s.call('/api/status',{token:owner.token})).data.wallet.available,2);
+ await s.app.store.membership.run();
+ assert.equal(s.bucket.objects.has(owner.user.id+'/'+hash+'.png'),false);
+ await s.restart();assert.deepEqual((await s.call('/api/membership/downloads',{token:owner.token})).data.downloads,[]);
+});

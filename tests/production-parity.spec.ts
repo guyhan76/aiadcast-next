@@ -235,7 +235,7 @@ for(const native of [false,true])test('save separate originals and the entire do
   await page.getByRole('button',{name:'다운로드',exact:true}).click();
   const list=page.locator('.download-library');
   const row=(i:number)=>list.locator('li').filter({has:page.getByText(items[i].name,{exact:true})});
-  const save=(i:number)=>row(i).getByRole('button');
+  const save=(i:number)=>row(i).getByRole('button',{name:/^(원본 저장|저장 중…|사용 확정 후 저장)$/});
   await save(0).click();
   await expect(save(0)).toBeDisabled();
   await expect(save(1)).toBeEnabled();
@@ -280,4 +280,40 @@ for(const native of [false,true])test('save separate originals and the entire do
   await list.getByRole('button',{name:'다운로드 더 보기'}).click();
   await expect(row(unavailable)).toContainText('서버에서 원본을 찾을 수 없습니다.');
   await expect(save(unavailable)).toBeEnabled();
+});
+
+for(const native of [false,true])test('instruction editing, credit consent and illustrated download selection on '+(native?'Android':'web'),async({page})=>{
+ const origin=await prepareParityPage(page,native);
+ const source=await sharp({create:{width:32,height:48,channels:3,background:'#358191'}}).png().toBuffer();
+ const thumb='data:image/webp;base64,'+(await sharp(source).webp().toBuffer()).toString('base64');
+ const items=Array.from({length:7},(_,i)=>({id:'delivery-preview-'+i,name:'미리보기 광고 '+i,reviewRequired:false,expiresAt:new Date(Date.now()+86400000).toISOString()}));
+ const removed:string[]=[];let edits=0;
+ await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:20,reserved:0}},budget:{limitMicros:1000000}}}));
+ await page.route('**/api/membership/downloads',r=>r.fulfill({json:{downloads:items.filter(item=>!removed.includes(item.id))}}));
+ await page.route('**/api/membership/downloads/*/preview',r=>r.fulfill({json:{preview:thumb}}));
+ await page.route('**/api/membership/remove-downloads',r=>{removed.push(...r.request().postDataJSON().ids);return r.fulfill({json:{removed}});});
+ await page.route('**/api/selective-edits/upload',r=>{
+  const body=r.request().postDataJSON();expect(body.mask).toEqual({mode:'instruction'});expect(body.prompt).toBe('가격을 599,000원으로, 하늘은 화창하게');expect(body.creditQuote.amount).toBe(10);edits++;
+  return r.fulfill({json:{job:{id:'instruction-job',projectId:body.projectId,requestId:body.requestId,state:'running',selectiveEdit:{sourceJobId:body.sourceJobId,sourceProjectId:body.sourceJobId,sourceHash:body.sourceHash}}}});
+ });
+ await page.goto(origin+'/#projects');
+ await page.getByText('프로젝트 도구',{exact:true}).click();
+ await page.locator('input[type=file][aria-label="편집할 기기 사진"]').setInputFiles({name:'여행.png',mimeType:'image/png',buffer:source});
+ const edit=page.getByRole('dialog',{name:'정밀 편집'});await expect(edit).toBeVisible();
+ await expect(edit.locator('canvas')).toHaveCount(0);
+ await edit.getByRole('textbox').fill('가격을 599,000원으로, 하늘은 화창하게');
+ const submit=edit.getByRole('button',{name:/수정하기.*10 크레딧/});
+ page.once('dialog',d=>{expect(d.message()).toContain('10 크레딧');return d.dismiss();});await submit.click();expect(edits).toBe(0);
+ page.once('dialog',d=>d.accept());await submit.click();await expect.poll(()=>edits).toBe(1);
+ await edit.getByRole('button',{name:'닫기'}).click();
+ await page.getByRole('button',{name:'다운로드',exact:true}).click();
+ const list=page.locator('.download-library');
+ await expect(list.locator('.delivery-preview img').first()).toBeVisible();
+ await list.locator('.delivery-preview').first().click();await expect(page.getByRole('dialog').getByRole('img')).toBeVisible();await page.getByRole('dialog').getByRole('button',{name:'닫기'}).click();
+ await list.getByRole('button',{name:'선택',exact:true}).click();await list.getByRole('checkbox').first().check();
+ page.once('dialog',d=>d.dismiss());await list.getByRole('button',{name:/선택 삭제/}).click();expect(removed).toEqual([]);
+ page.once('dialog',d=>d.accept());await list.getByRole('button',{name:/선택 삭제/}).click();await expect(list.getByText(items[0].name,{exact:true})).toHaveCount(0);
+ await list.getByRole('button',{name:'선택',exact:true}).click();await list.getByRole('button',{name:'전체 선택'}).click();
+ page.once('dialog',d=>d.accept());await list.getByRole('button',{name:/전체 삭제/}).click();
+ await expect(list.getByText('다운로드할 파일이 없습니다.')).toBeVisible();expect(removed).toEqual(items.map(i=>i.id));
 });
