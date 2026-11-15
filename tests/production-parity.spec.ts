@@ -325,26 +325,28 @@ for(const native of [false,true])test('instruction editing, credit consent and i
 });
 
 for(const native of [false,true])test('delete selected saved projects and the active ad without restoring it on reload '+(native?'Android':'web'),async({browser})=>{
- const origin=parityOrigin(native),ctx=await browser.newContext({baseURL:origin,viewport:{width:native?390:1100,height:850}});
+ const origin=parityOrigin(native),ctx=await browser.newContext({baseURL:origin,viewport:{width:native?390:1100,height:850},locale:'ko-KR',serviceWorkers:'block'});
  try{
   const page=await ctx.newPage();await prepareParityPage(page,native);
   const owner='parity-member',scope=native?owner+'@'+encodeURIComponent('https://aiadcast-next.onrender.com'):owner;
   const projects=['첫 번째 저장 광고','두 번째 저장 광고','작업 중 광고'].map(name=>({...starterProject(),name,productName:name}));
-  await restoreOwnedWorkspace(page,projects[2],owner,'studio',undefined,undefined,scope);
+  await page.goto(origin+'/#projects');await expect(page.locator('.projects-page').getByText('저장한 광고가 없습니다.')).toBeVisible();
   await page.evaluate(({items,scope})=>new Promise<void>((done,fail)=>{
    const open=indexedDB.open('aiadcast-editor-'+scope,1);
    open.onupgradeneeded=()=>open.result.createObjectStore('projects',{keyPath:'id'});
    open.onerror=()=>fail(open.error);
    open.onsuccess=()=>{const db=open.result,tx=db.transaction('projects','readwrite');for(const item of items)tx.objectStore('projects').put(item);tx.oncomplete=()=>{db.close();done();};tx.onerror=()=>fail(tx.error);};
-  }),{items:projects,scope});await page.goto(origin+'/#projects');await page.reload();
+  }),{items:projects,scope});await page.evaluate(()=>window.dispatchEvent(new Event('aiadcast-project-copy-saved')));
   const section=page.locator('.projects-page');
   await expect(section.locator('.project-tile')).toHaveCount(3);
+  await section.locator('.project-tile').filter({hasText:'작업 중 광고'}).click();await expect(page).toHaveURL(/#studio$/);
+  await page.locator('nav a[href="#projects"]').click();await expect(section.locator('.project-tile')).toHaveCount(3);
   await section.getByRole('button',{name:'선택',exact:true}).click();await section.locator('.project-tile').filter({hasText:'두 번째 저장 광고'}).click();
   page.once('dialog',d=>d.accept());await section.getByRole('button',{name:/선택 삭제/}).click();
   await expect(section.locator('.project-tile')).toHaveCount(2);
   await section.getByRole('button',{name:'선택',exact:true}).click();await section.getByRole('button',{name:'전체 선택'}).click();
   page.once('dialog',d=>d.accept());await section.getByRole('button',{name:/전체 삭제/}).click();
-  await expect(section.getByText('저장한 광고가 없습니다.')).toBeVisible();await page.reload();
+  await expect(section.getByText('저장한 광고가 없습니다.')).toBeVisible();await reloadDraft(page);
   await expect(section.getByText('저장한 광고가 없습니다.')).toBeVisible();
  }finally{await ctx.close();}
 });
