@@ -3,6 +3,7 @@ import { planAdBatch } from '../automatic-image-skills.mjs';
 import { verifiedPreservation } from '../../src/selective-preservation.ts';
 import { batchPrice, validBatch } from '../../src/batch-price.ts';
 import { prepareSelectiveEdit, finalizeSelectiveEdit } from '../selective-image-edit.mjs';
+import { targetsPersonAndSky } from '../locate-edit-region.mjs';
 import { submissionStage } from '../submission-observation.mjs';
 import { readinessMeasure } from '../readiness-observation.mjs';
 import { generationMatchKey } from '../../src/generation-match.ts';
@@ -460,7 +461,12 @@ export class GenerationService {
         const reusableJobs = region
             ? "(j.status IN ('reserved','running','uncertain','ready','accepted') OR (g.error_code='PROVIDER_UNCERTAIN' AND NOT (j.status='released' AND j.reason='system_error' AND j.artifact_id IS NULL)))"
             : "(j.status IN ('reserved','running','uncertain','ready') OR g.error_code='PROVIDER_UNCERTAIN')";
-        const matching = await this.db.prepare(`SELECT g.id FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND ${reusableJobs} ORDER BY g.created_at DESC LIMIT 1`).get(fingerprint);
+        const compoundScene = region && targetsPersonAndSky(region.prompt);
+        const modelRevision = compoundScene ? IMAGE_REVISION + '/scene-foreground-v1' : IMAGE_REVISION;
+        const reviewFilter = compoundScene ? " AND (j.status NOT IN ('ready','accepted') OR j.model_revision=?)" : "";
+        const matchSql = `SELECT g.id FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND ${reusableJobs}${reviewFilter} ORDER BY g.created_at DESC LIMIT 1`;
+        const matchArgs = compoundScene ? [fingerprint, modelRevision] : [fingerprint];
+        const matching = await this.db.prepare(matchSql).get(...matchArgs);
         if (matching) {
             await this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(body.requestId, fingerprint, matching.id);
             submissionStage('existing_response');
@@ -510,7 +516,7 @@ export class GenerationService {
                     reusedJobId = existing.job_id;
                     return;
                 }
-                const duplicate = await this.db.prepare(`SELECT g.id FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND ${reusableJobs} ORDER BY g.created_at DESC LIMIT 1`).get(fingerprint);
+                const duplicate = await this.db.prepare(matchSql).get(...matchArgs);
                 if (duplicate) {
                     await this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(body.requestId, fingerprint, duplicate.id);
                     reusedJobId = duplicate.id;
@@ -521,7 +527,7 @@ export class GenerationService {
                 const currentQuote = await this.creditQuote();
                 if (currentQuote.unit !== quote.unit || currentQuote.amount !== quote.amount)
                     fail('CREDIT_QUOTE_CHANGED', 409);
-                await this.ledger.reserve({ kind: imageMediaType, jobId: id, userId: LOCAL_USER, credits: quote.amount || 1, unit: quote.unit, creditExempt: quote.amount === 0, requestHash: fingerprint, modelRevision: IMAGE_REVISION, expiresAt: createdAt + 24 * 60 * 60 * 1000 });
+                await this.ledger.reserve({ kind: imageMediaType, jobId: id, userId: LOCAL_USER, credits: quote.amount || 1, unit: quote.unit, creditExempt: quote.amount === 0, requestHash: fingerprint, modelRevision, expiresAt: createdAt + 24 * 60 * 60 * 1000 });
                 await this.db.prepare('INSERT INTO generation_records(id,project_id,fingerprint,request_json,source_hash,created_at) VALUES (?,?,?,?,?,?)').run(id, body.projectId, fingerprint, JSON.stringify(request), source?.sha256 ?? null, createdAt);
                 await this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(body.requestId, fingerprint, id);
             });

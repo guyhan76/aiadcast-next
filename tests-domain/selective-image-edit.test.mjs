@@ -318,6 +318,17 @@ for(const {direct,prompt,defect} of [
  }
  assert.equal(job.state,'ready');assert.equal(job.preservation.changedOutsidePixels,0);
  assert.equal((await s.createUploadedEdit(request)).job.id,job.id);
+ if(!direct&&prompt===identityStormPrompt){
+  const fresh=()=>({...request,requestId:randomUUID(),projectId:randomUUID()});
+  assert.equal((await s.createUploadedEdit(fresh())).job.id,job.id);
+  // Simulate a pre-fix ready result for the identical source and instruction.
+  s.db.prepare('UPDATE jobs SET model_revision=? WHERE id=?').run('pre-foreground-review',job.id);
+  assert.equal((await s.createUploadedEdit(request)).job.id,job.id);
+  const replacement=await s.createUploadedEdit(fresh());
+  await s.waitForIdle();
+  assert.notEqual(replacement.job.id,job.id);
+  assert.equal(s.job(replacement.job.id).state,'ready');
+ }
 });
 test('explicit selections reject empty, invalid and full-frame masks',async()=>{
  for(const regions of [[],[[900,100,100,600]],[[0,0,500,1000],[500,0,1000,1000]],[[0,0,2000,500]]]){
