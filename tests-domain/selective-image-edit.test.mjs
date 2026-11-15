@@ -1,5 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {randomUUID} from 'node:crypto';import sharp from 'sharp';
 import {GenerationService} from '../server/generation-service.mjs';import {hashBytes,ProviderFailure,OpenAIImageAdapter} from '../server/openai-image-adapter.mjs';
+import {rasterizeEditRegion} from '../server/locate-edit-region.mjs';
 import {prepareSelectiveEdit,compositeSelectiveEdit,selectiveEditForm} from '../server/selective-image-edit.mjs';
 const bytes=await sharp({create:{width:8,height:8,channels:4,background:'#345678'}}).png().toBuffer(),sha=hashBytes(bytes);
 const asset={width:8,height:8,sha256:sha,dataUrl:'data:image/png;base64,'+bytes.toString('base64')};
@@ -114,4 +115,18 @@ test('ambiguous or whole-canvas proposals never dispatch image editing; supplier
   const job=s.job(a.job.id);assert.equal(job.errorCode,'EDIT_TARGET_UNCLEAR');assert.equal(calls,1);
   assert.equal(s.status().budget.spentMicros-before,345);assert.equal(job.creditCaptured,false);
  }
+});
+test('ready and accepted receipts bind to the resolved mask and keep a stable request identity on retry',async t=>{
+ const {s,body}=await fixture(t);
+ const locatedMask=await rasterizeEditRegion({located:true,edit:[[[0,500],[1000,500],[1000,1000],[0,1000]]],protect:[]},8,8);
+ let calls=0;
+ s.adapter.editRegion=async()=>{calls++;return {...result,bytes:editBytes,locatedMask};};
+ const request={...body,mask:{mode:'instruction'}},first=await s.createSelectiveEdit(request);
+ await s.waitForIdle();
+ const ready=s.job(first.job.id);
+ assert.equal(ready.state,'ready');assert.equal(ready.selectiveEdit.maskHash,locatedMask.sha256);
+ assert.equal(ready.preservation.selectedPixels,32);assert.equal(ready.preservation.changedOutsidePixels,0);
+ const accepted=s.accept(ready.id,ready.artifactId).job;assert.equal(accepted.state,'accepted');
+ assert.equal(accepted.preservation.requestMaskHash,first.job.selectiveEdit.maskHash);
+ assert.equal((await s.createSelectiveEdit(request)).job.id,ready.id);assert.equal(calls,1);
 });

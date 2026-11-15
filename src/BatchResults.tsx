@@ -53,14 +53,14 @@ export function BatchResults({project,batch,onEdit,renderDetail}:{project:Projec
      if(job.id!==summary.id||job.projectId!==summary.projectId||job.requestFingerprint!==fingerprint||job.composition!=='complete-ad'||job.compositionKey!==completeAdKey(p)||job.sourceHash!==generationSourceHash(p)||!job.artifact)throw Error('INVALID_ARTIFACT');
      const asset=await verifiedArtifact(job),display=await parseAiDimensionDisplay(job.dimensionDisplay);
      if(aiDimensionRequested(p)?display?.inputKey!==projectAiDimensionKey(p):!!display)throw Error('INVALID_ARTIFACT');
-     const composed=projectWithGenerated({...p,id:job.projectId},{downloadExpiresAt:job.downloadExpiresAt,jobId:job.id,mode:job.mode,sourceHash:job.sourceHash,asset,role:job.artifact.role,model:job.model,createdAt:job.createdAt,specificationKey:generatedCompatibilityKey(p),composition:job.composition,compositionKey:job.compositionKey,...(display?{dimensionDisplay:display}:{}),...(job.dimensionReview?{dimensionReview:job.dimensionReview}:{})});
+     const composed=projectWithGenerated({...p,id:job.projectId},{...(job.inputMode?{inputMode:job.inputMode}:{}),downloadExpiresAt:job.downloadExpiresAt,jobId:job.id,mode:job.mode,sourceHash:job.sourceHash,asset,role:job.artifact.role,model:job.model,createdAt:job.createdAt,specificationKey:generatedCompatibilityKey(p),composition:job.composition,compositionKey:job.compositionKey,...(display?{dimensionDisplay:display}:{}),...(job.dimensionReview?{dimensionReview:job.dimensionReview}:{})});
      const canvas=document.createElement('canvas'),issues=await render(canvas,composed,undefined,manualBaseExport(composed));
      if(issues.length)throw Error('RENDER_FAILED');
      const png=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('PNG')),'image/png'));
      if(!live())return;
      const file=new File([png],`aiadcast-${batch.id.slice(4,12)}-${String(index+1).padStart(2,'0')}.png`,{type:'image/png'});
      if(cached)URL.revokeObjectURL(cached.url);
-     const item={...composed,adBatch:undefined,resultSet:undefined,requestedImageCount:1 as const};
+     const item={...composed,name:batch.count>1?(composed.name||composed.productName)+' · '+(index+1):composed.name,adBatch:undefined,resultSet:undefined,requestedImageCount:1 as const};
      cache.current[job.id]={file,url:URL.createObjectURL(file),artifact:asset.sha256,item,accepted:job.state==='accepted'};setImages({...cache.current});
      if(batch.count===1&&!autoSelected.current){autoSelected.current=true;setSelected([job.id]);}
     }
@@ -76,6 +76,8 @@ export function BatchResults({project,batch,onEdit,renderDetail}:{project:Projec
   if(lock.current||!chosen.length)return;
   const unchecked=chosen.find(j=>j.dimensionDisplay&&!validAiDimensionReview(reviews[j.id]??j.dimensionReview,j.dimensionDisplay,j.artifactId!));
   if(unchecked){setReviewItem(unchecked.id);return;}
+  const tickets=chosen.reduce((total,j)=>total+(j.creditUnit==='legacy-ticket'&&j.state==='ready'&&!confirmed.current.has(j.id)?j.creditCost??0:0),0);
+  if(tickets&&!window.confirm(t(`선택한 광고에 이용권 ${tickets}장이 사용됩니다. 계속할까요?`,`Use ${tickets} tickets for the selected ads?`)))return;
   lock.current=true;setBusy(true);setError('');setNotice('');
   const signal=lifetime.current.signal;
   try{

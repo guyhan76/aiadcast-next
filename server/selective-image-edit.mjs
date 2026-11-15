@@ -20,6 +20,7 @@ export async function prepareSelectiveEdit(original,mask){
  return {source:{...meta,bytes},mask:selected,selectedPixels:count};
 }
 export async function compositeSelectiveEdit(original,mask,generated,sourceArtifactHash=original.sha256){
+ const requestMaskHash=mask.sha256;
  if(mask.instruction){
   if(!generated.locatedMask?.localized)throw new ProviderFailure('EDIT_PRESERVATION_FAILED');
   mask=generated.locatedMask;
@@ -37,7 +38,7 @@ export async function compositeSelectiveEdit(original,mask,generated,sourceArtif
  const decoded=await sharp(bytes).ensureAlpha().raw().toBuffer();
  const preservation=inspectSelectivePixels(a,m,decoded,original.width,original.height);
  if(mask.localized&&preservation.selectedPixels===original.width*original.height)throw new ProviderFailure('EDIT_PRESERVATION_FAILED');
- return {...generated,bytes,mime:'image/png',width:original.width,height:original.height,sha256:hashBytes(bytes),role:'creative',composition:'complete-ad',preservation:{version:1,sourceHash:sourceArtifactHash,maskHash:mask.sha256,resultHash:hashBytes(bytes),...preservation,semanticQuality:'not-assessed'}};
+ return {...generated,bytes,mime:'image/png',width:original.width,height:original.height,sha256:hashBytes(bytes),role:'creative',composition:'complete-ad',preservation:{version:1,sourceHash:sourceArtifactHash,maskHash:mask.sha256,...(mask.localized?{requestMaskHash}:{}),resultHash:hashBytes(bytes),...preservation,semanticQuality:'not-assessed'}};
 }
 
 // Inspect the encoded output, not just the merge loop. Hidden RGB under alpha=0
