@@ -80,86 +80,78 @@ function DownloadPreview({item,onSave,onDelete,saveLabel,saveDisabled,deleteDisa
 export function DownloadList({items,onRemoved}:{items:Delivery[];onRemoved:(ids:string[])=>void}){
  const {language,t}=useUiLanguage();
  const [limit,setLimit]=useState(5),[rows,setRows]=useState<Record<string,string>>({}),[summary,setSummary]=useState('');
- const [busy,setBusy]=useState<Set<string>>(new Set()),[all,setAll]=useState(false);
- const singles=useRef(new Map<string,Promise<File|undefined>>()),batch=useRef(false),active=useRef<AbortController|null>(null);
+ const active=useRef<AbortController|null>(null);
  useEffect(()=>{const ctrl=new AbortController();active.current=ctrl;return ()=>ctrl.abort();},[]);
- function message(id:string,value:string){setRows(prev=>({...prev,[id]:value}));}
- const selection=useLibrarySelection(items.map(item=>item.id),async ids=>{
+ const selection=useLibrarySelection(items.map(item=>item.id),removeDownloads,'downloads',saveDownloads);
+ async function removeDownloads(ids:string[]){
   const signal=active.current?.signal;
-  if(!signal||signal.aborted||batch.current||singles.current.size)throw Error('BUSY');
+  if(!signal||signal.aborted)throw Error('CANCELLED');
   for(let i=0;i<ids.length;i+=15){
    const group=ids.slice(i,i+15);
    await apiRequest('/api/membership/remove-downloads',{ids:group},signal);
    if(!signal.aborted)onRemoved(group);
   }
- },'downloads');
- const saved=()=>hasNativeExport()?t('갤러리 · aiadcast에 저장됨','Saved to Pictures/aiadcast'):t('다운로드 시작됨','Download started');
- async function save(item:Delivery){
-  const signal=active.current?.signal;
-  if(!signal||signal.aborted||selection.busy||batch.current||singles.current.has(item.id))return;
-  message(item.id,'');setSummary('');
-  const work=(async()=>{
-   try{
-    const file=await original(item,signal,
-     ()=>window.confirm(t('이 결과를 사용 확정하고 저장할까요? 예약된 이용권이 사용됩니다.','Confirm use and save the original? Your reserved ticket will be used.')));
-    if(file){await exportBatch([file],'save',signal);if(!signal.aborted)message(item.id,saved());}
-    return file;
-   }catch(error){if(!signal.aborted)message(item.id,failure(error,t));}
-  })();
-  singles.current.set(item.id,work);setBusy(new Set(singles.current.keys()));
-  try{await work;}finally{singles.current.delete(item.id);if(!signal.aborted)setBusy(new Set(singles.current.keys()));}
  }
- async function saveAll(){
+ async function saveDownloads(ids:string[]){
   const signal=active.current?.signal;
-  if(!signal||signal.aborted||selection.busy||batch.current||!items.length)return;
-  const inFlight=new Map(singles.current);
-  const reviews=items.filter(item=>item.reviewRequired&&!inFlight.has(item.id)).length;
-  if(reviews&&!window.confirm(t('미확정 '+reviews+'건을 포함해 전체 저장할까요? 사용 확정 시 예약된 이용권이 사용됩니다.','Save all, including '+reviews+' unconfirmed results? Confirming use spends their reserved tickets.')))return;
-  batch.current=true;setAll(true);setSummary('');
-  const native=hasNativeExport(),files:File[]=[];
-  let done=0;
-  try{
-   for(const [index,item] of items.entries()){
+  if(!signal||signal.aborted)return ids;
+  const selected=new Set(ids),targets=items.filter(item=>selected.has(item.id));
+  const reviews=targets.filter(item=>item.reviewRequired).length;
+  const multiple=targets.length>1,native=hasNativeExport();
+  if(multiple&&reviews&&!window.confirm(t('선택한 광고 중 미확정 '+reviews+'건을 사용 확정하고 저장할까요? 예약된 이용권이 사용됩니다.','Confirm and save '+reviews+' unconfirmed ads in this selection? Their reserved tickets will be used.')))return ids;
+  const singleConsent=()=>window.confirm(t('이 결과를 사용 확정하고 저장할까요? 예약된 이용권이 사용됩니다.','Confirm and save this ad? Its reserved ticket will be used.'));
+  const files:File[]=[],preparedIds:string[]=[],saved=new Set<string>();
+  setSummary('');
+  setRows(prev=>Object.fromEntries(Object.entries(prev).filter(([id])=>!selected.has(id))));
+  function report(id:string,value:string){if(!signal?.aborted)setRows(prev=>({...prev,[id]:value}));}
+  for(const [index,item] of targets.entries()){
+   signal.throwIfAborted();
+   try{
+    const file=await original(item,signal,multiple?()=>true:singleConsent);
+    if(!file)return ids;
+    if(native){
+     await exportBatch([file],'save',signal);
+     saved.add(item.id);
+    }else{
+     files.push(file);preparedIds.push(item.id);
+    }
+   }catch(error){signal.throwIfAborted();report(item.id,failure(error,t));}
+   if(multiple&&!signal.aborted)setSummary(t('원본 준비 중 ','Preparing originals ')+(index+1)+' / '+targets.length);
+  }
+  if(files.length){
+   try{
+    await exportBatch(files,'save',signal,multiple);
+    for(const id of preparedIds)saved.add(id);
+   }catch(error){
     signal.throwIfAborted();
-    const existing=inFlight.get(item.id);
-    try{
-     const file=existing?await existing:await original(item,signal,()=>true);
-     if(file){
-      if(native){if(!existing)await exportBatch([file],'save',signal);done++;}
-      else files.push(file);
-      if(!signal.aborted)message(item.id,native?saved():'');
-     }
-    }catch(error){if(!signal.aborted)message(item.id,failure(error,t));}
-    if(!signal.aborted)setSummary(t('원본 준비 중 ','Preparing originals ')+(index+1)+' / '+items.length);
+    const reason=failure(error,t);
+    if(!signal.aborted)setRows(prev=>({...prev,...Object.fromEntries(preparedIds.map(id=>[id,reason]))}));
    }
-   if(!native&&files.length){
-    await exportBatch(files,'save',signal,true);
-    done=files.length;
-   }
-   if(!signal.aborted){
-    const result=done?t(done+'건 '+(native?'갤러리에 저장됨':'ZIP 다운로드 시작됨'),done+(native?' saved to Pictures/aiadcast':' in the ZIP download')):'';
-    const missed=items.length-done;
-    setSummary([result,missed?t('미저장 '+missed+'건',missed+' not saved'):''].filter(Boolean).join(' · '));
-   }
-  }catch(error){if(!signal.aborted)setSummary(failure(error,t));}
-  finally{batch.current=false;if(!signal.aborted)setAll(false);}
+  }
+  signal.throwIfAborted();
+  const remaining=ids.filter(id=>!saved.has(id));
+  const success=native?t('갤러리 · aiadcast에 저장됨','saved to Pictures/aiadcast'):
+   multiple?t('ZIP 다운로드 시작됨','in the ZIP download'):t('다운로드 시작됨','download started');
+  if(!multiple&&saved.size)report(targets[0].id,success);
+  setSummary([saved.size?t(saved.size+'건 '+success,saved.size+' '+success):'',remaining.length?t('미저장 '+remaining.length+'건',remaining.length+' not saved'):''].filter(Boolean).join(' · '));
+  return remaining;
  }
  return <>
-  <div className="download-actions"><p className="download-notice">{t('새 광고는 생성 후 24시간 동안 다운로드할 수 있습니다.','New ads are available to download for 24 hours after creation.')}</p>
-   <button type="button" className="library-more" disabled={all||selection.editing||selection.busy} onClick={()=>void saveAll()}>{t('전체 저장','Save all')}</button></div>
-  {!all&&!busy.size&&selection.tools}
+  <div className={selection.editing?'download-selecting':'download-actions'}>
+   {!selection.editing&&<p className="download-notice">{t('새 광고는 생성 후 24시간 동안 다운로드할 수 있습니다.','New ads are available to download for 24 hours after creation.')}</p>}
+   {selection.tools}
+  </div>
   {summary&&<p role="status" className="download-feedback">{summary}</p>}
-  <ul className="download-list delivery-list">{items.slice(0,limit).map(item=>{
-   const saving=busy.has(item.id);
-   const saveLabel=saving?t('저장 중…','Saving…'):item.reviewRequired?t('사용 확정 후 저장','Confirm and save'):t('원본 저장','Save original');
-   return <li key={item.id}>
-   <DownloadPreview item={item} onSave={()=>void save(item)} onDelete={()=>void selection.erase([item.id])}
-    saveLabel={saveLabel} saveDisabled={all||saving||selection.busy||selection.editing}
-    deleteDisabled={all||busy.size>0||selection.busy||selection.editing} feedback={selection.error||rows[item.id]||''}/><div><strong>{item.name||t('이름 없는 광고','Untitled ad')}</strong>
+  <ul className="download-list delivery-list">{items.slice(0,limit).map(item=><li key={item.id}>
+   <DownloadPreview item={item} onSave={()=>void selection.saveItems([item.id])} onDelete={()=>void selection.erase([item.id])}
+    saveLabel={item.reviewRequired?t('사용 확정 후 저장','Confirm and save'):t('원본 저장','Save original')}
+    saveDisabled={selection.busy||selection.editing} deleteDisabled={selection.busy||selection.editing} feedback={selection.error||rows[item.id]||''}/>
+   <div><strong>{item.name||t('이름 없는 광고','Untitled ad')}</strong>
     <time dateTime={item.expiresAt}>{t('기한','Until')} {new Date(item.expiresAt).toLocaleString(language==='ko'?'ko-KR':'en-US',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time>
-    {rows[item.id]&&<span role="status" className="download-feedback">{rows[item.id]}</span>}</div>
-   {selection.editing?<input type="checkbox" aria-label={item.name+' '+t('선택','select')} checked={selection.selected.has(item.id)} disabled={selection.busy} onChange={()=>selection.toggle(item.id)}/>:<button type="button" disabled={all||busy.has(item.id)} onClick={()=>void save(item)}>{saveLabel}</button>}
-  </li>;})}</ul>
+    {rows[item.id]&&<span role="status" className="download-feedback">{rows[item.id]}</span>}
+   </div>
+   {selection.editing&&<label className="delivery-check"><input type="checkbox" aria-label={item.name+' '+t('선택','select')} checked={selection.selected.has(item.id)} disabled={selection.busy} onChange={()=>selection.toggle(item.id)}/></label>}
+  </li>)}</ul>
   {limit<items.length&&<button type="button" className="library-more" onClick={()=>setLimit(n=>n+5)}>{t('다운로드 더 보기','Show more downloads')}</button>}
  </>;
 }

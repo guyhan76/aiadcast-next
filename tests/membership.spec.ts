@@ -26,9 +26,11 @@ for(const plan of ['free','standard'])test('24-hour downloads and confirmed with
  expect(downloadRequests).toBe(0);
  await downloads.click();
  await expect(library.getByText(/생성 후 24시간/)).toBeVisible();
- await expect(library.getByRole('button',{name:'원본 저장',exact:true})).toHaveCount(5);
+ await expect(library.locator('.delivery-preview')).toHaveCount(5);
+ await expect(library.getByRole('button',{name:'선택',exact:true})).toBeVisible();
+ await expect(library.getByRole('button',{name:'원본 저장',exact:true})).toHaveCount(0);
  await library.getByRole('button',{name:'다운로드 더 보기'}).click();
- await expect(library.getByRole('button',{name:'원본 저장',exact:true})).toHaveCount(7);
+ await expect(library.locator('.delivery-preview')).toHaveCount(7);
  await expect(library.getByText('마지막 광고')).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 
