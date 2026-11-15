@@ -182,3 +182,70 @@ test('a missing person or a full-crop rectangle never dispatches an image edit; 
   assert.equal(calls,identified?3:2);
  }
 });
+
+const posePrompt='우측 남자 캐릭터를 다른 얼굴과 포즈의 남자 캐릭터로 변경해줘. 캐릭터는 3D애니메이션으로 부탁하고 우측 상단의 한국NCS자격개발원을 없애고 셀업랩스로 변경 부탁해';
+for(const defect of [null,'previousGestureResolved','allOtherRequestedEditsCorrect'])test('pose and company name: verify final composite before delivery / '+(defect||'deliver'),async t=>{
+ const {s}=await fixture(t);
+ const stages=[];
+ const rect=(l,t,r,b)=>[[l,t],[r,t],[r,b],[l,b]];
+ const body=rect(600,300,800,900),logo=rect(820,0,990,90),oldHand=rect(500,205,610,320);
+ const width=100,height=100;
+ const original=await sharp({create:{width,height,channels:4,background:'#345678'}}).png().toBuffer();
+ const hash=hashBytes(original);
+ const before=s.status().budget.spentMicros;
+ let inspected;
+ s.adapter=new OpenAIImageAdapter({apiKey:'test',enableEdits:true,fetchImpl:async(url,options)=>{
+  if(url.endsWith('/images/edits')){
+   stages.push('image');
+   assert.match(options.body.get('prompt'),/erase the entire vacated gesture/);
+   const maskBytes=Buffer.from(await options.body.get('mask').arrayBuffer());
+   const raw=await sharp(maskBytes).ensureAlpha().raw().toBuffer();
+   const alpha=(x,y)=>raw[((y+462)*1024+x+462)*4+3];
+   assert.equal(alpha(55,25),0,'old hand must be editable even when the body outline missed it');
+   assert.equal(alpha(90,5),0,'separate name replacement');
+   assert.equal(alpha(75,12),255,'drone between name and body stays protected');
+   const png=await sharp({create:{width:1024,height:1024,channels:4,background:'red'}}).png().toBuffer();
+   return Response.json({data:[{b64_json:png.toString('base64')}],usage:{input_tokens:2,input_tokens_details:{text_tokens:1,image_tokens:1},output_tokens:1}});
+  }
+  const payload=JSON.parse(options.body),stage=payload.response_format.json_schema.name;
+  const images=payload.messages[1].content.filter(part=>part.type==='image_url').map(part=>Buffer.from(part.image_url.url.split(',')[1],'base64'));
+  stages.push(stage);
+  let answer;
+  if(stage==='ad_edit_region')answer={located:true,changesPose:true,edit:[body,logo],protect:[]};
+  else if(stage==='audit_pose_mask'){
+   assert.equal(images.length,2);
+   const overlay=await sharp(images[1]).removeAlpha().raw().toBuffer();
+   const rgb=(x,y)=>[...overlay.subarray((y*width+x)*3,(y*width+x)*3+3)];
+   assert.deepEqual(rgb(55,25),[52,86,120]);
+   assert.notDeepEqual(rgb(70,50),rgb(55,25));
+   answer={complete:true,add:[oldHand],protect:[]};
+  }else{
+   assert.equal(stage,'review_composited_pose');
+   assert.equal(images.length,2);
+   inspected=await sharp(images[1]).ensureAlpha().raw().toBuffer();
+   const rgb=(x,y)=>[...inspected.subarray((y*width+x)*4,(y*width+x)*4+3)];
+   assert.deepEqual(rgb(55,25),[255,0,0]);
+   assert.deepEqual(rgb(90,5),[255,0,0]);
+   assert.deepEqual(rgb(75,12),[52,86,120]);
+   assert.deepEqual(rgb(20,70),[52,86,120]);
+   answer={poseMatchesRequest:true,coherentLimbs:true,previousGestureResolved:true,allOtherRequestedEditsCorrect:true,unrelatedContentPreserved:true};
+   if(defect)answer[defect]=false;
+  }
+  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(answer)}}],usage:{prompt_tokens:100,completion_tokens:60}});
+ }});
+ const made=await s.createUploadedEdit({requestId:randomUUID(),projectId:randomUUID(),creditQuote:s.creditQuote(),sourceHash:hash,prompt:posePrompt,mask:{mode:'instruction'},original:{sha256:hash,width,height,dataUrl:'data:image/png;base64,'+original.toString('base64')}});
+ await s.waitForIdle();
+ const job=s.job(made.job.id);
+ assert.deepEqual(stages,['ad_edit_region','audit_pose_mask','image','review_composited_pose']);
+ assert.equal(s.status().budget.spentMicros-before,3*345+43);
+ if(defect){
+  assert.equal(job.state,'failed');assert.equal(job.errorCode,'EDIT_POSE_QUALITY_FAILED');
+  assert.ok(!job.artifactId);assert.equal(job.creditCaptured,false);assert.equal(s.wallet().reserved,0);
+ }else{
+  assert.equal(job.state,'ready');assert.equal(job.preservation.changedOutsidePixels,0);
+  const delivered=await sharp(Buffer.from(job.artifact.dataUrl.split(',')[1],'base64')).ensureAlpha().raw().toBuffer();
+  assert.deepEqual(delivered,inspected);
+  const metadata=JSON.parse(s.db.prepare('SELECT metadata_json FROM generation_records WHERE id=?').get(job.id).metadata_json);
+  assert.equal(metadata.poseReview.resultHash,job.artifactId);
+ }
+});

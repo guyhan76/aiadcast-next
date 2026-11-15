@@ -1,3 +1,4 @@
+import {reviewPoseResult} from './edit-vision.mjs';
 import {locateEditRegion} from './locate-edit-region.mjs';
 import {selectiveEditForm,validateSelectiveOriginal,prepareSelectiveProviderInput,restoreSelectiveProviderResult,verifyPreparedSelectiveInput} from './selective-image-edit.mjs';
 import {providerHttpError,safeProviderEnum} from './provider-http-error.mjs';
@@ -197,6 +198,9 @@ export class OpenAIImageAdapter {
   }
   validateSelectiveInput(input){validateSelectiveOriginal({...input,model:IMAGE_MODEL});}
   prepareSelectiveInput(input){return prepareSelectiveProviderInput({...input,model:IMAGE_MODEL});}
+  reviewPose(region,final,attemptId){
+    return reviewPoseResult({prompt:region.prompt,attemptId,apiKey:this.apiKey,fetchImpl:this.fetchImpl,timeoutMs:this.timeoutMs,readResponse:responseJsonLimited},region.source,final);
+  }
   async editRegion({source,mask,prompt,attemptId,providerInput,references=[]}) {
     if(!this.selectiveEditReady)throw new ProviderFailure('REGION_EDIT_NOT_AVAILABLE',{uncertain:false});
     source={...source,bytes:Buffer.isBuffer(source?.bytes)?Buffer.from(source.bytes):source?.bytes};
@@ -207,7 +211,7 @@ export class OpenAIImageAdapter {
       try{
         const edit=await this.editRegion({source,mask:located.mask,prompt,attemptId,references});
         const microUsd=edit.cost?edit.cost.microUsd+located.microUsd:null;
-        return {...edit,locatedMask:located.mask,cost:microUsd===null?null:{...edit.cost,microUsd,usd:microUsd/1e6,localizationMicros:located.microUsd}};
+        return {...edit,checkPose:located.checkPose,locatedMask:located.mask,cost:microUsd===null?null:{...edit.cost,microUsd,usd:microUsd/1e6,localizationMicros:located.microUsd}};
       }catch(error){
         if(error instanceof ProviderFailure&&!error.uncertain)error.knownCostMicros=located.microUsd;
         throw error;

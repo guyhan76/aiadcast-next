@@ -1,7 +1,7 @@
 import {planAdBatch} from './automatic-image-skills.mjs';
 import {batchPrice,validBatch} from '../src/batch-price.ts';
 import {verifiedPreservation} from '../src/selective-preservation.ts';
-import {prepareSelectiveEdit,compositeSelectiveEdit} from './selective-image-edit.mjs';
+import {prepareSelectiveEdit,finalizeSelectiveEdit} from './selective-image-edit.mjs';
 import {plannedAdText} from '../src/planned-ad-text.ts';
 import {exactAdText,plannedTextInput} from '../src/exact-ad-text.ts';
 import {submissionStage} from './submission-observation.mjs';
@@ -480,20 +480,20 @@ export class GenerationService {
     try {
       const attempt = this.ledger.transaction(() => {
         const period=this.period(),limit=this.budgetLimit(period);
-        return this.ledger.beginAttempt({ jobId: id, attemptId, period, maximumMicros: MODEL_COST_HOLD_MICROS + (region?.mask.instruction ? 20000 : 0), limitMicros: limit, periodScoped:Boolean(this.budgetForPeriod) });
+        return this.ledger.beginAttempt({ jobId: id, attemptId, period, maximumMicros: MODEL_COST_HOLD_MICROS + (region?.mask.instruction ? 80000 : 0), limitMicros: limit, periodScoped:Boolean(this.budgetForPeriod) });
       });
       if (!attempt.shouldDispatch) return;
       began = true;
       stage='provider';
       let result = region ? await this.adapter.editRegion({...region,attemptId}) : await this.adapter.generate({ request, source: request.mode === 'creative' ? source : null, references:request.mode==='creative'?references:[], attemptId });
-      if(region)result=await compositeSelectiveEdit(region.source,region.mask,result,region.sourceHash);
+      if(region)result=await finalizeSelectiveEdit(this.adapter,region,result,attemptId);
       if(!supportsImageMedia(result.mediaType))throw new ProviderFailure('UNSUPPORTED_PROVIDER_MEDIA');
       // Persist provider metadata before any customer capture. Pixel validity is not semantic quality approval.
       stage='persist-image';
       if(result.planarOriginal)this.storeAsset(result.planarOriginal);
       this.storeAsset(result);
       stage='persist-metadata';
-      this.db.prepare('UPDATE generation_records SET artifact_hash=?,artifact_role=?,metadata_json=? WHERE id=?').run(result.sha256, result.role, JSON.stringify({ model: result.model, revision: result.revision, ...(result.composition?{composition:result.composition}:{}), ...(result.planarReport?{planarReport:result.planarReport}:{}), ...(region&&result.preservation?{preservation:result.preservation}:{}), usage: result.usage, cost: result.cost, providerRequestId: result.providerRequestId }), id);
+      this.db.prepare('UPDATE generation_records SET artifact_hash=?,artifact_role=?,metadata_json=? WHERE id=?').run(result.sha256, result.role, JSON.stringify({ model: result.model, revision: result.revision, ...(result.composition?{composition:result.composition}:{}), ...(result.planarReport?{planarReport:result.planarReport}:{}), ...(region&&result.preservation?{preservation:result.preservation}:{}), ...(result.poseReview ? { poseReview: result.poseReview } : {}), usage: result.usage, cost: result.cost, providerRequestId: result.providerRequestId }), id);
       stage='usage';
       if (!result.cost) throw new ProviderFailure('PROVIDER_USAGE_UNCERTAIN');
       stage='settle';
