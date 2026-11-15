@@ -12,11 +12,11 @@ if (publicApiOrigin) {
     publicApiOrigin = publicApiOrigin.replaceAll('/$', '')
 }
 
-def buildVersionCode = providers.gradleProperty('AIADCAST_BUILD_VERSION_CODE').getOrElse('99').toInteger()
+def buildVersionCode = providers.gradleProperty('AIADCAST_BUILD_VERSION_CODE').getOrElse('100').toInteger()
 if (buildVersionCode < 83 || buildVersionCode > 2100000000) {
     throw new GradleException('AIADCAST_BUILD_VERSION_CODE must be between 83 and 2100000000.')
 }
-def buildVersionName = providers.gradleProperty('AIADCAST_BUILD_VERSION_NAME').getOrElse('0.2.97')
+def buildVersionName = providers.gradleProperty('AIADCAST_BUILD_VERSION_NAME').getOrElse('0.2.98')
 
 android {
     sourceSets.main.res.srcDir('generated/launcher-res')
@@ -24,7 +24,9 @@ android {
     compileSdk 36
     buildToolsVersion '36.0.0'
 
+    testBuildType 'preview'
     defaultConfig {
+        testInstrumentationRunner 'com.selluplabs.aiadcast.next.DownloadInstrumentation'
         applicationId 'com.selluplabs.aiadcast.next'
         minSdk 29
         targetSdk 36

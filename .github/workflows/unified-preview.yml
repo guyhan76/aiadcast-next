@@ -9,7 +9,7 @@ on:
       - 'playwright.config.ts'
       - 'scripts/check-live-web-release.mjs'
       - '.github/workflows/**'
-    branches: [feat/patent-product-generation-20261011, feat/member-storage-20261115, feat/sport-industry-options-20261115, feat/dancesport-disciplines-20261115, feat/clean-projects-20261115, fix/campaign-type-examples-20261115, fix/restore-description-20261115]
+    branches: [feat/patent-product-generation-20261011, feat/member-storage-20261115, feat/sport-industry-options-20261115, feat/dancesport-disciplines-20261115, feat/clean-projects-20261115, fix/campaign-type-examples-20261115, fix/restore-description-20261115, fix/original-downloads-20261115]
   workflow_dispatch:
 
 permissions:
@@ -67,10 +67,10 @@ jobs:
           AIADCAST_DEMO_STORE_PASSWORD: ${{ secrets.AIADCAST_DEMO_STORE_PASSWORD }}
         working-directory: android
         run: |
-          ./gradlew --no-daemon testPreviewUnitTest lintPreview assemblePreview \
+          ./gradlew --no-daemon testPreviewUnitTest lintPreview assemblePreview assemblePreviewAndroidTest \
             -PAIADCAST_SIGNED_PREVIEW=true \
             -PAIADCAST_API_ORIGIN=https://aiadcast-next.onrender.com \
-            -PAIADCAST_BUILD_VERSION_CODE=99 -PAIADCAST_BUILD_VERSION_NAME=0.2.97
+            -PAIADCAST_BUILD_VERSION_CODE=100 -PAIADCAST_BUILD_VERSION_NAME=0.2.98
       - name: Verify packaged version, certificate, alignment and source
         run: |
           set -euo pipefail
@@ -80,7 +80,7 @@ jobs:
           grep -Fx 'Signer #1 certificate SHA-256 digest: 7dc020bc774784d3df553c58c672f4210d232e2543004fd52ac9084943488b4e' "$RUNNER_TEMP/certificate.txt"
           "$build_tools/zipalign" -c -P 16 4 "$apk"
           "$build_tools/aapt" dump badging "$apk" > "$RUNNER_TEMP/package.txt"
-          grep -F "name='com.selluplabs.aiadcast.next.preview' versionCode='99' versionName='0.2.97-preview'" "$RUNNER_TEMP/package.txt"
+          grep -F "name='com.selluplabs.aiadcast.next.preview' versionCode='100' versionName='0.2.98-preview'" "$RUNNER_TEMP/package.txt"
           unzip -p "$apk" assets/native-build.json | jq -e --arg sha "$GITHUB_SHA" '.webBuild.commit == $sha and .webBuild.dirty == false'
           python3 - "$apk" <<'PY'
           import hashlib, json, sys, zipfile
@@ -95,10 +95,27 @@ jobs:
           cmp public/aiadcast-app-icon.png <(unzip -p "$apk" assets/aiadcast-app-icon.png)
           grep -q "^application-icon-" "$RUNNER_TEMP/package.txt"
           mkdir -p release
-          cp "$apk" release/aiadcast-0.2.97.apk
+          cp "$apk" release/aiadcast-0.2.98.apk
           cd release
-          zip -q -0 aiadcast-0.2.97.zip aiadcast-0.2.97.apk
-          sha256sum aiadcast-0.2.97.{apk,zip} > SHA256SUMS.txt
+          zip -q -0 aiadcast-0.2.98.zip aiadcast-0.2.98.apk
+          sha256sum aiadcast-0.2.98.{apk,zip} > SHA256SUMS.txt
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Reopen originals saved by the installed Android Preview
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: |
+            adb install -r android/app/build/outputs/apk/preview/app-preview.apk
+            adb install -r android/app/build/outputs/apk/androidTest/preview/app-preview-androidTest.apk
+            adb shell am instrument -w com.selluplabs.aiadcast.next.preview.test/com.selluplabs.aiadcast.next.DownloadInstrumentation | tee "$RUNNER_TEMP/original-downloads.txt"
+            grep -F 'files=3 originals reopened from Pictures/aiadcast' "$RUNNER_TEMP/original-downloads.txt"
       - name: Keep the signed candidate for publication after the web deploy
         if: github.ref_name == 'feat/patent-product-generation-20261011'
         uses: actions/upload-artifact@v4
@@ -157,6 +174,6 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/check-live-web-release.mjs "$GITHUB_SHA"
-          tag="preview-0.2.97-code99-${GITHUB_SHA:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          gh release create "$tag" release/aiadcast-0.2.97.apk release/aiadcast-0.2.97.zip release/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-            --title 'aiadcast 0.2.97 Preview (99)' --notes "Android Preview for testing. Verified source: $GITHUB_SHA. Certificate and APK checks passed."
+          tag="preview-0.2.98-code100-${GITHUB_SHA:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          gh release create "$tag" release/aiadcast-0.2.98.apk release/aiadcast-0.2.98.zip release/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title 'aiadcast 0.2.98 Preview (100)' --notes "Android Preview for testing. Verified source: $GITHUB_SHA. Certificate and APK checks passed."

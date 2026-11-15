@@ -53,3 +53,7 @@
 .download-list .legacy-open{border:0;padding:0;text-align:left}
 .library-more{margin-top:14px}
 @media(max-width:380px){.download-list li{gap:8px}.download-list li>button{max-width:92px}}
+
+.download-actions{display:flex;align-items:center;gap:16px;justify-content:space-between}
+.download-actions .library-more{flex:none}
+.download-feedback{display:block;margin:6px 0;color:var(--brand-muted);font-size:14px;line-height:1.5}

@@ -4,7 +4,7 @@ type NativeBridge={postMessage:(json:string)=>void};
 type NativeWindow=Window & {AiadcastNative?:NativeBridge};
 const crcTable=Uint32Array.from({length:256},(_,i)=>{let n=i;for(let b=0;b<8;b++)n=n&1?(n>>>1)^0xedb88320:n>>>1;return n>>>0;});
 
-// ZIP with stored PNG entries. PNG data is already compressed.
+// Keep the original image bytes in uncompressed ZIP entries.
 export async function pngArchive(files:File[]){
  const parts:BlobPart[]=[],directory:Uint8Array<ArrayBuffer>[]=[],encoder=new TextEncoder();
  let offset=0;
@@ -42,17 +42,29 @@ async function nativeExport(bridge:NativeBridge,files:File[],mode:'save'|'share'
   await send({op:'finish'});
  }catch(e){bridge.postMessage(JSON.stringify({type:'batch-export',id,owner,op:'cancel'}));throw e;}
 }
-export async function exportBatch(files:File[],mode:'save'|'share',signal:AbortSignal){
+let nativeQueue:Promise<void>=Promise.resolve();
+export function hasNativeExport(){return !!(window as NativeWindow).AiadcastNative;}
+export async function exportBatch(files:File[],mode:'save'|'share',signal:AbortSignal,archive=false){
  signal.throwIfAborted();
  const native=(window as NativeWindow).AiadcastNative;
- if(native){await nativeExport(native,files,mode,signal);return;}
+ if(native){
+  const owner=storageNamespace();
+  const transaction=nativeQueue.then(async()=>{
+   signal.throwIfAborted();
+   if(owner!==storageNamespace())throw Error('SESSION_CHANGED');
+   window.dispatchEvent(new Event('aiadcast-export-context-needed'));
+   await nativeExport(native,files,mode,signal);
+  });
+  nativeQueue=transaction.catch(()=>{});
+  return transaction;
+ }
  if(mode==='share'){
   if(!navigator.canShare?.({files}))throw Error('SHARE_UNAVAILABLE');
   await navigator.share({files});return;
  }
- const blob=files.length===1?files[0]:await pngArchive(files);
+ const single=files.length===1&&!archive,blob=single?files[0]:await pngArchive(files);
  signal.throwIfAborted();
  const url=URL.createObjectURL(blob),a=document.createElement('a');
- a.href=url;a.download=files.length===1?files[0].name:'aiadcast-images.zip';a.click();
+ a.href=url;a.download=single?files[0].name:'aiadcast-images.zip';a.click();
  setTimeout(()=>URL.revokeObjectURL(url),30000);
 }

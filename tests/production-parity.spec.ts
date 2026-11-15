@@ -190,3 +190,94 @@ for (const native of [false,true]) {
     } finally { await context.close(); }
   });
 }
+
+for(const native of [false,true])test('save separate originals and the entire download list on '+(native?'Android':'the web'),async({page})=>{
+  const origin=await prepareParityPage(page,native);
+  const formats=['png','jpeg','webp'] as const;
+  const files=await Promise.all(formats.map(format=>sharp({create:{width:16,height:12,channels:3,background:'#e39146'}}).toFormat(format).toBuffer()));
+  const items=Array.from({length:12},(_,i)=>({id:'delivery-'+String(i).padStart(4,'0'),name:'테스트 광고 '+i,expiresAt:new Date(Date.now()+86400000).toISOString(),reviewRequired:i===10}));
+  let accepted=0,release!:()=>void,hold=true;
+  const delay=new Promise<void>(resolve=>{release=resolve;});
+  if(native)await page.addInitScript(()=>{
+    const nativeFetch=window.fetch.bind(window);
+    window.fetch=(input,init)=>typeof input==='string'&&input.startsWith('data:')?
+      Promise.reject(new Error('data URL transport is unavailable')):nativeFetch(input,init);
+    const out:{name:string;base64:string}[]=[];
+    Object.assign(window,{exportedFiles:out});
+    let session='',content:{name:string;base64:string}[]=[];
+    (window as any).AiadcastNative={postMessage:(json:string)=>{
+      const message=JSON.parse(json);
+      if(message.type!=='batch-export')return;
+      let ok=true;
+      if(message.op==='begin'){
+        ok=!session&&message.count>=1&&message.count<=10;session=message.id;content=[];
+      }else if(message.id!==session)ok=false;
+      else if(message.op==='file'){
+        ok=/^aiadcast-[0-9a-f]{8}-[0-9]{2}\.(png|jpg|webp)$/.test(message.name);
+        if(ok)content.push({name:message.name,base64:message.base64});
+      }else if(message.op==='finish'){out.push(...content);session='';}
+      else if(message.op==='cancel'){session='';return;}
+      setTimeout(()=>window.dispatchEvent(new CustomEvent('aiadcast-batch-export',{detail:{id:message.id,ok}})),15);
+    }};
+  });
+  await page.route('**/api/projects',r=>r.fulfill({json:{projects:[]}}));
+  await page.route('**/api/membership/downloads',r=>r.fulfill({json:{downloads:items}}));
+  await page.route('**/api/generations/delivery-*/accept',async r=>{accepted++;await r.fulfill({json:{ok:true}});});
+  const unavailable=7;
+  await page.route('**/api/generations/delivery-*',async r=>{
+    const i=Number(r.request().url().split('-').pop());
+    if(i===0&&hold)await delay;
+    if(i===unavailable)return r.fulfill({status:404,json:{error:{code:'STORAGE_NOT_FOUND'}}});
+    const data=files[i%3],hash=createHash('sha256').update(data).digest('hex');
+    await r.fulfill({json:{job:{id:items[i].id,state:i===10?'ready':'accepted',artifactId:hash,artifact:{id:hash,sha256:hash,width:16,height:12,dataUrl:'data:image/'+formats[i%3]+';base64,'+data.toString('base64')}}}});
+  });
+  await page.goto(origin+'/#projects');
+  await page.getByRole('button',{name:'다운로드',exact:true}).click();
+  const list=page.locator('.download-library');
+  const row=(i:number)=>list.locator('li').filter({has:page.getByText(items[i].name,{exact:true})});
+  const save=(i:number)=>row(i).getByRole('button');
+  await save(0).click();
+  await expect(save(0)).toBeDisabled();
+  await expect(save(1)).toBeEnabled();
+  await expect(list.getByRole('button',{name:'전체 저장'})).toBeEnabled();
+  const second=native?null:page.waitForEvent('download');
+  await save(1).click();
+  if(second){const d=await second;expect(d.suggestedFilename()).toBe('aiadcast-'+items[1].id+'.jpg');expect((await readFile((await d.path())!)).equals(files[1])).toBe(true);}
+  else await expect(row(1)).toContainText('갤러리');
+  const first=native?null:page.waitForEvent('download');
+  hold=false;release();
+  if(first){const d=await first;expect((await readFile((await d.path())!)).equals(files[0])).toBe(true);}
+  await expect(save(0)).toBeEnabled();
+  page.once('dialog',dialog=>dialog.dismiss());
+  await list.getByRole('button',{name:'전체 저장'}).click();
+  expect(accepted).toBe(0);
+  page.once('dialog',dialog=>dialog.accept());
+  const zip=native?null:page.waitForEvent('download');
+  await list.getByRole('button',{name:'전체 저장'}).click();
+  const expected=items.filter((_,i)=>i!==unavailable);
+  await expect(list).toContainText('미저장 1건');
+  expect(accepted).toBe(1);
+  if(zip){
+    const download=await zip;
+    expect(download.suggestedFilename()).toBe('aiadcast-images.zip');
+    const data=await readFile((await download.path())!),end=data.length-22;
+    expect(data.readUInt32LE(end)).toBe(0x06054b50);
+    expect(data.readUInt16LE(end+10)).toBe(expected.length);
+    let offset=0;
+    for(const item of expected){
+      const i=items.indexOf(item);
+      expect(data.readUInt32LE(offset)).toBe(0x04034b50);
+      const size=data.readUInt32LE(offset+18),nameSize=data.readUInt16LE(offset+26),start=offset+30+nameSize;
+      expect(data.toString('utf8',offset+30,start)).toBe('aiadcast-'+item.id+'.'+['png','jpg','webp'][i%3]);
+      expect(data.subarray(start,start+size).equals(files[i%3])).toBe(true);
+      offset=start+size;
+    }
+    expect(offset).toBe(data.readUInt32LE(end+16));
+  }else{
+    const written=await page.evaluate(()=>(window as any).exportedFiles as {name:string;base64:string}[]);
+    expect(written.map(f=>f.base64)).toEqual([1,0,...expected.map(item=>items.indexOf(item))].map(i=>files[i%3].toString('base64')));
+  }
+  await list.getByRole('button',{name:'다운로드 더 보기'}).click();
+  await expect(row(unavailable)).toContainText('서버에서 원본을 찾을 수 없습니다.');
+  await expect(save(unavailable)).toBeEnabled();
+});
