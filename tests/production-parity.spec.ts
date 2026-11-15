@@ -38,7 +38,7 @@ async function prepareParityPage(page:Page,native:boolean) {
   return origin;
 }
 
-test('web and native clients submit identical briefs and display the same delivered batch', async ({browser}) => {
+for(const imageCount of [1,2,10])test('web and native clients submit identical briefs and display '+imageCount+' delivered images', async ({browser}) => {
   const source = await sharp({create:{width:864,height:1536,channels:4,background:'#246790'}}).png().toBuffer();
   const sha = createHash('sha256').update(source).digest('hex');
   const evidence:unknown[] = [];
@@ -49,7 +49,7 @@ test('web and native clients submit identical briefs and display the same delive
       const origin = await prepareParityPage(page,native);
       const jobs:any[]=[];
       let batchId='',count=0,submitted:any;
-      await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,batchVersion:1,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:80,reserved:0}},budget:{limitMicros:8000000}}}));
+      await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,batchVersion:1,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:160,reserved:0}},budget:{limitMicros:8000000}}}));
       await page.route('**/api/ad-batches/*',r=>r.fulfill({json:{id:batchId,jobs:jobs.map(j=>({...j,artifact:null}))}}));
       await page.route('**/api/generations/parity-*',r=>r.fulfill({json:{job:jobs.find(j=>r.request().url().endsWith(j.id))}}));
       await page.route('**/api/generations',async r=>{
@@ -70,13 +70,17 @@ test('web and native clients submit identical briefs and display the same delive
       await form.getByLabel('서비스명',{exact:true}).fill('공연 티켓');
       await form.getByLabel('상세설명',{exact:true}).fill('공연 입장권, 1인 19,800원');
       await form.getByLabel('추가 요청',{exact:true}).fill('공연명과 가격을 강조해주세요');
-      await form.getByRole('button',{name:'2',exact:true}).click();
+      await form.getByRole('button',{name:String(imageCount),exact:true}).click();
       await form.getByRole('button',{name:'광고 생성',exact:true}).click();
       await page.getByRole('dialog').getByRole('button',{name:'확인',exact:true}).click();
       const images=page.locator('.batch-grid img');
-      await expect(images).toHaveCount(2);
-      const first=await images.nth(0).boundingBox(),second=await images.nth(1).boundingBox();
-      expect(first!.width).toBeGreaterThan(300);expect(second!.y).toBeGreaterThanOrEqual(first!.y+first!.height-1);
+      await expect(images).toHaveCount(imageCount);
+      const first=await images.first().boundingBox();
+      expect(first!.width).toBeGreaterThan(300);
+      if(imageCount>1){
+        const last=await images.last().boundingBox();expect(last!.y).toBeGreaterThanOrEqual(first!.y+first!.height*(imageCount-1)-1);
+        await images.last().scrollIntoViewIfNeeded();await expect(images.last()).toBeInViewport();
+      }else{await expect(page.locator('.batch-grid').getByRole('checkbox')).toBeChecked();}
       expect(first!.width/first!.height).toBeCloseTo(9/16,2);
       await expect(page.locator('.batch-results')).not.toContainText('서버 다운로드 기한');
       await expect(page.locator('.batch-results')).not.toContainText('검수 · 수정');
@@ -85,7 +89,7 @@ test('web and native clients submit identical briefs and display the same delive
         return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)));
       })));
       expect(count).toBe(1);
-      expect(submitted.count).toBe(2);
+      expect(submitted.count).toBe(imageCount);
       evidence.push({submitted,displayed});
     } finally { await context.close(); }
   }

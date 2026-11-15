@@ -72,6 +72,8 @@ export function BatchResults({project,batch,onEdit,renderDetail}:{project:Projec
  const eligible=jobs.filter(j=>images[j.id]&&['accepted','ready'].includes(j.state)&&images[j.id].artifact===j.artifactId);
  const chosen=eligible.filter(j=>selected.includes(j.id));
  const displayed=eligible.find(j=>j.id===(reviewItem??zoom));
+ const reviewedForEdit=displayed&&(!displayed.dimensionDisplay||validAiDimensionReview(confirmed.current.get(displayed.id)?.dimensionReview??displayed.dimensionReview,displayed.dimensionDisplay,displayed.artifactId!));
+ const canEditPreview=reviewedForEdit&&(displayed.creditUnit!=='legacy-ticket'||!displayed.creditCost||displayed.state==='accepted'||confirmed.current.has(displayed.id));
  async function deliver(mode:'save'|'share'){
   if(lock.current||!chosen.length)return;
   const unchecked=chosen.find(j=>j.dimensionDisplay&&!validAiDimensionReview(reviews[j.id]??j.dimensionReview,j.dimensionDisplay,j.artifactId!));
@@ -121,7 +123,7 @@ export function BatchResults({project,batch,onEdit,renderDetail}:{project:Projec
    <img src={images[displayed.id].url} alt={t('광고 미리보기','Ad preview')}/>
    {reviewItem&&displayed.dimensionDisplay?<button onClick={()=>{
     setReviews(r=>({...r,[displayed.id]:{inputHash:displayed.dimensionDisplay!.inputHash,artifactHash:displayed.artifactId!,values:true,axes:true,complete:true}}));zoomDialog.current?.close();
-   }}>{t('규격의 수치·단위·축·누락 확인 완료','Confirm values, units, axes and completeness')}</button>:<div className="gallery-options"><PrecisionEditAction getInput={()=>({file:images[displayed.id].file,name:project.name})}/><button onClick={()=>{setZoom(undefined);setDetail(confirmed.current.has(displayed.id)||images[displayed.id].accepted?{...images[displayed.id].item,generated:{...images[displayed.id].item.generated!,acceptedAt:displayed.createdAt}}:{...project,id:displayed.projectId,adBatch:undefined,generated:undefined});}}>{t('광고 상세','Ad details')}</button></div>}
+   }}>{t('규격의 수치·단위·축·누락 확인 완료','Confirm values, units, axes and completeness')}</button>:<div className="gallery-options">{canEditPreview&&<PrecisionEditAction getInput={()=>({file:images[displayed.id].file,name:project.name})}/>}<button onClick={()=>{setZoom(undefined);setDetail(confirmed.current.has(displayed.id)||images[displayed.id].accepted?{...images[displayed.id].item,generated:{...images[displayed.id].item.generated!,acceptedAt:displayed.createdAt}}:{...project,id:displayed.projectId,adBatch:undefined,generated:undefined});}}>{t('광고 상세','Ad details')}</button></div>}
   </dialog>}
  </section>;
 }
