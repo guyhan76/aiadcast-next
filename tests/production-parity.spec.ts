@@ -288,13 +288,18 @@ for(const native of [false,true])test('instruction editing, credit consent and i
  const thumb='data:image/webp;base64,'+(await sharp(source).webp().toBuffer()).toString('base64');
  const items=Array.from({length:7},(_,i)=>({id:'delivery-preview-'+i,name:'미리보기 광고 '+i,reviewRequired:false,expiresAt:new Date(Date.now()+86400000).toISOString()}));
  const removed:string[]=[];let edits=0;
+ const edited=await sharp({create:{width:32,height:48,channels:3,background:'#89c7e5'}}).png().toBuffer(),editedHash=createHash('sha256').update(edited).digest('hex');
  await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:20,reserved:0}},budget:{limitMicros:1000000}}}));
  await page.route('**/api/membership/downloads',r=>r.fulfill({json:{downloads:items.filter(item=>!removed.includes(item.id))}}));
  await page.route('**/api/membership/downloads/*/preview',r=>r.fulfill({json:{preview:thumb}}));
  await page.route('**/api/membership/remove-downloads',r=>{removed.push(...r.request().postDataJSON().ids);return r.fulfill({json:{removed}});});
  await page.route('**/api/selective-edits/upload',r=>{
   const body=r.request().postDataJSON();expect(body.mask).toEqual({mode:'instruction'});expect(body.prompt).toBe('가격을 599,000원으로, 하늘은 화창하게');expect(body.creditQuote.amount).toBe(10);edits++;
-  return r.fulfill({json:{job:{id:'instruction-job',projectId:body.projectId,requestId:body.requestId,state:'running',selectiveEdit:{sourceJobId:body.sourceJobId,sourceProjectId:body.sourceJobId,sourceHash:body.sourceHash}}}});
+  const maskHash='a'.repeat(64);
+  return r.fulfill({json:{job:{id:'instruction-job',projectId:body.projectId,requestId:body.requestId,state:'ready',
+   artifactId:editedHash,artifact:{id:editedHash,sha256:editedHash,width:32,height:48,dataUrl:'data:image/png;base64,'+edited.toString('base64')},
+   selectiveEdit:{sourceJobId:body.sourceJobId,sourceProjectId:body.sourceJobId,sourceHash:body.sourceHash,maskHash},
+   preservation:{version:1,sourceHash:body.sourceHash,maskHash,resultHash:editedHash,width:32,height:48,selectedPixels:1536,changedSelectedPixels:1536,changedOutsidePixels:0,bounds:{x:0,y:0,width:32,height:48},semanticQuality:'not-assessed'}}}});
  });
  await page.goto(origin+'/#projects');
  await page.getByText('프로젝트 도구',{exact:true}).click();
@@ -305,6 +310,7 @@ for(const native of [false,true])test('instruction editing, credit consent and i
  const submit=edit.getByRole('button',{name:/수정하기.*10 크레딧/});
  page.once('dialog',d=>{expect(d.message()).toContain('10 크레딧');return d.dismiss();});await submit.click();expect(edits).toBe(0);
  page.once('dialog',d=>d.accept());await submit.click();await expect.poll(()=>edits).toBe(1);
+ await expect(edit.getByRole('img',{name:'수정 결과'})).toBeVisible();await expect(edit.getByRole('button',{name:'수정본 사용 · 저장'})).toBeEnabled();
  await edit.getByRole('button',{name:'닫기'}).click();
  await page.getByRole('button',{name:'다운로드',exact:true}).click();
  const list=page.locator('.download-library');
@@ -316,4 +322,29 @@ for(const native of [false,true])test('instruction editing, credit consent and i
  await list.getByRole('button',{name:'선택',exact:true}).click();await list.getByRole('button',{name:'전체 선택'}).click();
  page.once('dialog',d=>d.accept());await list.getByRole('button',{name:/전체 삭제/}).click();
  await expect(list.getByText('다운로드할 파일이 없습니다.')).toBeVisible();expect(removed).toEqual(items.map(i=>i.id));
+});
+
+for(const native of [false,true])test('delete selected saved projects and the active ad without restoring it on reload '+(native?'Android':'web'),async({browser})=>{
+ const origin=parityOrigin(native),ctx=await browser.newContext({baseURL:origin,viewport:{width:native?390:1100,height:850}});
+ try{
+  const page=await ctx.newPage();await prepareParityPage(page,native);
+  const owner='parity-member',scope=native?owner+'@'+encodeURIComponent('https://aiadcast-next.onrender.com'):owner;
+  const projects=['첫 번째 저장 광고','두 번째 저장 광고','작업 중 광고'].map(name=>({...starterProject(),name,productName:name}));
+  await restoreOwnedWorkspace(page,projects[2],owner,'studio',undefined,undefined,scope);
+  await page.evaluate(({items,scope})=>new Promise<void>((done,fail)=>{
+   const open=indexedDB.open('aiadcast-editor-'+scope,1);
+   open.onupgradeneeded=()=>open.result.createObjectStore('projects',{keyPath:'id'});
+   open.onerror=()=>fail(open.error);
+   open.onsuccess=()=>{const db=open.result,tx=db.transaction('projects','readwrite');for(const item of items)tx.objectStore('projects').put(item);tx.oncomplete=()=>{db.close();done();};tx.onerror=()=>fail(tx.error);};
+  }),{items:projects,scope});await page.goto(origin+'/#projects');await page.reload();
+  const section=page.locator('.projects-page');
+  await expect(section.locator('.project-tile')).toHaveCount(3);
+  await section.getByRole('button',{name:'선택',exact:true}).click();await section.locator('.project-tile').filter({hasText:'두 번째 저장 광고'}).click();
+  page.once('dialog',d=>d.accept());await section.getByRole('button',{name:/선택 삭제/}).click();
+  await expect(section.locator('.project-tile')).toHaveCount(2);
+  await section.getByRole('button',{name:'선택',exact:true}).click();await section.getByRole('button',{name:'전체 선택'}).click();
+  page.once('dialog',d=>d.accept());await section.getByRole('button',{name:/전체 삭제/}).click();
+  await expect(section.getByText('저장한 광고가 없습니다.')).toBeVisible();await page.reload();
+  await expect(section.getByText('저장한 광고가 없습니다.')).toBeVisible();
+ }finally{await ctx.close();}
 });
