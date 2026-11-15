@@ -12,11 +12,11 @@ if (publicApiOrigin) {
     publicApiOrigin = publicApiOrigin.replaceAll('/$', '')
 }
 
-def buildVersionCode = providers.gradleProperty('AIADCAST_BUILD_VERSION_CODE').getOrElse('100').toInteger()
+def buildVersionCode = providers.gradleProperty('AIADCAST_BUILD_VERSION_CODE').getOrElse('101').toInteger()
 if (buildVersionCode < 83 || buildVersionCode > 2100000000) {
     throw new GradleException('AIADCAST_BUILD_VERSION_CODE must be between 83 and 2100000000.')
 }
-def buildVersionName = providers.gradleProperty('AIADCAST_BUILD_VERSION_NAME').getOrElse('0.2.98')
+def buildVersionName = providers.gradleProperty('AIADCAST_BUILD_VERSION_NAME').getOrElse('0.2.99')
 
 android {
     sourceSets.main.res.srcDir('generated/launcher-res')

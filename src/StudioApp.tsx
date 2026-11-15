@@ -35,7 +35,7 @@ import {SimpleAdResult} from './SimpleAdResult';
 import {CreateCampaign} from './CreateCampaign';
 import {newProject} from './model';
 import type {Project} from './model';
-import {projects,saveProject,saveProjectSet} from './storage';
+import {deleteProjects,projects,saveProject,saveProjectSet} from './storage';
 import './studio.css';
 import './premium.css';
 import './campaign-cover.css';
@@ -75,6 +75,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  const priorPage=useRef<Page>(currentPage()),adminBack=useRef('#home'),creditsBack=useRef<Page>('home');
  const [page,setPage]=useState<Page>(currentPage),[seed,setSeed]=useState<Project>(()=>restored?.editor??({...newProject(),locale:language})),[current,setCurrent]=useState<Project>(seed),[editorKey,setEditorKey]=useState(0);
  const submittedWizard=useRef<string|undefined>(restored?.returnPage==='studio'?restored?.wizard?.project.id:undefined);
+ const libraryRead=useRef(0);
  const [wizardKey,setWizardKey]=useState(0),[items,setItems]=useState<Project[]>([]),[libraryError,setLibraryError]=useState('');
  const [,setDraftSaving]=useState(false),[draftError,setDraftError]=useState(false);
  const [paymentNotice,setPaymentNotice]=useState(()=>{const v=readSession<{userId:string;origin:string;credits:number;balance:number;confirmedAt:number}>('aiadcast.checkout-confirmed');return v?.userId===betaSession()?.user.id&&v?.origin===apiIdentity()&&Number.isFinite(v.confirmedAt)&&Date.now()-v.confirmedAt>=0&&Date.now()-v.confirmedAt<60000?v:undefined;});
@@ -94,7 +95,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  // Persist every committed edit immediately: a debounce discarded photos on quick reloads.
  useLayoutEffect(()=>{let active=true;setDraftSaving(true);void saveWorkspace({wizard,editor:current,returnPage},workspaceScope).then(()=>{if(active){setDraftSaving(false);setDraftError(false);}}).catch(()=>{if(active){setDraftSaving(false);setDraftError(true);}});return()=>{active=false;};},[wizard,current,returnPage,workspaceScope]);
  useEffect(()=>{const onHash=()=>{const next=currentPage();if(next!=='studio')setGenerationIntent(undefined);if(next==='credits'&&priorPage.current!=='credits')creditsBack.current=priorPage.current;if(next==='admin'&&priorPage.current!=='admin')adminBack.current='#'+priorPage.current;priorPage.current=next;setPage(next);window.scrollTo(0,0);};window.addEventListener('hashchange',onHash);return()=>window.removeEventListener('hashchange',onHash);},[]);
- useEffect(()=>{if(page!=='projects')return;let alive=true;const refresh=()=>{projects().then(p=>{if(alive){setItems(p);setLibraryError('');}}).catch(()=>{if(alive)setLibraryError(text('이 기기의 저장된 작업을 읽지 못했습니다.'));});};refresh();window.addEventListener('aiadcast-project-copy-saved',refresh);return()=>{alive=false;window.removeEventListener('aiadcast-project-copy-saved',refresh);};},[page]);
+ useEffect(()=>{if(page!=='projects')return;let alive=true;const refresh=()=>{const read=++libraryRead.current;projects().then(p=>{if(alive&&read===libraryRead.current){setItems(p);setLibraryError('');}}).catch(()=>{if(alive&&read===libraryRead.current)setLibraryError(text('이 기기의 저장된 작업을 읽지 못했습니다.'));});};refresh();window.addEventListener('aiadcast-project-copy-saved',refresh);return()=>{alive=false;window.removeEventListener('aiadcast-project-copy-saved',refresh);};},[page]);
  function go(next:Page){location.hash=next;setPage(next);window.scrollTo(0,0);}
  useEffect(()=>{
   const back=(event:Event)=>{
@@ -125,6 +126,18 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
   setWizardSeed({project:next,step:0});setWizard({project:next,step:0});setWizardKey(k=>k+1);setGenerationIntent(undefined);go('create');
  }
  const simpleStudio=page==='studio'&&current.presentation==='campaign';
+ async function removeSaved(ids:string[]){
+  await deleteProjects(ids,workspaceScope);
+  if(storageNamespace()!==workspaceScope)return;
+  libraryRead.current++;
+  const deleted=new Set(ids),empty={...newProject(),locale:language};
+  screenHistory.forgetProjects(deleted,empty);
+  if(deleted.has(current.id)){setCurrent(empty);setSeed(empty);setGenerationIntent(undefined);setEditorKey(k=>k+1);}
+  if(wizard&&deleted.has(wizard.project.id)){setWizard(undefined);setWizardSeed(undefined);setWizardKey(k=>k+1);}
+  if(submittedWizard.current&&deleted.has(submittedWizard.current))submittedWizard.current=undefined;
+  setItems(list=>list.filter(p=>!deleted.has(p.id)));
+  window.dispatchEvent(new Event('aiadcast-project-copy-saved'));
+ }
  const libraryItems=current.presentation==='campaign'||JSON.stringify(current)!==JSON.stringify(seed)?[current,...items.filter(p=>p.id!==current.id)]:items;
 
  return <div className={`studio-shell ${(page==='editor'||page==='studio'&&!simpleStudio)?'editor-route':''}`}>
@@ -141,7 +154,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
    </div>
    {page==='portfolio'&&<div className="app-page"><PortfolioPage/></div>}
    <div hidden={page!=='create'} className="app-page"><CreateCampaign active={page==='create'} key={wizardKey} onReady={ready} draft={wizardSeed} onDraft={setWizard}/></div>
-   <div hidden={page!=='projects'} className="app-page projects-page">{page==='projects'&&<ProjectLibrary items={libraryItems} error={libraryError} onNew={begin} onOpen={p=>void open(p)} onOpenServer={p=>open(p,true)} showDownloads={!!betaSession()&&!offlineDemo()}/>}</div>
+   <div hidden={page!=='projects'} className="app-page projects-page">{page==='projects'&&<ProjectLibrary onRemove={removeSaved} items={libraryItems} error={libraryError} onNew={begin} onOpen={p=>void open(p)} onOpenServer={p=>open(p,true)} showDownloads={!!betaSession()&&!offlineDemo()}/>}</div>
    <div hidden={page!=='guide'} className="app-page guide-page"><UsageGuide onNew={begin}/></div>
    {(page==='signup'||page==='login')&&<div className="app-page"><EmailAccountPage key={page} mode={page} preserve={preserve} returnPage={returnPage}/></div>}
    {page==='admin'&&<div className="app-page"><AdminPage backHref={adminBack.current}/></div>}

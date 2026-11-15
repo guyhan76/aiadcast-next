@@ -48,7 +48,7 @@ export function CloudLibrary({onOpen}:{onOpen:(p:Project)=>Promise<boolean>}){
  return <section className="download-library" aria-label={t('다운로드 목록','Available downloads')}>
   {!loaded&&<p role="status">{t('불러오는 중…','Loading…')}</p>}
   {loaded&&!error&&!downloads.length&&!items.length&&<p className="download-empty">{t('다운로드할 파일이 없습니다.','No files to download.')}</p>}
-  {downloads.length>0&&<DownloadList key={token} items={downloads}/>}
+  {downloads.length>0&&<DownloadList key={token} items={downloads} onRemoved={ids=>setDownloads(prev=>prev.filter(item=>!ids.includes(item.id)))}/>}
   {items.length>0&&<>
    <h2>{t('이전 보관본','Previously saved projects')}</h2>
    <ul className="download-list">{items.slice(0,shownProjects).map(item=><li key={item.id}>

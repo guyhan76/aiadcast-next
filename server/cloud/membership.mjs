@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import {randomUUID,createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {cloudSchema} from './postgres.mjs';
@@ -28,7 +29,13 @@ export class Membership {
   const standard=member.role==='admin'||member.storage_plan==='standard';
   return {plan:standard?'standard':'free',storage:'device',downloadWindowHours:24,limitBytes:0,usedBytes:0};
  }
- async route(user,method,path,body){
+ async route(user,method,path,body,serviceFor){
+  const preview=/^\/api\/membership\/downloads\/([A-Za-z0-9_-]{8,100})\/preview$/.exec(path);
+  if(preview&&method==='GET')return this.preview(user.id,preview[1]);
+  if(path==='/api/membership/remove-downloads'&&method==='POST'){
+   if(!Array.isArray(body?.ids)||!body.ids.length||body.ids.length>15||!body.ids.every(projectId))fail('INVALID_PROJECT',400);
+   return this.removeDownloads(user.id,[...new Set(body.ids)],await serviceFor(user));
+  }
   if(path==='/api/membership'&&method==='GET')return this.policy(user);
   if(path==='/api/membership/downloads' && method==='GET'){
    const tenant=cloudSchema(user.id);
@@ -70,6 +77,42 @@ export class Membership {
    return {updated:true};
   }
   fail('NOT_FOUND',404);
+ }
+ async preview(owner,id){
+  const tenant=cloudSchema(owner);
+  if(!await this.exists(tenant,'generation_records'))fail('PREVIEW_UNAVAILABLE',404);
+  const schema='"'+tenant+'".';
+  const row=await this.db.prepare(`SELECT g.artifact_hash AS hash,a.mime FROM ${schema}generation_records g
+   JOIN ${schema}jobs j ON j.id=g.id JOIN ${schema}generation_assets a ON a.hash=g.artifact_hash
+   WHERE g.id=? AND j.status IN ('ready','accepted') AND g.error_code IS NULL
+   AND (CASE WHEN g.created_at<? THEN ? ELSE j.expires_at END)>extract(epoch FROM now())*1000`).get(id,this.cutover,this.cutover+30*86400000);
+  if(!row)fail('PREVIEW_UNAVAILABLE',404);
+  const ext={'image/png':'png','image/jpeg':'jpeg','image/webp':'webp'}[row.mime];
+  if(!ext||!/^[a-f0-9]{64}$/.test(row.hash))fail('PREVIEW_UNAVAILABLE',404);
+  const bytes=await this.storage.get(owner,owner+'/'+row.hash+'.'+ext);
+  const small=await sharp(bytes,{limitInputPixels:30000000}).resize({width:480,height:640,fit:'inside',withoutEnlargement:true}).webp({quality:78}).toBuffer();
+  return {preview:'data:image/webp;base64,'+small.toString('base64')};
+ }
+ async removeDownloads(owner,ids,service){
+  const q='"'+cloudSchema(owner)+'".';
+  await this.store.transaction(async()=>{
+   const marks=ids.map(()=>'?').join(',');
+   const rows=await this.db.prepare(`SELECT g.id,g.artifact_hash AS hash,j.status FROM ${q}generation_records g JOIN ${q}jobs j ON j.id=g.id
+    WHERE g.id IN (${marks}) AND g.error_code IS NULL AND g.artifact_hash IS NOT NULL AND j.status IN ('ready','accepted') FOR UPDATE OF g,j`).all(...ids);
+   for(const row of rows){
+    if(row.status==='ready')await service.ledger.releaseInside(await service.ledger.job(row.id),'customer_rejected');
+    await this.db.prepare(`UPDATE ${q}generation_records SET error_code='DOWNLOAD_REMOVED',fingerprint=? WHERE id=?`).run(createHash('sha256').update('removed:'+row.id).digest('hex'),row.id);
+   }
+   for(const hash of new Set(rows.map(r=>r.hash))){
+    // Shared content can also be source evidence in another job or an open defect report.
+    await this.db.prepare(`UPDATE storage_objects SET expires_at=least(expires_at,now()) WHERE user_id=? AND split_part(split_part(path,'/',2),'.',1)=?
+     AND NOT EXISTS (SELECT 1 FROM ${q}generation_records g WHERE
+      (g.error_code IS DISTINCT FROM 'DOWNLOAD_REMOVED' OR EXISTS(SELECT 1 FROM ${q}defect_reports d WHERE d.job_id=g.id))
+      AND (g.artifact_hash=? OR g.source_hash=? OR position(? in g.request_json)>0 OR position(? in coalesce(g.metadata_json,''))>0))`).run(owner,hash,hash,hash,hash,hash);
+   }
+  });
+  this.kick();
+  return {removed:ids};
  }
  async withdraw(user){
   const receipt=randomUUID();

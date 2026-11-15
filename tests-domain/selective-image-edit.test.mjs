@@ -69,3 +69,24 @@ test('uploaded pixels and mask use one reservation and preserve the original siz
  assert.equal(job.selectiveEdit.sourceJobId,'upload-'+original.sha256);
  assert.equal(s.accept(job.id,job.artifactId).job.state,'accepted');
 });
+
+test('text instructions edit a whole tall ad without a brush or another billed request',async()=>{
+ const width=1080,height=1920;
+ const original=await sharp({create:{width,height,channels:4,background:'#276485'}}).png().toBuffer();
+ const input=await prepareSelectiveEdit({width,height,sha256:hashBytes(original),dataUrl:'data:image/png;base64,'+original.toString('base64')},{mode:'instruction'});
+ let calls=0;
+ const adapter=new OpenAIImageAdapter({apiKey:'test-only',fetchImpl:async(url,options)=>{
+  calls++;
+  assert.equal(url,'https://api.openai.com/v1/images/edits');assert.equal(options.body.has('mask'),false);
+  assert.match(options.body.get('prompt'),/599,000원/);assert.match(options.body.get('prompt'),/화창/);
+  const baseline=Buffer.from(await options.body.get('image').arrayBuffer());
+  const changed=await sharp(baseline).composite([{input:await sharp({create:{width:540,height:230,channels:4,background:'skyblue'}}).png().toBuffer(),left:220,top:40}]).png().toBuffer();
+  return Response.json({data:[{b64_json:changed.toString('base64')}],usage:{input_tokens:1,output_tokens:1}});
+ }});
+ adapter.selectiveEditReady=true;
+ const result=await adapter.editRegion({...input,prompt:'가격은 599,000원, 하늘은 화창하게',attemptId:'text-edit-test'});
+ assert.equal(calls,1);assert.equal(result.width,width);assert.equal(result.height,height);
+ const rgba=await sharp(result.bytes).ensureAlpha().raw().toBuffer(),before=await sharp(original).ensureAlpha().raw().toBuffer();
+ assert.ok(rgba.subarray((height-30)*width*4).equals(before.subarray((height-30)*width*4)));
+ assert.notEqual(hashBytes(rgba),hashBytes(before));
+});

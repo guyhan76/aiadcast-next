@@ -81,7 +81,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
     releaseLease=await store.membership.enter(user);
     if(url.pathname.startsWith('/api/membership')){
      const body=req.method==='POST'?await read(req,2048):undefined;
-     send(res,200,await store.membership.route(user,req.method,url.pathname,body),cors);return;
+     send(res,200,await store.membership.route(user,req.method,url.pathname,body,service),cors);return;
     }
    }
    if(req.method==='GET'&&url.pathname==='/api/auth/session'){send(res,200,{user:{id:user.id,label:user.label,role:user.role}},cors);return;}

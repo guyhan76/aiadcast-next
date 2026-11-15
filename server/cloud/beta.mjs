@@ -53,7 +53,7 @@ export class CloudGenerationService extends GenerationService {
  async jobView(row,billing,requestIds,defectReport,options){
   if(!this.membership)return super.jobView(row,billing,requestIds,defectReport,options);
   const expires=this.deliveryDeadline(row,billing);
-  if(row.artifact_hash && expires<=this.now()){
+  if(row.error_code==='DOWNLOAD_REMOVED'||row.artifact_hash && expires<=this.now()){
    const summary=await super.jobView(row,billing,requestIds,defectReport,{includeArtifact:false});
    return {...summary,state:'expired',artifact:null,artifactId:null,downloadExpiresAt:new Date(expires).toISOString()};
   }

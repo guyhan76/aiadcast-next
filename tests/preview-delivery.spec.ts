@@ -86,7 +86,7 @@ test('confirm the complete credit amount before submitting a batch',async({page}
  expect(writes).toBe(1);
 });
 
-test('open a device image and paint a precision edit on mobile and desktop',async({page})=>{
+test('open a device image and confirm a text-directed edit on mobile and desktop',async({page})=>{
  await protectedScreen(page,mockSession('device-editor'));
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
  await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,selectiveEditProofVersion:1,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:30,reserved:0}},budget:{limitMicros:1000000}}}));
@@ -96,9 +96,7 @@ test('open a device image and paint a precision edit on mobile and desktop',asyn
   submissions++;
   const body=r.request().postDataJSON();
   expect(body.original.width).toBe(128);expect(body.original.height).toBe(96);
-  expect(body.mask.width).toBe(128);expect(body.creditQuote.amount).toBe(10);
-  const raw=await sharp(Buffer.from(body.mask.data.split(',')[1],'base64')).ensureAlpha().raw().toBuffer();
-  const alpha=Array.from(raw).filter((_,i)=>i%4===3);expect(alpha).toContain(0);expect(alpha).toContain(255);
+  expect(body.mask).toEqual({mode:'instruction'});expect(body.prompt).toBe('하늘에 구름 추가');expect(body.creditQuote.amount).toBe(10);
   await r.fulfill({status:409,json:{error:{code:'GENERATION_ALREADY_RUNNING'}}});
  });
  await page.goto('/#projects');
@@ -107,11 +105,12 @@ test('open a device image and paint a precision edit on mobile and desktop',asyn
  await page.getByLabel('편집할 기기 사진').setInputFiles({name:'sky.png',mimeType:'image/png',buffer:png});
  const dialog=page.getByRole('dialog',{name:'정밀 편집'});
  await expect(dialog.getByAltText('원본 광고')).toBeVisible();
- await dialog.getByLabel('수정 영역 칠하기').click({position:{x:20,y:20}});
- await dialog.getByLabel('수정 요청',{exact:true}).fill('하늘에 구름 추가');
- const submit=dialog.getByRole('button',{name:'정밀 편집 요청'});
+ await expect(dialog.locator('canvas')).toHaveCount(0);
+ const submit=dialog.getByRole('button',{name:'수정하기 · 10 크레딧'});
  await expect(submit).toBeDisabled();
- await dialog.getByRole('checkbox').check();await submit.click();await expect.poll(()=>submissions).toBe(1);
+ await dialog.getByRole('textbox').fill('하늘에 구름 추가');
+ page.once('dialog',d=>{expect(d.message()).toContain('10 크레딧');return d.accept();});
+ await submit.click();await expect.poll(()=>submissions).toBe(1);
  await expect(submit).toBeEnabled();
 });
 
@@ -124,13 +123,13 @@ test('save a verified device edit and reopen its project without another generat
  let job:any,posts=0;
  await page.route('**/api/selective-edits/upload',async r=>{
   posts++;const b=r.request().postDataJSON(),w=b.original.width,h=b.original.height;
-  const mask=await sharp(Buffer.from(b.mask.data.split(',')[1],'base64')).ensureAlpha().raw().toBuffer();
+  expect(b.mask).toEqual({mode:'instruction'});const maskHash='c'.repeat(64);
   const rgba=await sharp(Buffer.from(b.original.dataUrl.split(',')[1],'base64')).ensureAlpha().raw().toBuffer();
   let changed=0;
-  for(let i=0;i<rgba.length;i+=4)if(mask[i+3]===0){rgba[i]=255;changed++;}
+  for(let i=0;i<rgba.length;i+=4){rgba[i]=255;changed++;}
   const bytes=await sharp(rgba,{raw:{width:w,height:h,channels:4}}).png().toBuffer(),hash=createHash('sha256').update(bytes).digest('hex');
   const sourceId='upload-'+b.sourceHash;
-  job={id:'edit-proof-fixture',projectId:b.projectId,requestId:b.requestId,state:'ready',mode:'creative',createdAt:new Date().toISOString(),model:'fixture',composition:'complete-ad',artifactId:hash,artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+bytes.toString('base64'),width:w,height:h,role:'creative'},selectiveEdit:{sourceJobId:sourceId,sourceProjectId:sourceId,sourceHash:b.sourceHash,maskHash:b.mask.sha256},preservation:{version:1,sourceHash:b.sourceHash,maskHash:b.mask.sha256,resultHash:hash,width:w,height:h,selectedPixels:changed,changedSelectedPixels:changed,changedOutsidePixels:0,bounds:{x:0,y:0,width:w,height:h},semanticQuality:'not-assessed'}};
+  job={id:'edit-proof-fixture',projectId:b.projectId,requestId:b.requestId,state:'ready',mode:'creative',createdAt:new Date().toISOString(),model:'fixture',composition:'complete-ad',artifactId:hash,artifact:{id:hash,sha256:hash,dataUrl:'data:image/png;base64,'+bytes.toString('base64'),width:w,height:h,role:'creative'},selectiveEdit:{sourceJobId:sourceId,sourceProjectId:sourceId,sourceHash:b.sourceHash,maskHash},preservation:{version:1,sourceHash:b.sourceHash,maskHash,resultHash:hash,width:w,height:h,selectedPixels:changed,changedSelectedPixels:changed,changedOutsidePixels:0,bounds:{x:0,y:0,width:w,height:h},semanticQuality:'not-assessed'}};
   await r.fulfill({json:{job,wallet}});
  });
  await page.route('**/api/generations/edit-proof-fixture/accept',r=>{job.state='accepted';return r.fulfill({json:{job,wallet}});});
@@ -139,12 +138,12 @@ test('save a verified device edit and reopen its project without another generat
  await page.getByLabel('편집할 기기 사진').setInputFiles({name:'Harbor.png',mimeType:'image/png',buffer:original});
  const dialog=page.getByRole('dialog',{name:'정밀 편집'});
  await expect(dialog.getByAltText('원본 광고')).toBeVisible();
- await dialog.getByLabel('수정 영역 칠하기').click({position:{x:20,y:20}});
- await dialog.getByLabel('수정 요청',{exact:true}).fill('하늘을 흐리게');await dialog.getByRole('checkbox').check();
- await dialog.getByRole('button',{name:'정밀 편집 요청'}).click();
+ await dialog.getByRole('textbox').fill('하늘을 흐리게');
+ page.once('dialog',d=>{expect(d.message()).toContain('이용권 1장');return d.accept();});
+ await dialog.getByRole('button',{name:'수정하기 · 이용권 1장'}).click();
  await expect(dialog.getByLabel('원본과 수정본 비교')).toBeVisible();
  const download=page.waitForEvent('download');
- await dialog.getByRole('button',{name:'사용 확정·수정 사본 저장'}).click();
+ await dialog.getByRole('button',{name:'수정본 사용 · 저장'}).click();
  expect((await download).suggestedFilename()).toMatch(/^aiadcast-[0-9a-f]{8}-01\.png$/);
  await dialog.getByRole('button',{name:'닫기',exact:true}).click();
  await page.locator('.project-tile').filter({hasText:'Harbor · 수정 사본'}).click();

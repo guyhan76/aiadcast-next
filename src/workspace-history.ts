@@ -23,5 +23,11 @@ setPosition({index:cursor.current,length:entries.current.length});
  useLayoutEffect(()=>{if(entries.current[cursor.current]?.hash===location.hash)entries.current[cursor.current].draft=snapshot;},[snapshot]);
  const checkpoint=()=>{if(entries.current[cursor.current])entries.current[cursor.current].draft=latest.current.snapshot;};
  const move=(delta:number)=>{const target=cursor.current+delta;if(target<0||target>=entries.current.length)return;checkpoint();history.go(delta);};
- return {canBack:position.index>0,canForward:position.index<position.length-1,back:()=>move(-1),forward:()=>move(1),checkpoint};
+ function forgetProjects(ids:Set<string>,empty:WorkspaceDraft['editor']){
+  for(const entry of entries.current){
+   if(ids.has(entry.draft.editor.id)||entry.draft.wizard&&ids.has(entry.draft.wizard.project.id))
+    entry.draft={...entry.draft,editor:ids.has(entry.draft.editor.id)?empty:entry.draft.editor,wizard:entry.draft.wizard&&ids.has(entry.draft.wizard.project.id)?undefined:entry.draft.wizard};
+  }
+ }
+ return {forgetProjects,canBack:position.index>0,canForward:position.index<position.length-1,back:()=>move(-1),forward:()=>move(1),checkpoint};
 }
