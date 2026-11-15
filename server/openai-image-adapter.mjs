@@ -1,5 +1,5 @@
 import {reviewPoseResult,editCorrectionPrompt} from './edit-vision.mjs';
-import {locateEditRegion,poseRequested} from './locate-edit-region.mjs';
+import {locateEditRegion,poseRequested,targetsPersonAndSky} from './locate-edit-region.mjs';
 import {selectiveEditForm,validateSelectiveOriginal,prepareSelectiveProviderInput,restoreSelectiveProviderResult,verifyPreparedSelectiveInput} from './selective-image-edit.mjs';
 import {providerHttpError,safeProviderEnum} from './provider-http-error.mjs';
 import {preparePlanarSource,requestPlanarRatio,controlPlanarResult} from './planar-proportion.mjs';
@@ -234,7 +234,7 @@ export class OpenAIImageAdapter {
     const bytes=Buffer.from(raw,'base64');if(bytes.toString('base64')!==raw)throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
     let meta;try{meta=await validateImage(bytes,'image/png',{maximumPixels:8294400,maximumBytes:MAX_GENERATED_IMAGE_BYTES});}catch{throw new ProviderFailure('PROVIDER_INVALID_IMAGE');}
     let cropped;try{cropped=await restoreSelectiveProviderResult(bytes,prepared,source,mask);}catch{throw new ProviderFailure('PROVIDER_INVALID_IMAGE',{uncertain:true});}
-    return {...cropped,checkPose:mask.explicit===true&&poseRequested(prompt),usage:result.usage??null,cost:imageUsageCost(result.usage),model:IMAGE_MODEL,revision:IMAGE_REVISION,role:'creative',composition:'complete-ad'};
+    return {...cropped,checkPose:mask.explicit===true&&(poseRequested(prompt)||targetsPersonAndSky(prompt)),usage:result.usage??null,cost:imageUsageCost(result.usage),model:IMAGE_MODEL,revision:IMAGE_REVISION,role:'creative',composition:'complete-ad'};
   }
   async generate(options) {
     const started=Date.now(),diagnostic={timeoutMs:this.timeoutMs,endpoint:options.request.mode==='creative'&&options.source?'edits':'generations'};

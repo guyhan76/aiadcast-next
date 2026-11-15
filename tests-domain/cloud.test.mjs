@@ -694,7 +694,8 @@ test('cloud upload reviews the composited pose and delivers the same artifact af
   }
   const request=JSON.parse(options.body),stage=request.response_format.json_schema.name;
   steps.push(stage);
-  const answers={locate_person_areas:{edit:[person],protect:[]},locate_sky_areas:{edit:[sky],protect:[person,drone]},
+  const contour=([l,t,r,b])=>[[l,t],[r,t],[r,b],[l,b]];
+  const answers={locate_person_areas:{edit:[person],protect:[]},locate_sky_areas:{edit:[contour(sky)],protect:[contour(person)],foreground:[contour(drone)]},
    review_composited_pose:{poseMatchesRequest:true,coherentLimbs:true,previousGestureResolved:true,allOtherRequestedEditsCorrect:true,unrelatedContentPreserved:true}};
   assert.ok(answers[stage],stage);
   return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(answers[stage])}}],usage:{prompt_tokens:100,completion_tokens:60}});
