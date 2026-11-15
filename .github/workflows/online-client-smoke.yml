@@ -1,0 +1,47 @@
+name: Verify released online Android UI
+on:
+  push:
+    branches: [verify/legacy-description-0.2.96]
+permissions:
+  contents: read
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare the released APK with the public web actually served to Android
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: 99f4d01dc55c7a0ed7019d30ed580c25e71754f7
+          RELEASE_TAG: preview-0.2.96-code98-99f4d01dc55c-43658820144-1
+        run: |
+          set -euo pipefail
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" -p 'aiadcast-0.2.96.apk' -p 'SHA256SUMS.txt'
+          grep 'aiadcast-0.2.96.apk$' SHA256SUMS.txt | sha256sum -c -
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify the current public revision
+        env:
+          TARGET: 99f4d01dc55c7a0ed7019d30ed580c25e71754f7
+        run: |
+          set -euo pipefail
+          if node scripts/check-live-web-release.mjs 0000000000000000000000000000000000000000 > "$RUNNER_TEMP/mismatch" 2>&1; then exit 1; fi
+          grep 'Public web serves' "$RUNNER_TEMP/mismatch"
+          node scripts/check-live-web-release.mjs "$TARGET"
+      - name: Compare section 5 on the live website and in the signed Android package
+        env:
+          AIADCAST_PARITY_WEB_ORIGIN: https://aiadcast-next.onrender.com
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          unzip -qo aiadcast-0.2.96.apk 'assets/*' -d android/app/src/main
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(command -v google-chrome)"
+          npx playwright test tests/production-parity.spec.ts --project=desktop --grep 'restored industry-only'
+      - name: Upload the screenshots from both clients
+        uses: actions/upload-artifact@v4
+        with:
+          name: section-5-production-and-apk
+          path: test-results/**/*-section-5.png
+          if-no-files-found: error

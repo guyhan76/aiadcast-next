@@ -6,9 +6,16 @@ import {normalizeGenerationRequest} from '../server/generation-service.mjs';
 import {mockSession,protectedScreen} from './helpers/authenticated-session';
 import sharp from 'sharp';
 import {reloadDraft} from './helpers/workspace';
+import {restoreOwnedWorkspace} from './helpers/owned-workspace';
+import {starterProject} from '../src/consumer-campaign';
+import {campaignFieldExamples} from '../src/campaign-field-examples';
+
+function parityOrigin(native:boolean) {
+  return native ? 'https://appassets.androidplatform.net' : (process.env.AIADCAST_PARITY_WEB_ORIGIN || 'http://127.0.0.1:4180');
+}
 
 async function prepareParityPage(page:Page,native:boolean) {
-  const origin = native ? 'https://appassets.androidplatform.net' : (process.env.AIADCAST_PARITY_WEB_ORIGIN || 'http://127.0.0.1:4180');
+  const origin = parityOrigin(native);
   if (native) {
     // Mirror the Android asset loader under its real origin, using the assets from the Android package.
     await page.route(origin+'/**', async route => {
@@ -136,5 +143,35 @@ for (const service of [false,true]) {
       } finally { await context.close(); }
     }
     expect(observed[1]).toEqual(observed[0]);
+  });
+}
+
+for (const native of [false,true]) {
+  test('restored industry-only description on '+(native?'Android':'web'), async ({browser}) => {
+    const context = await browser.newContext({baseURL:parityOrigin(native),
+      viewport:{width:native?390:1440,height:900},locale:'ko-KR',serviceWorkers:'block'});
+    try {
+      const page = await context.newPage();
+      await prepareParityPage(page,native);
+      const previous = starterProject('services');
+      const header = '업종: 여행·티켓·렌탈 > 공연·전시 티켓';
+      previous.productProfile.material = header;
+      await restoreOwnedWorkspace(page,previous,'parity-member','create',undefined,
+        {step:0,project:previous,industryChosen:true});
+      const form = page.locator('.consumer-create');
+      const section = form.locator('[data-order="5"]');
+      const description = section.getByRole('textbox',{name:'상세설명',exact:true});
+      
+      for (const kind of ['service','product'] as const) {
+        await form.getByRole('button',{name:kind==='service'?'서비스':'상품',exact:true}).click();
+        await expect(description).toHaveAttribute('placeholder',campaignFieldExamples.ko[kind].description);
+        await expect(description).toHaveValue(header);
+        expect(await description.evaluate(el=>el.matches(':placeholder-shown'))).toBe(false);
+        await page.evaluate(()=>document.fonts.ready);
+        expect(await description.evaluate(el=>el.scrollHeight-el.clientHeight)).toBeLessThanOrEqual(2);
+        await section.screenshot({path:test.info().outputPath((native?'android':'web')+'-'+kind+'-restored-section-5.png')});
+      }
+      
+    } finally { await context.close(); }
   });
 }
