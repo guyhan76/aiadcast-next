@@ -5,6 +5,7 @@ import {generationMatchKey} from '../src/generation-match';
 import {normalizeGenerationRequest} from '../server/generation-service.mjs';
 import {mockSession,protectedScreen} from './helpers/authenticated-session';
 import sharp from 'sharp';
+import {reloadDraft} from './helpers/workspace';
 
 async function prepareParityPage(page:Page,native:boolean) {
   const origin = native ? 'https://appassets.androidplatform.net' : (process.env.AIADCAST_PARITY_WEB_ORIGIN || 'http://127.0.0.1:4180');
@@ -91,19 +92,33 @@ for (const service of [false,true]) {
         const origin = await prepareParityPage(page,native);
         await page.goto(origin+'/#create');
         const form = page.locator('.consumer-create');
-        await form.getByRole('button',{name:service?'서비스':'상품',exact:true}).click();
-        await form.getByLabel('분야',{exact:true}).selectOption(service?'travel':'beauty');
-        await form.getByLabel('세부 업종',{exact:true}).selectOption(service?'tickets':'skincare');
+        const selectType = (isService:boolean) =>
+          form.getByRole('button',{name:isService?'서비스':'상품',exact:true}).click();
+        const chooseIndustry = async (isService:boolean) => {
+          await form.getByLabel('분야',{exact:true}).selectOption(isService?'travel':'beauty');
+          await form.getByLabel('세부 업종',{exact:true}).selectOption(isService?'tickets':'skincare');
+        };
         const details = form.locator('[data-order="5"]');
-        const fields = [
-          [service?'서비스명':'상품명',service?'예: 제주 감성 숙소':'예: 탄력케어 리프팅 3종세트'],
-          ['상세설명','재질, 특징, 장점, 가격, 배송 등 광고에 담을 정보를 적어주세요.'],
-          ['추가 요청','원하는 연출이나 강조할 내용을 적어주세요 (선택)']
-        ];
-        for (const [label,example] of fields) {
-          const input = details.getByRole('textbox',{name:label,exact:true});
-          await expect(input).toHaveAttribute('placeholder',example);
-          await expect(input).toHaveValue('');
+        const label = service?'서비스명':'상품명';
+        const name = details.getByRole('textbox',{name:label,exact:true});
+        const description = details.getByRole('textbox',{name:'상세설명',exact:true});
+        const request = details.getByRole('textbox',{name:'추가 요청',exact:true});
+        await selectType(!service);
+        await chooseIndustry(!service);
+        await selectType(service);
+        await expect(name).toHaveAttribute('placeholder',service?"예: 제주의 감성이 있는 한옥 스위트":"예: 탄력케어 리프팅 3종세트");
+        await expect(description).toHaveAttribute('placeholder',service?"예:\n아름다운 제주 해변이 있는\n한국의 멋과 감성이 있는 한옥 공간에서\n휴식과 힐링의 시간을 가지세요.\n\n침실1개, 킹사이즈 침대 1개, 욕실 1개\n해변, 자쿠지, 화덕, 뒷마당\n에어컨, TV, 셀프체크인\n반려동물동반가능\n\n1박 399,000원":"예:\n3종세트 리프팅 스킨+에멀전+크림\n\n저자극 포뮬러 피부에 순하게\n기존 대비 3배 많은 콜라겐\n효과는 강력하게\n늘어나는 주름, 꺼지는 피부 탄력\n더 늦기 전에 지금 시작하세요.\n가격 29,800원\n당일로켓배송");
+        await expect(request).toHaveAttribute('placeholder',service?"예: 제주 해변과 한옥의 따뜻한 분위기를 보여주고, 1박 399,000원을 눈에 띄게 넣어주세요.":"예: 세 제품을 나란히 보여주고, 29,800원과 당일로켓배송이 한눈에 보이게 해주세요.");
+        await expect(description).toHaveValue('');
+        await expect(request).toHaveValue('');
+        await reloadDraft(page);
+        await expect(form.getByRole('button',{name:service?'서비스':'상품',exact:true})).toHaveAttribute('aria-pressed','true');
+        await expect(name).toHaveValue('');
+        await chooseIndustry(service);
+        await expect(name).toBeVisible();
+        await page.evaluate(()=>document.fonts.ready);
+        for (const field of [description,request]) {
+          expect(await field.evaluate(el=>el.scrollHeight-el.clientHeight)).toBeLessThanOrEqual(2);
         }
         const guide = details.locator('details');
         await expect(guide).not.toHaveAttribute('open','');
@@ -111,6 +126,13 @@ for (const service of [false,true]) {
         await guide.locator('summary').click();
         await expect(guide).toContainText(service?'여행상품 예시':'화장품 예시');
         observed.push(await details.innerText());
+        await name.fill('고객이 입력한 이름');
+        await description.fill('고객이 입력한 내용');
+        await request.fill('고객이 입력한 연출');
+        await selectType(!service);
+        await expect(details.getByRole('textbox',{name:service?'상품명':'서비스명',exact:true})).toHaveValue('고객이 입력한 이름');
+        await expect(description).toHaveValue('고객이 입력한 내용');
+        await expect(request).toHaveValue('고객이 입력한 연출');
       } finally { await context.close(); }
     }
     expect(observed[1]).toEqual(observed[0]);

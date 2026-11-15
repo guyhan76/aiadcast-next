@@ -104,3 +104,6 @@
 .input-example-content .input-example-sentence{margin:0 0 10px}
 .input-example-content .input-example-sentence:last-child{margin-bottom:0}
 .input-example-price{white-space:nowrap}
+
+/* Let multiline examples wrap to the available width before the user starts typing. */
+.studio-shell .consumer-create .field :is(.campaign-description,.campaign-request):placeholder-shown{field-sizing:content}

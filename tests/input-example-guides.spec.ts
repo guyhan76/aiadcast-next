@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {campaignFieldExamples} from '../src/campaign-field-examples';
 import {protectedScreen,mockSession} from './helpers/authenticated-session';
 // This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
 test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));await protectedScreen(page,mockSession('protected-input-example-guides'));});
@@ -20,9 +21,9 @@ for(const service of [false,true])test(`example guides preserve ${service?'servi
  await picker.getByLabel('세부 업종',{exact:true}).selectOption(service?'tickets':'skincare');
  const name=form.getByRole('textbox',{name:service?'서비스명':'상품명',exact:true}),facts=form.getByRole('textbox',{name:'상세설명',exact:true});
  const directions=form.getByRole('textbox',{name:'추가 요청',exact:true});
- await expect(name).toHaveAttribute('placeholder',service?'예: 제주 감성 숙소':'예: 탄력케어 리프팅 3종세트');
- await expect(facts).toHaveAttribute('placeholder','재질, 특징, 장점, 가격, 배송 등 광고에 담을 정보를 적어주세요.');
- await expect(directions).toHaveAttribute('placeholder','원하는 연출이나 강조할 내용을 적어주세요 (선택)');
+ await expect(name).toHaveAttribute('placeholder',campaignFieldExamples.ko[service?'service':'product'].name);
+ await expect(facts).toHaveAttribute('placeholder',campaignFieldExamples.ko[service?'service':'product'].description);
+ await expect(directions).toHaveAttribute('placeholder',campaignFieldExamples.ko[service?'service':'product'].request);
  await expect(name).toHaveValue('');
  await expect(facts).toHaveValue('');
  await expect(directions).toHaveValue('');
@@ -60,9 +61,9 @@ for(const service of [false,true])test(`example guides follow interface language
  await picker.getByLabel('Field',{exact:true}).selectOption(service?'travel':'beauty');
  await picker.getByLabel('Industry',{exact:true}).selectOption(service?'tickets':'skincare');
  const section=form.locator('[data-order="5"]');
- await expect(section.getByLabel(service?'Service name':'Product name',{exact:true})).toHaveAttribute('placeholder',service?'Example: Jeju boutique stay':'Example: Firming lift care 3-piece set');
- await expect(section.getByLabel('Description',{exact:true})).toHaveAttribute('placeholder','Describe the material, features, benefits, price and delivery information.');
- await expect(section.getByLabel('Additional requests',{exact:true})).toHaveAttribute('placeholder','Describe the look or details you want to highlight (optional)');
+ await expect(section.getByLabel(service?'Service name':'Product name',{exact:true})).toHaveAttribute('placeholder',campaignFieldExamples.en[service?'service':'product'].name);
+ await expect(section.getByLabel('Description',{exact:true})).toHaveAttribute('placeholder',campaignFieldExamples.en[service?'service':'product'].description);
+ await expect(section.getByLabel('Additional requests',{exact:true})).toHaveAttribute('placeholder',campaignFieldExamples.en[service?'service':'product'].request);
  await form.getByRole('textbox',{name:'Additional requests',exact:true}).fill('My creative direction');await form.getByRole('textbox',{name:'Description',exact:true}).fill('My original description');
  const guide=form.locator('[data-guide="facts"]');await guide.locator('summary').click();await expect(guide.locator('summary')).toHaveText('Example guide for better results');await expect(guide).toContainText('Replace the facts, prices and inclusions with your actual offer.');
  await expect(guide).toContainText('Fictional offer');await expect(guide).toContainText('Keep product facts accurate and creative directions specific.');await expect(guide.locator('blockquote').first()).toHaveText(service?'A relaxing 3-day, 2-night Jeju trip for busy working couples. Includes two hotel nights and breakfast; flights are extra. From KRW 390,000 per person, depending on departure date.':'A 50 ml moisturizer for dry skin with a lightweight, non-sticky feel. For busy people in their 20s and 30s looking for daily hydration. Price: KRW 29,000.Same-day Rocket delivery');await expect(guide.locator('blockquote').nth(1)).toHaveText(service?requestExamples.serviceEn:requestExamples.productEn);

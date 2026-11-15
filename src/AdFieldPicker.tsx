@@ -1,21 +1,20 @@
 import {useState} from 'react';
 import type {Project} from './model';
-import {industryKindFor, industryLabel, type IndustryKind} from './industry';
+import {industryLabel, type IndustryKind} from './industry';
 import {adFields, customIndustryLimit, findAdField, formatIndustryDetail, matchesSport, searchSportSections, sportGroups, type IndustryChoice} from './ad-fields';
 import {withCategory} from './product';
 import {useUiLanguage} from './ui-language';
 import './ad-field-picker.css';
 
-type Props = {id:string; project:Project; chosen:boolean; initialKind?:IndustryKind;
+type Props = {id:string; project:Project; chosen:boolean; kind?:IndustryKind; onKind:(kind:IndustryKind)=>void;
   onChosen:(chosen:boolean)=>void; change:(update:(p:Project)=>Project)=>void};
 
 const legacyLine = /^(?:업종|Industry): ([^\r\n]+)(?:\r?\n|$)/;
 
-export function AdFieldPicker({id, project, chosen, initialKind, onChosen, change}:Props) {
+export function AdFieldPicker({id, project, chosen, kind, onKind, onChosen, change}:Props) {
   const {t,text} = useUiLanguage();
   const profile = project.productProfile;
   const saved = chosen ? findAdField(profile.category, profile.industryDetail) : undefined;
-  const [kind,setKind] = useState<IndustryKind|undefined>(() => chosen ? industryKindFor(profile.category) : initialKind);
   const [fieldId,setFieldId] = useState(saved?.field.id ?? '');
   const [sportQuery,setSportQuery] = useState('');
   const fields = adFields.filter(field => field.kind === kind);
@@ -28,7 +27,7 @@ export function AdFieldPicker({id, project, chosen, initialKind, onChosen, chang
   const legacy = chosen && !saved ? legacyLine.exec(profile.material)?.[1] ?? text(industryLabel(profile.category)) : '';
   function changeKind(next:IndustryKind) {
     if (next === kind) return;
-    setKind(next);
+    onKind(next);
     setFieldId('');
     setSportQuery('');
     onChosen(false);
