@@ -239,6 +239,28 @@ for(const native of [false,true])test('save separate originals and the entire do
   const list=page.locator('.download-library');
   const row=(i:number)=>list.locator('li').filter({has:page.getByText(items[i].name,{exact:true})});
   const button=(name:string|RegExp)=>list.getByRole('button',{name,exact:typeof name==='string'});
+  const notice=list.getByText('새 광고는 생성 후 24시간 동안 다운로드 가능',{exact:true});
+  const viewport=page.viewportSize()!;
+  await expect(notice).toBeVisible();
+  await page.evaluate(()=>document.fonts.ready.then(()=>true));
+  for(const width of [320,360,390,430]){
+   await page.setViewportSize({width,height:viewport.height});
+   const header=list.locator('.download-actions');
+   const layout=await header.evaluate(element=>{
+    const notice=element.querySelector('p')!,button=element.querySelector('button')!;
+    const lines=(node:Element)=>{
+     const range=document.createRange();range.selectNodeContents(node);
+     return new Set(Array.from(range.getClientRects(),r=>r.top)).size;
+    };
+    return {noticeLines:lines(notice),buttonLines:lines(button),
+     below:button.getBoundingClientRect().top>=notice.getBoundingClientRect().bottom,
+     rightGap:Math.abs(element.getBoundingClientRect().right-button.getBoundingClientRect().right)};
+   });
+   expect(layout.noticeLines,'notice at '+width+'px').toBe(1);
+   expect(layout.buttonLines,'selection button at '+width+'px').toBe(1);
+   expect(layout.below).toBe(true);expect(layout.rightGap).toBeLessThanOrEqual(1);
+  }
+  await page.setViewportSize(viewport);
   await expect(button('원본 저장')).toHaveCount(0);
   await expect(button('전체 저장')).toHaveCount(0);
   await button('선택').click();

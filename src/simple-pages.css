@@ -54,8 +54,10 @@
 .library-more{margin-top:14px}
 @media(max-width:380px){.download-list li{gap:8px}.download-list li>button{max-width:92px}}
 
-.download-actions{display:flex;align-items:center;gap:16px;justify-content:space-between}
-.download-actions .library-more{flex:none}
+.download-actions{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;margin:16px 0 8px}
+.download-actions .download-notice{margin:0;font-size:clamp(.8125rem,4vw,1rem)}
+.download-actions .library-manage{justify-self:end;margin:0}
+.download-actions .library-manage button{white-space:nowrap}
 .download-feedback{display:block;margin:6px 0;color:var(--brand-muted);font-size:14px;line-height:1.5}
 
 .library-manage{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin:10px 0;flex-wrap:wrap}.library-manage button,.delivery-lightbox button{min-height:44px;padding:6px 12px;border:1px solid var(--brand-line);border-radius:9px;background:#fff;font:inherit;display:inline-flex;align-items:center;gap:5px}.library-manage .remove-chosen{color:#9c3025}.library-manage button:disabled{opacity:.5}
