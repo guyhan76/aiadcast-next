@@ -138,7 +138,7 @@ export function DownloadList({items,onRemoved}:{items:Delivery[];onRemoved:(ids:
  }
  return <>
   <div className={selection.editing?'download-selecting':'download-actions'}>
-   {!selection.editing&&<p className="download-notice">{t('새 광고는 생성 후 24시간 동안 다운로드할 수 있습니다.','New ads are available to download for 24 hours after creation.')}</p>}
+   {!selection.editing&&<p className="download-notice">{t('새 광고는 생성 후 24시간 동안 다운로드 가능','New ads are available to download for 24 hours after creation.')}</p>}
    {selection.tools}
   </div>
   {summary&&<p role="status" className="download-feedback">{summary}</p>}
