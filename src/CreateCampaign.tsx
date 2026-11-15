@@ -17,7 +17,7 @@ import {useUiLanguage} from './ui-language';
 import {useId,useState,useLayoutEffect,useRef,useEffect} from 'react';
 import {Sparkles} from 'lucide-react';
 import type {Project,FooterField} from './model';
-import {dimensionAxes,isServiceCategory} from './product';
+import {dimensionAxes,isServiceCategory,restoreDraftProfile} from './product';
 import type {SpecType} from './product';
 import {newGenerationIssues,photoGenerationDraft} from './generation';
 import {imageFormats} from './formats';
@@ -34,7 +34,11 @@ export {starterProject,prepareCampaign} from './consumer-campaign';
 import {starterProject,prepareCampaign,automaticDimensionDraft} from './consumer-campaign';
 export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{active?:boolean;initialKind?:IndustryKind;onReady:(p:Project,price?:BatchPrice)=>Promise<void>;draft?:WizardDraft;onDraft?:(draft:WizardDraft)=>void}){
  const {language,t,text}=useUiLanguage(),id=useId();
- const [project,setProject]=useState(()=>automaticDimensionDraft(photoGenerationDraft(draft?.project??({...starterProject(initialKind==='service'?'services':'other'),locale:language}))));
+ const [project,setProject]=useState(()=>{
+  const input=draft ? {...draft.project,productProfile:restoreDraftProfile(draft.project.productProfile)}
+    : {...starterProject(initialKind==='service'?'services':'other'),locale:language};
+  return automaticDimensionDraft(photoGenerationDraft(input));
+ });
  const submitting=useRef(false),photoImporting=useRef(false);
  const [confirmation,setConfirmation]=useState<{project:Project;price:BatchPrice;token:string|undefined}>();
  const live=useRef(active);live.current=active;

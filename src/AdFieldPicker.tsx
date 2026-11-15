@@ -35,8 +35,7 @@ export function AdFieldPicker({id, project, chosen, kind, onKind, onChosen, chan
   function selectItem(item:IndustryChoice, custom='') {
     change(p => {
       const base = withCategory(p,item.category);
-      return {...base, productProfile:{...base.productProfile, industryDetail:formatIndustryDetail(item,custom),
-        material:base.productProfile.material.replace(legacyLine,'')}};
+      return {...base, productProfile:{...base.productProfile, industryDetail:formatIndustryDetail(item,custom)}};
     });
     onChosen(true);
   }
