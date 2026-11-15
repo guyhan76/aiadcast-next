@@ -17,3 +17,11 @@
 .comparison-slider>span:first-child{display:block;text-align:center}
 .comparison-ends{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
 .selective-comparison input[type=range]{box-sizing:border-box;margin:0}
+
+.edit-picker-frame{margin:auto;position:relative;touch-action:none;user-select:none;cursor:crosshair}
+.edit-picker-frame img{width:100%;height:100%;display:block;pointer-events:none}
+.edit-area-box{position:absolute;box-sizing:border-box;border:2px solid #a22400;background:rgb(255 141 48 / .24);pointer-events:none}
+.edit-area-box.provisional{border-style:dashed}.edit-area-cursor{display:none;position:absolute;width:8px;height:8px;border:2px solid white;border-radius:50%;transform:translate(-50%,-50%);background:#852500;pointer-events:none}
+.edit-picker-frame:focus-visible .edit-area-cursor,.edit-area-cursor.active{display:block}
+.edit-picker-tools{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.edit-picker-tools button,.edit-area-toggle{min-height:42px;border:1px solid #aaa;border-radius:8px;background:white;color:#191919;padding:6px 12px}.edit-area-toggle{margin-top:10px}

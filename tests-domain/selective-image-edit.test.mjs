@@ -249,3 +249,45 @@ for(const defect of [null,'previousGestureResolved','allOtherRequestedEditsCorre
   assert.equal(metadata.poseReview.resultHash,job.artifactId);
  }
 });
+
+const stormPrompt='오른쪽 남자 캐릭터를 다른 포즈의 얼굴이 다른 캐릭터로 교체해 주세요.\n캐릭터는 3D 애니메이션을 적용해주세요. 날씨는 먹구름이 가득한 날씨로 변경해 주세요.';
+for(const direct of [false,true])test('person and storm sky reach the image editor and final review / '+(direct?'selected on original':'automatic'),async t=>{
+ const {s}=await fixture(t);
+ const stages=[];
+ const person=[500,250,750,900],sky=[0,0,1000,500],drone=[750,0,1000,250];
+ s.adapter=new OpenAIImageAdapter({apiKey:'test',enableEdits:true,fetchImpl:async(url,options)=>{
+  if(url.endsWith('/images/edits')){
+   stages.push('image');
+   assert.ok(options.body.get('prompt').includes(stormPrompt));
+   const raw=await sharp(Buffer.from(await options.body.get('mask').arrayBuffer())).ensureAlpha().raw().toBuffer();
+   const alpha=(x,y)=>raw[((y+508)*1024+x+508)*4+3];
+   assert.equal(alpha(4,3),0,'arm over sky survives the sky-only protection');
+   assert.equal(alpha(2,1),0,'clear sky can change to overcast');
+   assert.equal(alpha(7,0),255,'foreground drone');
+   assert.equal(alpha(0,7),255,'price under the skyline');
+   const changed=await sharp({create:{width:1024,height:1024,channels:4,background:'red'}}).png().toBuffer();
+   return Response.json({data:[{b64_json:changed.toString('base64')}],usage:{input_tokens:2,input_tokens_details:{text_tokens:1,image_tokens:1},output_tokens:1}});
+  }
+  const request=JSON.parse(options.body),stage=request.response_format.json_schema.name;
+  stages.push(stage);
+  let answer;
+  if(stage==='locate_person_areas')answer={edit:[person],protect:[]};
+  else if(stage==='locate_sky_areas')answer={edit:[sky],protect:[person,drone]};
+  else{
+   assert.equal(stage,'review_composited_pose');
+   assert.match(request.messages[0].content,/weather/);
+   answer={poseMatchesRequest:true,coherentLimbs:true,previousGestureResolved:true,allOtherRequestedEditsCorrect:true,unrelatedContentPreserved:true};
+  }
+  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(answer)}}],usage:{prompt_tokens:100,completion_tokens:60}});
+ }});
+ const request={original:asset,sourceHash:sha,prompt:stormPrompt,mask:direct?{mode:'regions',regions:[person,[0,0,750,500]]}:{mode:'instruction'},requestId:randomUUID(),projectId:randomUUID(),creditQuote:s.creditQuote()};
+ const made=await s.createUploadedEdit(request);await s.waitForIdle();
+ assert.deepEqual(stages,direct?['image','review_composited_pose']:['locate_person_areas','locate_sky_areas','image','review_composited_pose']);
+ const job=s.job(made.job.id);assert.equal(job.state,'ready');assert.equal(job.preservation.changedOutsidePixels,0);
+ assert.equal((await s.createUploadedEdit(request)).job.id,job.id);
+});
+test('explicit selections reject empty, invalid and full-frame masks',async()=>{
+ for(const regions of [[],[[900,100,100,600]],[[0,0,500,1000],[500,0,1000,1000]],[[0,0,2000,500]]]){
+  await assert.rejects(prepareSelectiveEdit(asset,{mode:'regions',regions}),/INVALID_EDIT_MASK/);
+ }
+});

@@ -529,7 +529,7 @@ export class GenerationService {
         try {
             const attempt = await this.ledger.transaction(async () => {
                 const period = this.period(), limit = await this.budgetLimit(period);
-                return await this.ledger.beginAttempt({ jobId: id, attemptId, period, maximumMicros: MODEL_COST_HOLD_MICROS + (region?.mask.instruction ? 80000 : 0), limitMicros: limit, periodScoped: Boolean(this.budgetForPeriod) });
+                return await this.ledger.beginAttempt({ jobId: id, attemptId, period, maximumMicros: MODEL_COST_HOLD_MICROS + (region?.mask.instruction || region?.mask.explicit ? 80000 : 0), limitMicros: limit, periodScoped: Boolean(this.budgetForPeriod) });
             });
             if (!attempt.shouldDispatch)
                 return;
