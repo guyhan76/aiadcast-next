@@ -33,6 +33,20 @@ async function readEditFile(file:File) {
  }finally{URL.revokeObjectURL(url);}
 }
 
+async function editImage({file,asset,data=asset?.data,name}:EditInput):Promise<Asset>{
+ // importProject has already decoded and hashed embedded assets. Keep its original PNG bytes.
+ if(asset&&asset.data.startsWith('data:image/png;base64,')){
+  if(asset.width*asset.height>8294400)throw Error('ORIGINAL_SIZE');
+  return asset;
+ }
+ if(file)return readEditFile(file);
+ if(!data)throw Error('FILE');
+ const match=/^data:(image\/(?:png|jpeg|webp));base64,/.exec(data);
+ if(!match)throw Error('FILE');
+ const bytes=Uint8Array.from(atob(data.slice(match[0].length)),c=>c.charCodeAt(0));
+ return readEditFile(new File([bytes],name||'aiadcast.png',{type:match[1]}));
+}
+
 export function PrecisionEditAction({getInput,label}:{getInput?:()=>EditInput|Promise<EditInput>;label?:string}){
  const {language,t}=useUiLanguage(),picker=useRef<HTMLInputElement>(null),request=useRef<AbortController|null>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState('');
@@ -43,18 +57,10 @@ export function PrecisionEditAction({getInput,label}:{getInput?:()=>EditInput|Pr
   const controller=new AbortController(),owner=storageNamespace();
   request.current=controller;setBusy(true);setError('');
   try{
-   const {file,data,name}=await input();
+   const inputFile=await input();
    if(controller.signal.aborted||owner!==storageNamespace())return;
-   let selected=file;
-   if(!selected&&data?.startsWith('data:image/')){
-    const match=/^data:(image\/(?:png|jpeg|webp));base64,/.exec(data);if(!match)throw Error('FILE');
-    const raw=atob(data.slice(match[0].length));const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
-    const blob=new Blob([bytes],{type:match[1]});
-    selected=new File([blob],name||'aiadcast.png',{type:blob.type});
-   }
-   if(!selected)throw Error('FILE');
    let image:Asset;
-   try{image=await readEditFile(selected);}
+   try{image=await editImage(inputFile);}
    catch(error){
     if(error instanceof Error&&['FILE','FILE_SIZE','ORIGINAL_SIZE'].includes(error.message))throw error;
     throw Error('PHOTO_INVALID');
@@ -65,7 +71,7 @@ export function PrecisionEditAction({getInput,label}:{getInput?:()=>EditInput|Pr
    if(!status.generation.selectiveEdit||!status.generation.enabled||!status.generation.creditQuote)throw Error(status.generation.reason||'UNAVAILABLE');
    const id='upload-'+image.sha256;
    const format=imageFormats.reduce((a,b)=>Math.abs(Math.log(b.width/b.height*image.height/image.width))<Math.abs(Math.log(a.width/a.height*image.height/image.width))?b:a);
-   const title=(name||selected.name).replace(/\.[^./]+$/,'').slice(0,55)||t('이미지','Image');
+   const title=(inputFile.name||image.name).replace(/\.[^./]+$/,'').slice(0,55)||t('이미지','Image');
    const project={...starterProject(),id,format:format.id,name:title,productName:title,locale:language,product:image};
    const source={id,projectId:id,artifactId:image.sha256,artifact:{id:image.sha256,sha256:image.sha256,width:image.width,height:image.height,dataUrl:image.data,role:'creative' as const}};
    setEditor({source,project,quote:status.generation.creditQuote,image});

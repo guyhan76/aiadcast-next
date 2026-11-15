@@ -6,7 +6,7 @@ import {aiDimensionRequested,aiDimensionReviewError} from './ai-dimension-displa
 import {manualBaseExport} from './dimension-annotation';
 import {isTextExample} from './generation-input';
 
-export type EditInput={file?:File;data?:string;name?:string};
+export type EditInput={file?:File;data?:string;asset?:Asset;name?:string};
 
 async function canvasInput(canvas:HTMLCanvasElement,name:string):Promise<EditInput>{
  const png=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(Error('BACKUP_IMAGE')),'image/png'));
@@ -15,7 +15,7 @@ async function canvasInput(canvas:HTMLCanvasElement,name:string):Promise<EditInp
 
 async function backupImage(project:Project):Promise<EditInput>{
  const name=project.name||project.productName||'aiadcast';
- const useAsset=(image:Asset):EditInput=>({name,data:image.data});
+ const useAsset=(asset:Asset):EditInput=>({name,asset});
  const text=project.textEdit;
  if(text){
   if(!text.layers.length)return useAsset(text.source);

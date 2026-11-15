@@ -467,7 +467,7 @@ for(const native of [false,true])test('delete selected saved projects and the ac
 
 for(const native of [false,true])test('open a finished ad from a local backup in the projects tab on '+(native?'Android':'web'),async({page})=>{
  const origin=await prepareParityPage(page,native);
- await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}}}}));
+ await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:30,reserved:0}},budget:{limitMicros:1000000}}}));
  await page.route('**/api/membership/downloads',r=>r.fulfill({json:{downloads:[]}}));
  let posts=0;await page.route('**/api/selective-edits/**',r=>{posts++;return r.abort();});
  const asset=async(color:string)=>{
