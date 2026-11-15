@@ -493,5 +493,11 @@ for(const native of [false,true])test('open a finished ad from a local backup in
  await pick('{"version":1}');await expect(page.getByRole('alert').filter({hasText:'백업 파일을 읽지 못했습니다'})).toBeVisible();
  await pick(JSON.stringify(initial));await expect(page.getByRole('alert').filter({hasText:'백업에는 이미지가 없습니다'})).toBeVisible();
  await pick(JSON.stringify(project));await expect(edit.getByAltText('원본 광고')).toHaveAttribute('src',photo.data);
+ await edit.getByRole('button',{name:'닫기'}).click();
+ const layer={id:'price',text:'',x:0,y:0,width:.5,height:.5,size:.05,color:'#000000',bold:false,align:'left',cover:'#ffffff'};
+ await pick(JSON.stringify({...project,textEdit:{source:ad,layers:[layer],saved:[layer]}}));
+ const preview=edit.getByAltText('원본 광고');await expect(preview).toBeVisible();
+ const data=await preview.getAttribute('src');const drawn=await sharp(Buffer.from(data!.split(',')[1],'base64')).removeAlpha().raw().toBuffer();
+ expect([...drawn.subarray(0,3)]).toEqual([255,255,255]);expect([...drawn.subarray(-3)]).toEqual([17,119,154]);
  await expect(page).toHaveURL(/#projects$/);expect(posts).toBe(0);
 });

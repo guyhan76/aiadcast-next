@@ -53,7 +53,12 @@ export function PrecisionEditAction({getInput,label}:{getInput?:()=>EditInput|Pr
     selected=new File([blob],name||'aiadcast.png',{type:blob.type});
    }
    if(!selected)throw Error('FILE');
-   const image=await readEditFile(selected);
+   let image:Asset;
+   try{image=await readEditFile(selected);}
+   catch(error){
+    if(error instanceof Error&&['FILE','FILE_SIZE','ORIGINAL_SIZE'].includes(error.message))throw error;
+    throw Error('PHOTO_INVALID');
+   }
    if(controller.signal.aborted||owner!==storageNamespace())return;
    const status=await apiRequest<ApiStatus>('/api/status',undefined,controller.signal);
    if(controller.signal.aborted||owner!==storageNamespace())return;
@@ -70,6 +75,7 @@ export function PrecisionEditAction({getInput,label}:{getInput?:()=>EditInput|Pr
     NO_TEST_CREDITS:t('편집에 사용할 크레딧이 부족합니다.','Insufficient credits for an edit.'),
     ORIGINAL_SIZE:t('원본 크기로 편집하려면 829만 화소 이하, PNG로 10MB 이하인 사진을 선택해주세요.','Choose an original up to 8.29 MP that fits in a 10 MB PNG.'),
     FILE:t('PNG·JPG·WebP 사진 또는 aiadcast 백업 파일(JSON)을 선택해주세요.','Choose a PNG, JPG, WebP or aiadcast JSON backup.'),
+    PHOTO_INVALID:t('사진을 읽지 못했습니다. 다른 사진을 선택해주세요.','Could not read this photo. Choose another image.'),
     FILE_SIZE:t('25MB 이하의 사진을 선택해주세요.','Choose a photo up to 25 MB.'),
     BACKUP_SIZE:t('30MB 이하의 프로젝트 백업 파일을 선택해주세요.','Choose a project backup up to 30 MB.'),
     BACKUP_INVALID:t('aiadcast 백업 파일을 읽지 못했습니다. 다른 백업이나 사진을 선택해주세요.','Could not read this aiadcast backup. Choose another backup or photo.'),
