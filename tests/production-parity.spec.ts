@@ -507,7 +507,7 @@ for(const native of [false,true])test('failed localization can be retried with t
  const original=await sharp({create:{width:100,height:100,channels:3,background:'#58a4cf'}}).png().toBuffer();
  const prompt='오른쪽 남자의 얼굴과 포즈를 바꾸고 하늘을 먹구름으로 바꿔 주세요.';
  const masks:unknown[]=[];
- await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,creditQuote:{unit:'credit-v2',amount:0,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:20,reserved:0}},budget:{limitMicros:1000000}}}));
+ await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,creditQuote:{unit:'legacy-ticket',amount:0,policy:'legacy-accept'}},wallet:{available:0,reserved:0,credits:{available:20,reserved:0}},budget:{limitMicros:1000000}}}));
  await page.route('**/api/selective-edits/upload',r=>{
   const b=r.request().postDataJSON();masks.push(b.mask);
   expect(b.prompt).toBe(prompt);
