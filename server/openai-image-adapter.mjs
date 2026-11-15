@@ -1,5 +1,5 @@
 import {reviewPoseResult} from './edit-vision.mjs';
-import {locateEditRegion} from './locate-edit-region.mjs';
+import {locateEditRegion,poseRequested} from './locate-edit-region.mjs';
 import {selectiveEditForm,validateSelectiveOriginal,prepareSelectiveProviderInput,restoreSelectiveProviderResult,verifyPreparedSelectiveInput} from './selective-image-edit.mjs';
 import {providerHttpError,safeProviderEnum} from './provider-http-error.mjs';
 import {preparePlanarSource,requestPlanarRatio,controlPlanarResult} from './planar-proportion.mjs';
@@ -234,7 +234,7 @@ export class OpenAIImageAdapter {
     const bytes=Buffer.from(raw,'base64');if(bytes.toString('base64')!==raw)throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
     let meta;try{meta=await validateImage(bytes,'image/png',{maximumPixels:8294400,maximumBytes:MAX_GENERATED_IMAGE_BYTES});}catch{throw new ProviderFailure('PROVIDER_INVALID_IMAGE');}
     let cropped;try{cropped=await restoreSelectiveProviderResult(bytes,prepared,source,mask);}catch{throw new ProviderFailure('PROVIDER_INVALID_IMAGE',{uncertain:true});}
-    return {...cropped,usage:result.usage??null,cost:imageUsageCost(result.usage),model:IMAGE_MODEL,revision:IMAGE_REVISION,role:'creative',composition:'complete-ad'};
+    return {...cropped,checkPose:mask.explicit===true&&poseRequested(prompt),usage:result.usage??null,cost:imageUsageCost(result.usage),model:IMAGE_MODEL,revision:IMAGE_REVISION,role:'creative',composition:'complete-ad'};
   }
   async generate(options) {
     const started=Date.now(),diagnostic={timeoutMs:this.timeoutMs,endpoint:options.request.mode==='creative'&&options.source?'edits':'generations'};
@@ -345,7 +345,7 @@ export function promptFor(request){
 // Only fixed enums and bounded identifiers enter operational diagnostics. Never error messages/bodies.
 export function generationFailureDiagnostic({jobId,stage,error}) {
  const stages=['reserve','provider','persist-image','persist-metadata','usage','settle','ready'];
- const codes=['PROVIDER_TIMEOUT','PROVIDER_NETWORK','PROVIDER_BODY_TIMEOUT','PROVIDER_BODY_NETWORK','PROVIDER_HTTP','PROVIDER_INVALID_RESPONSE','PROVIDER_INVALID_IMAGE','PROVIDER_USAGE_UNCERTAIN','UNSUPPORTED_PROVIDER_MEDIA','STORAGE_LIMIT','SUPABASE_CONNECTION_FAILED','SUPABASE_UPLOAD_FAILED','STORAGE_CONTENT_CONFLICT'];
+ const codes=['PROVIDER_TIMEOUT','PROVIDER_NETWORK','PROVIDER_BODY_TIMEOUT','PROVIDER_BODY_NETWORK','PROVIDER_HTTP','PROVIDER_INVALID_RESPONSE','PROVIDER_INVALID_IMAGE','PROVIDER_USAGE_UNCERTAIN','UNSUPPORTED_PROVIDER_MEDIA','STORAGE_LIMIT','SUPABASE_CONNECTION_FAILED','SUPABASE_UPLOAD_FAILED','STORAGE_CONTENT_CONFLICT','EDIT_TARGET_UNCLEAR','EDIT_POSE_QUALITY_FAILED','EDIT_PERSON_AREAS_UNRESOLVED','EDIT_SKY_AREAS_UNRESOLVED','EDIT_SCENE_UNBOUNDED'];
  const d=error?.transportDiagnostic??{},safeNumber=n=>Number.isSafeInteger(n)&&n>=0&&n<=3600000?n:null;
  const transport={elapsedMs:safeNumber(d.elapsedMs),timeoutMs:safeNumber(d.timeoutMs),endpoint:['edits','generations'].includes(d.endpoint)?d.endpoint:null,providerRequestId:typeof d.providerRequestId==='string'&&/^req_[A-Za-z0-9_-]{1,160}$/.test(d.providerRequestId)?d.providerRequestId:null};
  const proposed=error instanceof ProviderFailure?(error.diagnosticCode??error.code):error?.code;

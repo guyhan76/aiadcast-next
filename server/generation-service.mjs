@@ -480,7 +480,7 @@ export class GenerationService {
     try {
       const attempt = this.ledger.transaction(() => {
         const period=this.period(),limit=this.budgetLimit(period);
-        return this.ledger.beginAttempt({ jobId: id, attemptId, period, maximumMicros: MODEL_COST_HOLD_MICROS + (region?.mask.instruction ? 80000 : 0), limitMicros: limit, periodScoped:Boolean(this.budgetForPeriod) });
+        return this.ledger.beginAttempt({ jobId: id, attemptId, period, maximumMicros: MODEL_COST_HOLD_MICROS + (region?.mask.instruction || region?.mask.explicit ? 80000 : 0), limitMicros: limit, periodScoped:Boolean(this.budgetForPeriod) });
       });
       if (!attempt.shouldDispatch) return;
       began = true;
