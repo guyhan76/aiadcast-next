@@ -153,11 +153,13 @@ for (const native of [false,true]) {
     try {
       const page = await context.newPage();
       await prepareParityPage(page,native);
+      const owner = 'parity-member';
+      const scope = native ? owner+'@'+encodeURIComponent('https://aiadcast-next.onrender.com') : owner;
       const previous = starterProject('services');
       const header = '업종: 여행·티켓·렌탈 > 공연·전시 티켓';
       previous.productProfile.material = header;
-      await restoreOwnedWorkspace(page,previous,'parity-member','create',undefined,
-        {step:0,project:previous,industryChosen:true});
+      await restoreOwnedWorkspace(page,previous,owner,'create',undefined,
+        {step:0,project:previous,industryChosen:true},scope);
       const form = page.locator('.consumer-create');
       const section = form.locator('[data-order="5"]');
       const description = section.getByRole('textbox',{name:'상세설명',exact:true});
