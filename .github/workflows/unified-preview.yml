@@ -11,7 +11,7 @@ on:
       - '!scripts/check-live-web-release.mjs'
       - '!.github/workflows/**'
       - '.github/workflows/unified-preview.yml'
-    branches: [feat/patent-product-generation-20261011, feat/member-storage-20261115, feat/sport-industry-options-20261115, feat/dancesport-disciplines-20261115, feat/clean-projects-20261115, fix/campaign-type-examples-20261115, fix/restore-description-20261115, fix/original-downloads-20261115, feat/instruction-edit-projects-20261115, feat/download-selection-edit-comparison, feat/grounded-edit-result-gallery, feat/project-edit-file-entry, fix/character-precision-location, fix/pose-composite-review]
+    branches: [feat/patent-product-generation-20261011, feat/member-storage-20261115, feat/sport-industry-options-20261115, feat/dancesport-disciplines-20261115, feat/clean-projects-20261115, fix/campaign-type-examples-20261115, fix/restore-description-20261115, fix/original-downloads-20261115, feat/instruction-edit-projects-20261115, feat/download-selection-edit-comparison, feat/grounded-edit-result-gallery, feat/project-edit-file-entry, fix/character-precision-location, fix/pose-composite-review, fix/separate-person-and-sky]
   workflow_dispatch:
 
 permissions:
