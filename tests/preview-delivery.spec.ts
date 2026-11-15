@@ -88,8 +88,8 @@ test('confirm the complete credit amount before submitting a batch',async({page}
  await results.getByRole('button',{name:'선택 공유 (2)'}).click();
  const names=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('shared-names')??'[]'));expect(names).toHaveLength(2);expect(names[0]).toMatch(/-01\.png$/);expect(names[1]).toMatch(/-03\.png$/);
  await page.goto('/#projects');
- const saved=page.locator('.project-tile').filter({hasText:/택배.* · [13]/});await expect(saved).toHaveCount(2);
- await expect(page.locator('.project-tile').filter({hasText:/택배.* · [24]/})).toHaveCount(0);
+ const saved=page.locator('.project-tile').filter({has:page.locator('.project-tile-caption strong',{hasText:/택배.* · [13]$/})});await expect(saved).toHaveCount(2);
+ await expect(page.locator('.project-tile-caption strong').filter({hasText:/택배.* · [24]$/})).toHaveCount(0);
  await saved.first().click();await expect(page.getByRole('button',{name:'정밀 편집',exact:true})).toBeVisible();
  expect(writes).toBe(1);
 });
