@@ -10,7 +10,7 @@ export function batchPrice(wallet:BatchWallet, count:number) {
  return {version:1,count,admin,tickets,credits,ticketsUsed,creditsUsed,ticketsAfter:tickets-ticketsUsed,creditsAfter:credits-creditsUsed};
 }
 export type BatchPrice=ReturnType<typeof batchPrice>;
-export type AdBatch={id:string;count:number};
+export type AdBatch={id:string;count:number;savedSlots?:number[]};
 export function validBatch(batch:AdBatch|undefined):batch is AdBatch {
  return !!batch && /^ads-[a-f0-9]{64}$/.test(batch.id) && batchCounts.some(n=>n===batch.count);
 }

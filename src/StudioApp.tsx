@@ -95,7 +95,18 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  // Persist every committed edit immediately: a debounce discarded photos on quick reloads.
  useLayoutEffect(()=>{let active=true;setDraftSaving(true);void saveWorkspace({wizard,editor:current,returnPage},workspaceScope).then(()=>{if(active){setDraftSaving(false);setDraftError(false);}}).catch(()=>{if(active){setDraftSaving(false);setDraftError(true);}});return()=>{active=false;};},[wizard,current,returnPage,workspaceScope]);
  useEffect(()=>{const onHash=()=>{const next=currentPage();if(next!=='studio')setGenerationIntent(undefined);if(next==='credits'&&priorPage.current!=='credits')creditsBack.current=priorPage.current;if(next==='admin'&&priorPage.current!=='admin')adminBack.current='#'+priorPage.current;priorPage.current=next;setPage(next);window.scrollTo(0,0);};window.addEventListener('hashchange',onHash);return()=>window.removeEventListener('hashchange',onHash);},[]);
- useEffect(()=>{if(page!=='projects')return;let alive=true;const refresh=()=>{const read=++libraryRead.current;projects().then(p=>{if(alive&&read===libraryRead.current){setItems(p);setLibraryError('');}}).catch(()=>{if(alive&&read===libraryRead.current)setLibraryError(text('이 기기의 저장된 작업을 읽지 못했습니다.'));});};refresh();window.addEventListener('aiadcast-project-copy-saved',refresh);return()=>{alive=false;window.removeEventListener('aiadcast-project-copy-saved',refresh);};},[page]);
+ useEffect(()=>{
+  if(page!=='projects')return;
+  let alive=true;
+  const refresh=()=>{
+   const read=++libraryRead.current;
+   projects(true).then(p=>{if(alive&&read===libraryRead.current){setItems(p);setLibraryError('');}})
+    .catch(()=>{if(alive&&read===libraryRead.current)setLibraryError(text('이 기기의 저장된 작업을 읽지 못했습니다.'));});
+  };
+  const resume=()=>{if(!document.hidden)refresh();};
+  refresh();window.addEventListener('aiadcast-project-copy-saved',refresh);document.addEventListener('visibilitychange',resume);
+  return()=>{alive=false;window.removeEventListener('aiadcast-project-copy-saved',refresh);document.removeEventListener('visibilitychange',resume);};
+ },[page]);
  function go(next:Page){location.hash=next;setPage(next);window.scrollTo(0,0);}
  useEffect(()=>{
   const back=(event:Event)=>{
@@ -138,7 +149,10 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
   setItems(list=>list.filter(p=>!deleted.has(p.id)));
   window.dispatchEvent(new Event('aiadcast-project-copy-saved'));
  }
- const libraryItems=current.presentation==='campaign'||JSON.stringify(current)!==JSON.stringify(seed)?[current,...items.filter(p=>p.id!==current.id)]:items;
+ // The request snapshot in the editor predates the saved output receipts in IndexedDB.
+ const showWorkspace=!current.adBatch&&(current.presentation==='campaign'||JSON.stringify(current)!==JSON.stringify(seed))&&
+  (current.generated||!items.some(p=>p.id===current.id&&p.generated));
+ const libraryItems=showWorkspace?[current,...items.filter(p=>p.id!==current.id)]:items;
 
  return <div className={`studio-shell ${(page==='editor'||page==='studio'&&!simpleStudio)?'editor-route':''}`}>
   <aside className="app-sidebar"><a href="#home" className="app-brand" aria-label={text("aiadcast 홈")}><Brand/><small>{language==='ko'?'내 브랜드의 광고 제작 파트너':'YOUR CREATIVE PARTNER'}</small></a><nav aria-label={text("주 메뉴")}>{navigation.map(([id,label,Icon])=><a href={'#'+id} onClick={id==='create'?createNavigation:undefined} key={id} aria-current={page===id?'page':undefined}><Icon size={19}/><span>{text(label)}</span>{id==='create'&&<span className="nav-plus">+</span>}</a>)}</nav><div className="sidebar-bottom"><div className="studio-mark"><ShieldCheck size={20}/><span>{text("당신의 상품.")}<br/><strong>{text("당신의 브랜드.")}</strong></span></div><span>aiadcast Studio<br/>by selluplabs</span></div></aside>

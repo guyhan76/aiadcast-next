@@ -31,8 +31,10 @@ export function BatchResults({project,batch,onEdit,renderDetail}:{project:Projec
  useEffect(()=>{if(zoom||reviewItem)zoomDialog.current?.showModal();},[zoom,reviewItem]);
  useEffect(()=>{
   const session=new AbortController();lifetime.current=session;
-  const cancel=()=>session.abort();window.addEventListener('aiadcast-session-change',cancel);window.addEventListener('hashchange',cancel);
-  return()=>{cancel();window.removeEventListener('aiadcast-session-change',cancel);window.removeEventListener('hashchange',cancel);Object.values(cache.current).forEach(im=>URL.revokeObjectURL(im.url));cache.current={};};
+  const route=location.hash,cancel=()=>session.abort();
+  const leave=()=>{if(location.hash!==route)cancel();};
+  window.addEventListener('aiadcast-session-change',cancel);window.addEventListener('hashchange',leave);
+  return()=>{cancel();window.removeEventListener('aiadcast-session-change',cancel);window.removeEventListener('hashchange',leave);Object.values(cache.current).forEach(im=>URL.revokeObjectURL(im.url));cache.current={};};
  },[]);
  useEffect(()=>{
   const controller=new AbortController(),owner=storageNamespace();let timer:ReturnType<typeof setTimeout>;
