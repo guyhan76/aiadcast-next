@@ -1,3 +1,5 @@
+import {playPackage} from './PlayCheckout';
+import {useNativeVersion} from './app-version';
 import {useId,useRef,useState} from 'react';
 import {X,Check} from 'lucide-react';
 import {formatPrice,pricingCurrency,pricingCatalog} from './pricing';
@@ -16,6 +18,7 @@ function initialCurrency():PricingCurrency {return pricingCurrency(readPreferenc
 function savePreference(key:string,value:string){try{localStorage.setItem(key,value);}catch{/* Display works without storage. */}}
 export function PricingDialog(){
  const {language:uiLanguage,t:uiText}=useUiLanguage();
+ const native=useNativeVersion();
  const dialog=useRef<HTMLDialogElement>(null);
  const titleId=useId();
  const [language,setLanguage]=useState<PricingLanguage>(()=>initialLanguage(uiLanguage));
@@ -24,6 +27,7 @@ export function PricingDialog(){
  function selectLanguage(next:PricingLanguage){setLanguage(next);savePreference('aiadcast-pricing-language',next);}
  function selectCurrency(next:PricingCurrency){setCurrency(next);savePreference('aiadcast-pricing-currency',next);}
  function open(){setLanguage(initialLanguage(uiLanguage));setCurrency(initialCurrency());dialog.current?.showModal();}
+ if(native?.packageName===playPackage)return <a className="pricing-trigger" href="#checkout">{uiText('이용 요금','Pricing')}</a>;
  return <>
   <button className="pricing-trigger" onClick={open}>{uiText('이용 요금','Pricing')}</button>
   <dialog ref={dialog} className="pricing-dialog" aria-labelledby={titleId} lang={language}>

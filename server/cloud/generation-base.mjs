@@ -89,13 +89,15 @@ export class GenerationService {
             await this.ledger.transaction(async () => await this.db.prepare('UPDATE budgets SET limit_micros=?').run(micros));
         this.budgetMicros = micros;
     }
-    async testPurchaseReceipt({ purchaseId, credits, unit = 'legacy-ticket' }) {
+    async testPurchaseReceipt(purchase) { return this.verifiedPurchaseReceipt(purchase); }
+    async verifiedPurchaseReceipt({ purchaseId, credits, unit = 'legacy-ticket' }) {
         const row = await this.db.prepare('SELECT * FROM purchases WHERE purchase_id=?').get(purchaseId);
         if (!row || row.user_id !== LOCAL_USER || row.credits !== credits || ((await this.db.prepare('SELECT unit FROM purchase_units WHERE purchase_id=?').get(purchaseId))?.unit ?? 'legacy-ticket') !== unit)
             throw new ApiFailure('PURCHASE_NOT_VERIFIED', 409);
         return { grantedCredits: row.credits, ...(unit === 'credit-v2' ? { unit } : {}), balance: (await this.ledger.wallet(LOCAL_USER, unit)).available };
     }
-    async recordTestPurchase({ purchaseId, credits, unit = 'legacy-ticket' }) { await this.ledger.recordVerifiedPurchase({ purchaseId, userId: LOCAL_USER, credits, unit }); return await this.wallet(); }
+    async recordTestPurchase(purchase) { return await this.recordVerifiedPurchase(purchase); }
+    async recordVerifiedPurchase({ purchaseId, credits, unit = 'legacy-ticket' }) { await this.ledger.recordVerifiedPurchase({ purchaseId, userId: LOCAL_USER, credits, unit }); return await this.wallet(); }
     async wallet() { return { ...await this.ledger.wallet(LOCAL_USER), credits: await this.ledger.wallet(LOCAL_USER, 'credit-v2'), kind: this.adminTestUnlimited ? 'admin-test-unlimited' : 'test-credits', ...(this.adminTestUnlimited ? { unlimited: true } : {}) }; }
     async creditQuote(walletSnapshot) {
         const wallet = walletSnapshot ?? await this.wallet();
