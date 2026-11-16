@@ -357,7 +357,7 @@ for(const native of [false,true])test('instruction editing, credit consent and i
    preservation:{version:1,sourceHash,maskHash,resultHash:editedHash,width:32,height:48,selectedPixels:1536,changedSelectedPixels:1536,changedOutsidePixels:0,bounds:{x:0,y:0,width:32,height:48},semanticQuality:'not-assessed'}};
  }
  await page.route('**/api/selective-edits/upload',r=>{
-  const body=r.request().postDataJSON();expect(body.mask).toEqual({mode:'instruction'});expect(body.prompt).toBe('가격을 599,000원으로, 하늘은 화창하게');expect(body.creditQuote.amount).toBe(10);
+  const body=r.request().postDataJSON();expect(body.mask).toEqual({mode:'scene'});expect(body.prompt).toBe('가격을 599,000원으로, 하늘은 화창하게');expect(body.creditQuote.amount).toBe(10);
   sourceInfo=body;edits++;return r.fulfill({json:{job:editJob('running')}});
  });
  await page.route('**/api/generations/instruction-job',async r=>{
@@ -502,7 +502,7 @@ for(const native of [false,true])test('open a finished ad from a local backup in
  await expect(page).toHaveURL(/#projects$/);expect(posts).toBe(0);
 });
 
-for(const native of [false,true])test('failed localization can be retried with two user-selected regions on '+(native?'Android':'web'),async({page})=>{
+for(const native of [false,true])test('a retry uses only source and instructions on '+(native?'Android':'web'),async({page})=>{
  const origin=await prepareParityPage(page,native);
  const original=await sharp({create:{width:100,height:100,channels:3,background:'#58a4cf'}}).png().toBuffer();
  const prompt='오른쪽 남자의 얼굴과 포즈를 바꾸고 하늘을 먹구름으로 바꿔 주세요.';
@@ -518,11 +518,9 @@ for(const native of [false,true])test('failed localization can be retried with t
  await (await chooser).setFiles({name:'드론.png',mimeType:'image/png',buffer:original});
  const editor=page.getByRole('dialog',{name:'정밀 편집'}),submit=editor.getByRole('button',{name:/수정하기/});
  await editor.getByRole('textbox').fill(prompt);page.once('dialog',d=>d.accept());await submit.click();
- await editor.getByRole('button',{name:'영역 직접 선택'}).click();await expect(submit).toBeDisabled();
- const frame=editor.getByRole('group',{name:/수정 영역 선택/});
- // Selecting two corners works even on a screen where a long drag is difficult.
- for(const [x,y] of [[10,10],[30,30],[40,40],[70,80]])await frame.click({position:{x,y}});
- await expect(editor.getByText('선택한 영역 2개')).toBeVisible();await expect(editor.getByRole('textbox')).toHaveValue(prompt);
+ await expect(editor.getByRole('button',{name:'영역 직접 선택'})).toHaveCount(0);
+ await expect(editor.getByRole('textbox')).toHaveValue(prompt);
+ await expect(submit).toBeEnabled();
  page.once('dialog',d=>d.accept());await submit.click();await expect.poll(()=>masks.length).toBe(2);
- expect(masks[0]).toEqual({mode:'instruction'});expect(masks[1]).toMatchObject({mode:'regions',regions:[expect.any(Array),expect.any(Array)]});
+ expect(masks[0]).toEqual({mode:'scene'});expect(masks[1]).toEqual({mode:'scene'});
 });

@@ -684,18 +684,19 @@ test('download previews and deletion are owner-scoped, preserve shared objects, 
 
 test('cloud upload reviews the composited pose and delivers the same artifact after restart',async t=>{
  const prompt='오른쪽 남자 캐릭터를 다른 포즈의 남성 캐릭터로 변경하고 캐릭터는 3D애니메이션으로 해주세요. 날씨는 먹구름 가득한 하늘로 변경해주세요.';
- const steps=[],person=[500,250,750,900],sky=[0,0,1000,500],drone=[750,0,1000,250];
+ const steps=[];
  const adapter=new OpenAIImageAdapter({apiKey:'fixture',enableEdits:true,fetchImpl:async(url,options)=>{
   if(url.endsWith('/images/edits')){
    steps.push('image');
    assert.ok(options.body.get('prompt').includes(prompt));
+   assert.equal(options.body.has('mask'),false);
+   assert.ok(options.body.get('image'));
    const edited=await sharp({create:{width:1024,height:1024,channels:4,background:'red'}}).png().toBuffer();
    return Response.json({data:[{b64_json:edited.toString('base64')}],usage:{input_tokens:2,input_tokens_details:{text_tokens:1,image_tokens:1},output_tokens:1}});
   }
   const request=JSON.parse(options.body),stage=request.response_format.json_schema.name;
   steps.push(stage);
-  const answers={locate_person_areas:{edit:[person],protect:[]},locate_sky_areas:{edit:[sky],protect:[person,drone]},
-   review_composited_pose:{poseMatchesRequest:true,coherentLimbs:true,previousGestureResolved:true,allOtherRequestedEditsCorrect:true,unrelatedContentPreserved:true}};
+  const answers={review_full_scene:{requestedChangesApplied:true,sceneContinuous:true,unrelatedContentPreserved:true,copy:[],protectedObjects:[]}};
   assert.ok(answers[stage],stage);
   return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(answers[stage])}}],usage:{prompt_tokens:100,completion_tokens:60}});
  }});
@@ -711,7 +712,7 @@ test('cloud upload reviews the composited pose and delivers the same artifact af
   if(job.state!=='running')break;
   await new Promise(r=>setTimeout(r,10));
  }
- assert.deepEqual(steps,['locate_person_areas','locate_sky_areas','image','review_composited_pose']);
+ assert.deepEqual(steps,['image','review_full_scene']);
  assert.equal(job.state,'ready');assert.equal(job.preservation.changedOutsidePixels,0);
  assert.ok(job.preservation.changedSelectedPixels>0);
  assert.equal(hashBytes(Buffer.from(job.artifact.dataUrl.split(',')[1],'base64')),job.artifactId);
@@ -721,7 +722,7 @@ test('cloud upload reviews the composited pose and delivers the same artifact af
  assert.equal(accepted.data.job.state,'accepted');
  assert.equal(accepted.data.job.artifactId,job.artifactId);
  assert.equal((await s.call('/api/selective-edits/upload',{token,body})).data.job.id,job.id);
- assert.equal(steps.length,4);
+ assert.equal(steps.length,2);
 
  // Reproduce the old adapter crash and recover that persisted job after another restart.
  adapter.reviewPose=()=>{throw new TypeError('missing final review');};
@@ -744,29 +745,27 @@ test('cloud upload reviews the composited pose and delivers the same artifact af
  assert.equal(steps.filter(stage=>stage==='image').length,2);
 });
 
-test('precision edit recovers an empty person location and uses rejected pose feedback on explicit retry',async t=>{
+test('legacy rectangles are soft location hints; review catches scene seams and retries only on a fresh submission',async t=>{
  const prompt='오른쪽 남자 캐릭터를 다른 포즈의 남성 캐릭터로 변경하고 캐릭터는 3D애니메이션으로 해주세요. 날씨는 먹구름 가득한 하늘로 변경해주세요.';
- const steps=[],polygon=[[350,0],[950,0],[950,950],[350,950]],imagePrompts=[];
+ const steps=[],imagePrompts=[];
  const adapter=new OpenAIImageAdapter({apiKey:'fixture',enableEdits:true,fetchImpl:async(url,options)=>{
   if(url.endsWith('/images/edits')){
    steps.push('image');imagePrompts.push(options.body.get('prompt'));
+   assert.equal(options.body.has('mask'),false);assert.match(imagePrompts.at(-1),/approximate locations/);
    const png=await sharp({create:{width:1024,height:1024,channels:4,background:'green'}}).png().toBuffer();
    return Response.json({data:[{b64_json:png.toString('base64')}],usage:{input_tokens:2,input_tokens_details:{text_tokens:1,image_tokens:1},output_tokens:1}});
   }
   const stage=JSON.parse(options.body).response_format.json_schema.name;
   steps.push(stage);
-  const answers={
-   locate_person_areas:{edit:[],protect:[]},
-   ad_edit_region:{located:true,changesPose:true,edit:[polygon],protect:[]},
-   audit_pose_mask:{complete:true,add:[],protect:[]},
-   review_composited_pose:{poseMatchesRequest:true,coherentLimbs:true,previousGestureResolved:imagePrompts.length===2,allOtherRequestedEditsCorrect:true,unrelatedContentPreserved:true}
-  };
+  const answers={review_full_scene:{requestedChangesApplied:true,sceneContinuous:imagePrompts.length===2,unrelatedContentPreserved:true,
+   copy:[{source:'내 미래를 위한, 두 번째 커리어',replacement:null,observed:imagePrompts.length===1?'내 미래를 위한':'내 미래를 위한, 두 번째 커리어'}],
+   protectedObjects:[{subject:'드론',originalCount:2,editedCount:imagePrompts.length===1?1:2}]}};
   assert.ok(answers[stage],stage);
   return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(answers[stage])}}],usage:{prompt_tokens:100,completion_tokens:60}});
  }});
  const s=await setup(t,{adapter}),{token}=await s.member('Edit feedback',1_000_000,3);
  const quote=(await s.call('/api/status',{token})).data.generation.creditQuote;
- const body={original:{width:8,height:8,sha256:hash,dataUrl:source.data},sourceHash:hash,prompt,mask:{mode:'instruction'},requestId:randomUUID(),projectId:randomUUID(),creditQuote:quote};
+ const body={original:{width:8,height:8,sha256:hash,dataUrl:source.data},sourceHash:hash,prompt,mask:{mode:'regions',regions:[[400,400,750,800],[0,0,500,210]]},requestId:randomUUID(),projectId:randomUUID(),creditQuote:quote};
  async function run(request){
   const posted=await s.call('/api/selective-edits/upload',{token,body:request});assert.equal(posted.status,202,JSON.stringify(posted.data));
   for(let i=0;i<200;i++){
@@ -778,12 +777,13 @@ test('precision edit recovers an empty person location and uses rejected pose fe
  }
  const first=await run(body);
  assert.equal(first.state,'failed');assert.equal(first.creditCaptured,false);assert.equal(first.artifact,null);
- assert.deepEqual(first.editReview.failedChecks,['previousGestureResolved']);assert.ok(first.editReview.preview.startsWith('data:image/jpeg;base64,'));
- assert.deepEqual(steps,['locate_person_areas','ad_edit_region','audit_pose_mask','image','review_composited_pose']);
+ assert.deepEqual(first.editReview.failedChecks,['sceneContinuous','unrelatedContentPreserved']);
+ assert.deepEqual(first.editReview.differences,[{kind:'copy',expected:'내 미래를 위한, 두 번째 커리어',observed:'내 미래를 위한'},{kind:'object',subject:'드론',expected:2,observed:1}]);assert.ok(first.editReview.preview.startsWith('data:image/jpeg;base64,'));
+ assert.deepEqual(steps,['image','review_full_scene']);
  await s.restart();
  assert.equal((await run(body)).id,first.id);assert.equal(imagePrompts.length,1);
  const second=await run({...body,requestId:randomUUID(),projectId:randomUUID()});
  assert.equal(second.state,'ready');assert.equal(second.preservation.changedOutsidePixels,0);
- assert.deepEqual(steps.slice(5),['ad_edit_region','audit_pose_mask','image','review_composited_pose']);
- assert.equal(imagePrompts.length,2);assert.ok(imagePrompts[1].includes('whole old arm, cuff and fingertips'));
+ assert.deepEqual(steps.slice(2),['image','review_full_scene']);
+ assert.equal(imagePrompts.length,2);assert.ok(imagePrompts[1].includes('Remove abrupt joins'));assert.ok(imagePrompts[1].includes('두 번째 커리어'));assert.ok(imagePrompts[1].includes('드론'));
 });

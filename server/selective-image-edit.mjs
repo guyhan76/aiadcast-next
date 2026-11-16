@@ -21,17 +21,24 @@ async function explicitRegionMask(source,regions){
  return {...await validateImage(bytes,'image/png',{maximumPixels:MAX_PIXELS}),bytes,localized:true,explicit:true};
 }
 
-export async function prepareSelectiveEdit(original,mask){
+export async function prepareSelectiveEdit(original,mask,interactive=false){
  const source=await parseSourceAsset({...original,data:original?.dataUrl});
  if(!source||source.width*source.height>MAX_PIXELS)throw Error('INVALID_EDIT_SOURCE');
  const automatic=mask?.mode==='instruction'&&Object.keys(mask).length===1;
+ const rectangles=mask?.mode==='regions'&&Object.keys(mask).every(key=>['mode','regions'].includes(key));
+ const scene=(mask?.mode==='scene'&&Object.keys(mask).length===1)||(interactive&&(automatic||rectangles));
  let selected;
- if(automatic){
+ if(scene||automatic){
+  // A full-frame scope records the source and change count. No mask is sent to the image model for a scene edit.
   const bytes=await sharp({create:{width:source.width,height:source.height,channels:4,background:{r:19,g:77,b:39,alpha:0}}}).png().toBuffer();
-  selected={...await validateImage(bytes,'image/png',{maximumPixels:MAX_PIXELS}),bytes,instruction:true};
- }else if(mask?.mode==='regions'&&Object.keys(mask).every(key=>['mode','regions'].includes(key))){
-  selected=await explicitRegionMask(source,mask.regions);
- }else selected=await parseSourceAsset(mask);
+  selected={...await validateImage(bytes,'image/png',{maximumPixels:MAX_PIXELS}),bytes,...(scene?{scene:true}:{instruction:true})};
+  if(rectangles){
+   const legacy=await explicitRegionMask(source,mask.regions);
+   selected.requestMaskHash=legacy.sha256;
+   selected.regionHints=mask.regions.map(rect=>[...rect]);
+  }
+ }else if(rectangles)selected=await explicitRegionMask(source,mask.regions);
+ else selected=await parseSourceAsset(mask);
  if(!selected||selected.mime!=='image/png'||selected.bytes.length>MAX_MASK||selected.width!==source.width||selected.height!==source.height)throw Error('INVALID_EDIT_MASK');
  const rgba=await sharp(selected.bytes).ensureAlpha().raw().toBuffer();let count=0;
  for(let i=3;i<rgba.length;i+=4){if(rgba[i]!==0&&rgba[i]!==255)throw Error('INVALID_EDIT_MASK');if(rgba[i]===0)count++;}
@@ -47,10 +54,19 @@ export async function compositeSelectiveEdit(original,mask,generated,sourceArtif
   mask=generated.locatedMask;
  }
  // Never resize or recolor the original. Copy complete RGBA tuples only where alpha=0.
- const meta=await validateImage(generated.bytes,'image/png',{maximumPixels:MAX_PIXELS,maximumBytes:16000000});
+ const meta=await validateImage(generated.bytes,'image/png',{maximumPixels:MAX_PIXELS,maximumBytes:mask.scene?10*1024*1024:16000000});
  if(meta.width!==original.width||meta.height!==original.height)throw new ProviderFailure('PROVIDER_INVALID_IMAGE');
  let a,m;try{[a,m]=await Promise.all([checkedPixels(original),checkedPixels(mask,true)]);}catch{throw new ProviderFailure('EDIT_PRESERVATION_FAILED');}
  if(mask.width!==original.width||mask.height!==original.height)throw new ProviderFailure('EDIT_PRESERVATION_FAILED');
+ if(mask.scene){
+  const pixels=await sharp(generated.bytes).ensureAlpha().raw().toBuffer();
+  const proof=inspectSelectivePixels(a,m,pixels,original.width,original.height);
+  if(proof.selectedPixels!==original.width*original.height)throw new ProviderFailure('EDIT_PRESERVATION_FAILED');
+  return {...generated,...meta,bytes:generated.bytes,role:'creative',composition:'complete-ad',preservation:{
+   version:1,scope:'whole-image',sourceHash:sourceArtifactHash,maskHash:mask.sha256,...(mask.requestMaskHash?{requestMaskHash:mask.requestMaskHash}:{}),
+   resultHash:meta.sha256,...proof,semanticQuality:'not-assessed'
+  }};
+ }
  const b=await sharp(generated.bytes).ensureAlpha().raw().toBuffer(),merged=Buffer.from(a);
  for(let i=0;i<a.length;i+=4){if(m[i+3]!==0&&m[i+3]!==255)throw new ProviderFailure('EDIT_PRESERVATION_FAILED');if(m[i+3]===0)b.copy(merged,i,i,i+4);}
  const bytes=await sharp(merged,{raw:{width:original.width,height:original.height,channels:4}}).png().toBuffer();
@@ -64,7 +80,7 @@ export async function compositeSelectiveEdit(original,mask,generated,sourceArtif
 
 export async function finalizeSelectiveEdit(adapter,region,generated,attemptId){
  const final=await compositeSelectiveEdit(region.source,region.mask,generated,region.sourceHash);
- if(generated.checkPose&&final.preservation.changedSelectedPixels>0){
+ if((region.mask.scene||generated.checkPose)&&final.preservation.changedSelectedPixels>0){
   try{return await adapter.reviewPose(region,final,attemptId);}
   catch(error){
    if(error instanceof ProviderFailure&&!error.uncertain&&error.knownCostMicros==null)error.knownCostMicros=final.cost?.microUsd;
@@ -94,14 +110,26 @@ export function validateSelectiveEditContract({model,source,mask}){
  if(!['1024x1024','1536x1024','1024x1536'].includes(`${source?.width}x${source?.height}`))throw new ProviderFailure('UNSUPPORTED_EDIT_SIZE',{uncertain:false});
  if(source?.mime!=='image/png'||mask?.mime!=='image/png'||mask.width!==source.width||mask.height!==source.height||mask.bytes.length>=4_000_000)throw new ProviderFailure('INVALID_EDIT_MASK',{uncertain:false});
 }
-export function selectiveEditForm({model,source,mask,prompt,references=[],instruction=false}){
+export function selectiveEditForm({model,source,mask,prompt,references=[],instruction=false,scene=false,regionHints}){
  if(instruction||mask?.instruction)throw new ProviderFailure('EDIT_TARGET_UNCLEAR',{uncertain:false});
  validateSelectiveEditContract({model,source,mask});
  if(!referencesMatch(references,referenceManifest(references)))throw new ProviderFailure('INVALID_EDIT_REFERENCE',{uncertain:false});
- const body=new FormData();body.set('model',model);body.set('n','1');body.set('quality','high');body.set('size',`${source.width}x${source.height}`);body.set('output_format','png');body.set('prompt',selectiveEditPrompt(prompt,references.length));
+ const body=new FormData();body.set('model',model);body.set('n','1');body.set('quality','high');body.set('size',`${source.width}x${source.height}`);body.set('output_format','png');body.set('prompt',scene?sceneEditPrompt(prompt,references.length,regionHints):selectiveEditPrompt(prompt,references.length));
  body.append(references.length?'image[]':'image',new Blob([source.bytes],{type:'image/png'}),'original.png');
  for(const [i,ref] of references.entries())body.append('image[]',new Blob([ref.bytes],{type:ref.mime}),`product-reference-${i+1}.${ref.mime.split('/')[1]}`);
- body.set('mask',new Blob([mask.bytes],{type:'image/png'}),'mask.png');return body;
+ if(!scene)body.set('mask',new Blob([mask.bytes],{type:'image/png'}),'mask.png');
+ return body;
+}
+
+function sceneEditPrompt(instruction,referenceCount,regionHints){
+ return [
+  'Edit the complete original advertisement in image 1 directly using the customer instruction. Render one continuous scene in the original camera frame, composition and aspect ratio. Locate what to change from the words and the photo.',
+  'For weather, carry the requested atmosphere across the visible sky, gaps, edges and relevant lighting or reflections. Keep foreground silhouettes and occlusion natural. For a new character or pose, replace the full affected figure, including old hands and gestures, and restore the scenery behind it. Keep the requested subject count.',
+  'Preserve all unrelated copy exactly, including every Korean character in banners, logos, prices and CTA. Keep the original equipment and products, such as drones and handheld controllers, in the same locations. Do not split the scene, crop the artwork, paste panels or leave hard-edged patches. Plain outer padding belongs outside the artwork.',
+  referenceCount?'Additional images document the actual product only.':'',
+  regionHints?.length?'The older client marked approximate locations in 0..1000 coordinates: '+JSON.stringify(regionHints)+'. These coordinates refer to the entire supplied frame including any outer padding. Use them only to identify subjects. Follow natural boundaries across these coordinates.':'',
+  'Customer instruction:',instruction
+ ].filter(Boolean).join('\n');
 }
 
 export function selectiveEditPrompt(instruction,referenceCount=0){
@@ -123,9 +151,34 @@ async function prepareSelectiveReferences(references){
  return Object.freeze(copies.map(r=>Object.freeze(r)));
 }
 
+const editCanvases=[[1024,1024],[1024,1536],[1536,1024]];
+
+function sceneCanvasPlan(width,height){
+ // Maximize the fraction of the model frame occupied by the entire advertisement.
+ let best,coverage=0;
+ for(const [canvasWidth,canvasHeight] of editCanvases){
+  const scale=Math.min(canvasWidth/width,canvasHeight/height);
+  const fraction=(width*scale/canvasWidth)*(height*scale/canvasHeight);
+  if(fraction<=coverage)continue;
+  coverage=fraction;
+  const w=Math.max(1,Math.min(canvasWidth,Math.round(width*scale)));
+  const h=Math.max(1,Math.min(canvasHeight,Math.round(height*scale)));
+  best={width:w,height:h,canvasWidth,canvasHeight,left:Math.floor((canvasWidth-w)/2),top:Math.floor((canvasHeight-h)/2)};
+ }
+ return best;
+}
+
+function canvasHints(rectangles,plan){
+ return rectangles?.map(([left,top,right,bottom])=>{
+  const x=value=>Math.round((plan.left*1000+value*plan.width)/plan.canvasWidth);
+  const y=value=>Math.round((plan.top*1000+value*plan.height)/plan.canvasHeight);
+  return [x(left),y(top),x(right),y(bottom)];
+ });
+}
+
 export function selectiveCanvasPlan(width,height){
  if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<=0||height<=0)throw new ProviderFailure('UNSUPPORTED_EDIT_SIZE',{uncertain:false});
- const canvas=[[1024,1024],[1024,1536],[1536,1024]].find(([w,h])=>width<=w&&height<=h);
+ const canvas=editCanvases.find(([w,h])=>width<=w&&height<=h);
  if(!canvas)throw new ProviderFailure('UNSUPPORTED_EDIT_SIZE',{uncertain:false});
  return {width,height,canvasWidth:canvas[0],canvasHeight:canvas[1],left:Math.floor((canvas[0]-width)/2),top:Math.floor((canvas[1]-height)/2)};
 }
@@ -140,8 +193,9 @@ export function validateSelectiveOriginal({model,source,mask}){
  if(source?.mime!=='image/png'||mask?.mime!=='image/png'||mask.width!==source.width||mask.height!==source.height||mask.bytes.length>=4_000_000)throw new ProviderFailure('INVALID_EDIT_MASK',{uncertain:false});
  return plan;
 }
-async function padSelectiveProviderInput({model,source,mask}){
- const plan=validateSelectiveOriginal({model,source,mask}),{width,height,canvasWidth,canvasHeight,left,top}=plan;
+async function padSelectiveProviderInput({model,source,mask},frame){
+ const plan=frame??validateSelectiveOriginal({model,source,mask});
+ const {width,height,canvasWidth,canvasHeight,left,top}=plan;
  const padded=[];
  for(const input of [source,mask]){
   const {data,info}=await sharp(input.bytes).ensureAlpha().raw().toBuffer({resolveWithObject:true});
@@ -184,7 +238,15 @@ export async function prepareSelectiveProviderInput({model,source,mask,reference
  }
  if(x1<0)throw new ProviderFailure('EMPTY_EDIT_MASK',{uncertain:false});
  let roi=null,scaled=false,input={source,mask};
- if(!fullPlan&&(mask.instruction||mask.localized&&(mask.wholeScene||!fitsSelectedCanvas(x1-x0+1,y1-y0+1)))){
+ const frame=mask.scene?sceneCanvasPlan(source.width,source.height):null;
+ if(frame){
+  scaled=frame.width!==source.width||frame.height!==source.height;
+  if(scaled){
+   const bytes=await sharp(source.bytes).resize(frame.width,frame.height,{fit:'fill'}).png().toBuffer();
+   const scope=await sharp({create:{width:frame.width,height:frame.height,channels:4,background:{r:0,g:0,b:0,alpha:0}}}).png().toBuffer();
+   input={source:{...await validateImage(bytes,'image/png'),bytes},mask:{...await validateImage(scope,'image/png'),bytes:scope}};
+  }
+ }else if(!fullPlan&&(mask.instruction||mask.localized&&(mask.wholeScene||!fitsSelectedCanvas(x1-x0+1,y1-y0+1)))){
   // Fit the complete advertisement into a supported canvas, including very tall stories.
   const portrait=source.height>=source.width;
   const scale=Math.min((portrait?1024:1536)/source.width,(portrait?1536:1024)/source.height);
@@ -211,10 +273,11 @@ export async function prepareSelectiveProviderInput({model,source,mask,reference
   }
   input={source:parts[0],mask:parts[1]};
  }
- const padded=await padSelectiveProviderInput({model,...input});
+ const padded=await padSelectiveProviderInput({model,...input},frame);
  Object.freeze(padded.plan);
- const binding=Object.freeze({version:1,model,sourceHash:hashBytes(source.bytes),maskHash:hashBytes(mask.bytes),originalWidth:source.width,originalHeight:source.height,roi,scaled,instruction:mask.instruction===true,plan:padded.plan,providerSourceHash:hashBytes(padded.source.bytes),providerMaskHash:hashBytes(padded.mask.bytes),references:referenceManifest(references)});
- const prepared=Object.freeze({...padded,source:Object.freeze(padded.source),mask:Object.freeze(padded.mask),references,roi,binding,bindingHash:hashBytes(Buffer.from(JSON.stringify(binding)))});
+ const binding=Object.freeze({version:1,model,sourceHash:hashBytes(source.bytes),maskHash:hashBytes(mask.bytes),requestMaskHash:mask.requestMaskHash??mask.sha256,originalWidth:source.width,originalHeight:source.height,roi,scaled,instruction:mask.instruction===true,scene:mask.scene===true,plan:padded.plan,providerSourceHash:hashBytes(padded.source.bytes),providerMaskHash:hashBytes(padded.mask.bytes),references:referenceManifest(references)});
+ const hints=frame?canvasHints(mask.regionHints,frame):undefined;
+ const prepared=Object.freeze({...padded,regionHints:hints&&Object.freeze(hints.map(rect=>Object.freeze(rect))),source:Object.freeze(padded.source),mask:Object.freeze(padded.mask),references,roi,binding,bindingHash:hashBytes(Buffer.from(JSON.stringify(binding)))});
  preparedCapabilities.set(prepared,JSON.stringify(binding));return prepared;
 }
 export function sameSelectiveBinding(a,b){
@@ -226,6 +289,12 @@ export async function restoreSelectiveProviderResult(bytes,prepared,source,mask)
  if(!sameSelectiveBinding(prepared,expected))throw new ProviderFailure('INVALID_EDIT_SOURCE',{uncertain:false});
  const cropped=await cropSelectiveProviderResult(bytes,expected.plan);
  if(expected.binding.scaled){
+  if(expected.binding.scene){
+   const baseline=await cropSelectiveProviderResult(expected.source.bytes,expected.plan);
+   if(baseline.sha256===cropped.sha256)return {...source};
+   const output=await sharp(cropped.bytes).resize(source.width,source.height,{fit:'fill'}).png().toBuffer();
+   return {...await validateImage(output,'image/png',{maximumPixels:MAX_PIXELS}),bytes:output};
+  }
   const baseline=await cropSelectiveProviderResult(expected.source.bytes,expected.plan);
   const expand=asset=>sharp(asset.bytes).resize(source.width,source.height,{fit:'fill'}).ensureAlpha().raw().toBuffer();
   const [before,after,original]=await Promise.all([expand(baseline),expand(cropped),checkedPixels(source)]);
@@ -251,6 +320,6 @@ export async function restoreSelectiveProviderResult(bytes,prepared,source,mask)
 export function verifyPreparedSelectiveInput(prepared,source,mask,model,references=[]){
  const serialized=preparedCapabilities.get(prepared);
  if(!referencesMatch(references,prepared?.binding?.references))throw new ProviderFailure('INVALID_EDIT_REFERENCE',{uncertain:false});
- if(!serialized||prepared.binding.instruction!==(mask.instruction===true)||source.mime!=='image/png'||mask.mime!=='image/png'||source.sha256!==prepared.binding.sourceHash||mask.sha256!==prepared.binding.maskHash||hashBytes(Buffer.from(serialized))!==prepared.bindingHash||serialized!==JSON.stringify(prepared.binding)||prepared.source.mime!=='image/png'||prepared.mask.mime!=='image/png'||prepared.source.width!==prepared.plan.canvasWidth||prepared.source.height!==prepared.plan.canvasHeight||prepared.mask.width!==prepared.plan.canvasWidth||prepared.mask.height!==prepared.plan.canvasHeight||prepared.binding.model!==model||prepared.binding.sourceHash!==hashBytes(source.bytes)||prepared.binding.maskHash!==hashBytes(mask.bytes)||source.width!==prepared.binding.originalWidth||source.height!==prepared.binding.originalHeight||mask.width!==source.width||mask.height!==source.height||!sameSelectiveBinding(prepared,prepared))throw new ProviderFailure('INVALID_EDIT_SOURCE',{uncertain:false});
+ if(!serialized||prepared.binding.requestMaskHash!==(mask.requestMaskHash??mask.sha256)||prepared.binding.scene!==(mask.scene===true)||prepared.binding.instruction!==(mask.instruction===true)||source.mime!=='image/png'||mask.mime!=='image/png'||source.sha256!==prepared.binding.sourceHash||mask.sha256!==prepared.binding.maskHash||hashBytes(Buffer.from(serialized))!==prepared.bindingHash||serialized!==JSON.stringify(prepared.binding)||prepared.source.mime!=='image/png'||prepared.mask.mime!=='image/png'||prepared.source.width!==prepared.plan.canvasWidth||prepared.source.height!==prepared.plan.canvasHeight||prepared.mask.width!==prepared.plan.canvasWidth||prepared.mask.height!==prepared.plan.canvasHeight||prepared.binding.model!==model||prepared.binding.sourceHash!==hashBytes(source.bytes)||prepared.binding.maskHash!==hashBytes(mask.bytes)||source.width!==prepared.binding.originalWidth||source.height!==prepared.binding.originalHeight||mask.width!==source.width||mask.height!==source.height||!sameSelectiveBinding(prepared,prepared))throw new ProviderFailure('INVALID_EDIT_SOURCE',{uncertain:false});
  return Object.freeze({...prepared,source:Object.freeze({...prepared.source,bytes:Buffer.from(prepared.source.bytes)}),mask:Object.freeze({...prepared.mask,bytes:Buffer.from(prepared.mask.bytes)}),references:Object.freeze(prepared.references.map(r=>Object.freeze({...r,bytes:Buffer.from(r.bytes)})))});
 }
