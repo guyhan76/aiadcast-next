@@ -82,18 +82,23 @@ export function SelectiveImageEditor({source,project,quote,onClose,uploaded}:{so
    }
   }finally{lock.current=false;if(valid())setBusy(false);}
  }
+ const pendingId=pending.current?.requestId;
  useEffect(()=>{
-  if(!job||!['running','uncertain'].includes(job.state))return;
-  const interval=window.setInterval(()=>{if(document.visibilityState==='visible'&&navigator.onLine)void recover();},3000);
+  if(!pendingId||(job&&!['running','uncertain'].includes(job.state)))return;
+  const refresh=()=>{if(document.visibilityState==='visible'&&navigator.onLine)void recover();};
+  const interval=window.setInterval(refresh,job?3000:10000);
   const timeout=window.setTimeout(()=>{
-   window.clearInterval(interval);
    if(valid()){
     setManualCheck(true);
-    setMessage(t('결과 확인이 지연되고 있습니다.','Checking the result is taking longer than usual.'));
+    setMessage(t('완료되면 수정 시안을 표시합니다.','The edited draft will appear when it is ready.'));
    }
   },120000);
-  return()=>{window.clearInterval(interval);window.clearTimeout(timeout);};
- },[job?.id,job?.state]);
+  window.addEventListener('online',refresh);document.addEventListener('visibilitychange',refresh);
+  return ()=>{
+   window.clearInterval(interval);window.clearTimeout(timeout);
+   window.removeEventListener('online',refresh);document.removeEventListener('visibilitychange',refresh);
+  };
+ },[pendingId,job?.id,job?.state]);
  async function submit(){
   if(saved||lock.current||pending.current||localStorage.getItem(key)||!ready||!prompt.trim())return;
   if(!window.confirm(chargeConfirmation))return;
