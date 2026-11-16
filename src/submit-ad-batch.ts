@@ -15,7 +15,7 @@ export async function submitAdBatch(project:Project,price:BatchPrice,owner:strin
  if((await preflightProportions(project))?.status==='mismatch')throw Error('PROPORTION_MISMATCH');
  const id='ads-'+await dimensionInputHash(JSON.stringify([owner,project.id,price.count,generationMatchKey(request)]));
  const batch:AdBatch={id,count:price.count};
- const entry={...project,id,adBatch:batch};
+ const entry={...project,id,generated:undefined,resultSet:undefined,adBatch:batch};
  check();await saveProject(entry,owner);check();
  try {
   const result=await apiRequest<{id:string}>('/api/generations',{batch:{...batch,quote:price},projectId:id,requestId:id,request,...generationInputs(project)});

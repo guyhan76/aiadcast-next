@@ -82,6 +82,11 @@ test('confirm the complete credit amount before submitting a batch',async({page}
  await expect(dialog).toContainText('이미지 4장');await expect(dialog.locator('dd')).toHaveText(['80','40','40']);expect(writes).toBe(0);
  await dialog.getByRole('button',{name:'확인',exact:true}).click();await expect.poll(()=>writes).toBe(1);
  const results=page.locator('.batch-results');await expect(results.locator('.batch-grid img')).toHaveCount(4);
+ await page.goto('/#projects');
+ const gallery=page.locator('.project-tile').filter({hasText:'생성 완료'});
+ await expect(gallery).toHaveCount(1);await expect(gallery.getByAltText('생성된 광고 미리보기')).toBeVisible();
+ await expect(page.locator('.project-tile').filter({hasText:'제작 중'})).toHaveCount(0);
+ await gallery.click();await expect(results.locator('.batch-grid img')).toHaveCount(4);
  await results.getByLabel('전체 선택',{exact:true}).check();await expect(results.getByRole('button',{name:'선택 저장 (4)'})).toBeEnabled();
  await results.getByLabel('광고 2',{exact:true}).uncheck();await results.getByLabel('광고 4',{exact:true}).uncheck();
  const download=page.waitForEvent('download');await results.getByRole('button',{name:'선택 저장 (2)'}).click();expect((await download).suggestedFilename()).toBe('aiadcast-images.zip');
@@ -91,6 +96,12 @@ test('confirm the complete credit amount before submitting a batch',async({page}
  const saved=page.locator('.project-tile').filter({has:page.locator('.project-tile-caption strong',{hasText:/택배.* · [13]$/})});await expect(saved).toHaveCount(2);
  await expect(page.locator('.project-tile-caption strong').filter({hasText:/택배.* · [24]$/})).toHaveCount(0);
  await saved.first().click();await expect(page.getByRole('button',{name:'정밀 편집',exact:true})).toBeVisible();
+ await page.goto('/#projects');await gallery.click();await expect(results.locator('.batch-grid img')).toHaveCount(4);
+ await results.getByLabel('전체 선택',{exact:true}).check();
+ const allFiles=page.waitForEvent('download');await results.getByRole('button',{name:'선택 저장 (4)'}).click();await allFiles;
+ await page.goto('/#projects');await expect(page.locator('.project-tile')).toHaveCount(4);
+ await page.reload();await expect(page.locator('.project-tile')).toHaveCount(4);
+ await expect(page.locator('.project-tile').filter({hasText:/제작 중|초안|결과 확인|생성 완료/})).toHaveCount(0);
  expect(writes).toBe(1);
 });
 

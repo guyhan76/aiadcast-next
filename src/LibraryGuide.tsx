@@ -1,3 +1,5 @@
+import {libraryBatch,visibleLibraryProjects} from './library-batches';
+import {useLibraryBatch} from './use-library-batch';
 import {useLibrarySelection} from './LibrarySelection';
 import {CloudLibrary} from './Membership';
 import {PrecisionEditAction} from './PrecisionEditAction';
@@ -16,14 +18,26 @@ function ProjectPreview({project}:{project:Project}){
   void render(scratch,project).then(()=>{if(!active||!canvas.current)return;canvas.current.width=scratch.width;canvas.current.height=scratch.height;canvas.current.getContext('2d')?.drawImage(scratch,0,0);setReady(true);}).catch(()=>{});
   return()=>{active=false;};
  },[project]);
- return <div className="project-thumb"><canvas ref={canvas} hidden={!ready} aria-label={t('저장한 광고 미리보기','Saved ad preview')}/>{!ready&&(project.generated?.composition==='complete-ad'&&project.generated.asset?.data?<img src={project.generated.asset.data} alt={t('과거 광고 원본','Previous ad original')}/>:project.product?<img src={project.product.data} alt={t('참조사진 · 제작 중','Reference photo · in progress')}/>:<strong>{project.productName||project.copy[project.locale].title}</strong>)}<span>{project.format}</span></div>;
+ return <div className="project-thumb"><canvas ref={canvas} hidden={!ready} aria-label={t('저장한 광고 미리보기','Saved ad preview')}/>{!ready&&(project.generated?.composition==='complete-ad'&&project.generated.asset?.data?<img src={project.generated.asset.data} alt={t('과거 광고 원본','Previous ad original')}/>:project.product?<img src={project.product.data} alt={t('참조사진','Reference photo')}/>:<strong>{project.productName||project.copy[project.locale].title}</strong>)}<span>{project.format}</span></div>;
+}
+function ProjectTile({project,editing,selected,busy,onClick,connected}:{project:Project;editing:boolean;selected:boolean;busy:boolean;onClick:()=>void;connected:boolean}){
+ const {language,t}=useUiLanguage(),batch=libraryBatch(project),saved=!batch&&hasSavedAcceptedAd(project);
+ const {ref,status,image}=useLibraryBatch(connected?batch:undefined);
+ const labels={checking:t('결과 확인','Check results'),running:t('제작 중','In progress'),ready:t('생성 완료','Generation complete'),partial:t('일부 생성 완료','Partially complete'),unknown:t('결과 확인','Check results'),unavailable:t('결과 없음','No result')};
+ const label=saved?'':batch?labels[status]:t('초안','Draft');
+ return <button ref={ref} className={'project-tile'+(editing&&selected?' is-selected':'')} disabled={busy} aria-pressed={editing?selected:undefined} onClick={onClick}>
+  {batch?<div className="project-thumb">{image?<img src={image} alt={t('생성된 광고 미리보기','Generated ad preview')}/>:<FolderOpen size={24} aria-hidden="true"/>}<span>{project.format}</span></div>:<ProjectPreview project={project}/>}
+  <div className="project-tile-caption"><strong>{project.name||project.productName||t('이름 없는 광고','Untitled ad')}</strong>
+   {editing?<span aria-hidden="true" className="selection-dot">{selected?'✓':''}</span>:<ArrowUpRight size={18}/>}
+   <small>{label&&label+' · '}{new Date(project.updatedAt).toLocaleDateString(language==='ko'?'ko-KR':'en-US')}</small>
+  </div></button>;
 }
 type LibraryProps={onRemove:(ids:string[])=>Promise<void>;items:Project[];error:string;onNew:()=>void;onOpen:(p:Project)=>void;
  onOpenServer:(p:Project)=>Promise<boolean>;showDownloads:boolean};
 export function ProjectLibrary({items,error,onRemove,onNew,onOpen,onOpenServer,showDownloads}:LibraryProps){
- const {language,t}=useUiLanguage();
+ const {t}=useUiLanguage();
  const [filter,setFilter]=useState(''),[view,setView]=useState<'saved'|'downloads'>('saved');
- const saved=items.filter(p=>hasSavedAcceptedAd(p)||p.presentation==='campaign'&&!!p.productName.trim());
+ const saved=visibleLibraryProjects(items);
  const filtered=saved.filter(p=>(p.name+' '+p.productName).toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
  const selection=useLibrarySelection(filtered.map(p=>p.id),onRemove,'device');
  return <>
@@ -37,7 +51,7 @@ export function ProjectLibrary({items,error,onRemove,onNew,onOpen,onOpenServer,s
    {saved.length>0&&<label className="project-search"><Search size={20}/><input aria-label={t('프로젝트 검색','Search projects')} placeholder={t('광고 이름 검색','Search ad names')} value={filter} onChange={e=>setFilter(e.target.value)}/></label>}
    {selection.tools}
    {error&&<p role="alert">{error}</p>}
-   {filtered.length>0?<div className="project-grid">{filtered.map(p=><button key={p.id} className={"project-tile"+(selection.editing&&selection.selected.has(p.id)?" is-selected":"")} disabled={selection.busy} aria-pressed={selection.editing?selection.selected.has(p.id):undefined} onClick={()=>selection.editing?selection.toggle(p.id):onOpen(p)}><ProjectPreview project={p}/><div className="project-tile-caption"><strong>{p.name||p.productName||t('이름 없는 광고','Untitled ad')}</strong>{selection.editing?<span aria-hidden="true" className="selection-dot">{selection.selected.has(p.id)?'✓':''}</span>:<ArrowUpRight size={18}/>}<small>{!hasSavedAcceptedAd(p)&&t('제작 중 · ','Draft · ')}{new Date(p.updatedAt).toLocaleDateString(language==='ko'?'ko-KR':'en-US')}</small></div></button>)}</div>
+   {filtered.length>0?<div className="project-grid">{filtered.map(p=><ProjectTile key={p.id} project={p} editing={selection.editing} selected={selection.selected.has(p.id)} busy={selection.busy} connected={showDownloads} onClick={()=>selection.editing?selection.toggle(p.id):onOpen(p)}/>)}</div>
     :!error&&<div className="project-empty"><FolderOpen size={30} aria-hidden="true"/><h2>{saved.length?t('검색 결과가 없습니다.','No matches.'):t('저장한 광고가 없습니다.','No saved ads yet.')}</h2>{saved.length>0&&<button onClick={()=>setFilter('')}>{t('검색 초기화','Clear search')}</button>}</div>}
   </>}
  </>;
