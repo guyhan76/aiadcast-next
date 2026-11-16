@@ -131,6 +131,9 @@ export function SelectiveImageEditor({source,project,quote,onClose,uploaded}:{so
     poseMatchesRequest:t('요청한 자세','Requested pose'),coherentLimbs:t('팔·다리 연결','Limb connections'),previousGestureResolved:t('이전 자세의 흔적','Remnants of the previous pose'),
     requestedChangesApplied:t('요청한 변경','Requested changes'),sceneContinuous:t('장면과 경계의 연결','Scene continuity'),allOtherRequestedEditsCorrect:t('함께 요청한 변경','Other requested changes'),unrelatedContentPreserved:t('기존 문구와 배경','Original text and background')
    })[check]).filter(Boolean).join(', ')}</p>
+   {job.editReview.differences?.map((item,index)=><p key={index}>{item.kind==='copy'
+    ?t('요청 기준','Expected')+' “'+(item.expected||t('삭제','removed'))+'” · '+t('시안','Draft')+' “'+(item.observed||t('누락','missing'))+'”'
+    :item.subject+' · '+t('원본','Original')+' '+item.expected+' / '+t('시안','Draft')+' '+item.observed}</p>)}
   </div>}
   {result?<SelectiveComparison original={original} result={result} width={source.artifact!.width} height={source.artifact!.height}/>:
    original&&!(job?.state==='failed'&&job.editReview)&&<img className="edit-original" src={original} alt={t('원본 광고','Original ad')}/>}

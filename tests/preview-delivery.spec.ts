@@ -172,12 +172,13 @@ test('inspect a rejected pose without charging or accepting it, and keep the ins
  await page.route('**/api/selective-edits/upload',async r=>{
   posts++;const b=r.request().postDataJSON(),sourceId='upload-'+b.sourceHash;
   await r.fulfill({status:202,json:{job:{id:'review-fixture',projectId:b.projectId,requestId:b.requestId,state:'failed',errorCode:'EDIT_POSE_QUALITY_FAILED',artifact:null,creditCaptured:false,
-   selectiveEdit:{sourceHash:b.sourceHash,sourceJobId:sourceId,sourceProjectId:sourceId,prompt:b.prompt},editReview:{version:1,failedChecks:['previousGestureResolved'],preview:'data:image/jpeg;base64,'+jpg.toString('base64')}}}});
+   selectiveEdit:{sourceHash:b.sourceHash,sourceJobId:sourceId,sourceProjectId:sourceId,prompt:b.prompt},editReview:{version:1,failedChecks:['previousGestureResolved'],differences:[{kind:'copy',expected:'두 번째 커리어',observed:''},{kind:'object',subject:'드론',expected:2,observed:1}],preview:'data:image/jpeg;base64,'+jpg.toString('base64')}}}});
  });
  await page.goto('/#projects');await page.getByLabel('편집할 사진 또는 백업 파일').setInputFiles({name:'ad.png',mimeType:'image/png',buffer:png});
  const dialog=page.getByRole('dialog',{name:'정밀 편집'});await dialog.getByRole('textbox').fill('인물 포즈 변경');
  page.once('dialog',d=>d.accept());await dialog.getByRole('button',{name:'수정하기 · 10 크레딧'}).click();
  await expect(dialog.getByLabel('원본과 수정본 비교')).toBeVisible();await expect(dialog.getByText(/이전 자세의 흔적/)).toBeVisible();
+ await expect(dialog.getByText(/두 번째 커리어.*누락/)).toBeVisible();await expect(dialog.getByText(/드론.*원본 2.*시안 1/)).toBeVisible();
  await expect(dialog.getByRole('button',{name:'수정본 사용 · 저장'})).toHaveCount(0);
  await expect(dialog.getByRole('button',{name:'영역 직접 선택'})).toHaveCount(0);
  await expect(dialog.getByLabel('원본과 수정본 비교')).toBeVisible();

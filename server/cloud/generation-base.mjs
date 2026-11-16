@@ -475,7 +475,9 @@ export class GenerationService {
             const prior = await this.db.prepare("SELECT g.metadata_json FROM generation_records g WHERE g.fingerprint=? AND g.error_code='EDIT_POSE_QUALITY_FAILED' ORDER BY g.created_at DESC LIMIT 1").get(fingerprint);
             if (prior) {
                 region.retryPoseReview = true;
-                region.repairChecks = JSON.parse(prior.metadata_json ?? '{}').editReview?.failedChecks;
+                const review = JSON.parse(prior.metadata_json ?? '{}').editReview;
+                region.repairChecks = review?.failedChecks;
+                region.repairDifferences = review?.differences;
             }
         }
         const rejected = (await this.db.prepare("SELECT count(*) n FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND j.reason='customer_rejected'").get(fingerprint)).n;

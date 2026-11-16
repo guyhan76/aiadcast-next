@@ -201,7 +201,7 @@ export class OpenAIImageAdapter {
   reviewPose(region,final,attemptId){
     return reviewPoseResult({scene:region.mask.scene===true,prompt:region.prompt,attemptId,apiKey:this.apiKey,fetchImpl:this.fetchImpl,timeoutMs:this.timeoutMs,readResponse:responseJsonLimited},region.source,final);
   }
-  async editRegion({source,mask,prompt,attemptId,providerInput,references=[],repairChecks,retryPoseReview=false}) {
+  async editRegion({source,mask,prompt,attemptId,providerInput,references=[],repairChecks,repairDifferences,retryPoseReview=false}) {
     if(!this.selectiveEditReady)throw new ProviderFailure('REGION_EDIT_NOT_AVAILABLE',{uncertain:false});
     source={...source,bytes:Buffer.isBuffer(source?.bytes)?Buffer.from(source.bytes):source?.bytes};
     mask={...mask,bytes:Buffer.isBuffer(mask?.bytes)?Buffer.from(mask.bytes):mask?.bytes};
@@ -209,7 +209,7 @@ export class OpenAIImageAdapter {
       if(providerInput)verifyPreparedSelectiveInput(providerInput,source,mask,IMAGE_MODEL,references);
       const located=await locateEditRegion({source,prompt,retryPoseReview,attemptId,apiKey:this.apiKey,fetchImpl:this.fetchImpl,timeoutMs:this.timeoutMs,readResponse:responseJsonLimited});
       try{
-        const edit=await this.editRegion({source,mask:located.mask,prompt,attemptId,references,repairChecks});
+        const edit=await this.editRegion({source,mask:located.mask,prompt,attemptId,references,repairChecks,repairDifferences});
         const microUsd=edit.cost?edit.cost.microUsd+located.microUsd:null;
         return {...edit,checkPose:located.checkPose,locatedMask:located.mask,cost:microUsd===null?null:{...edit.cost,microUsd,usd:microUsd/1e6,localizationMicros:located.microUsd}};
       }catch(error){
@@ -218,7 +218,7 @@ export class OpenAIImageAdapter {
       }
     }
     const prepared=providerInput?verifyPreparedSelectiveInput(providerInput,source,mask,IMAGE_MODEL,references):await this.prepareSelectiveInput({source,mask,references});
-    const body=selectiveEditForm({model:IMAGE_MODEL,source:prepared.source,mask:prepared.mask,prompt:editCorrectionPrompt(prompt,repairChecks),references:prepared.references,instruction:prepared.binding.instruction,scene:prepared.binding.scene,regionHints:mask.regionHints});
+    const body=selectiveEditForm({model:IMAGE_MODEL,source:prepared.source,mask:prepared.mask,prompt:editCorrectionPrompt(prompt,repairChecks,repairDifferences),references:prepared.references,instruction:prepared.binding.instruction,scene:prepared.binding.scene,regionHints:prepared.regionHints});
     if(!this.apiKey)throw new ProviderFailure('PROVIDER_NOT_CONFIGURED',{uncertain:false});
     let response;try{response=await this.fetchImpl('https://api.openai.com/v1/images/edits',{method:'POST',headers:{Authorization:`Bearer ${this.apiKey}`,'X-Client-Request-Id':attemptId},body,redirect:'error',signal:AbortSignal.timeout(this.timeoutMs)});}catch{throw new ProviderFailure('PROVIDER_UNCERTAIN');}
     if(!response.ok){const e=await providerHttpError(response);throw new ProviderFailure(e.code,{uncertain:![400,401,403,404,413,422,429].includes(response.status),providerStatus:response.status});}

@@ -696,7 +696,7 @@ test('cloud upload reviews the composited pose and delivers the same artifact af
   }
   const request=JSON.parse(options.body),stage=request.response_format.json_schema.name;
   steps.push(stage);
-  const answers={review_full_scene:{requestedChangesApplied:true,sceneContinuous:true,unrelatedContentPreserved:true}};
+  const answers={review_full_scene:{requestedChangesApplied:true,sceneContinuous:true,unrelatedContentPreserved:true,copy:[],protectedObjects:[]}};
   assert.ok(answers[stage],stage);
   return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(answers[stage])}}],usage:{prompt_tokens:100,completion_tokens:60}});
  }});
@@ -757,7 +757,9 @@ test('legacy rectangles are soft location hints; review catches scene seams and 
   }
   const stage=JSON.parse(options.body).response_format.json_schema.name;
   steps.push(stage);
-  const answers={review_full_scene:{requestedChangesApplied:true,sceneContinuous:imagePrompts.length===2,unrelatedContentPreserved:true}};
+  const answers={review_full_scene:{requestedChangesApplied:true,sceneContinuous:imagePrompts.length===2,unrelatedContentPreserved:true,
+   copy:[{source:'내 미래를 위한, 두 번째 커리어',replacement:null,observed:imagePrompts.length===1?'내 미래를 위한':'내 미래를 위한, 두 번째 커리어'}],
+   protectedObjects:[{subject:'드론',originalCount:2,editedCount:imagePrompts.length===1?1:2}]}};
   assert.ok(answers[stage],stage);
   return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(answers[stage])}}],usage:{prompt_tokens:100,completion_tokens:60}});
  }});
@@ -775,12 +777,13 @@ test('legacy rectangles are soft location hints; review catches scene seams and 
  }
  const first=await run(body);
  assert.equal(first.state,'failed');assert.equal(first.creditCaptured,false);assert.equal(first.artifact,null);
- assert.deepEqual(first.editReview.failedChecks,['sceneContinuous']);assert.ok(first.editReview.preview.startsWith('data:image/jpeg;base64,'));
+ assert.deepEqual(first.editReview.failedChecks,['sceneContinuous','unrelatedContentPreserved']);
+ assert.deepEqual(first.editReview.differences,[{kind:'copy',expected:'내 미래를 위한, 두 번째 커리어',observed:'내 미래를 위한'},{kind:'object',subject:'드론',expected:2,observed:1}]);assert.ok(first.editReview.preview.startsWith('data:image/jpeg;base64,'));
  assert.deepEqual(steps,['image','review_full_scene']);
  await s.restart();
  assert.equal((await run(body)).id,first.id);assert.equal(imagePrompts.length,1);
  const second=await run({...body,requestId:randomUUID(),projectId:randomUUID()});
  assert.equal(second.state,'ready');assert.equal(second.preservation.changedOutsidePixels,0);
  assert.deepEqual(steps.slice(2),['image','review_full_scene']);
- assert.equal(imagePrompts.length,2);assert.ok(imagePrompts[1].includes('Remove abrupt joins'));
+ assert.equal(imagePrompts.length,2);assert.ok(imagePrompts[1].includes('Remove abrupt joins'));assert.ok(imagePrompts[1].includes('두 번째 커리어'));assert.ok(imagePrompts[1].includes('드론'));
 });
