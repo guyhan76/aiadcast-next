@@ -1,5 +1,5 @@
 import {reviewPoseResult,editCorrectionPrompt} from './edit-vision.mjs';
-import {locateEditRegion,poseRequested,targetsPersonAndSky} from './locate-edit-region.mjs';
+import {locateEditRegion,poseRequested} from './locate-edit-region.mjs';
 import {selectiveEditForm,validateSelectiveOriginal,prepareSelectiveProviderInput,restoreSelectiveProviderResult,verifyPreparedSelectiveInput} from './selective-image-edit.mjs';
 import {providerHttpError,safeProviderEnum} from './provider-http-error.mjs';
 import {preparePlanarSource,requestPlanarRatio,controlPlanarResult} from './planar-proportion.mjs';
@@ -199,7 +199,7 @@ export class OpenAIImageAdapter {
   validateSelectiveInput(input){validateSelectiveOriginal({...input,model:IMAGE_MODEL});}
   prepareSelectiveInput(input){return prepareSelectiveProviderInput({...input,model:IMAGE_MODEL});}
   reviewPose(region,final,attemptId){
-    return reviewPoseResult({prompt:region.prompt,attemptId,apiKey:this.apiKey,fetchImpl:this.fetchImpl,timeoutMs:this.timeoutMs,readResponse:responseJsonLimited},region.source,final);
+    return reviewPoseResult({scene:region.mask.scene===true,prompt:region.prompt,attemptId,apiKey:this.apiKey,fetchImpl:this.fetchImpl,timeoutMs:this.timeoutMs,readResponse:responseJsonLimited},region.source,final);
   }
   async editRegion({source,mask,prompt,attemptId,providerInput,references=[],repairChecks,retryPoseReview=false}) {
     if(!this.selectiveEditReady)throw new ProviderFailure('REGION_EDIT_NOT_AVAILABLE',{uncertain:false});
@@ -218,7 +218,7 @@ export class OpenAIImageAdapter {
       }
     }
     const prepared=providerInput?verifyPreparedSelectiveInput(providerInput,source,mask,IMAGE_MODEL,references):await this.prepareSelectiveInput({source,mask,references});
-    const body=selectiveEditForm({model:IMAGE_MODEL,source:prepared.source,mask:prepared.mask,prompt:editCorrectionPrompt(prompt,repairChecks),references:prepared.references,instruction:prepared.binding.instruction});
+    const body=selectiveEditForm({model:IMAGE_MODEL,source:prepared.source,mask:prepared.mask,prompt:editCorrectionPrompt(prompt,repairChecks),references:prepared.references,instruction:prepared.binding.instruction,scene:prepared.binding.scene,regionHints:mask.regionHints});
     if(!this.apiKey)throw new ProviderFailure('PROVIDER_NOT_CONFIGURED',{uncertain:false});
     let response;try{response=await this.fetchImpl('https://api.openai.com/v1/images/edits',{method:'POST',headers:{Authorization:`Bearer ${this.apiKey}`,'X-Client-Request-Id':attemptId},body,redirect:'error',signal:AbortSignal.timeout(this.timeoutMs)});}catch{throw new ProviderFailure('PROVIDER_UNCERTAIN');}
     if(!response.ok){const e=await providerHttpError(response);throw new ProviderFailure(e.code,{uncertain:![400,401,403,404,413,422,429].includes(response.status),providerStatus:response.status});}
@@ -234,7 +234,7 @@ export class OpenAIImageAdapter {
     const bytes=Buffer.from(raw,'base64');if(bytes.toString('base64')!==raw)throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
     let meta;try{meta=await validateImage(bytes,'image/png',{maximumPixels:8294400,maximumBytes:MAX_GENERATED_IMAGE_BYTES});}catch{throw new ProviderFailure('PROVIDER_INVALID_IMAGE');}
     let cropped;try{cropped=await restoreSelectiveProviderResult(bytes,prepared,source,mask);}catch{throw new ProviderFailure('PROVIDER_INVALID_IMAGE',{uncertain:true});}
-    return {...cropped,checkPose:mask.explicit===true&&(poseRequested(prompt)||targetsPersonAndSky(prompt)),usage:result.usage??null,cost:imageUsageCost(result.usage),model:IMAGE_MODEL,revision:IMAGE_REVISION,role:'creative',composition:'complete-ad'};
+    return {...cropped,checkPose:mask.explicit===true&&poseRequested(prompt),usage:result.usage??null,cost:imageUsageCost(result.usage),model:IMAGE_MODEL,revision:IMAGE_REVISION,role:'creative',composition:'complete-ad'};
   }
   async generate(options) {
     const started=Date.now(),diagnostic={timeoutMs:this.timeoutMs,endpoint:options.request.mode==='creative'&&options.source?'edits':'generations'};

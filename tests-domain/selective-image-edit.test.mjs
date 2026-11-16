@@ -268,67 +268,40 @@ for(const defect of [null,'previousGestureResolved','allOtherRequestedEditsCorre
 });
 
 const stormPrompt='오른쪽 남자 캐릭터를 다른 포즈의 얼굴이 다른 캐릭터로 교체해 주세요.\n캐릭터는 3D 애니메이션을 적용해주세요. 날씨는 먹구름이 가득한 날씨로 변경해 주세요.';
-const identityStormPrompt='오른쪽 남성 캐릭터를 디즈니 3D애니메이션 20대 남성 캐릭터로 변경해주세요. 그리고 하늘은 먹구름이 가득한 흐린 날씨로 만들어주세요.';
-for(const {direct,prompt,defect} of [
- {direct:false,prompt:stormPrompt},{direct:true,prompt:stormPrompt},
- {direct:false,prompt:identityStormPrompt},{direct:true,prompt:identityStormPrompt},
- {direct:false,prompt:identityStormPrompt,defect:'unrelatedContentPreserved'}
-])test('person and storm sky / '+[direct?'manual':'automatic',prompt,defect||'ready'].join(' / '),async t=>{
+for(const direct of [false,true])test('person and storm sky reach the image editor and final review / '+(direct?'selected on original':'automatic'),async t=>{
  const {s}=await fixture(t);
  const stages=[];
  const person=[500,250,750,900],sky=[0,0,1000,500],drone=[750,0,1000,250];
- const contour=([l,t,r,b])=>[[l,t],[r,t],[r,b],[l,b]];
- const banner=[0,0,250,125];
  s.adapter=new OpenAIImageAdapter({apiKey:'test',enableEdits:true,fetchImpl:async(url,options)=>{
   if(url.endsWith('/images/edits')){
    stages.push('image');
-   assert.ok(options.body.get('prompt').includes(prompt));
+   assert.ok(options.body.get('prompt').includes(stormPrompt));
    const raw=await sharp(Buffer.from(await options.body.get('mask').arrayBuffer())).ensureAlpha().raw().toBuffer();
    const alpha=(x,y)=>raw[((y+508)*1024+x+508)*4+3];
    assert.equal(alpha(4,3),0,'arm over sky survives the sky-only protection');
    assert.equal(alpha(2,1),0,'clear sky can change to overcast');
    assert.equal(alpha(7,0),255,'foreground drone');
    assert.equal(alpha(0,7),255,'price under the skyline');
-   if(!direct)assert.equal(alpha(1,0),255,'full headline panel stays immutable');
    const changed=await sharp({create:{width:1024,height:1024,channels:4,background:'red'}}).png().toBuffer();
    return Response.json({data:[{b64_json:changed.toString('base64')}],usage:{input_tokens:2,input_tokens_details:{text_tokens:1,image_tokens:1},output_tokens:1}});
   }
   const request=JSON.parse(options.body),stage=request.response_format.json_schema.name;
   stages.push(stage);
   let answer;
-  if(stage==='locate_person_areas')answer={edit:[person,drone],protect:[]};
-  else if(stage==='locate_sky_areas')answer={edit:[contour(sky)],protect:[contour(person)],foreground:[contour(drone),contour(banner)]};
+  if(stage==='locate_person_areas')answer={edit:[person],protect:[]};
+  else if(stage==='locate_sky_areas')answer={edit:[sky],protect:[person,drone]};
   else{
    assert.equal(stage,'review_composited_pose');
    assert.match(request.messages[0].content,/weather/);
-   answer={poseMatchesRequest:true,coherentLimbs:true,previousGestureResolved:true,allOtherRequestedEditsCorrect:true,unrelatedContentPreserved:!defect};
+   answer={poseMatchesRequest:true,coherentLimbs:true,previousGestureResolved:true,allOtherRequestedEditsCorrect:true,unrelatedContentPreserved:true};
   }
   return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(answer)}}],usage:{prompt_tokens:100,completion_tokens:60}});
  }});
- const request={original:asset,sourceHash:sha,prompt,mask:direct?{mode:'regions',regions:[person,[0,0,750,500]]}:{mode:'instruction'},requestId:randomUUID(),projectId:randomUUID(),creditQuote:s.creditQuote()};
+ const request={original:asset,sourceHash:sha,prompt:stormPrompt,mask:direct?{mode:'regions',regions:[person,[0,0,750,500]]}:{mode:'instruction'},requestId:randomUUID(),projectId:randomUUID(),creditQuote:s.creditQuote()};
  const made=await s.createUploadedEdit(request);await s.waitForIdle();
  assert.deepEqual(stages,direct?['image','review_composited_pose']:['locate_person_areas','locate_sky_areas','image','review_composited_pose']);
- const job=s.job(made.job.id);
- if(defect){
-  assert.equal(job.state,'failed');
-  assert.deepEqual(job.editReview.failedChecks,[defect]);
-  assert.equal(job.creditCaptured,false);
-  assert.ok(!job.artifactId);
-  return;
- }
- assert.equal(job.state,'ready');assert.equal(job.preservation.changedOutsidePixels,0);
+ const job=s.job(made.job.id);assert.equal(job.state,'ready');assert.equal(job.preservation.changedOutsidePixels,0);
  assert.equal((await s.createUploadedEdit(request)).job.id,job.id);
- if(!direct&&prompt===identityStormPrompt){
-  const fresh=()=>({...request,requestId:randomUUID(),projectId:randomUUID()});
-  assert.equal((await s.createUploadedEdit(fresh())).job.id,job.id);
-  // Simulate a pre-fix ready result for the identical source and instruction.
-  s.db.prepare('UPDATE jobs SET model_revision=? WHERE id=?').run('pre-foreground-review',job.id);
-  assert.equal((await s.createUploadedEdit(request)).job.id,job.id);
-  const replacement=await s.createUploadedEdit(fresh());
-  await s.waitForIdle();
-  assert.notEqual(replacement.job.id,job.id);
-  assert.equal(s.job(replacement.job.id).state,'ready');
- }
 });
 test('explicit selections reject empty, invalid and full-frame masks',async()=>{
  for(const regions of [[],[[900,100,100,600]],[[0,0,500,1000],[500,0,1000,1000]],[[0,0,2000,500]]]){
@@ -343,4 +316,47 @@ test('a compound edit on a 1080 square ad keeps the whole composition on a squar
  const mask=await rasterizeEditRegion({located:true,edit:[[[350,0],[960,0],[960,900],[350,900]]],protect:[]},w,w);
  const {binding,plan}=await prepareSelectiveProviderInput({model:'gpt-image-2.6-sunburst',source,mask:{...mask,wholeScene:true}});
  assert.equal(binding.scaled,true);assert.equal(binding.roi,null);assert.equal(plan.width,1024);assert.equal(plan.height,1024);
+});
+
+test('unmasked 1080px text edit preserves a continuous provider frame and retries legacy ready results only for fresh IDs',async t=>{
+ const {s}=await fixture(t);
+ const side=1080;
+ const src=await sharp({create:{width:side,height:side,channels:4,background:'#359bce'}}).png().toBuffer();
+ const hash=hashBytes(src);
+ const original={width:side,height:side,sha256:hash,dataUrl:'data:image/png;base64,'+src.toString('base64')};
+ const prompt='오른쪽 남성 캐릭터를 디즈니 3D애니메이션 20대 남성 캐릭터로 변경해주세요. 그리고 하늘은 먹구름이 가득한 흐린 날씨로 만들어주세요.';
+ const rows=Buffer.alloc(1024*1024*3);
+ for(let y=0;y<1024;y++)for(let x=0;x<1024;x++){
+  const i=(1024*y+x)*3;
+  rows[i]=32+Math.floor(x/8);rows[i+1]=40+Math.floor(y/8);rows[i+2]=84;
+ }
+ const rendered=await sharp(rows,{raw:{width:1024,height:1024,channels:3}}).ensureAlpha().png().toBuffer();
+ const expected=await sharp(rendered).resize(side,side,{fit:'fill'}).ensureAlpha().raw().toBuffer();
+ let imageCalls=0,reviewCalls=0;
+ s.adapter=new OpenAIImageAdapter({apiKey:'fixture',enableEdits:true,fetchImpl:async(url,options)=>{
+  if(url.endsWith('/images/edits')){
+   imageCalls++;assert.equal(options.body.has('mask'),false);assert.equal(options.body.get('size'),'1024x1024');
+   assert.ok(options.body.get('image'));assert.match(options.body.get('prompt'),/먹구름/);
+   return Response.json({data:[{b64_json:rendered.toString('base64')}],usage:{input_tokens:2,input_tokens_details:{text_tokens:1,image_tokens:1},output_tokens:1}});
+  }
+  const payload=JSON.parse(options.body);assert.equal(payload.response_format.json_schema.name,'review_full_scene');reviewCalls++;
+  const images=payload.messages[1].content.filter(part=>part.type==='image_url');
+  assert.equal(images.length,2);
+  const actual=await sharp(Buffer.from(images[1].image_url.url.split(',')[1],'base64')).ensureAlpha().raw().toBuffer();
+  assert.deepEqual(actual,expected);
+  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({requestedChangesApplied:true,sceneContinuous:true,unrelatedContentPreserved:true})}}],usage:{prompt_tokens:100,completion_tokens:60}});
+ }});
+ const request={original,sourceHash:hash,prompt,mask:{mode:'scene'},requestId:randomUUID(),projectId:randomUUID(),creditQuote:s.creditQuote()};
+ const first=await s.createUploadedEdit(request);await s.waitForIdle();
+ const job=s.job(first.job.id);
+ assert.equal(job.state,'ready');assert.equal(job.preservation.scope,'whole-image');assert.equal(job.preservation.selectedPixels,side*side);
+ const delivered=await sharp(Buffer.from(job.artifact.dataUrl.split(',')[1],'base64')).ensureAlpha().raw().toBuffer();
+ assert.deepEqual(delivered,expected);
+ const again=()=>({...request,requestId:randomUUID(),projectId:randomUUID()});
+ assert.equal((await s.createUploadedEdit(again())).job.id,job.id);
+ s.db.prepare('UPDATE jobs SET model_revision=? WHERE id=?').run('old-rectangle-edit',job.id);
+ assert.equal((await s.createUploadedEdit(request)).job.id,job.id);
+ const fresh=await s.createUploadedEdit(again());await s.waitForIdle();
+ assert.notEqual(fresh.job.id,job.id);assert.equal(s.job(fresh.job.id).state,'ready');
+ assert.deepEqual([imageCalls,reviewCalls],[2,2]);
 });

@@ -104,7 +104,7 @@ test('open a device image and confirm a text-directed edit on mobile and desktop
   submissions++;
   const body=r.request().postDataJSON();
   expect(body.original.width).toBe(128);expect(body.original.height).toBe(96);
-  expect(body.mask).toEqual({mode:'instruction'});expect(body.prompt).toBe('하늘에 구름 추가');expect(body.creditQuote.amount).toBe(10);
+  expect(body.mask).toEqual({mode:'scene'});expect(body.prompt).toBe('하늘에 구름 추가');expect(body.creditQuote.amount).toBe(10);
   await r.fulfill({status:409,json:{error:{code:'GENERATION_ALREADY_RUNNING'}}});
  });
  await page.goto('/#projects');
@@ -155,7 +155,7 @@ test('reopen a released edit, restore its instructions and wait for explicit res
  await expect.poll(()=>new Set(ids).size).toBe(2);
 });
 
-test('inspect a rejected pose without charging or accepting it, and return to area selection',async({page})=>{
+test('inspect a rejected pose without charging or accepting it, and keep the instructions editable',async({page})=>{
  await protectedScreen(page,mockSession('edit-review-preview'));
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
  const quote={unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'};
@@ -172,7 +172,8 @@ test('inspect a rejected pose without charging or accepting it, and return to ar
  page.once('dialog',d=>d.accept());await dialog.getByRole('button',{name:'수정하기 · 10 크레딧'}).click();
  await expect(dialog.getByLabel('원본과 수정본 비교')).toBeVisible();await expect(dialog.getByText(/이전 자세의 흔적/)).toBeVisible();
  await expect(dialog.getByRole('button',{name:'수정본 사용 · 저장'})).toHaveCount(0);
- await dialog.getByRole('button',{name:'영역 직접 선택'}).click();await expect(dialog.getByLabel('원본과 수정본 비교')).toHaveCount(0);
+ await expect(dialog.getByRole('button',{name:'영역 직접 선택'})).toHaveCount(0);
+ await expect(dialog.getByLabel('원본과 수정본 비교')).toBeVisible();
  await expect(dialog.getByRole('textbox')).toHaveValue('인물 포즈 변경');expect(posts).toBe(1);
 });
 
@@ -185,7 +186,7 @@ test('save a verified device edit and reopen its project without another generat
  let job:any,posts=0;
  await page.route('**/api/selective-edits/upload',async r=>{
   posts++;const b=r.request().postDataJSON(),w=b.original.width,h=b.original.height;
-  expect(b.mask).toEqual({mode:'instruction'});const maskHash='c'.repeat(64);
+  expect(b.mask).toEqual({mode:'scene'});const maskHash='c'.repeat(64);
   const rgba=await sharp(Buffer.from(b.original.dataUrl.split(',')[1],'base64')).ensureAlpha().raw().toBuffer();
   let changed=0;
   for(let i=0;i<rgba.length;i+=4){rgba[i]=255;changed++;}

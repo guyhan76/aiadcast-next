@@ -2,7 +2,6 @@ import {planAdBatch} from './automatic-image-skills.mjs';
 import {batchPrice,validBatch} from '../src/batch-price.ts';
 import {verifiedPreservation} from '../src/selective-preservation.ts';
 import {prepareSelectiveEdit,finalizeSelectiveEdit} from './selective-image-edit.mjs';
-import {targetsPersonAndSky} from './locate-edit-region.mjs';
 import {plannedAdText} from '../src/planned-ad-text.ts';
 import {exactAdText,plannedTextInput} from '../src/exact-ad-text.ts';
 import {submissionStage} from './submission-observation.mjs';
@@ -371,12 +370,12 @@ export class GenerationService {
     if(references.reduce((n,r)=>n+r.bytes.length,0)>10*1024*1024)fail('INVALID_EDIT_SOURCE',409);
     return references;
   }
-  async createUploadedEdit(body) {
+  async createUploadedEdit(body, interactive = false) {
     if(!this.selectiveEditingEnabled||this.adapter?.selectiveEditReady!==true)fail('REGION_EDIT_NOT_AVAILABLE',503);
     if(!body||!identifier(body.requestId)||!identifier(body.projectId)||typeof body.prompt!=='string'||!body.prompt.trim()||body.prompt.length>2000||!body.creditQuote)fail('INVALID_EDIT_REQUEST');
     if(!/^[a-f0-9]{64}$/.test(body.sourceHash)||body.original?.sha256!==body.sourceHash)fail('INVALID_EDIT_SOURCE');
     let prepared;
-    try { prepared=await prepareSelectiveEdit(body.original,body.mask); } catch(error) { fail(error.message,400); }
+    try { prepared=await prepareSelectiveEdit(body.original,body.mask,interactive); } catch(error) { fail(error.message,400); }
     const sourceId='upload-'+body.sourceHash;
     const source={sha256:prepared.source.sha256,width:prepared.source.width,height:prepared.source.height,purpose:'subject'};
     const region={...prepared,references:[],sourceJobId:sourceId,sourceProjectId:sourceId,sourceHash:body.sourceHash,prompt:body.prompt.trim()};
@@ -385,13 +384,13 @@ export class GenerationService {
     const request={version:1,mode:'creative',operation:'image-product-concept',subjectType:'physical-product',productName:'Image edit',brief:'',source,references:[],specifications:[],copy:{},output:{format:'1:1',locale:'ko',compositionKey:'{}'}};
     return this.create({requestId:body.requestId,projectId:body.projectId,creditQuote:body.creditQuote,request,source:{...source,data:'data:image/png;base64,'+prepared.source.bytes.toString('base64')}},{region});
   }
-  async createSelectiveEdit(body) {
+  async createSelectiveEdit(body, interactive = false) {
     if(!this.selectiveEditingEnabled||this.adapter?.selectiveEditReady!==true)fail('REGION_EDIT_NOT_AVAILABLE',503);
     if(!body||Object.keys(body).some(k=>!['sourceJobId','sourceHash','requestId','projectId','prompt','mask','creditQuote'].includes(k))||!identifier(body.sourceJobId)||!identifier(body.requestId)||!identifier(body.projectId)||typeof body.prompt!=='string'||!body.prompt.trim()||body.prompt.length>2000)fail('INVALID_EDIT_REQUEST');
     const original=this.job(body.sourceJobId),row=this.db.prepare('SELECT request_json FROM generation_records WHERE id=?').get(body.sourceJobId);
     const request=JSON.parse(row.request_json);
     if(!['ready','accepted'].includes(original.state)||!original.artifact||original.artifactId!==body.sourceHash||original.composition!=='complete-ad'||request.inputMode==='text-example'||request.output.manualDimensionBase||request.output.exactText||request.proportionControl||request.dimensionDisplay||body.projectId===original.projectId)fail('INVALID_EDIT_SOURCE',409);
-    let prepared;try{prepared=await prepareSelectiveEdit(original.artifact,body.mask);}catch(error){fail(error.message,400);}
+    let prepared;try{prepared=await prepareSelectiveEdit(original.artifact,body.mask,interactive);}catch(error){fail(error.message,400);}
     prepared.references=await this.selectiveProductReferences(request,prepared.source.sha256);
     let providerInput;try{this.adapter.validateSelectiveInput?.(prepared);providerInput=await this.adapter.prepareSelectiveInput?.(prepared);}catch(error){fail(['UNSUPPORTED_EDIT_MODEL','UNSUPPORTED_EDIT_SIZE','INVALID_EDIT_MASK'].includes(error.code)?error.code:'INVALID_EDIT_REQUEST',400);}
     const region={...prepared,providerInput,prompt:body.prompt.trim(),sourceJobId:original.id,sourceProjectId:original.projectId,sourceHash:original.artifactId};
@@ -405,7 +404,7 @@ export class GenerationService {
     if(!supportsImageMedia(body?.mediaType))fail('UNSUPPORTED_MEDIA');
     if (!body || !identifier(body.requestId) || !identifier(body.projectId)) fail('INVALID_REQUEST');
     const request = normalizeGenerationRequest(body.request);
-    if(region){if(!this.selectiveEditingEnabled||this.adapter?.selectiveEditReady!==true)fail('REGION_EDIT_NOT_AVAILABLE',503);request.selectiveEdit={version:1,sourceJobId:region.sourceJobId,sourceProjectId:region.sourceProjectId,sourceHash:region.sourceHash,maskHash:region.mask.sha256,prompt:region.prompt,productReferences:region.references.map(({sha256,width,height})=>({sha256,width,height,purpose:'subject'}))};}
+    if(region){if(!this.selectiveEditingEnabled||this.adapter?.selectiveEditReady!==true)fail('REGION_EDIT_NOT_AVAILABLE',503);request.selectiveEdit={version:1,sourceJobId:region.sourceJobId,sourceProjectId:region.sourceProjectId,sourceHash:region.sourceHash,maskHash:region.mask.requestMaskHash ?? region.mask.sha256,prompt:region.prompt,productReferences:region.references.map(({sha256,width,height})=>({sha256,width,height,purpose:'subject'}))};}
     if(request.inputMode==='text-example'&&(body.source!=null||(body.references??[]).length))fail('TEXT_EXAMPLE_PHOTOS_NOT_ALLOWED');
     let source;
     try { source = await parseSourceAsset(body.source); }
@@ -433,8 +432,8 @@ export class GenerationService {
     const reusableJobs=region
       ? "(j.status IN ('reserved','running','uncertain','ready','accepted') OR (g.error_code='PROVIDER_UNCERTAIN' AND NOT (j.status='released' AND j.reason='system_error' AND j.artifact_id IS NULL)))"
       : "(j.status IN ('reserved','running','uncertain','ready') OR g.error_code='PROVIDER_UNCERTAIN')";
-    const compoundScene = region && targetsPersonAndSky(region.prompt);
-    const modelRevision = compoundScene ? IMAGE_REVISION + '/scene-foreground-v1' : IMAGE_REVISION;
+    const compoundScene = region?.mask.scene === true;
+    const modelRevision = compoundScene ? IMAGE_REVISION + '/whole-scene-v1' : IMAGE_REVISION;
     const reviewFilter = compoundScene ? " AND (j.status NOT IN ('ready','accepted') OR j.model_revision=?)" : "";
     const matchSql = `SELECT g.id FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND ${reusableJobs}${reviewFilter} ORDER BY g.created_at DESC LIMIT 1`;
     const matchArgs = compoundScene ? [fingerprint, modelRevision] : [fingerprint];
@@ -502,7 +501,7 @@ export class GenerationService {
     try {
       const attempt = this.ledger.transaction(() => {
         const period=this.period(),limit=this.budgetLimit(period);
-        return this.ledger.beginAttempt({ jobId: id, attemptId, period, maximumMicros: MODEL_COST_HOLD_MICROS + (region?.mask.instruction || region?.mask.explicit ? 80000 : 0), limitMicros: limit, periodScoped:Boolean(this.budgetForPeriod) });
+        return this.ledger.beginAttempt({ jobId: id, attemptId, period, maximumMicros: MODEL_COST_HOLD_MICROS + (region?.mask.scene || region?.mask.instruction || region?.mask.explicit ? 80000 : 0), limitMicros: limit, periodScoped:Boolean(this.budgetForPeriod) });
       });
       if (!attempt.shouldDispatch) return;
       began = true;

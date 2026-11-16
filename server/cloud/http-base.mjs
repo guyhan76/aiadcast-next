@@ -342,7 +342,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
             }
             if (req.method === 'POST' && url.pathname === '/api/selective-edits/upload') {
                 const body = await read(req, 19500000);
-                send(res, 202, await (await service(user)).createUploadedEdit(body), cors);
+                send(res, 202, await (await service(user)).createUploadedEdit(body, true), cors);
                 return;
             }
             const selectiveLookup = /^\/api\/selective-edits\/requests\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
@@ -352,7 +352,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
             }
             if (req.method === 'POST' && url.pathname === '/api/selective-edits') {
                 const body = await read(req, 6000000);
-                send(res, 202, await (await service(user)).createSelectiveEdit(body), cors);
+                send(res, 202, await (await service(user)).createSelectiveEdit(body, true), cors);
                 return;
             }
             const batch = /^\/api\/ad-batches\/(ads-[a-f0-9]{64})$/.exec(url.pathname);

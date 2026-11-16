@@ -3,7 +3,6 @@ import { planAdBatch } from '../automatic-image-skills.mjs';
 import { verifiedPreservation } from '../../src/selective-preservation.ts';
 import { batchPrice, validBatch } from '../../src/batch-price.ts';
 import { prepareSelectiveEdit, finalizeSelectiveEdit } from '../selective-image-edit.mjs';
-import { targetsPersonAndSky } from '../locate-edit-region.mjs';
 import { submissionStage } from '../submission-observation.mjs';
 import { readinessMeasure } from '../readiness-observation.mjs';
 import { generationMatchKey } from '../../src/generation-match.ts';
@@ -335,7 +334,7 @@ export class GenerationService {
             fail('INVALID_EDIT_SOURCE', 409);
         return references;
     }
-    async createUploadedEdit(body) {
+    async createUploadedEdit(body, interactive = false) {
         if (!this.selectiveEditingEnabled || this.adapter?.selectiveEditReady !== true)
             fail('REGION_EDIT_NOT_AVAILABLE', 503);
         if (!body || !identifier(body.requestId) || !identifier(body.projectId) || typeof body.prompt !== 'string' || !body.prompt.trim() || body.prompt.length > 2000 || !body.creditQuote)
@@ -344,7 +343,7 @@ export class GenerationService {
             fail('INVALID_EDIT_SOURCE');
         let prepared;
         try {
-            prepared = await prepareSelectiveEdit(body.original, body.mask);
+            prepared = await prepareSelectiveEdit(body.original, body.mask, interactive);
         }
         catch (error) {
             fail(error.message, 400);
@@ -361,7 +360,7 @@ export class GenerationService {
         const request = { version: 1, mode: 'creative', operation: 'image-product-concept', subjectType: 'physical-product', productName: 'Image edit', brief: '', source, references: [], specifications: [], copy: {}, output: { format: '1:1', locale: 'ko', compositionKey: '{}' } };
         return await this.create({ requestId: body.requestId, projectId: body.projectId, creditQuote: body.creditQuote, request, source: { ...source, data: 'data:image/png;base64,' + prepared.source.bytes.toString('base64') } }, { region });
     }
-    async createSelectiveEdit(body) {
+    async createSelectiveEdit(body, interactive = false) {
         if (!this.selectiveEditingEnabled || this.adapter?.selectiveEditReady !== true)
             fail('REGION_EDIT_NOT_AVAILABLE', 503);
         if (!body || Object.keys(body).some(k => !['sourceJobId', 'sourceHash', 'requestId', 'projectId', 'prompt', 'mask', 'creditQuote'].includes(k)) || !identifier(body.sourceJobId) || !identifier(body.requestId) || !identifier(body.projectId) || typeof body.prompt !== 'string' || !body.prompt.trim() || body.prompt.length > 2000)
@@ -372,7 +371,7 @@ export class GenerationService {
             fail('INVALID_EDIT_SOURCE', 409);
         let prepared;
         try {
-            prepared = await prepareSelectiveEdit(original.artifact, body.mask);
+            prepared = await prepareSelectiveEdit(original.artifact, body.mask, interactive);
         }
         catch (error) {
             fail(error.message, 400);
@@ -403,7 +402,7 @@ export class GenerationService {
         if (region) {
             if (!this.selectiveEditingEnabled || this.adapter?.selectiveEditReady !== true)
                 fail('REGION_EDIT_NOT_AVAILABLE', 503);
-            request.selectiveEdit = { version: 1, sourceJobId: region.sourceJobId, sourceProjectId: region.sourceProjectId, sourceHash: region.sourceHash, maskHash: region.mask.sha256, prompt: region.prompt, productReferences: region.references.map(({ sha256, width, height }) => ({ sha256, width, height, purpose: 'subject' })) };
+            request.selectiveEdit = { version: 1, sourceJobId: region.sourceJobId, sourceProjectId: region.sourceProjectId, sourceHash: region.sourceHash, maskHash: region.mask.requestMaskHash ?? region.mask.sha256, prompt: region.prompt, productReferences: region.references.map(({ sha256, width, height }) => ({ sha256, width, height, purpose: 'subject' })) };
         }
         if (request.inputMode === 'text-example' && (body.source != null || (body.references ?? []).length))
             fail('TEXT_EXAMPLE_PHOTOS_NOT_ALLOWED');
@@ -461,8 +460,8 @@ export class GenerationService {
         const reusableJobs = region
             ? "(j.status IN ('reserved','running','uncertain','ready','accepted') OR (g.error_code='PROVIDER_UNCERTAIN' AND NOT (j.status='released' AND j.reason='system_error' AND j.artifact_id IS NULL)))"
             : "(j.status IN ('reserved','running','uncertain','ready') OR g.error_code='PROVIDER_UNCERTAIN')";
-        const compoundScene = region && targetsPersonAndSky(region.prompt);
-        const modelRevision = compoundScene ? IMAGE_REVISION + '/scene-foreground-v1' : IMAGE_REVISION;
+        const compoundScene = region?.mask.scene === true;
+        const modelRevision = compoundScene ? IMAGE_REVISION + '/whole-scene-v1' : IMAGE_REVISION;
         const reviewFilter = compoundScene ? " AND (j.status NOT IN ('ready','accepted') OR j.model_revision=?)" : "";
         const matchSql = `SELECT g.id FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND ${reusableJobs}${reviewFilter} ORDER BY g.created_at DESC LIMIT 1`;
         const matchArgs = compoundScene ? [fingerprint, modelRevision] : [fingerprint];
@@ -551,7 +550,7 @@ export class GenerationService {
         try {
             const attempt = await this.ledger.transaction(async () => {
                 const period = this.period(), limit = await this.budgetLimit(period);
-                return await this.ledger.beginAttempt({ jobId: id, attemptId, period, maximumMicros: MODEL_COST_HOLD_MICROS + (region?.mask.instruction || region?.mask.explicit ? 80000 : 0), limitMicros: limit, periodScoped: Boolean(this.budgetForPeriod) });
+                return await this.ledger.beginAttempt({ jobId: id, attemptId, period, maximumMicros: MODEL_COST_HOLD_MICROS + (region?.mask.scene || region?.mask.instruction || region?.mask.explicit ? 80000 : 0), limitMicros: limit, periodScoped: Boolean(this.budgetForPeriod) });
             });
             if (!attempt.shouldDispatch)
                 return;

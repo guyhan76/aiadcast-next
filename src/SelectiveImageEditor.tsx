@@ -1,7 +1,6 @@
 import {exportBatch} from './batch-export';
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
-import {EditRegionPicker,type SelectedRegion} from './EditRegionPicker';
 import {SelectiveComparison} from './SelectiveComparison';
 import {verifiedPreservation,type SelectivePreservation} from './selective-preservation';
 import {apiRequest,ApiRequestFailure,verifiedArtifact,verifiedOriginalBlob,type GenerationJob,type CreditQuote} from './generation-client';
@@ -23,7 +22,6 @@ export function SelectiveImageEditor({source,project,quote,onClose,uploaded}:{so
  const key=owner.current+':selective-edit:'+source.id;
  const pending=useRef<Pending|null>(null),[job,setJob]=useState<GenerationJob|null>(null),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[prompt,setPrompt]=useState(''),[ready,setReady]=useState(false),[original,setOriginal]=useState(''),[result,setResult]=useState(''),[saved,setSaved]=useState(false);
  const [manualCheck,setManualCheck]=useState(false);
- const [picking,setPicking]=useState(false),[regions,setRegions]=useState<SelectedRegion[]>([]);
  const valid=()=>alive.current&&owner.current===storageNamespace()&&snapshot.current===latest.current&&initialSource.current===latestSource.current;
  const remember=(v:Pending|null)=>{pending.current=v;if(v)localStorage.setItem(key,JSON.stringify(v));else localStorage.removeItem(key);};
  useEffect(()=>{alive.current=true;controller.current=new AbortController();let cancelled=false;void verifiedArtifact(source).then(a=>{if(!cancelled){setOriginal(a.data);setReady(true);}}).catch(()=>setMessage(t('원본을 확인하지 못했습니다.','Cannot verify original.')));try{const p=JSON.parse(localStorage.getItem(key)??'null');if(p?.sourceHash===source.artifactId&&typeof p.requestId==='string'&&typeof p.projectId==='string'){pending.current=p;void recover();}}catch{}const exit=()=>{alive.current=false;controller.current.abort();onClose();};window.addEventListener('aiadcast-session-change',exit);window.addEventListener('hashchange',exit);return()=>{cancelled=true;alive.current=false;controller.current.abort();window.removeEventListener('aiadcast-session-change',exit);window.removeEventListener('hashchange',exit);};},[]);
@@ -46,10 +44,10 @@ export function SelectiveImageEditor({source,project,quote,onClose,uploaded}:{so
     return;
    }
    if(next.editReview){
-    setMessage(t('이 시안은 크레딧 차감 없이 보류됐습니다. 같은 문구로 다시 수정하거나 영역을 선택할 수 있습니다.','No credits were charged. Retry the instructions or select the areas to edit.'));
+    setMessage(t('이 시안은 크레딧 차감 없이 보류됐습니다. 아래에서 원본과 비교하고 수정 요청을 보완할 수 있습니다.','No credits were charged. Compare the draft with the original and revise your instructions.'));
     return;
    }
-   setMessage(next.errorCode==='EDIT_POSE_QUALITY_FAILED'?t('요청한 자세나 함께 바꿀 내용이 정확히 반영되지 않았습니다. 크레딧은 차감되지 않았습니다.','The pose or another requested detail did not pass review. No credits were charged.'):next.errorCode==='EDIT_TARGET_UNCLEAR'?t('수정 대상을 구분하지 못했습니다. 원본에서 바꿀 영역을 직접 선택할 수 있습니다. 크레딧은 차감되지 않았습니다.','Could not distinguish the target. You can select the areas directly on the original. No credits were charged.'):next.errorCode==='EDIT_NO_CHANGE'?t('이미지가 변경되지 않았습니다. 크레딧은 차감되지 않습니다.','The image was unchanged. No credits were charged.'):t('수정 요청이 종료됐습니다.','This edit request has ended.'));
+   setMessage(next.errorCode==='EDIT_POSE_QUALITY_FAILED'?t('수정 시안이 검수를 통과하지 못했습니다. 크레딧은 차감되지 않았습니다.','The edited draft did not pass review. No credits were charged.'):next.errorCode==='EDIT_TARGET_UNCLEAR'?t('수정 대상을 구분하지 못했습니다. 바꿀 대상과 원하는 모습을 문장으로 알려주세요. 크레딧은 차감되지 않았습니다.','Could not distinguish the target. Describe the target and the desired change. No credits were charged.'):next.errorCode==='EDIT_NO_CHANGE'?t('이미지가 변경되지 않았습니다. 크레딧은 차감되지 않습니다.','The image was unchanged. No credits were charged.'):t('수정 요청이 종료됐습니다.','This edit request has ended.'));
    return;
   }
   if(!next.artifact){
@@ -102,8 +100,7 @@ export function SelectiveImageEditor({source,project,quote,onClose,uploaded}:{so
   lock.current=true;setBusy(true);setManualCheck(false);setJob(null);setMessage('');
   try{
    if(!valid()||document.visibilityState!=='visible')return;
-   if(picking&&!regions.length)return;
-   const mask=picking?{mode:'regions',regions}:{mode:'instruction'};
+   const mask={mode:'scene'};
    const p={requestId:crypto.randomUUID(),projectId:crypto.randomUUID(),sourceHash:source.artifactId!};
    remember(p);const r=await apiRequest<{job:GenerationJob}>(uploaded?'/api/selective-edits/upload':'/api/selective-edits',{...(uploaded?{original:{width:uploaded.width,height:uploaded.height,sha256:uploaded.sha256,dataUrl:uploaded.data}}:{}),requestId:p.requestId,projectId:p.projectId,sourceHash:p.sourceHash,sourceJobId:source.id,prompt:prompt.trim(),mask,creditQuote:quote},controller.current.signal);if(valid()){if(r.job.selectiveEdit?.sourceJobId!==source.id||r.job.selectiveEdit?.sourceHash!==source.artifactId)throw Error('SOURCE_MISMATCH');remember({...p,projectId:r.job.projectId,jobId:r.job.id});await show(r.job);}}catch(error){if(valid()&&error instanceof ApiRequestFailure&&['UNSUPPORTED_EDIT_SIZE','UNSUPPORTED_EDIT_MODEL','REGION_EDIT_NOT_AVAILABLE','INVALID_EDIT_REQUEST','INVALID_EDIT_SOURCE','INVALID_IMAGE','GENERATION_ALREADY_RUNNING','STORAGE_LIMIT','CREDIT_RESERVATION_FAILED','INVALID_EDIT_MASK','EMPTY_EDIT_MASK','BUDGET_NOT_AVAILABLE','NO_TEST_CREDITS','CREDIT_QUOTE_CHANGED'].includes(error.code))remember(null);if(valid()&&pending.current)setManualCheck(true);if(valid())setMessage(error instanceof ApiRequestFailure&&error.code==='UNSUPPORTED_EDIT_SIZE'?t('이 이미지의 크기를 처리할 수 없습니다.','This image size could not be processed.'):pending.current?t('접수 결과를 확인해주세요. 자동으로 다시 요청하지 않습니다.','Check submission status. No automatic resubmission.'):error instanceof ApiRequestFailure&&error.code==='CREDIT_QUOTE_CHANGED'?t('차감액이 변경됐습니다. 편집을 다시 열어 금액을 확인해 주세요.','The price changed. Reopen the editor for a new quote.'):t('요청을 보내지 못했습니다. 다시 시도해 주세요.','Could not send the request. Please retry.'));}finally{lock.current=false;if(valid())setBusy(false);}}
  async function download(){
@@ -122,21 +119,20 @@ export function SelectiveImageEditor({source,project,quote,onClose,uploaded}:{so
  const working=!!pending.current&&!result;
  return createPortal(<dialog ref={dialog} className="selective-editor" onCancel={e=>{e.preventDefault();onClose();}} aria-label={t('정밀 편집','Precision edit')}>
   <header><h2>{t('정밀 편집','Precision edit')}</h2><button type="button" aria-label={t('닫기','Close')} onClick={onClose}>×</button></header>
-  {job?.state==='failed'&&job.editReview&&!picking&&original&&<div role="status">
+  {job?.state==='failed'&&job.editReview&&original&&<div role="status">
    <p>{t('검수에서 보류된 시안','Draft that needs revision')}</p>
    <SelectiveComparison original={original} result={job.editReview.preview} width={source.artifact!.width} height={source.artifact!.height}/>
    <p>{t('다시 확인할 부분','Check these details')} · {job.editReview.failedChecks.map(check=>({
     poseMatchesRequest:t('요청한 자세','Requested pose'),coherentLimbs:t('팔·다리 연결','Limb connections'),previousGestureResolved:t('이전 자세의 흔적','Remnants of the previous pose'),
-    allOtherRequestedEditsCorrect:t('함께 요청한 변경','Other requested changes'),unrelatedContentPreserved:t('기존 문구와 배경','Original text and background')
+    requestedChangesApplied:t('요청한 변경','Requested changes'),sceneContinuous:t('장면과 경계의 연결','Scene continuity'),allOtherRequestedEditsCorrect:t('함께 요청한 변경','Other requested changes'),unrelatedContentPreserved:t('기존 문구와 배경','Original text and background')
    })[check]).filter(Boolean).join(', ')}</p>
   </div>}
   {result?<SelectiveComparison original={original} result={result} width={source.artifact!.width} height={source.artifact!.height}/>:
-   original&&picking&&!working?<EditRegionPicker original={original} width={source.artifact!.width} height={source.artifact!.height} regions={regions} onChange={setRegions}/>:original&&!(job?.state==='failed'&&job.editReview)&&<img className="edit-original" src={original} alt={t('원본 광고','Original ad')}/>}
+   original&&!(job?.state==='failed'&&job.editReview)&&<img className="edit-original" src={original} alt={t('원본 광고','Original ad')}/>}
   {!result&&!working&&<>
 
-   {original&&<button type="button" className="edit-area-toggle" disabled={busy} onClick={()=>{setPicking(!picking);setRegions([]);setMessage('');}}>{picking?t('자동 선택으로 돌아가기','Return to automatic selection'):t('영역 직접 선택','Select areas directly')}</button>}
    <label>{t('무엇을 바꿀까요?','What would you like to change?')}<textarea maxLength={2000} value={prompt} disabled={busy} onChange={e=>setPrompt(e.target.value)} placeholder={t('예: 가격을 599,000원으로 바꾸고 하늘을 화창하게 해주세요.','For example, change the price to $599 and make the sky sunny.')}/></label>
-   <button className="primary-action" disabled={!ready||busy||!prompt.trim()||(picking&&!regions.length)} onClick={()=>void submit()}>{t('수정하기','Edit')} · {charge}</button>
+   <button className="primary-action" disabled={!ready||busy||!prompt.trim()} onClick={()=>void submit()}>{t('수정하기','Edit')} · {charge}</button>
   </>}
   {working&&<div role="status"><p>{job?jobStatus[job.state]:t('수정 요청 확인 중…','Checking your edit…')}</p>{manualCheck&&<button disabled={busy} onClick={()=>void recover()}>{t('결과 확인','Check result')}</button>}</div>}
   {result&&<div className="edit-decisions">
