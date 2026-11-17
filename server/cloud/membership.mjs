@@ -41,7 +41,7 @@ export class Membership {
    const tenant=cloudSchema(user.id);
    if(!await this.exists(tenant,'generation_records'))return {downloads:[]};
    // Read metadata only. Image bytes are fetched only when a member opens or saves a delivery.
-   const rows=await this.db.prepare(`SELECT g.id,g.created_at AS created,
+   const rows=await this.db.prepare(`SELECT g.id,g.project_id,g.created_at AS created,
     g.request_json::json->>'productName' AS name,j.status,
     j.expires_at AS deadline,p.captured,COALESCE(p.unit,'legacy-ticket') AS unit,
     a.job_id IS NOT NULL AS exempt FROM "${tenant}".generation_records g
@@ -51,7 +51,7 @@ export class Membership {
     WHERE j.status IN ('ready','accepted') AND g.artifact_hash IS NOT NULL AND g.error_code IS NULL
     AND (CASE WHEN g.created_at<? THEN ? ELSE j.expires_at END)>extract(epoch FROM now())*1000
     ORDER BY g.created_at DESC,g.id DESC`).all(this.cutover,this.cutover+30*86400000);
-   return {downloads:rows.map(r=>({id:r.id,name:r.name,expiresAt:new Date(r.created<this.cutover?this.cutover+30*86400000:r.deadline).toISOString(),
+   return {downloads:rows.map(r=>({id:r.id,projectId:r.project_id,createdAt:new Date(Number(r.created)).toISOString(),name:r.name,expiresAt:new Date(r.created<this.cutover?this.cutover+30*86400000:r.deadline).toISOString(),
     reviewRequired:r.status==='ready'&&!r.captured&&!r.exempt}))};
   }
   if(path==='/api/membership/withdraw'&&method==='POST'){

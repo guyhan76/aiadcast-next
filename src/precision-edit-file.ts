@@ -13,7 +13,7 @@ async function canvasInput(canvas:HTMLCanvasElement,name:string):Promise<EditInp
  return {file:new File([png],name+'.png',{type:'image/png'}),name};
 }
 
-async function backupImage(project:Project):Promise<EditInput>{
+export async function projectEditInput(project:Project):Promise<EditInput>{
  const name=project.name||project.productName||'aiadcast';
  const useAsset=(asset:Asset):EditInput=>({name,asset});
  const text=project.textEdit;
@@ -50,7 +50,7 @@ export async function precisionFileInput(file:File):Promise<EditInput>{
   if(file.size>30*1024*1024)throw Error('BACKUP_SIZE');
   let project:Project;
   try{project=await importProject(JSON.parse(await file.text()));}catch{throw Error('BACKUP_INVALID');}
-  return backupImage(project);
+  return projectEditInput(project);
  }
  // Some document pickers return a generic MIME type for an image with a valid extension.
  if(!file.type||file.type==='application/octet-stream'){

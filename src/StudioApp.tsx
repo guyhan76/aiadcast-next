@@ -168,7 +168,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
    </div>
    {page==='portfolio'&&<div className="app-page"><PortfolioPage/></div>}
    <div hidden={page!=='create'} className="app-page"><CreateCampaign active={page==='create'} key={wizardKey} onReady={ready} draft={wizardSeed} onDraft={setWizard}/></div>
-   <div hidden={page!=='projects'} className="app-page projects-page">{page==='projects'&&<ProjectLibrary onRemove={removeSaved} items={libraryItems} error={libraryError} onNew={begin} onOpen={p=>void open(p)} onOpenServer={p=>open(p,true)} showDownloads={!!betaSession()&&!offlineDemo()}/>}</div>
+   <div hidden={page!=='projects'} className="app-page projects-page">{page==='projects'&&<ProjectLibrary key={betaSession()?.token??workspaceScope} onRemove={removeSaved} items={libraryItems} error={libraryError} onNew={begin} onOpen={p=>void open(p)} onOpenServer={p=>open(p,true)} showDownloads={!!betaSession()&&!offlineDemo()}/>}</div>
    <div hidden={page!=='guide'} className="app-page guide-page"><UsageGuide onNew={begin}/></div>
    {(page==='signup'||page==='login')&&<div className="app-page"><EmailAccountPage key={page} mode={page} preserve={preserve} returnPage={returnPage}/></div>}
    {page==='admin'&&<div className="app-page"><AdminPage backHref={adminBack.current}/></div>}

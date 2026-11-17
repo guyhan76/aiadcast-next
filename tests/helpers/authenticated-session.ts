@@ -26,6 +26,7 @@ export async function protectedScreen(page:Page,session:MockSession){
    if(path==='/api/account/capabilities')return r.fulfill({json:{google:{enabled:false},email:{enabled:false},checkout:{enabled:false,test:true,currency:'KRW'}}});
    if(path==='/api/status')return r.fulfill({json:{generation:{enabled:false,reason:'GENERATION_DISABLED'},wallet:{available:0,reserved:0},budget:{limitMicros:0},assistant:{available:false}}});
    if(path==='/api/generations')return r.fulfill({json:{jobs:[]}});
+   if(path==='/api/membership/downloads')return r.fulfill({json:{downloads:[]}});
    if(path==='/api/projects')return r.fulfill({json:{projects:[]}});
   }
   return r.fulfill({status:503,json:{error:{code:'UNMOCKED_TEST_REQUEST'}}});
