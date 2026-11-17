@@ -1,5 +1,6 @@
 import {Image as ImageIcon} from 'lucide-react';
 import type {AdCard,Delivery} from './library-cards';
+import {useWebFileShare} from './WebFileShare';
 import {hasSavedAcceptedAd} from './generated';
 import {readCloudProject} from './Membership';
 import {projectEditInput} from './precision-edit-file';
@@ -72,12 +73,13 @@ type PreviewProps={
  item:Delivery;
  onSave:()=>void;
  onDelete:()=>void;
+ onShare:()=>void;
  saveLabel:string;
  saveDisabled:boolean;
  deleteDisabled:boolean;
  feedback:string;
 };
-export function DownloadPreview({item,onSave,onDelete,saveLabel,saveDisabled,deleteDisabled,feedback}:PreviewProps){
+export function DownloadPreview({item,onSave,onDelete,onShare,saveLabel,saveDisabled,deleteDisabled,feedback}:PreviewProps){
  const {t}=useUiLanguage(),[image,setImage]=useState(''),[failed,setFailed]=useState(false),[attempt,setAttempt]=useState(0),dialog=useRef<HTMLDialogElement>(null),element=useRef<HTMLButtonElement>(null);
  useEffect(()=>{
   const ctrl=new AbortController();let started=false;setImage('');setFailed(false);
@@ -97,6 +99,7 @@ export function DownloadPreview({item,onSave,onDelete,saveLabel,saveDisabled,del
    <img src={image} alt={item.name}/>
    <div className="preview-actions">
     <button type="button" disabled={saveDisabled} onClick={onSave}>{saveLabel}</button>
+    <button type="button" disabled={saveDisabled} onClick={onShare}>{t('공유','Share')}</button>
     <button type="button" disabled={deleteDisabled} onClick={onDelete}>{t('삭제','Delete')}</button>
    </div>
    {feedback&&<p role="status">{feedback}</p>}
@@ -129,14 +132,21 @@ export async function cardOriginal(card:AdCard,signal:AbortSignal,consent:()=>bo
 export function useOriginalExport(items:AdCard[],getSignal:()=>AbortSignal){
  const {t}=useUiLanguage();
  const [rows,setRows]=useState<Record<string,string>>({}),[summary,setSummary]=useState('');
- async function saveDownloads(ids:string[]){
+ const webShare=useWebFileShare();
+ async function exportOriginals(ids:string[],mode:'save'|'share'){
+  const sharing=mode==='share';
   const signal=getSignal();
   if(!signal||signal.aborted)return ids;
   const selected=new Set(ids),targets=items.filter(item=>selected.has(item.id));
   const reviews=targets.filter(item=>item.delivery?.reviewRequired).length;
   const multiple=targets.length>1,native=hasNativeExport();
-  if(multiple&&reviews&&!window.confirm(t('선택한 광고 중 미확정 '+reviews+'건을 사용 확정하고 저장할까요? 예약된 이용권이 사용됩니다.','Confirm and save '+reviews+' unconfirmed ads in this selection? Their reserved tickets will be used.')))return ids;
-  const singleConsent=()=>window.confirm(t('이 결과를 사용 확정하고 저장할까요? 예약된 이용권이 사용됩니다.','Confirm and save this ad? Its reserved ticket will be used.'));
+  if(sharing&&!native&&(typeof navigator.share!=='function'||typeof navigator.canShare!=='function')){
+   const reason=t('이 브라우저에서는 원본 저장 후 사진 앱에서 공유해 주세요.','Save the original and share it from your photos app in this browser.');
+   setSummary(reason);setRows(prev=>({...prev,...Object.fromEntries(ids.map(id=>[id,reason]))}));return ids;
+  }
+  const action=sharing?t('공유','share'):t('저장','save');
+  if(multiple&&reviews&&!window.confirm(t('선택한 광고 중 미확정 '+reviews+'건을 사용 확정하고 '+action+'할까요? 예약된 이용권이 사용됩니다.','Confirm and '+action+' '+reviews+' unconfirmed ads in this selection? Their reserved tickets will be used.')))return ids;
+  const singleConsent=()=>window.confirm(t('이 결과를 사용 확정하고 '+action+'할까요? 예약된 이용권이 사용됩니다.','Confirm and '+action+' this ad? Its reserved ticket will be used.'));
   const files:File[]=[],preparedIds:string[]=[],saved=new Set<string>();
   setSummary('');
   setRows(prev=>Object.fromEntries(Object.entries(prev).filter(([id])=>!selected.has(id))));
@@ -145,8 +155,8 @@ export function useOriginalExport(items:AdCard[],getSignal:()=>AbortSignal){
    signal.throwIfAborted();
    try{
     const file=await cardOriginal(item,signal,multiple&&item.delivery?.reviewRequired?()=>true:singleConsent);
-    if(!file)continue;
-    if(native){
+    if(!file){if(sharing){setSummary('');return ids;}continue;}
+    if(native&&!sharing){
      await exportBatch([file],'save',signal);
      saved.add(item.id);
     }else{
@@ -157,21 +167,45 @@ export function useOriginalExport(items:AdCard[],getSignal:()=>AbortSignal){
   }
   if(files.length){
    try{
-    await exportBatch(files,'save',signal,multiple);
-    for(const id of preparedIds)saved.add(id);
+    if(sharing&&files.length<targets.length&&!window.confirm(t(targets.length+'장 중 원본을 준비한 '+files.length+'장만 공유할까요?','Share the '+files.length+' available originals out of '+targets.length+' selected?'))){setSummary('');return ids;}
+    if(sharing&&!native){
+     let opened=0;
+     await webShare.share(files,signal,count=>{
+      for(const id of preparedIds.slice(opened,opened+count))saved.add(id);
+      opened+=count;
+     });
+    }else{
+     await exportBatch(files,mode,signal,multiple);
+     for(const id of preparedIds)saved.add(id);
+    }
    }catch(error){
     signal.throwIfAborted();
+    if(sharing){
+     const cancelled=error instanceof Error&&error.name==='AbortError';
+     const detail=cancelled?t('공유를 취소했습니다.','Sharing cancelled.'):
+      error instanceof Error&&error.message==='SHARE_UNAVAILABLE'?t('이 원본은 브라우저에서 공유할 수 없습니다. 원본 저장 후 사진 앱에서 공유해 주세요.','This browser cannot share this image. Save it and share from your photos app.'):
+      t('공유 창을 열지 못했습니다. 다시 시도하거나 원본을 저장해 주세요.','Could not open the share sheet. Retry or save the original.');
+     setSummary(detail);
+     for(const id of preparedIds)if(!saved.has(id))report(id,detail);
+     return ids.filter(id=>!saved.has(id));
+    }
     const reason=failure(error,t);
-    if(!signal.aborted)setRows(prev=>({...prev,...Object.fromEntries(preparedIds.map(id=>[id,reason]))}));
+    setRows(prev=>({...prev,...Object.fromEntries(preparedIds.map(id=>[id,reason]))}));
    }
   }
   signal.throwIfAborted();
   const remaining=ids.filter(id=>!saved.has(id));
+  if(sharing){
+   const opened=t('공유 창에 원본 '+saved.size+'장을 전달했습니다.',saved.size+' originals passed to the share sheet.');
+   if(saved.size&&!multiple)report(targets[0].id,opened);
+   setSummary([saved.size?opened:'',remaining.length?t('미공유 '+remaining.length+'건',remaining.length+' not shared'):''].filter(Boolean).join(' · '));
+   return remaining;
+  }
   const success=native?t('갤러리 · aiadcast에 저장됨','saved to Pictures/aiadcast'):
    multiple?t('ZIP 다운로드 시작됨','in the ZIP download'):t('다운로드 시작됨','download started');
   if(!multiple&&saved.size)report(targets[0].id,success);
   setSummary([saved.size?t(saved.size+'건 '+success,saved.size+' '+success):'',remaining.length?t('미저장 '+remaining.length+'건',remaining.length+' not saved'):''].filter(Boolean).join(' · '));
   return remaining;
  }
- return {rows,summary,saveDownloads};
+ return {rows,summary,shareDialog:webShare.dialog,saveDownloads:(ids:string[])=>exportOriginals(ids,'save'),shareDownloads:(ids:string[])=>exportOriginals(ids,'share')};
 }

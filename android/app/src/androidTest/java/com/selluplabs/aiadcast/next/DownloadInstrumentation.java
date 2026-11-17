@@ -72,6 +72,9 @@ public final class DownloadInstrumentation extends Instrumentation {
             });
             ((ExecutorService) executor.get(activity)).submit(() -> {}).get(30, TimeUnit.SECONDS);
             for (int i = 0; i < 3; i++) verify(activity.getContentResolver(), names[i], mimes[i], bytes[i]);
+            verifyShare(activity, receive, (ExecutorService) executor.get(activity), owner, extensions, bytes, 1);
+            verifyShare(activity, receive, (ExecutorService) executor.get(activity), owner, extensions, bytes, 12);
+            result.putString("share", "single JPEG and 12 mixed originals reopened from chooser");
             verifyPrecisionPicker(activity);
             result.putString("picker", "photos and JSON in one document picker");
             runOnMainSync(activity::finish);
@@ -80,6 +83,51 @@ public final class DownloadInstrumentation extends Instrumentation {
         } catch (Throwable failure) {
             result.putString("failure", android.util.Log.getStackTraceString(failure));
             finish(Activity.RESULT_CANCELED, result);
+        }
+    }
+    private void verifyShare(MainActivity activity, Method receive, ExecutorService io, String owner,
+                             String[] extensions, byte[][] originals, int count) throws Exception {
+        AtomicReference<Intent> launched = new AtomicReference<>();
+        ActivityMonitor monitor = new ActivityMonitor() {
+            @Override public ActivityResult onStartActivity(Intent intent) {
+                launched.set(new Intent(intent));
+                return new ActivityResult(Activity.RESULT_CANCELED, null);
+            }
+        };
+        addMonitor(monitor);
+        try {
+            String id = UUID.randomUUID().toString();
+            receive.invoke(activity, message(id, owner, "begin").put("mode", "share").put("count", count));
+            for (int i = 0; i < count; i++) {
+                int kind = (i + 1) % originals.length;
+                String name = "aiadcast-" + UUID.randomUUID().toString().substring(0, 8) + "-01." + extensions[kind];
+                receive.invoke(activity, message(id, owner, "file").put("index", i).put("name", name)
+                    .put("base64", Base64.encodeToString(originals[kind], Base64.NO_WRAP)));
+            }
+            receive.invoke(activity, message(id, owner, "finish"));
+            io.submit(() -> {}).get(30, TimeUnit.SECONDS);
+            waitForIdleSync();
+        } finally { removeMonitor(monitor); }
+        Intent chooser = launched.get();
+        if (chooser == null || !Intent.ACTION_CHOOSER.equals(chooser.getAction())) throw new AssertionError("missing chooser");
+        Intent send = chooser.getParcelableExtra(Intent.EXTRA_INTENT);
+        String action = count == 1 ? Intent.ACTION_SEND : Intent.ACTION_SEND_MULTIPLE;
+        String mime = count == 1 ? "image/jpeg" : "image/*";
+        if (send == null || !action.equals(send.getAction()) || !mime.equals(send.getType()) ||
+            (send.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION) == 0 ||
+            send.getClipData() == null || send.getClipData().getItemCount() != count) throw new AssertionError("wrong share payload");
+        java.util.List<Uri> streams = count == 1 ? java.util.Collections.singletonList((Uri) send.getParcelableExtra(Intent.EXTRA_STREAM))
+            : send.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+        if (streams == null || streams.size() != count) throw new AssertionError("missing streams");
+        for (int i = 0; i < count; i++) {
+            Uri uri = streams.get(i);
+            if (!uri.equals(send.getClipData().getItemAt(i).getUri())) throw new AssertionError("wrong stream URI");
+            try (InputStream in = activity.getContentResolver().openInputStream(uri)) {
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                byte[] buffer = new byte[4096]; int n;
+                while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
+                if (!Arrays.equals(out.toByteArray(), originals[(i + 1) % originals.length])) throw new AssertionError("wrong shared bytes");
+            }
         }
     }
     private void verifyPrecisionPicker(MainActivity activity) throws Exception {
