@@ -44,7 +44,7 @@ export function ProjectLibrary({items,error,onRemove,onNew,onOpen,onOpenServer,s
  const cards=libraryCards(items,cloud.downloads,cloud.backups);
  const query=filter.trim().toLocaleLowerCase();
  const filtered=cards.filter(c=>(c.name+' '+(c.project?.productName??'')).toLocaleLowerCase().includes(query));
- const {saveDownloads,rows,summary}=useOriginalExport(filtered,()=>controller.current.signal);
+ const {saveDownloads,shareDownloads,shareDialog,rows,summary}=useOriginalExport(filtered,()=>controller.current.signal);
  const hasOriginalAction=(c:AdCard)=>!!c.delivery||(c.project?hasSavedAcceptedAd(c.project):c.backups.length>0);
  const saveIds=filtered.filter(hasOriginalAction).map(c=>c.id);
  async function remove(ids:string[]){
@@ -54,7 +54,7 @@ export function ProjectLibrary({items,error,onRemove,onNew,onOpen,onOpenServer,s
   const local=deleted.flatMap(c=>c.deviceIds);
   if(local.length)await onRemove(local);
  }
- const selection=useLibrarySelection(filtered.map(c=>c.id),remove,saveIds.length?saveDownloads:undefined,saveIds);
+ const selection=useLibrarySelection(filtered.map(c=>c.id),remove,saveIds.length?saveDownloads:undefined,saveIds,saveIds.length?shareDownloads:undefined);
  async function openBackup(id:string){
   const signal=controller.current.signal;
   setOpenError('');
@@ -67,6 +67,7 @@ export function ProjectLibrary({items,error,onRemove,onNew,onOpen,onOpenServer,s
   <section className="download-library" aria-label={t('광고 목록','Ads')}>
    {cards.length>0&&<label className="project-search"><Search size={20}/><input aria-label={t('프로젝트 검색','Search projects')} placeholder={t('광고 이름 검색','Search ad names')} value={filter} onChange={e=>{setFilter(e.target.value);setLimit(5);}}/></label>}
    <div className={selection.editing?'download-selecting':'download-actions'}>{selection.tools}</div>
+   {shareDialog}
    {summary&&<p role="status" className="download-feedback">{summary}</p>}
    {error&&<p role="alert">{error}</p>}{openError&&<p role="alert">{openError}</p>}
    {cloud.error&&<p role="alert">{cloud.error} <button type="button" onClick={cloud.retry}>{t('다시 확인','Retry')}</button></p>}
@@ -75,12 +76,12 @@ export function ProjectLibrary({items,error,onRemove,onNew,onOpen,onOpenServer,s
     const {id,project,delivery,reviewProject}=card,backup=card.backups[0];
     const detailsProject=project??reviewProject;
     const title=card.name||t('이름 없는 광고','Untitled ad');
-    const save=()=>void selection.saveItems([id]),disabled=selection.busy||selection.editing;
+    const save=()=>void selection.saveItems([id]),share=()=>void selection.shareItems([id]),disabled=selection.busy||selection.editing;
     const saveLabel=delivery?.reviewRequired?t('사용 확정 후 저장','Confirm and save'):t('원본 저장','Save original');
     return <li key={id} className="ad-card">
      {project&&(!delivery||hasSavedAcceptedAd(project))?<ProjectTile project={project} editing={selection.editing} selected={selection.selected.has(id)} busy={selection.busy} connected={showDownloads} onClick={()=>selection.editing?selection.toggle(id):onOpen(project)}/>:
       <div className="ad-card-heading">
-       {delivery&&<DownloadPreview item={delivery} onSave={save} onDelete={()=>void selection.erase([id])} saveLabel={saveLabel}
+       {delivery&&<DownloadPreview item={delivery} onSave={save} onShare={share} onDelete={()=>void selection.erase([id])} saveLabel={saveLabel}
         saveDisabled={disabled} deleteDisabled={disabled} feedback={selection.error||rows[id]||''}/>}
        <div>{detailsProject?<button type="button" className="legacy-open" disabled={disabled} onClick={()=>onOpen(detailsProject)}>{title}<ArrowUpRight size={16}/></button>:backup?<button className="legacy-open" type="button" disabled={disabled} onClick={()=>void openBackup(backup.id)}>{title}</button>:<strong>{title}</strong>}
         <small>{t('서버 보관 기한','Server copy available until')} · <time dateTime={(delivery??backup)!.expiresAt}>{new Date((delivery??backup)!.expiresAt).toLocaleString(language==='ko'?'ko-KR':'en-US',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time></small>
@@ -92,7 +93,8 @@ export function ProjectLibrary({items,error,onRemove,onNew,onOpen,onOpenServer,s
        const file=await cardOriginal(card,signal,()=>window.confirm(t('이 광고를 사용 확정하고 편집할까요? 예약된 이용권이 사용됩니다.','Confirm this ad for editing? Its reserved ticket will be used.')));
        return file?{file,name:title}:undefined;
       }}/>
-      <button type="button" disabled={disabled} onClick={save}>{saveLabel}</button>
+      <button type="button" className="save-original" disabled={disabled} onClick={save}>{saveLabel}</button>
+      <button type="button" disabled={disabled} onClick={share}>{t('공유','Share')}</button>
      </div>}
      {rows[id]&&<p role="status" className="download-feedback">{rows[id]}</p>}
     </li>;

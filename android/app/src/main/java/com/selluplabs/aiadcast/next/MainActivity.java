@@ -568,7 +568,7 @@ public final class MainActivity extends ComponentActivity {
                 String op=req.getString("op");
                 if ("begin".equals(op)) {
                     int count=req.getInt("count");String mode=req.getString("mode");
-                    if (count<1 || count>10 || !("save".equals(mode)||"share".equals(mode))) throw new java.io.IOException();
+                    if (count<1 || ("save".equals(mode)&&count>10) || !("save".equals(mode)||"share".equals(mode))) throw new java.io.IOException();
                     // The web producer serializes actions. A new begin also recovers an abandoned run.
                     clearBatch(true);batchId=id;batchOwner=owner;batchMode=mode;batchCount=count;
                     batchFolder=new File(new File(getCacheDir(),"image-batches"),UUID.randomUUID().toString());
@@ -587,12 +587,17 @@ public final class MainActivity extends ComponentActivity {
                         if("save".equals(batchMode)){saveBatch(owner);clearBatch(true);}
                         else{
                             ArrayList<Uri> uris=new ArrayList<>();
-                            for(File file:batchFiles)uris.add(FileProvider.getUriForFile(this,getPackageName()+".exports",file));
+                            String mime=ExportPolicy.batchMime(batchFiles.get(0).getName());
+                            for(File file:batchFiles){
+                                if(!mime.equals(ExportPolicy.batchMime(file.getName())))mime="image/*";
+                                uris.add(FileProvider.getUriForFile(this,getPackageName()+".exports",file));
+                            }
+                            final String sharedType=mime;
                             clearBatch(false);
                             runOnUiThread(()->{
                                 if(!owner.equals(exportOwner)||isDestroyed())return;
                                 try{
-                                    Intent intent=new Intent(uris.size()>1?Intent.ACTION_SEND_MULTIPLE:Intent.ACTION_SEND).setType("image/png");
+                                    Intent intent=new Intent(uris.size()>1?Intent.ACTION_SEND_MULTIPLE:Intent.ACTION_SEND).setType(sharedType);
                                     if(uris.size()>1)intent.putParcelableArrayListExtra(Intent.EXTRA_STREAM,uris);else intent.putExtra(Intent.EXTRA_STREAM,uris.get(0));
                                     ClipData clip=ClipData.newRawUri("aiadcast",uris.get(0));
                                     for(int i=1;i<uris.size();i++)clip.addItem(new ClipData.Item(uris.get(i)));

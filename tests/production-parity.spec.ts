@@ -568,3 +568,62 @@ for(const native of [false,true])test('one card per ad opens the verified origin
  }
  expect(originals).toBe(1);
 });
+
+for(const native of [false,true])test('share one, selected and all project originals on '+(native?'Android':'web'),async({page})=>{
+ const origin=await prepareParityPage(page,native);
+ const files=await Promise.all(Array.from({length:12},(_,i)=>sharp({create:{width:8,height:6,channels:3,background:{r:i*15,g:64,b:200}}}).png().toBuffer()));
+ const items=files.map((_,i)=>({id:'share-project-'+i,name:'공유 광고 '+i,reviewRequired:false,expiresAt:new Date(Date.now()+86400000).toISOString()}));
+ await page.route('**/api/membership/downloads',r=>r.fulfill({json:{downloads:items}}));
+ await page.route('**/api/membership/downloads/*/preview',r=>r.fulfill({json:{preview:''}}));
+ let requests=0;
+ await page.route('**/api/membership/downloads/*/original',r=>{
+  const i=items.findIndex(item=>r.request().url().endsWith('/'+item.id+'/original'));
+  const hash=createHash('sha256').update(files[i]).digest('hex');requests++;
+  return r.fulfill({json:{id:items[i].id,projectId:'project-'+i,reviewRequired:false,artifactId:hash,artifact:{id:hash,sha256:hash,width:8,height:6,dataUrl:'data:image/png;base64,'+files[i].toString('base64')}}});
+ });
+ await page.goto(origin+'/#projects');
+ await page.evaluate(native=>{
+  const shares:string[][]=[];Object.assign(window,{testShares:shares});
+  if(native){
+   let pending:string[]=[];
+   (window as any).AiadcastNative.postMessage=(json:string)=>{
+    const msg=JSON.parse(json);if(msg.type!=='batch-export')return;
+    let ok=true;
+    if(msg.op==='begin'){ok=msg.mode==='share';pending=[];}
+    if(msg.op==='file')pending.push(msg.base64);
+    if(msg.op==='finish')shares.push(pending);
+    setTimeout(()=>window.dispatchEvent(new CustomEvent('aiadcast-batch-export',{detail:{id:msg.id,ok}})),0);
+   };
+  }else{
+   Object.defineProperty(navigator,'userActivation',{configurable:true,value:{isActive:false}});
+   Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>true});
+   Object.defineProperty(navigator,'share',{configurable:true,value:async({files}:{files:File[]})=>{
+    shares.push(await Promise.all(files.map(async f=>btoa(String.fromCharCode(...new Uint8Array(await f.arrayBuffer()))))));
+   }});
+  }
+ },native);
+ const lib=page.locator('.download-library'),button=(name:string)=>lib.getByRole('button',{name,exact:true});
+ const indices=[[0],[0,2],items.map((_,i)=>i)];
+ const finish=async(n:number)=>{
+  if(!native)await page.getByRole('dialog',{name:'원본 공유'}).getByRole('button',{name:'공유 창 열기'}).click();
+  await expect.poll(()=>page.evaluate(()=>(window as any).testShares)).toEqual(indices.slice(0,n).map(group=>group.map(i=>files[i].toString('base64'))));
+  await expect(button('선택')).toBeEnabled();
+ };
+ await lib.locator('.ad-card').first().getByRole('button',{name:'공유',exact:true}).click();await finish(1);
+ await button('선택').click();await lib.getByRole('checkbox').nth(0).check();await lib.getByRole('checkbox').nth(2).check();
+ await button('선택 공유 (2)').click();await finish(2);
+ await button('선택').click();await button('전체 선택').click();
+ await button('전체 공유 (12)').click();
+ if(!native){
+  await page.getByRole('dialog',{name:'원본 공유'}).getByRole('button',{name:'취소',exact:true}).click();
+  await expect(button('전체 공유 (12)')).toBeEnabled();await button('전체 공유 (12)').click();
+ }
+ await finish(3);
+ if(!native){
+  const before=requests;
+  await page.evaluate(()=>Object.defineProperty(navigator,'share',{value:undefined,configurable:true})&&true);
+  await lib.locator('.ad-card').first().getByRole('button',{name:'공유',exact:true}).click();
+  await expect(lib.locator('.ad-card').first()).toContainText('원본 저장 후 사진 앱에서 공유');
+  expect(requests).toBe(before);
+ }
+});
