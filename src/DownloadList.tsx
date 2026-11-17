@@ -3,7 +3,9 @@ import {useLibrarySelection} from './LibrarySelection';
 import {useEffect,useRef,useState} from 'react';
 import {validAiDimensionReview} from './ai-dimension-display';
 import {exportBatch,hasNativeExport} from './batch-export';
-import {apiRequest,ApiRequestFailure,verifiedOriginalBlob,type GenerationJob} from './generation-client';
+import {apiRequest,ApiRequestFailure,verifiedOriginalBlob,type DeliveredArtifact,type GenerationJob} from './generation-client';
+import {betaSession,storageNamespace} from './beta-session';
+import {readDeviceProject} from './storage';
 import {useUiLanguage} from './ui-language';
 
 export type Delivery={id:string;name:string;expiresAt:string;reviewRequired:boolean};
@@ -18,18 +20,34 @@ async function original(item:Delivery,lifetime:AbortSignal,consent:()=>boolean){
  finally{clearTimeout(timer);lifetime.removeEventListener('abort',abort);}
 }
 async function readOriginal(item:Delivery,signal:AbortSignal,consent:()=>boolean){
- const path='/api/generations/'+encodeURIComponent(item.id);
- const {job}=await apiRequest<{job:GenerationJob}>(path,undefined,signal);
- if(job.state==='expired')throw Error('PROJECT_EXPIRED');
- if(!['ready','accepted'].includes(job.state)||!job.artifact?.dataUrl)throw Error('ORIGINAL_MISSING');
- if(job.dimensionDisplay&&!validAiDimensionReview(job.dimensionReview,job.dimensionDisplay,job.artifactId!))throw Error('REVIEW_DIMENSIONS');
- const blob=await verifiedOriginalBlob(job);
- signal.throwIfAborted();
- if(item.reviewRequired&&job.state==='ready'&&!job.creditCaptured&&job.creditPolicy!=='admin-unlimited'){
-  if(!consent())return;
-  await apiRequest(path+'/accept',{artifactId:job.artifactId,...(job.dimensionReview?{dimensionReview:job.dimensionReview}:{})},signal);
+ const session=betaSession()?.token,scope=storageNamespace();
+ const check=()=>{
+  signal.throwIfAborted();
+  if(!session||session!==betaSession()?.token||scope!==storageNamespace())throw Error('SESSION_CHANGED');
+ };
+ check();
+ const file=await apiRequest<{
+  id:string;projectId:string;artifactId:string;artifact:DeliveredArtifact['artifact'];
+  reviewRequired:boolean;dimensionDisplay?:GenerationJob['dimensionDisplay'];dimensionReview?:GenerationJob['dimensionReview'];
+ }>('/api/membership/downloads/'+encodeURIComponent(item.id)+'/original',undefined,signal);
+ if(file.id!==item.id||!/^[a-f0-9]{64}$/.test(file.artifactId)||typeof file.reviewRequired!=='boolean')throw Error('INVALID_ARTIFACT');
+ if(file.dimensionDisplay&&!validAiDimensionReview(file.dimensionReview,file.dimensionDisplay,file.artifactId))throw Error('REVIEW_DIMENSIONS');
+ let artifact=file.artifact;
+ if(!artifact){
+  const project=await readDeviceProject(file.projectId,scope);
+  check();
+  const generated=project?.generated,asset=generated?.asset;
+  if(generated?.jobId!==item.id||!asset||asset.sha256!==file.artifactId)throw Error('ORIGINAL_MISSING');
+  artifact={id:asset.sha256,sha256:asset.sha256,width:asset.width,height:asset.height,dataUrl:asset.data};
  }
- signal.throwIfAborted();
+ const blob=await verifiedOriginalBlob({...file,artifact});
+ check();
+ if(file.reviewRequired){
+  if(!consent())return;
+  await apiRequest('/api/generations/'+encodeURIComponent(item.id)+'/accept',
+   {artifactId:file.artifactId,...(file.dimensionReview?{dimensionReview:file.dimensionReview}:{})},signal);
+ }
+ check();
  const extension=blob.type==='image/jpeg'?'jpg':blob.type==='image/webp'?'webp':'png';
  const stem=hasNativeExport()?crypto.randomUUID().slice(0,8)+'-01':item.id;
  return new File([blob],'aiadcast-'+stem+'.'+extension,{type:blob.type});
@@ -107,7 +125,7 @@ export function DownloadList({items,onRemoved}:{items:Delivery[];onRemoved:(ids:
   for(const [index,item] of targets.entries()){
    signal.throwIfAborted();
    try{
-    const file=await original(item,signal,multiple?()=>true:singleConsent);
+    const file=await original(item,signal,multiple&&item.reviewRequired?()=>true:singleConsent);
     if(!file)return ids;
     if(native){
      await exportBatch([file],'save',signal);

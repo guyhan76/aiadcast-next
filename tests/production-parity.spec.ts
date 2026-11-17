@@ -237,18 +237,32 @@ for(const native of [false,true])test('save separate originals and the entire do
   await page.route('**/api/generations/delivery-*/accept',async r=>{accepted++;await r.fulfill({json:{ok:true}});});
   await page.route('**/api/membership/downloads/*/preview',r=>r.fulfill({json:{preview:'data:image/webp;base64,'+files[2].toString('base64')}}));
   const unavailable=7;
-  await page.route('**/api/generations/delivery-*',async r=>{
-    const i=Number(r.request().url().split('-').pop());
+  await page.route('**/api/membership/downloads/delivery-*/original',async r=>{
+    const i=Number(new URL(r.request().url()).pathname.split('/').at(-2)!.split('-').pop());
     requested.push(i);
     if(i===0&&hold)await delay;
-    if(i===unavailable)return r.fulfill({status:404,json:{error:{code:'STORAGE_NOT_FOUND'}}});
     const data=files[i%3],hash=createHash('sha256').update(data).digest('hex');
-    await r.fulfill({json:{job:{id:items[i].id,state:i===10?'ready':'accepted',artifactId:hash,artifact:{id:hash,sha256:hash,width:16,height:12,dataUrl:'data:image/'+formats[i%3]+';base64,'+data.toString('base64')}}}});
+    await r.fulfill({json:{id:items[i].id,projectId:'saved-'+i,reviewRequired:items[i].reviewRequired,artifactId:hash,artifact:(i===2||i===unavailable)?null:{id:hash,sha256:hash,width:16,height:12,dataUrl:'data:image/'+formats[i%3]+';base64,'+data.toString('base64')}}});
   });
   await page.goto(origin+'/#projects');
   await page.getByRole('button',{name:'다운로드',exact:true}).click();
   const list=page.locator('.download-library');
   const row=(i:number)=>list.locator('li').filter({has:page.getByText(items[i].name,{exact:true})});
+  // Slot 2 has a verified device copy. Slot 7 only has a different image's bytes.
+  const recovered=files[2].toString('base64'),digest=createHash('sha256').update(files[2]).digest('hex');
+  await page.evaluate(({native,recovered,digest})=>new Promise<void>((resolve,reject)=>{
+    const owner='parity-member'+(native?'@'+encodeURIComponent('https://aiadcast-next.onrender.com'):'');
+    const open=indexedDB.open('aiadcast-editor-'+owner,1);
+    open.onupgradeneeded=()=>open.result.createObjectStore('projects',{keyPath:'id'});
+    open.onerror=()=>reject(open.error);
+    open.onsuccess=()=>{
+      const db=open.result,tx=db.transaction('projects','readwrite');
+      for(const i of [2,7])tx.objectStore('projects').put({id:'saved-'+i,generated:{
+        jobId:'delivery-'+String(i).padStart(4,'0'),asset:{sha256:digest,width:16,height:12,data:'data:image/webp;base64,'+recovered}
+      }});
+      tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);
+    };
+  }),{native,recovered,digest});
   const button=(name:string|RegExp)=>list.getByRole('button',{name,exact:typeof name==='string'});
   const notice=list.getByText('새 광고는 생성 후 24시간 동안 다운로드 가능',{exact:true});
   const viewport=page.viewportSize()!;
@@ -274,11 +288,13 @@ for(const native of [false,true])test('save separate originals and the entire do
   await page.setViewportSize(viewport);
   await expect(button('원본 저장')).toHaveCount(0);
   await expect(button('전체 저장')).toHaveCount(0);
-  await button('선택').click();
-  await expect(button(/선택 저장/)).toBeDisabled();
-  await row(1).getByRole('checkbox').check();
+  await row(1).locator('.delivery-preview').click();
+  const dialog=page.getByRole('dialog',{name:items[1].name});
+  await expect(dialog.getByRole('img')).toBeVisible();
   const single=native?null:page.waitForEvent('download');
-  await button(/선택 저장/).click();
+  await dialog.getByRole('button',{name:'원본 저장'}).click();
+  await expect(dialog).toContainText(native?'갤러리 · aiadcast에 저장됨':'다운로드 시작됨');
+  await dialog.getByRole('button',{name:'닫기'}).click();
   if(single){
    const download=await single;
    expect(download.suggestedFilename()).toBe('aiadcast-'+items[1].id+'.jpg');

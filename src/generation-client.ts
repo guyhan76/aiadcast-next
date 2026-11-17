@@ -8,7 +8,7 @@ import type {MarketingPlan} from './marketing-plan';
 import {betaSession,setBetaSession} from './beta-session';
 import {configuredApiOrigin} from './api-origin';
 import {loadImage} from './model';
-import {maximumReferenceBytes} from './reference-limits';
+import {maximumGeneratedImageBytes} from './image-media';
 import type {Asset} from './model';
 export type GenerationJob={editReview?:{version:1;failedChecks:('requestedChangesApplied'|'sceneContinuous'|'poseMatchesRequest'|'coherentLimbs'|'previousGestureResolved'|'allOtherRequestedEditsCorrect'|'unrelatedContentPreserved')[];differences?:({kind:'copy';expected:string;observed:string}|{kind:'object';subject:string;expected:number;observed:number})[];preview:string};downloadExpiresAt?:string;preservation?:SelectivePreservation;selectiveEdit?:{sourceProjectId:string;sourceJobId:string;sourceHash:string;maskHash:string;prompt:string;version:1};requestFingerprint?:string;dimensionDisplay?:AiDimensionDisplay;dimensionReview?:AiDimensionReview;inputMode?:'text-example';dimensionPlan?:DimensionPlan;planarReport?:PlanarReport;planarOriginal?:{dataUrl:string;sha256:string;width:number;height:number};creditUnit?:'legacy-ticket'|'credit-v2';creditCaptured?:boolean;defectReport?:{state:string};creditPolicy?:'admin-unlimited'|'legacy-accept-v1'|'delivered-2026-10-18';creditCost?:number;id:string;projectId:string;requestId?:string;requestIds?:string[];state:'running'|'ready'|'accepted'|'rejected'|'failed'|'uncertain'|'expired'|'refunded';mode:'original'|'creative';sourceHash:string|null;createdAt:string;model:string;artifactId:string|null;artifact:{id:string;sha256:string;dataUrl:string;width:number;height:number;role:'background'|'creative'}|null;errorCode:string|null;marketingPlan?:MarketingPlan|null;composition?:'complete-ad'|'photo-plate';compositionKey?:string};
 export type CreditQuote={unit:'legacy-ticket'|'credit-v2';amount:number;policy:string};
@@ -32,17 +32,18 @@ export async function apiRequest<T>(path:string,body?:unknown,signal?:AbortSigna
  if(path==='/api/status'&&data.generation.creditQuote){const q=data.generation.creditQuote,c=data.wallet.credits;if(!['legacy-ticket','credit-v2'].includes(q.unit)||!c||![c.available,c.reserved].every(v=>Number.isSafeInteger(v)&&v>=0)||q.unit==='credit-v2'&&(q.amount!==10||q.policy!=='delivered-2026-10-18'))throw Error('API_UNAVAILABLE');}
  return data as T;
 }
-type DeliveredArtifact=Pick<GenerationJob,'artifact'|'artifactId'|'id'>;
+type ImageArtifact=NonNullable<GenerationJob['artifact']>;
+export type DeliveredArtifact={id:string;artifactId:string|null;artifact:(Omit<ImageArtifact,'role'>&{role?:ImageArtifact['role']})|null};
 
 export async function verifiedOriginalBlob(job:DeliveredArtifact):Promise<Blob>{
  const a=job.artifact;
- if(!a||typeof a.dataUrl!=='string'||a.dataUrl.length>14_000_000)throw Error('INVALID_ARTIFACT');
+ if(!a||typeof a.dataUrl!=='string'||a.dataUrl.length>4*Math.ceil(maximumGeneratedImageBytes/3)+32)throw Error('INVALID_ARTIFACT');
  const prefix=/^data:(image\/(?:png|jpeg|webp));base64,/.exec(a.dataUrl);
  if(!prefix)throw Error('INVALID_ARTIFACT');
  const encoded=a.dataUrl.slice(prefix[0].length);
  if(!encoded.length||!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded))throw Error('INVALID_ARTIFACT');
  const raw=atob(encoded);
- if(raw.length>maximumReferenceBytes||a.width*a.height>30_000_000)throw Error('INVALID_ARTIFACT');
+ if(raw.length>maximumGeneratedImageBytes||a.width*a.height>30_000_000)throw Error('INVALID_ARTIFACT');
  const bytes=new Uint8Array(raw.length);
  for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');

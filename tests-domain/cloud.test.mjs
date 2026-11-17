@@ -656,6 +656,41 @@ test('new downloads keep one 24-hour deadline after delivery, across owners, rea
  assert.ok(after.status===404 || after.data.job?.artifact===null);
 });
 
+test('download reads only the delivered image after restart, even if its auxiliary image is missing',async t=>{
+ const s=await setup(t),owner=await s.member('Download owner',1_000_000,3),other=await s.member('Other member');
+ const created=await s.call('/api/generations',{token:owner.token,body:generation()});
+ assert.equal(created.status,202);
+ const id=created.data.job.id;
+ await s.app.store.membership.jobs.get(owner.user.id).waitForIdle();
+ assert.equal((await s.call('/api/generations/'+id+'/accept',{token:owner.token,body:{artifactId:hash}})).status,200);
+ const tenant=new PostgresDatabase(s.app.pool,cloudSchema(owner.user.id));
+ const {metadata_json}=await tenant.prepare('SELECT metadata_json FROM generation_records WHERE id=?').get(id);
+ const aux='a'.repeat(64);
+ await tenant.prepare('INSERT INTO generation_assets VALUES(?,?,?,?,?)').run(aux,'image/png',8,8,bytes.length);
+ await tenant.prepare('UPDATE generation_records SET metadata_json=? WHERE id=?').run(JSON.stringify({...JSON.parse(metadata_json),planarReport:{originalHash:aux}}),id);
+ await s.restart();
+ const path='/api/membership/downloads/'+id;
+ assert.equal((await s.call(path+'/preview',{token:owner.token})).status,200);
+ const historical=await s.call('/api/generations/'+id,{token:owner.token});
+ assert.equal(historical.status,200);assert.equal(historical.data.job.planarOriginal,null);
+ assert.equal(historical.data.job.artifact.dataUrl,source.data);
+ const original=()=>s.call(path+'/original',{token:owner.token});
+ const {status,data}=await original();
+ assert.equal(status,200);
+ assert.equal(data.id,id);assert.equal(data.artifactId,hash);
+ assert.equal(data.artifact.dataUrl,source.data);
+ assert.equal(data.reviewRequired,false);
+ assert.equal((await s.call(path+'/original',{token:other.token})).status,404);
+ s.bucket.objects.delete(owner.user.id+'/'+hash+'.png');
+ await s.restart(); // Evict the read cache as well as the physical original.
+ const recovery=await original();
+ assert.equal(recovery.status,200);assert.equal(recovery.data.artifact,null);
+ assert.equal(recovery.data.artifactId,hash);
+ await new PostgresDatabase(s.app.pool,cloudSchema(owner.user.id)).prepare('UPDATE jobs SET expires_at=? WHERE id=?').run(Date.now()-1,id);
+ const expired=await original();assert.ok([404,410].includes(expired.status));
+ assert.equal(expired.data.artifact,undefined);
+});
+
 test('download previews and deletion are owner-scoped, preserve shared objects, release only reserved tickets and survive restart',async t=>{
  const s=await setup(t),owner=await s.member('Original owner',1_000_000,3),other=await s.member('Other owner');
  const make=async name=>{

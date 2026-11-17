@@ -3,6 +3,7 @@ import {locateEditRegion,poseRequested} from './locate-edit-region.mjs';
 import {selectiveEditForm,validateSelectiveOriginal,prepareSelectiveProviderInput,restoreSelectiveProviderResult,verifyPreparedSelectiveInput} from './selective-image-edit.mjs';
 import {providerHttpError,safeProviderEnum} from './provider-http-error.mjs';
 import {preparePlanarSource,requestPlanarRatio,controlPlanarResult} from './planar-proportion.mjs';
+import {maximumGeneratedImageBytes as MAX_GENERATED_IMAGE_BYTES} from '../src/image-media.ts';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import {finishedAdSkillBrief} from './automatic-image-skills.mjs';
@@ -119,7 +120,7 @@ export class ProviderFailure extends Error {
     this.uncertain = uncertain; this.providerStatus = providerStatus; this.diagnosticCode = diagnosticCode;
   }
 }
-export const MAX_GENERATED_IMAGE_BYTES = 16_000_000;
+export {MAX_GENERATED_IMAGE_BYTES};
 
 export async function validateImage(bytes, mime, { maximumPixels = 30_000_000, maximumBytes = 10 * 1024 * 1024 } = {}) {
   if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > maximumBytes) throw Error('INVALID_IMAGE');
