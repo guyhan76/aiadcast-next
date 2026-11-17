@@ -14,6 +14,7 @@ import { GoogleAuth } from './google-auth-base.mjs';
 import { googleReturnPage, googleUiLanguage, googleReturnCsp } from '../google-return-page.mjs';
 import { EmailAuth } from './email-auth-base.mjs';
 import { PasswordAuth } from './password-auth-base.mjs';
+import { playAccountId, verifyPlayPurchase } from '../play-billing.mjs';
 import { TestCheckout } from './test-checkout-base.mjs';
 import { demoSupport } from '../demo-support.mjs';
 import { AdminApi } from './admin-api-base.mjs';
@@ -294,6 +295,17 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                     return;
                 }
                 throw new ApiFailure('NOT_FOUND', 404);
+            }
+            if (url.pathname === '/api/checkout/play/account' && req.method === 'GET') {
+                send(res, 200, { enabled: Boolean(accounts.play), accountId: playAccountId(user.id) }, cors);
+                return;
+            }
+            if (url.pathname === '/api/checkout/play/verify' && req.method === 'POST') {
+                if (!accounts.play)
+                    throw new ApiFailure('PLAY_BILLING_UNAVAILABLE', 503);
+                const body = await read(req, 8192);
+                send(res, 200, await verifyPlayPurchase(accounts.play, user.id, body?.token, await service(user)), cors);
+                return;
             }
             if (url.pathname === '/api/checkout/orders' && req.method === 'POST') {
                 send(res, 201, await checkout.create(user, await read(req, 2048)), cors);

@@ -1,3 +1,4 @@
+import {googlePlayProvider} from './play-billing.mjs';
 import {googleProvider} from './google-provider.mjs';
 import {readFileSync} from 'node:fs';
 import {ApiFailure} from './generation-service.mjs';
@@ -30,6 +31,6 @@ export function accountConfiguration(env=process.env){
  const clientKey=env.AIADCAST_TOSS_TEST_CLIENT_KEY??'';
  const paymentEnabled=env.AIADCAST_TOSS_TEST_ENABLED==='true';
  if(paymentEnabled&&!/^test_ck_[A-Za-z0-9_-]+$/.test(clientKey))throw Error('TOSS_TEST_CLIENT_KEY_REQUIRED');
- return {google:env.AIADCAST_GOOGLE_ENABLED==='true'?googleProvider({clientId:env.AIADCAST_GOOGLE_CLIENT_ID,clientSecret:env.AIADCAST_GOOGLE_CLIENT_SECRET,redirectUri:(env.AIADCAST_BETA_PUBLIC_ORIGIN??'')+'/?google=1'}):undefined,sendMail:email,password:{enabled:env.AIADCAST_TEST_AUTH_ENABLED===undefined?!emailEnabled:env.AIADCAST_TEST_AUTH_ENABLED==='true',adminEmail:env.AIADCAST_TEST_ADMIN_EMAIL??'selluplabs@gmail.com',adminPassword:env.AIADCAST_TEST_ADMIN_PASSWORD},clientKey:paymentEnabled?clientKey:null,provider:paymentEnabled?new TossTestProvider({secretKey:env.AIADCAST_TOSS_TEST_SECRET_KEY_FILE?readFileSync(env.AIADCAST_TOSS_TEST_SECRET_KEY_FILE,'utf8').trim():env.AIADCAST_TOSS_TEST_SECRET_KEY}):undefined};
+ return {play:googlePlayProvider(env),google:env.AIADCAST_GOOGLE_ENABLED==='true'?googleProvider({clientId:env.AIADCAST_GOOGLE_CLIENT_ID,clientSecret:env.AIADCAST_GOOGLE_CLIENT_SECRET,redirectUri:(env.AIADCAST_BETA_PUBLIC_ORIGIN??'')+'/?google=1'}):undefined,sendMail:email,password:{enabled:env.AIADCAST_TEST_AUTH_ENABLED===undefined?!emailEnabled:env.AIADCAST_TEST_AUTH_ENABLED==='true',adminEmail:env.AIADCAST_TEST_ADMIN_EMAIL??'selluplabs@gmail.com',adminPassword:env.AIADCAST_TEST_ADMIN_PASSWORD},clientKey:paymentEnabled?clientKey:null,provider:paymentEnabled?new TossTestProvider({secretKey:env.AIADCAST_TOSS_TEST_SECRET_KEY_FILE?readFileSync(env.AIADCAST_TOSS_TEST_SECRET_KEY_FILE,'utf8').trim():env.AIADCAST_TOSS_TEST_SECRET_KEY}):undefined};
 }
 

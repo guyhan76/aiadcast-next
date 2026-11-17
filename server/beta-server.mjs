@@ -16,6 +16,7 @@ import {GoogleAuth} from './google-auth.mjs';
 import {googleReturnPage,googleUiLanguage,googleReturnCsp} from './google-return-page.mjs';
 import {EmailAuth} from './email-auth.mjs';
 import {PasswordAuth} from './password-auth.mjs';
+import {playAccountId, verifyPlayPurchase} from './play-billing.mjs';
 import {TestCheckout} from './test-checkout.mjs';
 import {accountConfiguration} from './account-providers.mjs';
 import {demoSupport} from './demo-support.mjs';
@@ -117,6 +118,14 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
      const body=await read(req,2048);send(res,200,url.pathname.endsWith('/grants')?admin.grant(user,body):url.pathname.endsWith('/allocations')?admin.allocate(user,body):url.pathname.endsWith('/test-ready')?admin.prepareTest(user,body):admin.revoke(user,body),cors);return;
     }
     throw new ApiFailure('NOT_FOUND',404);
+   }
+   if(url.pathname==='/api/checkout/play/account'&&req.method==='GET'){
+    send(res,200,{enabled:Boolean(accounts.play),accountId:playAccountId(user.id)},cors);return;
+   }
+   if(url.pathname==='/api/checkout/play/verify'&&req.method==='POST'){
+    if(!accounts.play)throw new ApiFailure('PLAY_BILLING_UNAVAILABLE',503);
+    const body=await read(req,8192);
+    send(res,200,await verifyPlayPurchase(accounts.play,user.id,body?.token,service(user)),cors);return;
    }
    if(url.pathname==='/api/checkout/orders'&&req.method==='POST'){send(res,201,checkout.create(user,await read(req,2048)),cors);return;}
    if(url.pathname==='/api/account/credits'&&req.method==='GET'){const orders=checkout.history(user),grants=store.db.prepare('SELECT id,credits,state,created FROM admin_grants WHERE user_id=? ORDER BY created DESC LIMIT 30').all(user.id);send(res,200,{wallet:service(user).wallet(),orders,grants},cors);return;}

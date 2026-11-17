@@ -76,6 +76,7 @@ s=s.replace("from './readiness-observation.mjs'","from '../readiness-observation
 s=s.replace("from './submission-observation.mjs'","from '../submission-observation.mjs'");
 s=s.replace("from './build-info.mjs'","from '../build-info.mjs'");
 s=s.replace("from './google-return-page.mjs'","from '../google-return-page.mjs'");
+s=s.replace("from './play-billing.mjs'","from '../play-billing.mjs'");
 s=s.replace("from './demo-support.mjs'","from '../demo-support.mjs'");
 s=s.replace("from './vision-evaluation/single-box-service.mjs'","from '../vision-evaluation/single-box-service.mjs'").replace("from './vision-evaluation/service.mjs'","from '../vision-evaluation/service.mjs'").replace("from './vision-evaluation/ledger.mjs'","from '../vision-evaluation/ledger.mjs'");
 s=s.replace("import {BetaStore} from './beta-store.mjs';",'').replace("import {GenerationService,ApiFailure} from './generation-service.mjs';","import {ApiFailure} from '../generation-service.mjs';");

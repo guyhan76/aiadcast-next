@@ -1,3 +1,5 @@
+import {PlayCheckoutPage,playPackage} from './PlayCheckout';
+import {useNativeVersion} from './app-version';
 import {signInBoundary} from './sign-in-boundary';
 import {consumeLoginDestination,rememberLoginDestination} from './login-navigation';
 import {rememberCheckout} from './checkout-return';
@@ -111,7 +113,13 @@ export function VerifyEmailPage(){
  async function verify(){if(locked.current)return;locked.current=true;setBusy(true);try{await apiRequest('/api/auth/email/verify',{token});setDone(true);history.replaceState(null,'',location.pathname+'#verify');}catch(e){setError(accountError(e,language==='ko'));}finally{locked.current=false;setBusy(false);}}
  return <section className="account-page"><h1>{done?t('인증 완료','Email verified'):t('이메일 인증','Verify your email')}</h1><p>{done?t('가입을 시작한 앱으로 돌아가세요. 자동으로 로그인됩니다.','Return to the app where you started. You will be signed in automatically.'):t('직접 로그인을 요청하셨나요? 인증하면 요청한 기기에 로그인됩니다.','Did you request this sign-in? Confirming signs in the device that requested it.')}</p>{!done&&<button className="primary-action" disabled={busy||!token} onClick={()=>void verify()}>{t('이메일 인증하기','Verify email')}</button>}{error&&<p role="alert">{error}</p>}</section>;
 }
-export function CheckoutPage({preserve,returnPage}:Context){
+export function CheckoutPage(props:Context){
+ const native=useNativeVersion();
+ if(native?.packageName===playPackage)return <PlayCheckoutPage {...props}/>;
+ if(!native && location.hostname==='appassets.androidplatform.net')return null;
+ return <WebCheckoutPage {...props}/>;
+}
+function WebCheckoutPage({preserve,returnPage}:Context){
  const {language,t}=useUiLanguage(),ko=language==='ko',capability=useCapabilities(),cap=capability.value,session=betaSession();
  const preference=readSession<{selected:string;currency:PricingCurrency}>('aiadcast.checkout-choice');
  const [selected,setSelected]=useState(()=>pricingCatalog.packs.some(p=>p.id===preference?.selected)?preference!.selected:'credits-v2-100'),[currency,setCurrency]=useState<PricingCurrency>(preference?.currency==='USD'?'USD':'KRW');
