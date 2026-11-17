@@ -47,17 +47,18 @@ async function editImage({file,asset,data=asset?.data,name}:EditInput):Promise<A
  return readEditFile(new File([bytes],name||'aiadcast.png',{type:match[1]}));
 }
 
-export function PrecisionEditAction({getInput,label}:{getInput?:()=>EditInput|Promise<EditInput>;label?:string}){
+export function PrecisionEditAction({getInput,label,disabled}:{getInput?:(signal:AbortSignal)=>EditInput|undefined|Promise<EditInput|undefined>;label?:string;disabled?:boolean}){
  const {language,t}=useUiLanguage(),picker=useRef<HTMLInputElement>(null),request=useRef<AbortController|null>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState('');
  const [editor,setEditor]=useState<{source:EditSource;project:Project;quote:CreditQuote;image:Asset}>();
  useEffect(()=>{const cancel=()=>{request.current?.abort();request.current=null;setEditor(undefined);setBusy(false);};window.addEventListener('hashchange',cancel);window.addEventListener('aiadcast-session-change',cancel);return()=>{request.current?.abort();window.removeEventListener('hashchange',cancel);window.removeEventListener('aiadcast-session-change',cancel);};},[]);
- async function open(input:()=>EditInput|Promise<EditInput>){
+ async function open(input:(signal:AbortSignal)=>EditInput|undefined|Promise<EditInput|undefined>){
   if(request.current)return;
   const controller=new AbortController(),owner=storageNamespace();
   request.current=controller;setBusy(true);setError('');
   try{
-   const inputFile=await input();
+   const inputFile=await input(controller.signal);
+   if(!inputFile)return;
    if(controller.signal.aborted||owner!==storageNamespace())return;
    let image:Asset;
    try{image=await editImage(inputFile);}
@@ -85,6 +86,9 @@ export function PrecisionEditAction({getInput,label}:{getInput?:()=>EditInput|Pr
     FILE_SIZE:t('25MB 이하의 사진을 선택해주세요.','Choose a photo up to 25 MB.'),
     BACKUP_SIZE:t('30MB 이하의 프로젝트 백업 파일을 선택해주세요.','Choose a project backup up to 30 MB.'),
     BACKUP_INVALID:t('aiadcast 백업 파일을 읽지 못했습니다. 다른 백업이나 사진을 선택해주세요.','Could not read this aiadcast backup. Choose another backup or photo.'),
+    NO_FINISHED_AD:t('이 보관본은 초안입니다. 광고를 열어 제작을 완료해 주세요.','This backup is a draft. Open it to finish the ad.'),
+    REVIEW_DIMENSIONS:t('광고 결과에서 규격 표시를 검수하고 사용을 확정해 주세요.','Review the dimensions and confirm use on the ad result screen.'),
+    ORIGINAL_MISSING:t('이 광고의 원본을 찾을 수 없습니다.','The original for this ad could not be found.'),
     BACKUP_EMPTY:t('이 백업에는 이미지가 없습니다. 저장한 광고 사진을 선택해주세요.','This backup contains no image. Choose a saved ad photo.'),
     BACKUP_IMAGE:t('백업에 있는 광고를 표시할 수 없습니다. 저장한 광고 사진을 선택해주세요.','Could not display the ad in this backup. Choose a saved ad photo.'),
     BACKUP_REVIEW:t('이 광고는 규격 확인이 필요합니다. 규격 확인을 마친 광고를 불러와 주세요.','Choose a saved ad with its dimension review complete.')
@@ -93,7 +97,7 @@ export function PrecisionEditAction({getInput,label}:{getInput?:()=>EditInput|Pr
   }
   finally{if(request.current===controller){request.current=null;setBusy(false);}}
  }
- return <><button className="precision-launch" type="button" disabled={busy} onClick={()=>getInput?void open(getInput):picker.current?.click()}><Pencil size={18} aria-hidden="true"/>{busy?t('이미지 여는 중…','Opening image…'):label||t('정밀 편집','Precision edit')}</button>
+ return <><button className="precision-launch" type="button" disabled={disabled||busy} onClick={()=>getInput?void open(getInput):picker.current?.click()}><Pencil size={18} aria-hidden="true"/>{busy?t('이미지 여는 중…','Opening image…'):label||t('정밀 편집','Precision edit')}</button>
  {!getInput&&<input hidden ref={picker} accept="image/png,image/jpeg,image/webp,application/json,.json" type="file" aria-label={t('편집할 사진 또는 백업 파일','Photo or backup file to edit')} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void open(()=>precisionFileInput(file));}}/>}
  {error&&<p role="alert">{error}</p>}{editor&&<SelectiveImageEditor source={editor.source} project={editor.project} quote={editor.quote} uploaded={editor.image} onClose={()=>setEditor(undefined)}/>}</>;
 }

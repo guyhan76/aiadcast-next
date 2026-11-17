@@ -245,7 +245,6 @@ for(const native of [false,true])test('save separate originals and the entire do
     await r.fulfill({json:{id:items[i].id,projectId:'saved-'+i,reviewRequired:items[i].reviewRequired,artifactId:hash,artifact:(i===2||i===unavailable)?null:{id:hash,sha256:hash,width:16,height:12,dataUrl:'data:image/'+formats[i%3]+';base64,'+data.toString('base64')}}});
   });
   await page.goto(origin+'/#projects');
-  await page.getByRole('button',{name:'다운로드',exact:true}).click();
   const list=page.locator('.download-library');
   const row=(i:number)=>list.locator('li').filter({has:page.getByText(items[i].name,{exact:true})});
   // Slot 2 has a verified device copy. Slot 7 only has a different image's bytes.
@@ -264,37 +263,19 @@ for(const native of [false,true])test('save separate originals and the entire do
     };
   }),{native,recovered,digest});
   const button=(name:string|RegExp)=>list.getByRole('button',{name,exact:typeof name==='string'});
-  const notice=list.getByText('새 광고는 생성 후 24시간 동안 다운로드 가능',{exact:true});
   const viewport=page.viewportSize()!;
-  await expect(notice).toBeVisible();
-  await page.evaluate(()=>document.fonts.ready.then(()=>true));
   for(const width of [320,360,390,430]){
    await page.setViewportSize({width,height:viewport.height});
-   const header=list.locator('.download-actions');
-   const layout=await header.evaluate(element=>{
-    const notice=element.querySelector('p')!,button=element.querySelector('button')!;
-    const lines=(node:Element)=>{
-     const range=document.createRange();range.selectNodeContents(node);
-     return new Set(Array.from(range.getClientRects(),r=>r.top)).size;
-    };
-    return {noticeLines:lines(notice),buttonLines:lines(button),
-     below:button.getBoundingClientRect().top>=notice.getBoundingClientRect().bottom,
-     rightGap:Math.abs(element.getBoundingClientRect().right-button.getBoundingClientRect().right)};
-   });
-   expect(layout.noticeLines,'notice at '+width+'px').toBe(1);
-   expect(layout.buttonLines,'selection button at '+width+'px').toBe(1);
-   expect(layout.below).toBe(true);expect(layout.rightGap).toBeLessThanOrEqual(1);
+   const card=row(1);
+   await expect(card.getByRole('button',{name:'정밀 편집',exact:true})).toBeVisible();
+   await expect(card.getByRole('button',{name:'원본 저장',exact:true})).toBeVisible();
+   expect(await card.evaluate(el=>el.getBoundingClientRect().right<=innerWidth)).toBe(true);
   }
   await page.setViewportSize(viewport);
-  await expect(button('원본 저장')).toHaveCount(0);
   await expect(button('전체 저장')).toHaveCount(0);
-  await row(1).locator('.delivery-preview').click();
-  const dialog=page.getByRole('dialog',{name:items[1].name});
-  await expect(dialog.getByRole('img')).toBeVisible();
   const single=native?null:page.waitForEvent('download');
-  await dialog.getByRole('button',{name:'원본 저장'}).click();
-  await expect(dialog).toContainText(native?'갤러리 · aiadcast에 저장됨':'다운로드 시작됨');
-  await dialog.getByRole('button',{name:'닫기'}).click();
+  await row(1).getByRole('button',{name:'원본 저장'}).click();
+  await expect(row(1)).toContainText(native?'갤러리 · aiadcast에 저장됨':'다운로드 시작됨');
   if(single){
    const download=await single;
    expect(download.suggestedFilename()).toBe('aiadcast-'+items[1].id+'.jpg');
@@ -345,7 +326,7 @@ for(const native of [false,true])test('save separate originals and the entire do
     const written=await page.evaluate(()=>(window as any).exportedFiles as {name:string;base64:string}[]);
     expect(written.map(f=>f.base64)).toEqual([1,0,2,...expected.map(item=>items.indexOf(item))].map(i=>files[i%3].toString('base64')));
   }
-  await list.getByRole('button',{name:'다운로드 더 보기'}).click();
+  await list.getByRole('button',{name:'광고 더 보기'}).click();
   await expect(row(unavailable)).toContainText('서버에서 원본을 찾을 수 없습니다.');
   await expect(row(unavailable).getByRole('checkbox')).toBeChecked();
   await expect(button(/선택 저장.*1/)).toBeEnabled();
@@ -414,7 +395,6 @@ for(const native of [false,true])test('instruction editing, credit consent and i
   expect([...data.subarray(offset,offset+3)]).toEqual([...rgb]);
  }
  await edit.getByRole('button',{name:'닫기'}).click();
- await page.getByRole('button',{name:'다운로드',exact:true}).click();
  const list=page.locator('.download-library');
  await expect(list.locator('.delivery-preview img').first()).toBeVisible();
  await list.locator('.delivery-preview').first().click();await expect(page.getByRole('dialog').getByRole('img')).toBeVisible();await page.getByRole('dialog').getByRole('button',{name:'닫기'}).click();
@@ -430,7 +410,7 @@ for(const native of [false,true])test('instruction editing, credit consent and i
  await expect(preview).toHaveCount(0);expect(removed).toEqual([items[0].id,items[1].id]);
  await list.getByRole('button',{name:'선택',exact:true}).click();await list.getByRole('button',{name:'전체 선택'}).click();
  page.once('dialog',d=>d.accept());await list.getByRole('button',{name:/전체 삭제/}).click();
- await expect(list.getByText('다운로드할 파일이 없습니다.')).toBeVisible();expect(removed).toEqual(items.map(i=>i.id));
+ await expect(list.getByText('저장한 광고가 없습니다.')).toBeVisible();expect(removed).toEqual(items.map(i=>i.id));
 });
 
 for(const native of [false,true])test('delete selected saved projects and the active ad without restoring it on reload '+(native?'Android':'web'),async({browser})=>{
@@ -505,7 +485,6 @@ for(const native of [false,true])test('open a finished ad from a local backup in
  await expect(page.getByText('프로젝트 도구',{exact:true})).toHaveCount(0);
  await pick(JSON.stringify(complete));await expect(edit.getByAltText('원본 광고')).toHaveAttribute('src',ad.data);
  await expect(page).toHaveURL(/#projects$/);await edit.getByRole('button',{name:'닫기'}).click();
- await page.getByRole('button',{name:'다운로드',exact:true}).click();
  await pick('{"version":1}');await expect(page.getByRole('alert').filter({hasText:'백업 파일을 읽지 못했습니다'})).toBeVisible();
  await pick(JSON.stringify(initial));await expect(page.getByRole('alert').filter({hasText:'백업에는 이미지가 없습니다'})).toBeVisible();
  await pick(JSON.stringify(project));await expect(edit.getByAltText('원본 광고')).toHaveAttribute('src',photo.data);
@@ -539,4 +518,53 @@ for(const native of [false,true])test('a retry uses only source and instructions
  await expect(submit).toBeEnabled();
  page.once('dialog',d=>d.accept());await submit.click();await expect.poll(()=>masks.length).toBe(2);
  expect(masks[0]).toEqual({mode:'scene'});expect(masks[1]).toEqual({mode:'scene'});
+});
+
+for(const native of [false,true])test('one card per ad opens the verified original for editing on '+(native?'Android':'web'),async({page})=>{
+ const origin=await prepareParityPage(page,native);
+ const scope='parity-member'+(native?'@'+encodeURIComponent('https://aiadcast-next.onrender.com'):'');
+ const bytes=await sharp({create:{width:36,height:64,channels:3,background:'#287da1'}}).png().toBuffer();
+ const hash=createHash('sha256').update(bytes).digest('hex'),data='data:image/png;base64,'+bytes.toString('base64');
+ const asset={width:36,height:64,sha256:hash,data,name:'original.png'};
+ const base={...starterProject(),productName:'같은 이름',name:'같은 이름',format:'9:16' as const,product:asset};
+ const generated={createdAt:new Date().toISOString(),acceptedAt:new Date().toISOString(),model:'test',mode:'creative',role:'creative',sourceHash:hash,specificationKey:generatedCompatibilityKey(base),composition:'complete-ad',compositionKey:completeAdKey(base),asset};
+ const local={...base,id:'one-project',generated:{...generated,jobId:'original-one'}};
+ const items=['original-one','original-two'].map(id=>({id,projectId:'one-project',name:base.name,reviewRequired:false,expiresAt:new Date(Date.now()+86400000).toISOString()}));
+ let expired=false,originals=0;
+ await page.route('**/api/projects',r=>r.fulfill({json:{projects:[]}}));
+ await page.route('**/api/membership/downloads',r=>r.fulfill({json:{downloads:expired?[]:items}}));
+ await page.route('**/api/membership/downloads/*/preview',r=>r.fulfill({json:{preview:''}}));
+ await page.route('**/api/membership/downloads/*/original',r=>{
+  originals++;
+  return r.fulfill({json:{id:'original-two',projectId:'one-project',artifactId:hash,reviewRequired:false,artifact:{id:hash,sha256:hash,width:36,height:64,dataUrl:data}}});
+ });
+ await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,creditQuote:{unit:'legacy-ticket',amount:0,policy:'legacy-accept-v1'}},wallet:{available:0,reserved:0,credits:{available:0,reserved:0}},budget:{limitMicros:1}}}));
+ await page.goto(origin+'/#projects');
+ await page.evaluate(({local,scope})=>new Promise<void>((done,fail)=>{
+  const req=indexedDB.open('aiadcast-editor-'+scope,1);
+  req.onupgradeneeded=()=>req.result.createObjectStore('projects',{keyPath:'id'});
+  req.onerror=()=>fail(req.error);
+  req.onsuccess=()=>{const db=req.result,tx=db.transaction('projects','readwrite');tx.objectStore('projects').put(local);tx.oncomplete=()=>{db.close();done();};tx.onerror=()=>fail(tx.error);};
+ }),{local,scope});
+ await page.evaluate(()=>window.dispatchEvent(new Event('aiadcast-project-copy-saved')));
+ const cards=page.locator('.ad-card'),localCard=cards.filter({has:page.locator('.project-tile')}),serverCard=cards.filter({has:page.locator('.delivery-preview')});
+ await expect(cards).toHaveCount(2);await expect(localCard).toHaveCount(1);
+ const edit=page.getByRole('dialog',{name:'정밀 편집'});
+ for(const card of [localCard,serverCard]){
+  await card.getByRole('button',{name:'정밀 편집',exact:true}).click();
+  await expect(edit.getByAltText('원본 광고')).toHaveAttribute('src',data);
+  await edit.getByRole('button',{name:'닫기'}).click();
+ }
+ expect(originals).toBe(1);
+ expired=true;await page.evaluate(()=>window.dispatchEvent(new Event('aiadcast-cloud-project-change')));
+ await expect(cards).toHaveCount(1);
+ const download=native?null:page.waitForEvent('download');
+ if(!native){
+  await localCard.getByRole('button',{name:'원본 저장',exact:true}).click();
+  const file=await download!;expect((await readFile((await file.path())!)).equals(bytes)).toBe(true);
+ }else{
+  await localCard.getByRole('button',{name:'정밀 편집',exact:true}).click();
+  await expect(edit.getByAltText('원본 광고')).toHaveAttribute('src',data);
+ }
+ expect(originals).toBe(1);
 });

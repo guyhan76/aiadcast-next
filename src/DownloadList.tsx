@@ -1,5 +1,8 @@
 import {Image as ImageIcon} from 'lucide-react';
-import {useLibrarySelection} from './LibrarySelection';
+import type {AdCard,Delivery} from './library-cards';
+import {hasSavedAcceptedAd} from './generated';
+import {readCloudProject} from './Membership';
+import {projectEditInput} from './precision-edit-file';
 import {useEffect,useRef,useState} from 'react';
 import {validAiDimensionReview} from './ai-dimension-display';
 import {exportBatch,hasNativeExport} from './batch-export';
@@ -8,7 +11,6 @@ import {betaSession,storageNamespace} from './beta-session';
 import {readDeviceProject} from './storage';
 import {useUiLanguage} from './ui-language';
 
-export type Delivery={id:string;name:string;expiresAt:string;reviewRequired:boolean};
 type Translate=(ko:string,en:string)=>string;
 
 async function original(item:Delivery,lifetime:AbortSignal,consent:()=>boolean){
@@ -48,15 +50,20 @@ async function readOriginal(item:Delivery,signal:AbortSignal,consent:()=>boolean
    {artifactId:file.artifactId,...(file.dimensionReview?{dimensionReview:file.dimensionReview}:{})},signal);
  }
  check();
+ if(item.reviewRequired||file.reviewRequired)window.dispatchEvent(new Event('aiadcast-cloud-project-change'));
+ return originalFile(blob,item.id);
+}
+function originalFile(blob:Blob,id:string){
  const extension=blob.type==='image/jpeg'?'jpg':blob.type==='image/webp'?'webp':'png';
- const stem=hasNativeExport()?crypto.randomUUID().slice(0,8)+'-01':item.id;
+ const stem=hasNativeExport()?crypto.randomUUID().slice(0,8)+'-01':id;
  return new File([blob],'aiadcast-'+stem+'.'+extension,{type:blob.type});
 }
 function failure(error:unknown,t:Translate){
  const code=error instanceof Error?error.message:'';
  if(code==='PROJECT_EXPIRED'||error instanceof ApiRequestFailure&&error.status===410)return t('다운로드 기한이 지났습니다.','The download has expired.');
  if(code==='ORIGINAL_MISSING'||error instanceof ApiRequestFailure&&error.status===404)return t('서버에서 원본을 찾을 수 없습니다.','The original file could not be found.');
- if(code==='REVIEW_DIMENSIONS')return t('광고 결과에서 규격 표시를 검수하고 사용을 확정해 주세요.','Review the dimensions and confirm use on the ad result screen.');
+ if(code==='NO_FINISHED_AD')return t('이 보관본은 초안입니다. 광고를 열어 제작을 완료해 주세요.','This backup is a draft. Open it to finish the ad.');
+ if(code==='REVIEW_DIMENSIONS'||code==='BACKUP_REVIEW')return t('광고 결과에서 규격 표시를 검수하고 사용을 확정해 주세요.','Review the dimensions and confirm use on the ad result screen.');
  if(['ARTIFACT_MISMATCH','INVALID_ARTIFACT','STORAGE_CONTENT_MISMATCH'].includes(code))return t('원본 파일을 검증하지 못했습니다.','The original file could not be verified.');
  if(code==='EXPORT_FAILED'||code==='EXPORT_TIMEOUT')return t('기기에 저장하지 못했습니다. 다시 시도해 주세요.','Could not save to this device. Please retry.');
  return t('원본을 내려받지 못했습니다. 다시 시도해 주세요.','Could not download the original. Please retry.');
@@ -70,7 +77,7 @@ type PreviewProps={
  deleteDisabled:boolean;
  feedback:string;
 };
-function DownloadPreview({item,onSave,onDelete,saveLabel,saveDisabled,deleteDisabled,feedback}:PreviewProps){
+export function DownloadPreview({item,onSave,onDelete,saveLabel,saveDisabled,deleteDisabled,feedback}:PreviewProps){
  const {t}=useUiLanguage(),[image,setImage]=useState(''),[failed,setFailed]=useState(false),[attempt,setAttempt]=useState(0),dialog=useRef<HTMLDialogElement>(null),element=useRef<HTMLButtonElement>(null);
  useEffect(()=>{
   const ctrl=new AbortController();let started=false;setImage('');setFailed(false);
@@ -95,26 +102,38 @@ function DownloadPreview({item,onSave,onDelete,saveLabel,saveDisabled,deleteDisa
    {feedback&&<p role="status">{feedback}</p>}
   </dialog>}</>;
 }
-export function DownloadList({items,onRemoved}:{items:Delivery[];onRemoved:(ids:string[])=>void}){
- const {language,t}=useUiLanguage();
- const [limit,setLimit]=useState(5),[rows,setRows]=useState<Record<string,string>>({}),[summary,setSummary]=useState('');
- const active=useRef<AbortController|null>(null);
- useEffect(()=>{const ctrl=new AbortController();active.current=ctrl;return ()=>ctrl.abort();},[]);
- const selection=useLibrarySelection(items.map(item=>item.id),removeDownloads,'downloads',saveDownloads);
- async function removeDownloads(ids:string[]){
-  const signal=active.current?.signal;
-  if(!signal||signal.aborted)throw Error('CANCELLED');
-  for(let i=0;i<ids.length;i+=15){
-   const group=ids.slice(i,i+15);
-   await apiRequest('/api/membership/remove-downloads',{ids:group},signal);
-   if(!signal.aborted)onRemoved(group);
+export async function cardOriginal(card:AdCard,signal:AbortSignal,consent:()=>boolean){
+ signal.throwIfAborted();
+ const project=card.project??(!card.delivery&&card.backups.length?await readCloudProject(card.backups[0].id,signal):undefined);
+ if(project&&hasSavedAcceptedAd(project)&&!card.delivery?.reviewRequired){
+  const input=await projectEditInput(project);
+  let blob:Blob;
+  if(input.file)blob=input.file;
+  else{
+   const a=input.asset;
+   if(!a)throw Error('INVALID_ARTIFACT');
+   try{
+    blob=await verifiedOriginalBlob({id:project.generated!.jobId,artifactId:a.sha256,
+     artifact:{id:a.sha256,sha256:a.sha256,width:a.width,height:a.height,dataUrl:a.data}});
+   }catch(error){
+    if(card.delivery)return original(card.delivery,signal,consent);
+    throw error;
+   }
   }
+  signal.throwIfAborted();
+  return originalFile(blob,project.generated!.jobId);
  }
+ if(card.delivery)return original(card.delivery,signal,consent);
+ throw Error(project?'NO_FINISHED_AD':'ORIGINAL_MISSING');
+}
+export function useOriginalExport(items:AdCard[],getSignal:()=>AbortSignal){
+ const {t}=useUiLanguage();
+ const [rows,setRows]=useState<Record<string,string>>({}),[summary,setSummary]=useState('');
  async function saveDownloads(ids:string[]){
-  const signal=active.current?.signal;
+  const signal=getSignal();
   if(!signal||signal.aborted)return ids;
   const selected=new Set(ids),targets=items.filter(item=>selected.has(item.id));
-  const reviews=targets.filter(item=>item.reviewRequired).length;
+  const reviews=targets.filter(item=>item.delivery?.reviewRequired).length;
   const multiple=targets.length>1,native=hasNativeExport();
   if(multiple&&reviews&&!window.confirm(t('선택한 광고 중 미확정 '+reviews+'건을 사용 확정하고 저장할까요? 예약된 이용권이 사용됩니다.','Confirm and save '+reviews+' unconfirmed ads in this selection? Their reserved tickets will be used.')))return ids;
   const singleConsent=()=>window.confirm(t('이 결과를 사용 확정하고 저장할까요? 예약된 이용권이 사용됩니다.','Confirm and save this ad? Its reserved ticket will be used.'));
@@ -125,8 +144,8 @@ export function DownloadList({items,onRemoved}:{items:Delivery[];onRemoved:(ids:
   for(const [index,item] of targets.entries()){
    signal.throwIfAborted();
    try{
-    const file=await original(item,signal,multiple&&item.reviewRequired?()=>true:singleConsent);
-    if(!file)return ids;
+    const file=await cardOriginal(item,signal,multiple&&item.delivery?.reviewRequired?()=>true:singleConsent);
+    if(!file)continue;
     if(native){
      await exportBatch([file],'save',signal);
      saved.add(item.id);
@@ -154,22 +173,5 @@ export function DownloadList({items,onRemoved}:{items:Delivery[];onRemoved:(ids:
   setSummary([saved.size?t(saved.size+'건 '+success,saved.size+' '+success):'',remaining.length?t('미저장 '+remaining.length+'건',remaining.length+' not saved'):''].filter(Boolean).join(' · '));
   return remaining;
  }
- return <>
-  <div className={selection.editing?'download-selecting':'download-actions'}>
-   {!selection.editing&&<p className="download-notice">{t('새 광고는 생성 후 24시간 동안 다운로드 가능','New ads are available to download for 24 hours after creation.')}</p>}
-   {selection.tools}
-  </div>
-  {summary&&<p role="status" className="download-feedback">{summary}</p>}
-  <ul className="download-list delivery-list">{items.slice(0,limit).map(item=><li key={item.id}>
-   <DownloadPreview item={item} onSave={()=>void selection.saveItems([item.id])} onDelete={()=>void selection.erase([item.id])}
-    saveLabel={item.reviewRequired?t('사용 확정 후 저장','Confirm and save'):t('원본 저장','Save original')}
-    saveDisabled={selection.busy||selection.editing} deleteDisabled={selection.busy||selection.editing} feedback={selection.error||rows[item.id]||''}/>
-   <div><strong>{item.name||t('이름 없는 광고','Untitled ad')}</strong>
-    <time dateTime={item.expiresAt}>{t('기한','Until')} {new Date(item.expiresAt).toLocaleString(language==='ko'?'ko-KR':'en-US',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time>
-    {rows[item.id]&&<span role="status" className="download-feedback">{rows[item.id]}</span>}
-   </div>
-   {selection.editing&&<label className="delivery-check"><input type="checkbox" aria-label={item.name+' '+t('선택','select')} checked={selection.selected.has(item.id)} disabled={selection.busy} onChange={()=>selection.toggle(item.id)}/></label>}
-  </li>)}</ul>
-  {limit<items.length&&<button type="button" className="library-more" onClick={()=>setLimit(n=>n+5)}>{t('다운로드 더 보기','Show more downloads')}</button>}
- </>;
+ return {rows,summary,saveDownloads};
 }

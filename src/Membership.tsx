@@ -1,4 +1,4 @@
-import {DownloadList,type Delivery} from './DownloadList';
+import type {Delivery,CloudProject} from './library-cards';
 import {useEffect,useState} from 'react';
 import {apiRequest} from './generation-client';
 import {betaSession,setBetaSession,storageNamespace} from './beta-session';
@@ -6,59 +6,49 @@ import {offlineDemo} from './demo-mode';
 import {importProject,type Project} from './model';
 import {useUiLanguage} from './ui-language';
 
-type CloudProject={id:string;name:string;expiresAt:string;revision:number};
 const changed='aiadcast-cloud-project-change';
 export function DownloadDeadline({value}:{value?:string}){
  const {t}=useUiLanguage();
  return value?<small>{t('서버 다운로드 기한','Server download deadline')} · <time dateTime={value}>{new Date(value).toLocaleString()}</time></small>:null;
 }
-function LibraryExpiry({value}:{value:string}){
- const {language,t}=useUiLanguage(),locale=language==='ko'?'ko-KR':'en-US';
- const date=new Date(value);
- return <time dateTime={value} title={date.toLocaleString(locale)}>{t('기한','Until')} {date.toLocaleString(locale,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time>;
-}
-const downloadPageSize=5;
-export function CloudLibrary({onOpen}:{onOpen:(p:Project)=>Promise<boolean>}){
- const {t}=useUiLanguage(),[items,setItems]=useState<CloudProject[]>([]),[downloads,setDownloads]=useState<Delivery[]>([]);
- const [error,setError]=useState(''),[busy,setBusy]=useState(false),[refresh,setRefresh]=useState(0);
- const [loaded,setLoaded]=useState(false),[shownProjects,setShownProjects]=useState(downloadPageSize);
- const token=betaSession()?.token;
+export function useCloudAds(enabled:boolean){
+ const {t}=useUiLanguage();
+ const [backups,setBackups]=useState<CloudProject[]>([]),[downloads,setDownloads]=useState<Delivery[]>([]);
+ const [error,setError]=useState(''),[refresh,setRefresh]=useState(0),[loading,setLoading]=useState(enabled);
+ const token=enabled?betaSession()?.token:undefined;
+ const retry=()=>setRefresh(n=>n+1);
  useEffect(()=>{
-  if(!token||offlineDemo())return;
-  const controller=new AbortController();
-  Promise.all([apiRequest<{projects:CloudProject[]}>('/api/projects',undefined,controller.signal),
-   apiRequest<{downloads:Delivery[]}>('/api/membership/downloads',undefined,controller.signal)]).then(([legacy,current])=>{
-    if(!controller.signal.aborted){setItems(legacy.projects);setDownloads(current.downloads);setError('');}
-   }).catch(()=>{if(!controller.signal.aborted)setError(t('다운로드 목록을 불러오지 못했습니다.','Could not load downloads.'));}).finally(()=>{if(!controller.signal.aborted)setLoaded(true);});
-  const update=()=>setRefresh(n=>n+1);window.addEventListener(changed,update);
-  return ()=>{controller.abort();window.removeEventListener(changed,update);};
+  if(!token)return;
+  const controller=new AbortController(),signal=controller.signal;
+  setLoading(true);setError('');
+  void Promise.allSettled([
+   apiRequest<{projects:CloudProject[]}>('/api/projects',undefined,signal).then(r=>{if(!signal.aborted)setBackups(r.projects);}),
+   apiRequest<{downloads:Delivery[]}>('/api/membership/downloads',undefined,signal).then(r=>{if(!signal.aborted)setDownloads(r.downloads);})
+  ]).then(results=>{
+   if(signal.aborted)return;
+   if(results.some(r=>r.status==='rejected'))setError(t('서버 목록 일부를 불러오지 못했습니다.','Some server projects could not be loaded.'));
+   setLoading(false);
+  });
+  window.addEventListener(changed,retry);
+  return ()=>{controller.abort();window.removeEventListener(changed,retry);};
  },[token,refresh]);
- if(!token||offlineDemo())return null;
- async function open(item:CloudProject){
-  setBusy(true);setError('');
-  try{const data=await apiRequest<{project:Project;revision:number}>('/api/projects/'+item.id);
-   const p={...await importProject(data.project),id:item.id};await onOpen(p);
-  }catch{setError(t('보관본을 열지 못했습니다. 목록을 다시 확인해주세요.','Could not open this copy. Check the list again.'));}finally{setBusy(false);}
+ async function remove(downloadIds:string[],backupIds:string[],signal:AbortSignal){
+  for(let i=0;i<downloadIds.length;i+=15){
+   const ids=downloadIds.slice(i,i+15);
+   await apiRequest('/api/membership/remove-downloads',{ids},signal);
+   if(!signal.aborted)setDownloads(list=>list.filter(item=>!ids.includes(item.id)));
+  }
+  for(const id of backupIds){
+   await apiRequest('/api/membership/remove-project',{id},signal);
+   if(!signal.aborted)setBackups(list=>list.filter(item=>item.id!==id));
+  }
  }
- async function remove(item:CloudProject){
-  if(!window.confirm(t('이 서버 보관본을 삭제할까요?','Delete this server copy?')))return;
-  setBusy(true);try{await apiRequest('/api/membership/remove-project',{id:item.id});window.dispatchEvent(new Event(changed));}
-  catch{setError(t('삭제하지 못했습니다. 다시 시도해주세요.','Deletion failed. Try again.'));}finally{setBusy(false);}
- }
- return <section className="download-library" aria-label={t('다운로드 목록','Available downloads')}>
-  {!loaded&&<p role="status">{t('불러오는 중…','Loading…')}</p>}
-  {loaded&&!error&&!downloads.length&&!items.length&&<p className="download-empty">{t('다운로드할 파일이 없습니다.','No files to download.')}</p>}
-  {downloads.length>0&&<DownloadList key={token} items={downloads} onRemoved={ids=>setDownloads(prev=>prev.filter(item=>!ids.includes(item.id)))}/>}
-  {items.length>0&&<>
-   <h2>{t('이전 보관본','Previously saved projects')}</h2>
-   <ul className="download-list">{items.slice(0,shownProjects).map(item=><li key={item.id}>
-    <div><button type="button" className="legacy-open" disabled={busy} onClick={()=>void open(item)}>{item.name||t('이름 없는 광고','Untitled ad')}</button><LibraryExpiry value={item.expiresAt}/></div>
-    <button type="button" disabled={busy} onClick={()=>void remove(item)}>{t('삭제','Delete')}</button>
-   </li>)}</ul>
-   {shownProjects<items.length&&<button type="button" className="library-more" onClick={()=>setShownProjects(n=>n+downloadPageSize)}>{t('보관본 더 보기','Show more saved projects')}</button>}
-  </>}
-  {error&&<p role="alert">{error} <button type="button" className="library-more" onClick={()=>setRefresh(n=>n+1)}>{t('다시 확인','Retry')}</button></p>}
- </section>;
+ return {backups,downloads,error,retry,loading,remove};
+}
+
+export async function readCloudProject(id:string,signal:AbortSignal){
+ const data=await apiRequest<{project:Project}>('/api/projects/'+encodeURIComponent(id),undefined,signal);
+ return {...await importProject(data.project),id};
 }
 export function Withdrawal(){
  const {t}=useUiLanguage(),[confirm,setConfirm]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
