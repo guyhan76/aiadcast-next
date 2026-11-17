@@ -170,17 +170,30 @@ export class GenerationService {
     this.ledger.expire();
   }
   period() { return new Date(this.now()).toISOString().slice(0, 7); }
+  // Eligibility is recorded at signup by the authenticated server, never by a client request.
+  // A separate durable marker keeps a restart or a lost response from issuing another free ad.
+  grantWelcomeAd() {
+    return this.ledger.transaction(() => {
+      if(this.db.prepare("SELECT value FROM local_development_meta WHERE key='welcome-ad-v1'").get())return;
+      this.db.prepare('INSERT INTO credit_wallets(user_id) VALUES (?) ON CONFLICT DO NOTHING').run(LOCAL_USER);
+      this.db.prepare('UPDATE credit_wallets SET available=available+10 WHERE user_id=?').run(LOCAL_USER);
+      this.ledger.event('welcome-ad-v1',LOCAL_USER,null,'welcome',10);
+      this.db.prepare("INSERT INTO local_development_meta VALUES ('welcome-ad-v1','10')").run();
+    });
+  }
   increaseBudget(micros) {
     if(!Number.isSafeInteger(micros)||micros<this.budgetMicros||micros>100_000_000)fail('BUDGET_INCREASE_ONLY');
     if(!this.budgetForPeriod)this.ledger.transaction(()=>this.db.prepare('UPDATE budgets SET limit_micros=?').run(micros));
     this.budgetMicros=micros;
   }
-  testPurchaseReceipt({purchaseId,credits,unit='legacy-ticket'}) {
+  testPurchaseReceipt(purchase) { return this.verifiedPurchaseReceipt(purchase); }
+  verifiedPurchaseReceipt({purchaseId,credits,unit='legacy-ticket'}) {
     const row=this.db.prepare('SELECT * FROM purchases WHERE purchase_id=?').get(purchaseId);
     if(!row||row.user_id!==LOCAL_USER||row.credits!==credits||(this.db.prepare('SELECT unit FROM purchase_units WHERE purchase_id=?').get(purchaseId)?.unit??'legacy-ticket')!==unit)throw new ApiFailure('PURCHASE_NOT_VERIFIED',409);
     return {grantedCredits:row.credits,...(unit==='credit-v2'?{unit}:{}),balance:this.ledger.wallet(LOCAL_USER,unit).available};
   }
-  recordTestPurchase({purchaseId,credits,unit='legacy-ticket'}) { this.ledger.recordVerifiedPurchase({purchaseId,userId:LOCAL_USER,credits,unit});return this.wallet(); }
+  recordTestPurchase(purchase) { return this.recordVerifiedPurchase(purchase); }
+  recordVerifiedPurchase({purchaseId,credits,unit='legacy-ticket'}) { this.ledger.recordVerifiedPurchase({purchaseId,userId:LOCAL_USER,credits,unit});return this.wallet(); }
   wallet() { return { ...this.ledger.wallet(LOCAL_USER), credits:this.ledger.wallet(LOCAL_USER,'credit-v2'), kind: this.adminTestUnlimited ? 'admin-test-unlimited' : 'test-credits', ...(this.adminTestUnlimited ? {unlimited:true} : {}) }; }
   creditQuote(walletSnapshot) {
     const wallet=walletSnapshot??this.wallet();

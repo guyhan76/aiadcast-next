@@ -14,6 +14,7 @@ import { GoogleAuth } from './google-auth-base.mjs';
 import { googleReturnPage, googleUiLanguage, googleReturnCsp } from '../google-return-page.mjs';
 import { EmailAuth } from './email-auth-base.mjs';
 import { PasswordAuth } from './password-auth-base.mjs';
+import { playAccountId, verifyPlayPurchase } from '../play-billing.mjs';
 import { TestCheckout } from './test-checkout-base.mjs';
 import { demoSupport } from '../demo-support.mjs';
 import { AdminApi } from './admin-api-base.mjs';
@@ -49,7 +50,8 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
     } if (++requests > 600 || (isLogin && ++logins > 20))
         throw new ApiFailure('RATE_LIMITED', 429); };
     const service = async (user) => { if (!services.has(user.id))
-        services.set(user.id, Promise.resolve().then(() => serviceFactory(user))); const instance = await services.get(user.id); instance.adminTestUnlimited = user.role === 'admin'; return instance; };
+        services.set(user.id, Promise.resolve().then(() => serviceFactory(user))); const instance = await services.get(user.id); instance.adminTestUnlimited = user.role === 'admin'; if (user.role !== 'admin' && await store.db.prepare('SELECT user_id FROM welcome_ad_eligibility WHERE user_id=?').get(user.id))
+        await instance.grantWelcomeAd(); return instance; };
     const email = await new EmailAuth().initialize(store, { sendMail: accounts.sendMail, publicOrigin: origin, now });
     const google = await new GoogleAuth().initialize(store, { provider: accounts.google, now });
     const password = await new PasswordAuth().initialize(store, accounts.password, now);
@@ -294,6 +296,17 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                     return;
                 }
                 throw new ApiFailure('NOT_FOUND', 404);
+            }
+            if (url.pathname === '/api/checkout/play/account' && req.method === 'GET') {
+                send(res, 200, { enabled: Boolean(accounts.play), accountId: playAccountId(user.id) }, cors);
+                return;
+            }
+            if (url.pathname === '/api/checkout/play/verify' && req.method === 'POST') {
+                if (!accounts.play)
+                    throw new ApiFailure('PLAY_BILLING_UNAVAILABLE', 503);
+                const body = await read(req, 8192);
+                send(res, 200, await verifyPlayPurchase(accounts.play, user.id, body?.token, await service(user)), cors);
+                return;
             }
             if (url.pathname === '/api/checkout/orders' && req.method === 'POST') {
                 send(res, 201, await checkout.create(user, await read(req, 2048)), cors);

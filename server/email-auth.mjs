@@ -45,6 +45,7 @@ export class EmailAuth {
    if(!user){
     if(this.db.prepare('SELECT COUNT(*) n FROM users').get().n>=20)fail('BETA_ALLOCATION_EXCEEDED',409);
     const userId=randomUUID();this.db.prepare('INSERT INTO users(id,label,budget,credits) VALUES(?,?,0,0)').run(userId,row.email.slice(0,80));
+    this.db.prepare('INSERT INTO welcome_ad_eligibility(user_id) VALUES(?)').run(userId);
     this.db.prepare('INSERT INTO email_identities VALUES(?,?)').run(row.email,userId);user=this.db.prepare('SELECT * FROM users WHERE id=?').get(userId);
    }
    if(user.disabled)fail('AUTH_REQUIRED',401);

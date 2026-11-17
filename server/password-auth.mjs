@@ -63,6 +63,7 @@ export class PasswordAuth {
    if(this.db.prepare('SELECT COUNT(*) n FROM users').get().n>=20)fail('BETA_ALLOCATION_EXCEEDED',409);
    const id=randomUUID(),salt=randomBytes(16).toString('hex');
    this.db.prepare("INSERT INTO users(id,label,budget,credits,role) VALUES(?,?,0,0,'member')").run(id,label||email.slice(0,80));
+   this.db.prepare('INSERT INTO welcome_ad_eligibility(user_id) VALUES(?)').run(id);
    this.db.prepare('INSERT INTO email_identities VALUES(?,?)').run(email,id);
    this.db.prepare('INSERT INTO test_passwords VALUES(?,?,?)').run(id,salt,derive(password,salt).toString('hex'));
    return this.store.createSession(this.db.prepare('SELECT * FROM users WHERE id=?').get(id));

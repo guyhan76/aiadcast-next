@@ -82,6 +82,18 @@ export class GenerationService {
         return this;
     }
     period() { return new Date(this.now()).toISOString().slice(0, 7); }
+    // Eligibility is recorded at signup by the authenticated server, never by a client request.
+    // A separate durable marker keeps a restart or a lost response from issuing another free ad.
+    async grantWelcomeAd() {
+        return await this.ledger.transaction(async () => {
+            if (await this.db.prepare("SELECT value FROM local_development_meta WHERE key='welcome-ad-v1'").get())
+                return;
+            await this.db.prepare('INSERT INTO credit_wallets(user_id) VALUES (?) ON CONFLICT DO NOTHING').run(LOCAL_USER);
+            await this.db.prepare('UPDATE credit_wallets SET available=available+10 WHERE user_id=?').run(LOCAL_USER);
+            await this.ledger.event('welcome-ad-v1', LOCAL_USER, null, 'welcome', 10);
+            await this.db.prepare("INSERT INTO local_development_meta VALUES ('welcome-ad-v1','10')").run();
+        });
+    }
     async increaseBudget(micros) {
         if (!Number.isSafeInteger(micros) || micros < this.budgetMicros || micros > 100000000)
             fail('BUDGET_INCREASE_ONLY');
@@ -89,13 +101,15 @@ export class GenerationService {
             await this.ledger.transaction(async () => await this.db.prepare('UPDATE budgets SET limit_micros=?').run(micros));
         this.budgetMicros = micros;
     }
-    async testPurchaseReceipt({ purchaseId, credits, unit = 'legacy-ticket' }) {
+    async testPurchaseReceipt(purchase) { return this.verifiedPurchaseReceipt(purchase); }
+    async verifiedPurchaseReceipt({ purchaseId, credits, unit = 'legacy-ticket' }) {
         const row = await this.db.prepare('SELECT * FROM purchases WHERE purchase_id=?').get(purchaseId);
         if (!row || row.user_id !== LOCAL_USER || row.credits !== credits || ((await this.db.prepare('SELECT unit FROM purchase_units WHERE purchase_id=?').get(purchaseId))?.unit ?? 'legacy-ticket') !== unit)
             throw new ApiFailure('PURCHASE_NOT_VERIFIED', 409);
         return { grantedCredits: row.credits, ...(unit === 'credit-v2' ? { unit } : {}), balance: (await this.ledger.wallet(LOCAL_USER, unit)).available };
     }
-    async recordTestPurchase({ purchaseId, credits, unit = 'legacy-ticket' }) { await this.ledger.recordVerifiedPurchase({ purchaseId, userId: LOCAL_USER, credits, unit }); return await this.wallet(); }
+    async recordTestPurchase(purchase) { return await this.recordVerifiedPurchase(purchase); }
+    async recordVerifiedPurchase({ purchaseId, credits, unit = 'legacy-ticket' }) { await this.ledger.recordVerifiedPurchase({ purchaseId, userId: LOCAL_USER, credits, unit }); return await this.wallet(); }
     async wallet() { return { ...await this.ledger.wallet(LOCAL_USER), credits: await this.ledger.wallet(LOCAL_USER, 'credit-v2'), kind: this.adminTestUnlimited ? 'admin-test-unlimited' : 'test-credits', ...(this.adminTestUnlimited ? { unlimited: true } : {}) }; }
     async creditQuote(walletSnapshot) {
         const wallet = walletSnapshot ?? await this.wallet();

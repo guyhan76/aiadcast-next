@@ -1,7 +1,9 @@
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {ApiFailure} from './generation-service.mjs';
+import {pricingCatalog} from '../src/pricing.ts';
 // Server-owned quote. Never accept a client price, currency, user ID or credit amount.
-const packs={'credits-v2-30':{credits:30,amount:9900},'credits-v2-100':{credits:100,amount:29800},'credits-v2-180':{credits:180,amount:48900},trial:{credits:3,amount:6900},basic:{credits:10,amount:19900},bundle:{credits:30,amount:49900}};
+const packs=Object.fromEntries(pricingCatalog.packs.map(pack=>[pack.id,{credits:pack.credits,amount:pack.prices.KRW}]));
+const retiredPacks=new Set(['credits-v2-180','trial','basic','bundle']);
 const orderUnit=row=>row.pack.startsWith('credits-v2-')?'credit-v2':'legacy-ticket';
 const digest=s=>createHash('sha256').update(s).digest('hex');
 const fail=(code,status=400)=>{throw new ApiFailure(code,status);};
@@ -14,13 +16,13 @@ export class TestCheckout {
  view(order){return {id:order.id,pack:order.pack,unit:orderUnit(order),policy:orderUnit(order)==='credit-v2'?'delivered-2026-10-18':'legacy-accept-v1',credits:order.credits,amount:order.amount,currency:'KRW',state:order.state,created:order.created,test:true};}
  create(user,{pack,requestId,agreed}={}){
   if(!this.available())fail('CHECKOUT_UNAVAILABLE',503);
-  if(!Object.hasOwn(packs,pack??'')||typeof requestId!=='string'||!/^[A-Za-z0-9_-]{8,100}$/.test(requestId)||agreed!==true)fail('INVALID_ORDER');
+  if((!Object.hasOwn(packs,pack??'')&&!retiredPacks.has(pack))||typeof requestId!=='string'||!/^[A-Za-z0-9_-]{8,100}$/.test(requestId)||agreed!==true)fail('INVALID_ORDER');
   const ticket=randomBytes(32).toString('base64url');
   const order=this.store.transaction(()=>{
    let row=this.db.prepare('SELECT * FROM test_orders WHERE user_id=? AND request_id=?').get(user.id,requestId);
    if(row&&row.pack!==pack)fail('ORDER_CONFLICT',409);
    if(row&&row.state!=='pending')return row;
-   if(!row){if(!pack.startsWith('credits-v2-'))fail('SKU_RETIRED',409);if(this.db.prepare('SELECT COUNT(*) n FROM test_orders WHERE user_id=? AND created>?').get(user.id,this.now()-3600_000).n>=10)fail('ORDER_RATE_LIMIT',429);
+   if(!row){if(retiredPacks.has(pack))fail('SKU_RETIRED',409);if(this.db.prepare('SELECT COUNT(*) n FROM test_orders WHERE user_id=? AND created>?').get(user.id,this.now()-3600_000).n>=10)fail('ORDER_RATE_LIMIT',429);
     const id='ad_'+randomUUID();this.db.prepare('INSERT INTO test_orders(id,user_id,request_id,pack,credits,amount,created,ticket_hash) VALUES(?,?,?,?,?,?,?,?)').run(id,user.id,requestId,pack,packs[pack].credits,packs[pack].amount,this.now(),digest(ticket));row=this.db.prepare('SELECT * FROM test_orders WHERE id=?').get(id);
    }else this.db.prepare('UPDATE test_orders SET ticket_hash=? WHERE id=?').run(digest(ticket),row.id);
    return row;

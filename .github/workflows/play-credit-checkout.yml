@@ -1,0 +1,47 @@
+name: Google Play credit checkout
+
+on:
+  pull_request:
+    paths:
+      - 'android/**'
+      - 'server/play-billing.mjs'
+      - 'server/beta-server.mjs'
+      - 'server/generation-service.mjs'
+      - 'src/PlayCheckout.tsx'
+      - 'src/AccountPages.tsx'
+      - 'tests-domain/play-billing.test.mjs'
+      - 'tests/play-credit-checkout.spec.ts'
+      - '.github/workflows/play-credit-checkout.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run check:cloud
+      - run: node --test tests-domain/play-billing.test.mjs tests-domain/credits-checkout-v2.test.mjs
+      - run: npm run build
+      - name: Check desktop and mobile purchase recovery
+        run: |
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(command -v google-chrome)"
+          npx playwright test tests/play-credit-checkout.spec.ts --project=desktop --project=mobile
+      - name: Build unsigned Play release bundle
+        run: |
+          node native/prepare-android.mjs
+          bash android/gradlew -p android -PAIADCAST_API_ORIGIN=https://aiadcast-next.onrender.com :app:bundleRelease --console=plain

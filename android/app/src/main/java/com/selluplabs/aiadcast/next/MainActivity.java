@@ -66,6 +66,7 @@ public final class MainActivity extends ComponentActivity {
     private boolean assetErrorShown;
     private final ExecutorService webUpdates = Executors.newSingleThreadExecutor();
     private android.app.ProgressDialog webLoading;
+    private PlayCreditBilling playBilling;
     private String bridgeScript;
     private String bridgeSource;
     private volatile String apiOrigin;
@@ -134,6 +135,12 @@ public final class MainActivity extends ComponentActivity {
                     if (data != null && data.length() <= 8192) {
                         try {
                             JSONObject request = new JSONObject(data);
+                            if (request.optString("type").startsWith("play-") && "release".equals(BuildConfig.BUILD_TYPE)) {
+                                if (playBilling == null) playBilling = new PlayCreditBilling(this, detail ->
+                                    webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('aiadcast-play',{detail:JSON.parse(" + JSONObject.quote(detail.toString()) + ")}))", null));
+                                playBilling.handle(request);
+                                return;
+                            }
                             if ("export-context".equals(request.optString("type"))) { exportContext(request.optString("owner")); return; }
                             if ("google-sign-in".equals(request.optString("type"))) { openGoogle(request); return; }
                             if ("google-sign-in-clear".equals(request.optString("type"))) { clearGoogle(request.optString("state")); return; }
@@ -367,7 +374,7 @@ public final class MainActivity extends ComponentActivity {
         if (webView != null && !"null".equals(googlePending()))
             webView.evaluateJavascript("window.dispatchEvent(new Event('aiadcast-google-return'));",null);
     }
-    @Override protected void onResume() { super.onResume(); googleResume(); }
+    @Override protected void onResume() { super.onResume(); googleResume(); if (playBilling != null) playBilling.restore(); }
 
     private void configureTestServer(String value) {
         if (!BuildConfig.ALLOW_TEST_CONFIG || exportInProgress) {
@@ -665,6 +672,7 @@ public final class MainActivity extends ComponentActivity {
         if (filePicker != null) { filePicker.onReceiveValue(null); filePicker = null; }
         if(exportDialog!=null){exportDialog.dismiss();exportDialog=null;}
         if (webLoading != null) webLoading.dismiss();
+        if (playBilling != null) playBilling.close();
         webUpdates.shutdownNow(); webView.destroy(); io.shutdown(); super.onDestroy();
     }
 }

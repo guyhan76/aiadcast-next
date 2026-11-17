@@ -83,6 +83,32 @@ async function legacyProject(app,userId,project){
   .run(userId,project.id,project.name,JSON.stringify({storagePath:path,sha256:hashBytes(bytes)}),bytes.length,new Date().toISOString());
  return path;
 }
+
+test('new signup welcome ad is granted once across concurrent reads and cloud restart',async t=>{
+ const s=await setup(t,{accounts:{password:{enabled:true}}});
+ const signup=await s.call('/api/auth/test/signup',{body:{email:'welcome-cloud@example.com',password:'Fixture-member-1234',credits:999}});
+ assert.equal(signup.status,200,JSON.stringify(signup.data));
+ const {token,user}=signup.data;
+ for(const result of await Promise.all(Array.from({length:3},()=>s.call('/api/status',{token})))){
+  assert.equal(result.status,200,JSON.stringify(result.data));
+  assert.deepEqual(result.data.wallet.credits,{available:10,reserved:0});
+ }
+ await s.app.store.setAllocation(user.id,500000);
+ const status=(await s.call('/api/status',{token})).data;
+ const made=await s.call('/api/generations',{token,body:{...generation(),creditQuote:status.generation.creditQuote}});
+ assert.equal(made.status,202,JSON.stringify(made.data));
+ let result;
+ for(let i=0;i<100;i++){
+  result=await s.call('/api/generations/'+made.data.job.id,{token});
+  if(result.data.job.state!=='running')break;
+  await new Promise(r=>setTimeout(r,10));
+ }
+ assert.equal(result.data.job.state,'ready');
+ assert.deepEqual(result.data.wallet.credits,{available:0,reserved:0});
+ await s.restart();
+ assert.deepEqual((await s.call('/api/status',{token})).data.wallet.credits,{available:0,reserved:0});
+ assert.equal(s.calls(),1);
+});
 test('cloud test password accounts and owner login survive restart without invitation or repeated credits',async t=>{
  const password='Fixture-private-admin-2026!',memberPassword='Fixture-private-member-2026!';
  const s=await setup(t,{accounts:{password:{enabled:true,adminEmail:'selluplabs@gmail.com',adminPassword:password}}});
@@ -343,8 +369,8 @@ test('v2 delivery, concurrent retries, restart, and human defect review preserve
  const s=await setup(t,{accounts:{provider,clientKey:'test_ck_fixture'}}),a=await s.member('Credits member',1000000,0),owner=await s.member('Review admin');await s.app.store.setRole(owner.user.id,'admin');const invitation=await s.app.store.issueInvite(owner.user.id);owner.token=(await s.call('/api/auth/login',{body:{invite:invitation.invite}})).data.token;
  assert.equal((await s.call('/api/checkout/orders',{token:a.token,body:{pack:'basic',requestId:'retired-order',agreed:true}})).data.error.code,'SKU_RETIRED');
  const order=(await s.call('/api/checkout/orders',{token:a.token,body:{pack:'credits-v2-30',requestId:'credits-v2-order',agreed:true}})).data;
- assert.equal(order.amount,9900);assert.equal(order.credits,30);assert.equal(order.unit,'credit-v2');const params=new URLSearchParams(new URL(order.checkoutUrl).hash.split('?')[1]);
- const confirmation={orderId:order.id,ticket:params.get('ticket'),paymentKey:'v2-payment',amount:9900};const paid=await Promise.all([s.call('/api/checkout/confirm',{body:confirmation}),s.call('/api/checkout/confirm',{body:confirmation})]);for(const r of paid)assert.equal(r.data.receipt.balance,30);
+ assert.equal(order.amount,3300);assert.equal(order.credits,30);assert.equal(order.unit,'credit-v2');const params=new URLSearchParams(new URL(order.checkoutUrl).hash.split('?')[1]);
+ const confirmation={orderId:order.id,ticket:params.get('ticket'),paymentKey:'v2-payment',amount:3300};const paid=await Promise.all([s.call('/api/checkout/confirm',{body:confirmation}),s.call('/api/checkout/confirm',{body:confirmation})]);for(const r of paid)assert.equal(r.data.receipt.balance,30);
  const status=(await s.call('/api/status',{token:a.token})).data,body={...generation(),creditQuote:status.generation.creditQuote};assert.equal(status.wallet.available,0);
  const replies=await Promise.all([s.call('/api/generations',{token:a.token,body}),s.call('/api/generations',{token:a.token,body})]);for(const r of replies)assert.equal(r.status,202,JSON.stringify(r.data));const id=replies[0].data.job.id;assert.equal(replies[1].data.job.id,id);
  let preview;for(let i=0;i<40;i++){preview=await s.call('/api/generations/'+id,{token:a.token});if(preview.data.job.state!=='running')break;await new Promise(r=>setTimeout(r,10));}
