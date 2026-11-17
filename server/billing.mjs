@@ -171,6 +171,7 @@ export class BillingLedger {
   }
   // USD micro-units (1 USD = 1,000,000); these are NEVER customer credits.
   supplierBudget(period, monthlyLimit) {
+    if(this.sharedBudget)return this.sharedBudget(period);
     const policy=this.db.prepare('SELECT * FROM supplier_budget_policy WHERE id=1').get();
     if(!policy)return null;
     const totals=this.db.prepare('SELECT COALESCE(SUM(spent_micros),0) spent,COALESCE(SUM(held_micros),0) held FROM budgets').get();

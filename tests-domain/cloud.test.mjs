@@ -11,6 +11,7 @@ import pg from 'pg';
 import {PostgresDatabase,postgresConfiguration,cloudSchema,acquireInstanceLock} from '../server/cloud/postgres.mjs';
 import {createCloudBackend} from '../server/cloud/beta.mjs';
 import {OpenAIImageAdapter,ProviderFailure,IMAGE_MODEL,IMAGE_REVISION,hashBytes,imageUsageCost} from '../server/openai-image-adapter.mjs';
+import {playAccountId} from '../server/play-billing.mjs';
 import {betaStartupCode} from '../server/beta-server.mjs';
 const origin='https://beta.example.com',ref='sxpzbfapbizlmsuqlrfu';
 const env={SUPABASE_URL:`https://${ref}.supabase.co`,SUPABASE_SECRET_KEY:'sb_secret_test_fixture'};
@@ -83,6 +84,80 @@ async function legacyProject(app,userId,project){
   .run(userId,project.id,project.name,JSON.stringify({storagePath:path,sha256:hashBytes(bytes)}),bytes.length,new Date().toISOString());
  return path;
 }
+
+async function activateMemberFunding(s){
+ const owner=await s.member('Lifetime budget owner');
+ await s.call('/api/status',{token:owner.token});
+ await s.app.store.setRole(owner.user.id,'admin');
+ const ownerService=s.app.store.membership.jobs.get(owner.user.id);
+ await ownerService.db.prepare("INSERT INTO supplier_budget_policy VALUES(1,?,100000000,'all-history',0,1)").run(owner.user.id);
+ await s.app.store.db.exec('CREATE TABLE dimension_analysis_calls(id TEXT PRIMARY KEY,actor_id TEXT,state TEXT,hold BIGINT,actual BIGINT)');
+ await s.app.store.sharedGenerationBudget.initialize(owner.user.id);
+ // No environment opt-in on restart: a durable policy must never silently fall back.
+ await s.restart();return owner.user.id;
+}
+async function finishGeneration(s,token,body=generation()){
+ const status=await s.call('/api/status',{token});assert.equal(status.status,200,JSON.stringify(status.data));
+ const made=await s.call('/api/generations',{token,body:{...body,creditQuote:status.data.generation.creditQuote}});
+ assert.equal(made.status,202,JSON.stringify(made.data));
+ const user=await s.app.store.authenticate('Bearer '+token);
+ await s.app.store.membership.jobs.get(user.id).waitForIdle();
+ return s.call('/api/generations/'+made.data.job.id,{token});
+}
+
+test('shared member budget connects signup, free generation, verified Play purchase and restart without manual allocation',async t=>{
+ let buyer,consumed=false;
+ const play={lookup:async()=>({obfuscatedExternalAccountId:playAccountId(buyer),purchaseStateContext:{purchaseState:'PURCHASED'},productLineItem:[{productId:'credits_30',productOfferDetails:{quantity:1,consumptionState:consumed?'CONSUMPTION_STATE_CONSUMED':'CONSUMPTION_STATE_YET_TO_BE_CONSUMED'}}]}),consume:async()=>{consumed=true;}};
+ const s=await setup(t,{accounts:{password:{enabled:true},play}});const ownerId=await activateMemberFunding(s);
+ const signup=await s.call('/api/auth/test/signup',{body:{email:'funded-member@example.com',password:'Fixture-funded-1234',budget:100000000,role:'admin'}});
+ assert.equal(signup.status,200,JSON.stringify(signup.data));const {token,user}=signup.data;buyer=user.id;
+ const before=(await s.call('/api/status',{token})).data;
+ assert.equal(before.generation.enabled,true);assert.equal(before.budget.scope,'lifetime');assert.equal(before.wallet.credits.available,10);
+ assert.equal((await s.app.store.db.prepare('SELECT budget FROM users WHERE id=?').get(user.id)).budget,0);
+ const free=await finishGeneration(s,token);assert.equal(free.data.job.state,'ready');assert.equal(free.data.wallet.credits.available,0);
+ assert.equal((await s.call('/api/status',{token})).data.generation.reason,'NO_TEST_CREDITS');
+ for(let i=0;i<2;i++){
+  const paid=await s.call('/api/checkout/play/verify',{token,body:{token:'fixture-funding-purchase',credits:99999}});
+  assert.equal(paid.status,200,JSON.stringify(paid.data));assert.equal(paid.data.balance,30);
+ }
+ const second=generation();second.projectId='second-paid-project';second.request.copy.title='새로운 광고';
+ const paidAd=await finishGeneration(s,token,second);assert.equal(paidAd.data.job.state,'ready');assert.equal(paidAd.data.wallet.credits.available,20);
+ const cost=(await s.app.store.sharedGenerationBudget.snapshot()).spentMicros;assert.ok(cost>0);
+ const invite=await s.app.store.issueInvite(ownerId),ownerLogin=await s.call('/api/auth/login',{body:{invite:invite.invite}});
+ const overview=await s.call('/api/admin/overview',{token:ownerLogin.data.token});
+ assert.equal(overview.status,200,JSON.stringify(overview.data));assert.equal(overview.data.budget.shared,true);
+ assert.equal(overview.data.budget.spentMicros,cost);assert.equal(overview.data.budget.limitMicros,100000000);
+ assert.equal(overview.data.users.find(u=>u.id===user.id).generation.enabled,true);
+ await s.restart();const after=(await s.call('/api/status',{token})).data;
+ assert.equal(after.generation.enabled,true);assert.equal(after.wallet.credits.available,20);assert.equal(after.budget.spentMicros,cost);assert.equal(s.calls(),2);
+});
+
+test('shared member budget restores free credit on provider failure and preserves uncertain costs across restart',async t=>{
+ let calls=0,unknown=false;
+ const s=await setup(t,{accounts:{password:{enabled:true}},adapter:{generate:async()=>{calls++;if(unknown)throw Error('fixture lost response');throw new ProviderFailure('FIXTURE_REJECTED',{uncertain:false});}}});
+ await activateMemberFunding(s);
+ const {data:{token}}=await s.call('/api/auth/test/signup',{body:{email:'failed-funded@example.com',password:'Fixture-failed-1234'}});
+ let result=await finishGeneration(s,token);assert.equal(result.data.job.state,'failed');assert.equal(result.data.wallet.credits.available,10);
+ assert.equal((await s.app.store.sharedGenerationBudget.snapshot()).heldMicros,0);
+ unknown=true;const body=generation();body.request.copy.title='다른 요청';result=await finishGeneration(s,token,body);
+ assert.equal(result.data.job.state,'uncertain');assert.equal(result.data.wallet.credits.available,10);
+ await s.restart();assert.equal((await s.app.store.sharedGenerationBudget.snapshot()).heldMicros,500000);
+ const retry=await s.call('/api/generations',{token,body:{...body,creditQuote:(await s.call('/api/status',{token})).data.generation.creditQuote}});
+ assert.equal(retry.status,202);assert.equal(retry.data.reused,true);assert.equal(calls,2);
+});
+
+test('shared member withdrawal deletes signup eligibility while retaining cumulative supplier cost',async t=>{
+ const s=await setup(t,{accounts:{password:{enabled:true}}});await activateMemberFunding(s);
+ const {data:{token,user}}=await s.call('/api/auth/test/signup',{body:{email:'leaving-funded@example.com',password:'Fixture-leaving-1234'}});
+ const made=await finishGeneration(s,token);assert.equal(made.data.job.state,'ready');
+ const before=await s.app.store.sharedGenerationBudget.snapshot();
+ assert.equal((await s.call('/api/membership/withdraw',{token,body:{confirm:'delete-my-account'}})).status,200);
+ await s.app.store.membership.run();
+ assert.equal(await s.app.store.db.prepare('SELECT id FROM users WHERE id=?').get(user.id),undefined);
+ assert.equal(await s.app.store.db.prepare('SELECT user_id FROM welcome_ad_eligibility WHERE user_id=?').get(user.id),undefined);
+ const after=await s.app.store.sharedGenerationBudget.snapshot();assert.equal(after.spentMicros,before.spentMicros);assert.equal(after.heldMicros,before.heldMicros);
+ await s.restart();assert.equal((await s.app.store.sharedGenerationBudget.snapshot()).spentMicros,before.spentMicros);
+});
 
 test('new signup welcome ad is granted once across concurrent reads and cloud restart',async t=>{
  const s=await setup(t,{accounts:{password:{enabled:true}}});

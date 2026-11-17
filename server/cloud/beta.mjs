@@ -1,4 +1,5 @@
 import {Membership} from './membership.mjs';
+import {SharedGenerationBudget} from './shared-generation-budget.mjs';
 import {readExternalSupplierBudget} from '../external-supplier-budget.mjs';
 import {readGenerationHistory} from './generation-history.mjs';
 import {readAdminGenerationPage} from './admin-generation-page.mjs';
@@ -113,6 +114,8 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
   const guard=()=>instance?.assert();
   const accountsDb=await new PostgresDatabase(pool,'aiadcast_accounts',{guard}).initialize();
   const store=await new CloudBetaStore().initialize(accountsDb,{monthlyBudgetMicros:config.monthlyBudgetMicros});
+  const sharedBudget=await new SharedGenerationBudget(accountsDb).initialize(env.AIADCAST_MEMBER_GENERATION_BUDGET_OWNER_ID);
+  store.sharedGenerationBudget=sharedBudget;
   const storage=injectedStorage??await new SupabaseStorage({url:env.SUPABASE_URL,secretKey:env.SUPABASE_SECRET_KEY,accountsDb,fetchImpl:storageFetch}).initialize();store.storage=storage;
   const membership=new Membership(store,storage);await membership.initialize();store.membership=membership;
   const gate=providerGate(2),adapter=injectedAdapter??new OpenAIImageAdapter({apiKey:config.key,enableEdits:config.enabled});
@@ -124,6 +127,10 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
    instance?.assert();const db=await readinessMeasure('schema_setup',()=>new PostgresDatabase(pool,cloudSchema(user.id),{guard}).initialize());
    const s=new CloudGenerationService();s.storage=storage;s.cloudUser=user.id;s.membership=membership;
    await readinessMeasure('generation_initialize',()=>s.initialize({db,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:config.enabled,assistantEnabled:config.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter),adapter:guardedImageAdapter(adapter,()=>instance?.assert(),gate),assistantAdapter:options=>{instance?.assert();return gate(()=>assistCopy({...options,apiKey:config.key}));}}));
+   if(sharedBudget.active){
+    await sharedBudget.protectTenant(db.schema);
+    s.ledger.sharedBudget=period=>sharedBudget.view(user.id,period);
+   }
    // cloudSchema validates the UUID before embedding it as the fixed trigger argument.
    await db.exec(`CREATE OR REPLACE TRIGGER first_result_delivery BEFORE UPDATE OF status ON jobs
      FOR EACH ROW EXECUTE FUNCTION aiadcast_accounts.set_delivery_deadline('${user.id}')`);

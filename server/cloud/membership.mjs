@@ -217,6 +217,7 @@ export class Membership {
   await this.store.transaction(async()=>{
    // The beta accepts test orders only. Any future real billing integration must
    // archive legally required transaction fields separately before enabling sales.
+   await this.store.sharedGenerationBudget?.archive(id,receipt);
    if(await this.exists('aiadcast_accounts','dimension_analysis_calls'))await this.db.prepare('DELETE FROM dimension_analysis_calls WHERE actor_id=?').run(id);
    const owner=await this.db.prepare('SELECT role FROM users WHERE id=?').get(id);
    if(owner?.role==='admin')await this.db.prepare("INSERT INTO settings(key,value) VALUES('owner_withdrawn',1) ON CONFLICT(key) DO UPDATE SET value=1").run();
@@ -225,7 +226,7 @@ export class Membership {
     await this.db.prepare('DELETE FROM test_auth_attempts WHERE email_hash=?').run(createHash('sha256').update(identity.email).digest('hex'));
    }
    await this.db.prepare('DELETE FROM google_requests WHERE state_hash IN (SELECT state_hash FROM google_link_requests WHERE user_id=?) OR state_hash IN (SELECT state_hash FROM google_native_requests WHERE claims IS NOT NULL AND (claims::json->>\'email\'=? OR claims::json->>\'subject\' IN (SELECT subject FROM google_identities WHERE user_id=?)))').run(id,identity?.email??'',id);
-   for(const name of ['projects','google_link_requests','email_identities','google_identities','test_passwords','test_orders','invites','sessions'])await this.db.prepare('DELETE FROM '+name+' WHERE user_id=?').run(id);
+   for(const name of ['projects','google_link_requests','email_identities','google_identities','test_passwords','test_orders','invites','sessions','welcome_ad_eligibility'])await this.db.prepare('DELETE FROM '+name+' WHERE user_id=?').run(id);
    await this.db.prepare('DELETE FROM admin_grants WHERE user_id=? OR actor_id=?').run(id,id);
    await this.db.prepare('DELETE FROM admin_audit WHERE target_id=? OR actor_id=?').run(id,id);
    await this.db.prepare('DELETE FROM monthly_demo_support WHERE owner_id=? OR user_id=? OR period IN (SELECT period FROM monthly_budget_approvals WHERE user_id=?)').run(id,id,id);

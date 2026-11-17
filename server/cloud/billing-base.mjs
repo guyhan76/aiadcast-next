@@ -183,6 +183,8 @@ export class BillingLedger {
     }
     // USD micro-units (1 USD = 1,000,000); these are NEVER customer credits.
     async supplierBudget(period, monthlyLimit) {
+        if (this.sharedBudget)
+            return await this.sharedBudget(period);
         const policy = await this.db.prepare('SELECT * FROM supplier_budget_policy WHERE id=1').get();
         if (!policy)
             return null;
