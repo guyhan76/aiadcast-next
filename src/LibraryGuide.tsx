@@ -73,15 +73,16 @@ export function ProjectLibrary({items,error,onRemove,onNew,onOpen,onOpenServer,s
    {cloud.loading&&!cards.length&&<p role="status">{t('불러오는 중…','Loading…')}</p>}
    {filtered.length>0?<ul className="ad-cards">{filtered.slice(0,limit).map(card=>{
     const {id,project,delivery,reviewProject}=card,backup=card.backups[0];
+    const detailsProject=project??reviewProject;
     const title=card.name||t('이름 없는 광고','Untitled ad');
     const save=()=>void selection.saveItems([id]),disabled=selection.busy||selection.editing;
     const saveLabel=delivery?.reviewRequired?t('사용 확정 후 저장','Confirm and save'):t('원본 저장','Save original');
     return <li key={id} className="ad-card">
-     {project?<ProjectTile project={project} editing={selection.editing} selected={selection.selected.has(id)} busy={selection.busy} connected={showDownloads} onClick={()=>selection.editing?selection.toggle(id):onOpen(project)}/>:
+     {project&&(!delivery||hasSavedAcceptedAd(project))?<ProjectTile project={project} editing={selection.editing} selected={selection.selected.has(id)} busy={selection.busy} connected={showDownloads} onClick={()=>selection.editing?selection.toggle(id):onOpen(project)}/>:
       <div className="ad-card-heading">
        {delivery&&<DownloadPreview item={delivery} onSave={save} onDelete={()=>void selection.erase([id])} saveLabel={saveLabel}
         saveDisabled={disabled} deleteDisabled={disabled} feedback={selection.error||rows[id]||''}/>}
-       <div>{backup?<button className="legacy-open" type="button" disabled={disabled} onClick={()=>void openBackup(backup.id)}>{title}</button>:reviewProject?<button type="button" className="legacy-open" disabled={disabled} onClick={()=>onOpen(reviewProject)}>{title}<ArrowUpRight size={16}/></button>:<strong>{title}</strong>}
+       <div>{detailsProject?<button type="button" className="legacy-open" disabled={disabled} onClick={()=>onOpen(detailsProject)}>{title}<ArrowUpRight size={16}/></button>:backup?<button className="legacy-open" type="button" disabled={disabled} onClick={()=>void openBackup(backup.id)}>{title}</button>:<strong>{title}</strong>}
         <small>{t('서버 보관 기한','Server copy available until')} · <time dateTime={(delivery??backup)!.expiresAt}>{new Date((delivery??backup)!.expiresAt).toLocaleString(language==='ko'?'ko-KR':'en-US',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time></small>
        </div>
        {selection.editing&&<label className="delivery-check"><input type="checkbox" aria-label={title+' '+t('선택','select')} checked={selection.selected.has(id)} disabled={selection.busy} onChange={()=>selection.toggle(id)}/></label>}
