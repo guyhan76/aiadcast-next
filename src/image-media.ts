@@ -4,3 +4,5 @@ export const imageMediaType='image' as const;
 export function supportsImageMedia(value:unknown):boolean {
  return value===undefined||value===imageMediaType;
 }
+
+export const maximumGeneratedImageBytes=16_000_000;

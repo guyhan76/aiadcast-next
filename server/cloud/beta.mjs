@@ -93,10 +93,14 @@ export class CloudGenerationService extends GenerationService {
   await this.storage.put(this.cloudUser,asset.sha256+'.'+extension,asset.bytes,asset.mime,{immutable:true});
   await this.db.prepare('INSERT INTO generation_assets VALUES(?,?,?,?,?) ON CONFLICT(hash) DO NOTHING').run(asset.sha256,asset.mime,asset.width,asset.height,asset.bytes.length);
  }
- async asset(hash,{includeBytes=true}={}){
+ async asset(hash,{includeBytes=true,optional=false}={}){
   if(!hash)return null;const a=await this.db.prepare('SELECT * FROM generation_assets WHERE hash=?').get(hash);if(!a)return null;
   const extension=a.mime==='image/png'?'png':a.mime==='image/jpeg'?'jpeg':'webp';
-  const bytes=includeBytes?await this.storage.get(this.cloudUser,this.cloudUser+'/'+hash+'.'+extension):null;
+  let bytes;
+  if(includeBytes){
+   try{bytes=await this.storage.get(this.cloudUser,this.cloudUser+'/'+hash+'.'+extension);}
+   catch(error){if(optional&&error.code==='STORAGE_NOT_FOUND')return null;throw error;}
+  }
   return {id:a.hash,sha256:a.hash,width:a.width,height:a.height,...(bytes?{dataUrl:`data:${a.mime};base64,${bytes.toString('base64')}`}:{})};
  }
 }

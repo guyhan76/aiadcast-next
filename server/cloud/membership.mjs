@@ -30,8 +30,8 @@ export class Membership {
   return {plan:standard?'standard':'free',storage:'device',downloadWindowHours:24,limitBytes:0,usedBytes:0};
  }
  async route(user,method,path,body,serviceFor){
-  const preview=/^\/api\/membership\/downloads\/([A-Za-z0-9_-]{8,100})\/preview$/.exec(path);
-  if(preview&&method==='GET')return this.preview(user.id,preview[1]);
+  const file=/^\/api\/membership\/downloads\/([A-Za-z0-9_-]{8,100})\/(preview|original)$/.exec(path);
+  if(file&&method==='GET')return this.downloadFile(user.id,file[1],file[2]);
   if(path==='/api/membership/remove-downloads'&&method==='POST'){
    if(!Array.isArray(body?.ids)||!body.ids.length||body.ids.length>15||!body.ids.every(projectId))fail('INVALID_PROJECT',400);
    return this.removeDownloads(user.id,[...new Set(body.ids)],await serviceFor(user));
@@ -40,7 +40,7 @@ export class Membership {
   if(path==='/api/membership/downloads' && method==='GET'){
    const tenant=cloudSchema(user.id);
    if(!await this.exists(tenant,'generation_records'))return {downloads:[]};
-   // Read metadata only. The authenticated generation endpoint verifies each download.
+   // Read metadata only. Image bytes are fetched only when a member opens or saves a delivery.
    const rows=await this.db.prepare(`SELECT g.id,g.created_at AS created,
     g.request_json::json->>'productName' AS name,j.status,
     j.expires_at AS deadline,p.captured,COALESCE(p.unit,'legacy-ticket') AS unit,
@@ -78,18 +78,33 @@ export class Membership {
   }
   fail('NOT_FOUND',404);
  }
- async preview(owner,id){
-  const tenant=cloudSchema(owner);
-  if(!await this.exists(tenant,'generation_records'))fail('PREVIEW_UNAVAILABLE',404);
-  const schema='"'+tenant+'".';
-  const row=await this.db.prepare(`SELECT g.artifact_hash AS hash,a.mime FROM ${schema}generation_records g
-   JOIN ${schema}jobs j ON j.id=g.id JOIN ${schema}generation_assets a ON a.hash=g.artifact_hash
-   WHERE g.id=? AND j.status IN ('ready','accepted') AND g.error_code IS NULL
-   AND (CASE WHEN g.created_at<? THEN ? ELSE j.expires_at END)>extract(epoch FROM now())*1000`).get(id,this.cutover,this.cutover+30*86400000);
-  if(!row)fail('PREVIEW_UNAVAILABLE',404);
+ async downloadFile(owner,id,kind){
+  const tenant=cloudSchema(owner),schema='"'+tenant+'".';
+  const preview=kind==='preview',missing=preview?'PREVIEW_UNAVAILABLE':'ORIGINAL_MISSING';
+  if(!await this.exists(tenant,'generation_records'))fail(missing,404);
+  const row=await this.db.prepare(`SELECT g.project_id,g.artifact_hash AS hash,a.mime,a.width,a.height,
+   g.request_json::json->'dimensionDisplay' AS display,g.metadata_json::json->'dimensionReview' AS review,
+   (j.status='ready' AND coalesce(p.captured,0)=0 AND adm.job_id IS NULL) AS review_required,
+   (CASE WHEN g.created_at<? THEN ? ELSE j.expires_at END)<=extract(epoch FROM now())*1000 AS expired
+   FROM ${schema}generation_records g JOIN ${schema}jobs j ON j.id=g.id
+   LEFT JOIN ${schema}generation_assets a ON a.hash=g.artifact_hash
+   LEFT JOIN ${schema}job_policies p ON p.job_id=j.id LEFT JOIN ${schema}admin_test_jobs adm ON adm.job_id=j.id
+   WHERE g.id=? AND j.status IN ('ready','accepted') AND g.error_code IS NULL`).get(this.cutover,this.cutover+30*86400000,id);
+  if(!row||!row.hash||!/^[a-f0-9]{64}$/.test(row.hash))fail(missing,404);
+  if(row.expired)fail(preview?missing:'PROJECT_EXPIRED',preview?404:410);
+  const delivery={id,projectId:row.project_id,artifactId:row.hash,reviewRequired:row.review_required,
+   dimensionDisplay:row.display,dimensionReview:row.review};
   const ext={'image/png':'png','image/jpeg':'jpeg','image/webp':'webp'}[row.mime];
-  if(!ext||!/^[a-f0-9]{64}$/.test(row.hash))fail('PREVIEW_UNAVAILABLE',404);
-  const bytes=await this.storage.get(owner,owner+'/'+row.hash+'.'+ext);
+  // Only offer device recovery after the server has verified this owner's live delivery.
+  if(!ext){if(!preview&&!row.mime)return {...delivery,artifact:null};fail(missing,404);}
+  let bytes;
+  try{bytes=await this.storage.get(owner,owner+'/'+row.hash+'.'+ext);}
+  catch(error){
+   if(!preview&&error.code==='STORAGE_NOT_FOUND')return {...delivery,artifact:null};
+   throw error;
+  }
+  if(!preview)return {...delivery,artifact:{id:row.hash,sha256:row.hash,width:row.width,height:row.height,
+   dataUrl:'data:'+row.mime+';base64,'+bytes.toString('base64')}};
   const small=await sharp(bytes,{limitInputPixels:30000000}).resize({width:480,height:640,fit:'inside',withoutEnlargement:true}).webp({quality:78}).toBuffer();
   return {preview:'data:image/webp;base64,'+small.toString('base64')};
  }

@@ -83,7 +83,12 @@ export class SupabaseStorage {
   if(!path.startsWith(userId+'/'))fail('STORAGE_OWNER_MISMATCH',403);
   const record=await this.db.prepare('SELECT bytes FROM storage_objects WHERE path=? AND user_id=? AND expires_at>now()').get(path,userId);if(!record)fail('STORAGE_NOT_FOUND',404);
   if(this.cache.has(path))return Buffer.from(this.cache.get(path));
-  const res=await this.call('/storage/v1/object/authenticated/'+this.bucket+'/'+path);if(!res.ok)fail('SUPABASE_DOWNLOAD_FAILED');
+  const res=await this.call('/storage/v1/object/authenticated/'+this.bucket+'/'+path);
+  if(!res.ok){
+   const detail=res.status===400?await res.json().catch(()=>null):null;
+   if(res.status===404||res.status===400&&(detail?.statusCode==='404'||detail?.code==='NoSuchKey'))fail('STORAGE_NOT_FOUND',404);
+   fail('SUPABASE_DOWNLOAD_FAILED');
+  }
   if(Number(res.headers.get('content-length')??0)>40000000)fail('STORAGE_LIMIT',413);
   const parts=[];let size=0;for await(const chunk of res.body){size+=chunk.length;if(size>40000000)fail('STORAGE_LIMIT',413);parts.push(chunk);}const bytes=Buffer.concat(parts);
   if(bytes.length!==record.bytes)fail('STORAGE_CONTENT_MISMATCH');

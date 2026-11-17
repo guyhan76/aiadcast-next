@@ -18,6 +18,14 @@ export async function saveProject(p:Project,scope=storageNamespace(),signal?:Abo
   }else store.put(p);
  });}finally{database.close();}
 }
+export async function readDeviceProject(id:string,scope:string):Promise<Project|undefined>{
+ const database=await db(scope);
+ try{return await new Promise<Project|undefined>((resolve,reject)=>{
+  const read=database.transaction('projects').objectStore('projects').get(id);
+  read.onsuccess=()=>resolve(read.result);read.onerror=()=>reject(read.error);
+ });}finally{database.close();}
+}
+
 export async function projects(reconcileBatches=false){
  const database=await db();
  try{return await new Promise<Project[]>((resolve,reject)=>{
