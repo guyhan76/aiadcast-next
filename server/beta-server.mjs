@@ -16,7 +16,7 @@ import {GoogleAuth} from './google-auth.mjs';
 import {googleReturnPage,googleUiLanguage,googleReturnCsp} from './google-return-page.mjs';
 import {EmailAuth} from './email-auth.mjs';
 import {PasswordAuth} from './password-auth.mjs';
-import {playAccountId, verifyPlayPurchase} from './play-billing.mjs';
+import {playAccountId, playPolicyAccountId, verifyPlayPurchase} from './play-billing.mjs';
 import {TestCheckout} from './test-checkout.mjs';
 import {accountConfiguration} from './account-providers.mjs';
 import {demoSupport} from './demo-support.mjs';
@@ -120,7 +120,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
     throw new ApiFailure('NOT_FOUND',404);
    }
    if(url.pathname==='/api/checkout/play/account'&&req.method==='GET'){
-    send(res,200,{enabled:Boolean(accounts.play),accountId:playAccountId(user.id)},cors);return;
+    send(res,200,{enabled:Boolean(accounts.play),accountId:playAccountId(user.id),policyAccountId:playPolicyAccountId(user.id)},cors);return;
    }
    if(url.pathname==='/api/checkout/play/verify'&&req.method==='POST'){
     if(!accounts.play)throw new ApiFailure('PLAY_BILLING_UNAVAILABLE',503);

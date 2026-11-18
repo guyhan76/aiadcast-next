@@ -108,3 +108,6 @@ BEGIN
    ADD PRIMARY KEY(case_id,order_no);
  END IF;
 END $withdrawal_key$;
+
+ALTER TABLE commerce_orders ADD COLUMN IF NOT EXISTS refund_policy text;
+ALTER TABLE commerce_orders ADD COLUMN IF NOT EXISTS refund_notice_received_at timestamptz;

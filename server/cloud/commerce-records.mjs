@@ -1,3 +1,5 @@
+import {refundPolicyVersion} from '../../src/refund-policy.ts';
+import {refundDeadline} from './refund-window.mjs';
 import {ApiFailure} from '../generation-service.mjs';
 import {playOrderEvidence} from '../play-order.mjs';
 import {casePayout} from './case-payout.mjs';
@@ -7,7 +9,7 @@ const fail=(code,status)=>{throw new ApiFailure(code,status);};
 const base='/api/membership/records';
 const uuid=/^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/i;
 const selectOrders=`SELECT o.order_no,o.product,o.ads,o.purchased_at,o.erase_at,o.currency,o.paid_nanos::text AS paid,
- o.refunds,o.checked_at,o.restored,
+ o.refunds,o.checked_at,o.restored,o.refund_policy,o.refund_notice_received_at,
  (SELECT coalesce(jsonb_agg(jsonb_build_object('method',w.refund_method,'amount',w.amount_krw,'at',w.processed_at,
  'recorded',w.recorded_at,'reference',w.refund_reference) ORDER BY w.recorded_at),'[]'::jsonb) FROM commerce_withdrawals w
  WHERE w.order_no=o.order_no AND w.refund_method IS NOT NULL) AS recorded_refunds,
@@ -40,11 +42,13 @@ function summary(row) {
  const unused=row.paid!==null && !row.restored && knownOriginal!==null
   ?BigInt(row.paid)*BigInt(remaining)/BigInt(row.ads)-knownOriginal-bankRefunds:null;
  const fullyRefunded=row.refunds?.length>0 && row.paid!==null && refunded===BigInt(row.paid);
- return {...row,remaining:fullyRefunded?0:row.restored?null:remaining,refunded:refunded?.toString()??null,
+ const deadline=row.refund_policy===refundPolicyVersion&&row.refund_notice_received_at
+  ?refundDeadline(Math.max(new Date(row.purchased_at).getTime(),new Date(row.refund_notice_received_at).getTime())):null;
+ return {...row,refund_deadline:deadline,remaining:fullyRefunded?0:row.restored?null:remaining,refunded:refunded?.toString()??null,
   estimated:unused===null?null:String(unused>0n?unused:0n)};
 }
 export class CommerceRecords {
- constructor(db,provider){this.db=db;this.provider=provider;this.configurePayout();}
+ constructor(db,provider,now=Date.now){this.now=now;this.db=db;this.provider=provider;this.configurePayout();}
  configurePayout(key){this.payout=casePayout(key);}
  async cases(admin,userId,key,receiptOnly=false){
   const requester=admin?`,u.id AS member_id,u.label AS member_name,e.email AS member_email,
@@ -64,18 +68,23 @@ export class CommerceRecords {
   }
   return cases;
  }
- async refundBalance(accountId, before=null, onlyOrder=null){
+ async refundBalance(accountId, before=null, onlyOrder=null,reason='change'){
   const rows=await this.db.prepare(selectOrders+` JOIN commerce_order_links l USING(order_no)
    WHERE l.account_id=? AND o.erase_at>now() AND (?::timestamptz IS NULL OR o.purchased_at<=?::timestamptz)
     AND (?::text IS NULL OR o.order_no=?) ORDER BY o.purchased_at,o.order_no`).all(accountId,before,before,onlyOrder,onlyOrder);
-  const items=[];
+  const items=[],expired=[];
+  const requestedAt=before?new Date(before).getTime():this.now();
   for(const row of rows){
    const o=summary(row);
    if(o.remaining===0||o.estimated==='0')continue;
-   const amount=o.currency==='KRW'&&o.estimated!==null?Number(BigInt(o.estimated)/1000000000n):null;
+   if(reason==='change'&&o.refund_deadline&&requestedAt>Date.parse(o.refund_deadline)){
+    expired.push({orderNo:o.order_no,deadline:o.refund_deadline});continue;
+   }
+   const calendarNeedsReview=o.refund_policy===refundPolicyVersion&&o.refund_notice_received_at&&!o.refund_deadline;
+   const amount=!calendarNeedsReview&&o.currency==='KRW'&&o.estimated!==null?Number(BigInt(o.estimated)/1000000000n):null;
    if(amount!==0)items.push({orderNo:o.order_no,amountKrw:amount});
   }
-  return {items,paidOrders:rows.length,krw:items.some(i=>i.amountKrw===null)?null:items.reduce((sum,i)=>sum+i.amountKrw,0)};
+  return {items,paidOrders:rows.length,...(expired.length?{expired}:{}),...(reason==='exception'?{reason}:{}),krw:reason==='exception'||items.some(i=>i.amountKrw===null)?null:items.reduce((sum,i)=>sum+i.amountKrw,0)};
  }
  async boundOrder(orderNo,accountId){
   if(orderNo&&!await this.db.prepare(`SELECT 1 FROM commerce_orders o JOIN commerce_order_links l USING(order_no)
@@ -105,8 +114,8 @@ export class CommerceRecords {
    const prior=await this.db.prepare('SELECT account_id,order_no FROM commerce_order_links WHERE purchase_key=?').get(receipt.purchaseId);
    if(prior && (prior.account_id!==accountId||prior.order_no!==number))fail('PURCHASE_RECORD_CONFLICT',409);
    if(!prior){
-    await this.db.prepare(`INSERT INTO commerce_orders(order_no,product,ads,purchased_at,erase_at,restored)
-     VALUES(?,?,?,?::timestamptz,?::timestamptz+interval '5 years',?)`).run(number,receipt.product,receipt.credits/10,at,at,restored);
+    await this.db.prepare(`INSERT INTO commerce_orders(order_no,product,ads,purchased_at,erase_at,restored,refund_policy)
+     VALUES(?,?,?,?::timestamptz,?::timestamptz+interval '5 years',?,?)`).run(number,receipt.product,receipt.credits/10,at,at,restored,!restored&&receipt.refundPolicy===refundPolicyVersion?refundPolicyVersion:null);
     await this.db.prepare('INSERT INTO commerce_order_links VALUES(?,?,?)').run(number,receipt.purchaseId,accountId);
    }
    if(receipt.evidence)await this.saveEvidence(number,receipt.evidence);
@@ -151,8 +160,18 @@ export class CommerceRecords {
  async order(number){return summary(await this.db.prepare(selectOrders+' WHERE o.order_no=? AND o.erase_at>now()').get(number));}
  async route(user,method,path,body) {
   const admin=user.role==='admin';
+  if(method==='POST'&&path===base+'/receipt-seen'){
+   const number=body?.orderNo;
+   if(typeof number!=='string'||!number||number.length>160)fail('INVALID_REFERENCE',400);
+   const row=await this.db.prepare(`UPDATE commerce_orders o SET refund_notice_received_at=coalesce(o.refund_notice_received_at,now())
+    FROM commerce_order_links l WHERE l.order_no=o.order_no AND l.account_id=? AND o.order_no=? AND o.refund_policy=?
+    AND o.erase_at>now() RETURNING o.refund_notice_received_at,o.purchased_at`).get(user.id,number,refundPolicyVersion);
+   if(!row)fail('ORDER_NOT_FOUND',404);
+   return {deadline:refundDeadline(Math.max(new Date(row.purchased_at).getTime(),new Date(row.refund_notice_received_at).getTime()))};
+  }
   if(method==='POST' && path===base+'/cases'){
-   const {category,description,orderNo,requestId}=body??{};
+   const {category,description,orderNo,requestId,refundReason='change'}=body??{};
+   if(!['change','exception'].includes(refundReason)||category!=='refund'&&body?.refundReason!=null)fail('INVALID_CASE',400);
    if(!['refund','complaint','dispute'].includes(category)||typeof description!=='string'||!description.trim()||
       description.trim().length>800||!uuid.test(requestId??'')||(orderNo!=null && (typeof orderNo!=='string'||orderNo.length>160)))fail('INVALID_CASE',400);
    return this.db.transaction(async()=>{
@@ -163,10 +182,13 @@ export class CommerceRecords {
     const id='CS-'+requestId;
     const existing=await this.db.prepare(`SELECT c.*,l.account_id FROM protected_complaints c LEFT JOIN complaint_member_links l USING(case_id) WHERE case_id=?`).get(id);
     if(existing){
-     if(existing.account_id!==user.id || Boolean(existing.refund_quote)!==(body.balanceRefund===true) || existing.description!==description.trim() || existing.category!==category || (orderNo&&existing.order_no!==orderNo))fail('CASE_CONFLICT',409);
+     const reasonChanged=body.balanceRefund===true&&(existing.refund_quote?.reason??'change')!==refundReason;
+     if(reasonChanged || existing.account_id!==user.id || Boolean(existing.refund_quote)!==(body.balanceRefund===true) || existing.description!==description.trim() || existing.category!==category || (orderNo&&existing.order_no!==orderNo))fail('CASE_CONFLICT',409);
      return {caseId:existing.receipt_no};
     }
-    const quote=category==='refund'&&body.balanceRefund===true?await this.refundBalance(user.id):null;
+    const assessment=category==='refund'?await this.refundBalance(user.id,null,orderNo,refundReason):null;
+    if(assessment?.expired?.length&&!assessment.items.length)fail('REFUND_WINDOW_ENDED',409);
+    const quote=body.balanceRefund===true?assessment:null;
     if(quote&&(orderNo||bank||amount!==null))fail('INVALID_CASE',400);
     if(quote){
      const duplicate=await this.db.prepare(`SELECT c.receipt_no FROM protected_complaints c JOIN complaint_member_links l USING(case_id)

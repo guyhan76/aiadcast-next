@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {GenerationService} from '../server/generation-service.mjs';
 import {BetaStore} from '../server/beta-store.mjs';
 import {createBetaServer} from '../server/beta-server.mjs';
-import {verifyPlayPurchase,playAccountId,googlePlayProvider} from '../server/play-billing.mjs';
+import {verifyPlayPurchase,playAccountId,playPolicyAccountId,googlePlayProvider} from '../server/play-billing.mjs';
 
 const owner='fixture-play-member';
 const token='fixture-play-purchase';
@@ -64,7 +64,7 @@ test('authenticated checkout API gets SKU, account and quantity from Play',async
   const base='http://127.0.0.1:'+app.server.address().port+'/api/checkout/play/';
   const headers={origin,'Content-Type':'application/json','X-Aiadcast-Client':'local-studio',Authorization:'Bearer '+session.token};
   assert.equal((await fetch(base+'account')).status,401);
-  assert.deepEqual(await (await fetch(base+'account',{headers})).json(),{enabled:true,accountId:playAccountId(user.userId)});
+  assert.deepEqual(await (await fetch(base+'account',{headers})).json(),{enabled:true,accountId:playAccountId(user.userId),policyAccountId:playPolicyAccountId(user.userId)});
   for(let attempt=0;attempt<2;attempt++){
     const response=await fetch(base+'verify',{method:'POST',headers,body:JSON.stringify({token,credits:99999,product:'credits_180',userId:'another-account'})});
     assert.equal(response.status,200);
@@ -93,4 +93,17 @@ test('server adapter uses signed scoped authorization, fixed package and escaped
   assert.deepEqual(await adapter.lookup('fixture/a'),{kind:'receipt'});await adapter.consume('credits_30','fixture/a');
   const base='https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.selluplabs.aiadcast.next/purchases/';
   assert.deepEqual(calls.slice(1),[[base+'productsv2/tokens/fixture%2Fa','GET'],[base+'products/credits_30/tokens/fixture%2Fa:consume','POST']]);
+});
+
+test('only real Play receipts issued with the policy account marker carry a refund notice',async t=>{
+ for(const [accepted,isTest] of [[true,false],[false,false],[true,true]]){
+  const f=fixture(t);f.receipt.orderId='GPA.fixture';
+  f.provider.order=async()=>({orderId:'GPA.fixture',purchaseToken:token,state:'PROCESSED',lineItems:[{productId:'credits_100'}],
+   createTime:'2026-11-18T03:00:00Z',total:{currencyCode:'KRW',units:'9900'}});
+  if(accepted)f.receipt.obfuscatedExternalAccountId=playPolicyAccountId(owner);
+  if(isTest)f.receipt.testPurchaseContext={};
+  const result=await f.run();
+  assert.equal(result.policyReceipt?.orderNo,accepted&&!isTest?'GPA.fixture':undefined);
+  await assert.rejects(f.run('another-member'),/PLAY_ACCOUNT_MISMATCH/);
+ }
 });

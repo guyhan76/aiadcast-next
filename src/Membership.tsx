@@ -67,6 +67,7 @@ export function Withdrawal(){
   <p>{t('서버의 프로젝트, 첨부 원본, 생성 이미지와 영상이 삭제됩니다. 필요한 파일은 먼저 내려받으세요. 기기에 저장하거나 공유한 파일은 유지됩니다.','Server projects, originals, generated images and videos will be deleted. Download anything you want to keep. Device and shared copies remain.')}</p>
   <p>탈퇴하면 남은 광고 이용권은 재가입 계정으로 이전되지 않습니다. 결제 내역과 접수번호는 탈퇴 전에 저장해 주세요.</p>
   <label><input type="checkbox" checked={requestRefund} onChange={e=>setRequestRefund(e.target.checked)}/> 미사용 유료 광고의 환불 검토를 함께 요청합니다</label>
+  {requestRefund&&<p>단순 변심 신청 기한이 지난 구매는 제외됩니다. 결제 오류·생성 실패·법정 해지 등의 사유가 있으면 탈퇴 전 <a href="#credits">내 이용권의 고객 문의</a>에서 접수해 주세요.</p>}
   <a href="/account-deletion.html" target="_blank" rel="noreferrer">{t('삭제 범위와 보관 기간','Deletion and retention details')}</a>
   <div><button disabled={busy} onClick={()=>setConfirm(false)}>{t('취소','Cancel')}</button><button disabled={busy} onClick={()=>void withdraw()}>{t('모든 프로젝트 삭제 및 탈퇴','Delete all projects and my account')}</button></div></>}{error&&<p role="alert">{error}</p>}</div>;
 }

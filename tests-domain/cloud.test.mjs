@@ -1,3 +1,5 @@
+import {refundDeadline} from '../server/cloud/refund-window.mjs';
+import {refundPolicyVersion} from '../src/refund-policy.ts';
 import manifest from '../package.json' with {type:'json'};
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
@@ -1124,4 +1126,50 @@ test('balance refunds snapshot all real purchases and keep per-order settlements
  const later=(await api(member.token,'mine')).data.refundBalance;assert.equal(later.krw,9000);
  await records.recordSale({orderNo:'unknown',product:'credits_30',purchaseId:'unknown',credits:30},member.user.id,true);
  assert.equal((await api(member.token,'mine')).data.refundBalance.krw,null);
+});
+
+test('refund deadline uses the seventh Korean calendar day and extends weekends and holidays',()=>{
+ assert.equal(refundDeadline('2026-11-18T00:00:01Z'),'2026-11-25T14:59:59.999Z');
+ assert.equal(refundDeadline('2026-12-18T10:00:00Z'),'2026-12-28T14:59:59.999Z');
+ assert.equal(refundDeadline('2027-02-02T00:01:00Z'),'2027-02-10T14:59:59.999Z');
+ assert.equal(refundDeadline('2026-11-20T15:01:00Z'),'2026-11-30T14:59:59.999Z');
+ assert.equal(refundDeadline('2028-01-04T01:00:00Z'),null);
+});
+test('seven day refund window enforces each notified order while preserving earlier purchases and claims',async t=>{
+ const s=await setup(t),member=await s.member('Refund member'),other=await s.member('Other member');
+ const r=s.app.store.membership.records,db=s.app.store.db;
+ const at='2026-11-18T03:00:00Z',end='2026-11-25T14:59:59.999Z';
+ const sale=(id,policy,restored=false)=>r.recordSale({orderNo:id,purchaseId:id,product:'credits_30',credits:30,refundPolicy:policy,
+  evidence:{currency:'KRW',paid:'9900000000000',refunds:[],purchasedAt:at,lastEvent:at,fullyRefunded:false}},member.user.id,restored);
+ const api=(route,body,token=member.token)=>s.call('/api/membership/records/'+route,{token,...(body?{body}:{})});
+ const input={category:'refund',balanceRefund:true,description:'잔여분 환불',requestId:randomUUID()};
+ await sale('notified',refundPolicyVersion);
+ assert.equal((await api('receipt-seen',{orderNo:'notified'},other.token)).status,404);
+ assert.equal((await r.order('notified')).refund_deadline,null);
+ assert.equal((await api('receipt-seen',{orderNo:'notified'})).status,200);
+ const acknowledged=(await r.order('notified')).refund_notice_received_at;
+ await api('receipt-seen',{orderNo:'notified'});assert.equal(+new Date((await r.order('notified')).refund_notice_received_at),+new Date(acknowledged));
+ await db.prepare('UPDATE commerce_orders SET refund_notice_received_at=?::timestamptz WHERE order_no=?').run(at,'notified');
+ assert.equal((await r.order('notified')).refund_deadline,end);
+ r.now=()=>Date.parse(end);
+ const initial=await api('cases',input);assert.equal(initial.status,200);
+ r.now=()=>Date.parse(end)+1;
+ assert.equal((await api('cases',input)).data.caseId,initial.data.caseId);
+ for(const args of [{balanceRefund:true},{balanceRefund:false,orderNo:'notified'},{}]){
+  const blocked=await api('cases',{...input,requestId:randomUUID(),...args});assert.equal(blocked.data.error.code,'REFUND_WINDOW_ENDED');
+ }
+ const ex=await api('cases',{...input,requestId:randomUUID(),description:'생성 실패',refundReason:'exception'});
+ assert.equal(ex.status,200);
+ const snapshot=(await api('mine')).data;
+ assert.equal(snapshot.cases.find(c=>c.case_id===ex.data.caseId).refund_quote.krw,null);
+ assert.equal(snapshot.cases.find(c=>c.case_id===initial.data.caseId).refund_quote.krw,9900);
+ assert.equal(snapshot.orders[0].remaining,3);
+ await sale('old');await sale('old',refundPolicyVersion);await sale('restored',refundPolicyVersion,true);
+ assert.equal((await api('receipt-seen',{orderNo:'old'})).status,404);
+ assert.equal((await r.order('restored')).refund_policy,null);
+ const q=(await api('mine')).data.refundBalance;
+ assert.deepEqual(q.expired,[{orderNo:'notified',deadline:end}]);assert.deepEqual(q.items.map(i=>i.orderNo).sort(),['old','restored']);
+ const mixed=await api('cases',{...input,requestId:randomUUID()});assert.equal(mixed.status,200);
+ const withdrawal=await s.call('/api/membership/withdraw',{token:member.token,body:{confirm:'delete-my-account',requestRefund:true}});
+ assert.equal(withdrawal.status,200);assert.ok(withdrawal.data.cases.includes(initial.data.caseId));
 });
