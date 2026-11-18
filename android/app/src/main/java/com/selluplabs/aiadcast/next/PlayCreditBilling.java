@@ -14,7 +14,7 @@ final class PlayCreditBilling implements PurchasesUpdatedListener {
     private final BillingClient client;
     private final Map<String, ProductDetails> products = new HashMap<>();
     private final Map<String, ProductDetails.OneTimePurchaseOfferDetails> offers = new HashMap<>();
-    private final List<Runnable> waiting = new ArrayList<>();
+    private final List<Consumer<BillingResult>> waiting = new ArrayList<>();
     private boolean connecting, closed;
 
     PlayCreditBilling(Activity activity, Consumer<JSONObject> sink) {
@@ -39,21 +39,25 @@ final class PlayCreditBilling implements PurchasesUpdatedListener {
         emit(json("type", result.getResponseCode() == BillingClient.BillingResponseCode.USER_CANCELED ? "cancelled" : "error"));
     }
     private void ready(Runnable action) {
+        ready(action, this::report);
+    }
+    private void ready(Runnable action, Consumer<BillingResult> onFailure) {
         if (closed) return;
         if (client.isReady()) { action.run(); return; }
-        waiting.add(action);
+        waiting.add(result -> {
+            if (result.getResponseCode() == BillingClient.BillingResponseCode.OK) action.run();
+            else onFailure.accept(result);
+        });
         if (connecting) return;
         connecting = true;
         client.startConnection(new BillingClientStateListener() {
             public void onBillingSetupFinished(BillingResult result) {
                 activity.runOnUiThread(() -> {
                     connecting = false;
-                    List<Runnable> actions = new ArrayList<>(waiting);
+                    List<Consumer<BillingResult>> actions = new ArrayList<>(waiting);
                     waiting.clear();
                     if (closed) return;
-                    if (result.getResponseCode() == BillingClient.BillingResponseCode.OK) {
-                        for (Runnable next : actions) next.run();
-                    } else report(result);
+                    for (Consumer<BillingResult> next : actions) next.accept(result);
                 });
             }
             public void onBillingServiceDisconnected() { /* Reconnect at the next request. */ }
@@ -62,7 +66,7 @@ final class PlayCreditBilling implements PurchasesUpdatedListener {
     void handle(JSONObject request) {
         switch (request.optString("type")) {
             case "play-catalog": ready(this::catalog); break;
-            case "play-restore": restore(); break;
+            case "play-restore": restore(request.optString("requestId")); break;
             case "play-buy":
                 String id = request.optString("product"), account = request.optString("account");
                 if (PlayCreditCatalog.ON_SALE.contains(id) && account.matches("[0-9a-f]{64}")) ready(() -> buy(id, account));
@@ -109,8 +113,18 @@ final class PlayCreditBilling implements PurchasesUpdatedListener {
         }
     }
     void restore() {
+        restore("");
+    }
+    private void restore(String requestId) {
         ready(() -> client.queryPurchasesAsync(QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.INAPP).build(),
-            (result, purchases) -> { if (result.getResponseCode() == BillingClient.BillingResponseCode.OK) deliver(purchases); }));
+            (result, purchases) -> {
+                boolean ok = result.getResponseCode() == BillingClient.BillingResponseCode.OK;
+                if (ok) deliver(purchases);
+                finishRestore(requestId, ok);
+            }), failure -> finishRestore(requestId, false));
+    }
+    private void finishRestore(String requestId, boolean ok) {
+        if (!requestId.isEmpty()) emit(json("type", "restore-result", "requestId", requestId, "ok", ok));
     }
     @Override public void onPurchasesUpdated(BillingResult result, List<Purchase> purchases) {
         if (result.getResponseCode() != BillingClient.BillingResponseCode.OK) { report(result); return; }
