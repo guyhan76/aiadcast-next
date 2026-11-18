@@ -10,11 +10,11 @@ import {pricingCatalog} from './pricing';
 export const playPackage = 'com.selluplabs.aiadcast.next';
 type Account = {enabled:boolean;accountId:string;policyAccountId?:string};
 type Product = {id:string;price:string};
-type Status = 'pending'|'paid'|'verifying'|'retry'|'cancelled'|'error'|'ineligible';
+type Status = 'pending'|'paid'|'verifying'|'retry'|'cancelled'|'error'|'ineligible'|'checking'|'empty'|'lookupFailed';
 type PurchaseTerms={orderNo:string;ads:number;purchasedAt:string;currency:string;paid:string};
 type Receipt = {state:'paid';grantedCredits:number;balance:number;policyReceipt?:PurchaseTerms}|{state:'pending'};
 type NativeEvent = {type:'catalog';products:Product[]}|{type:'purchase';token:string;account:string}|
-  {type:'pending';account:string}|{type:'cancelled'|'error'};
+  {type:'pending';account:string}|{type:'cancelled'|'error'}|{type:'restore-result';requestId:string;ok:boolean};
 function native(type:string, params:Record<string,string>={}) {
   const bridge=(window as Window & {AiadcastNative?:{postMessage:(s:string)=>void}}).AiadcastNative;
   if(!bridge) return false;
@@ -33,20 +33,24 @@ export function PlayPurchaseRecovery(){
     let active=true,account:Account|undefined,owner:string|undefined,epoch=0;
     let running=new Set<string>();
     const interrupted=new Set<string>();
-    async function recover(){
+    function restore(requestId?:string){
+      if(requestId && running.size)notify('verifying');
+      // Play may already have consumed a purchase whose verification response was lost.
+      for(const purchaseToken of interrupted)void verify(purchaseToken);
+      native('play-restore',requestId?{requestId}:{});
+    }
+    async function recover(event?:Event){
       const token=betaSession()?.token;
+      const requestId=event?.type==='aiadcast-play-recover'?(event as CustomEvent<{requestId?:string}>).detail?.requestId:undefined;
+      if(requestId && token && token===owner && account?.enabled){restore(requestId);return;}
       const request=++epoch;
       if(token!==owner){owner=token;account=undefined;running=new Set();interrupted.clear();}
       if(!token)return;
       try {
         const info=await apiRequest<Account>('/api/checkout/play/account');
-        if(!active||request!==epoch||owner!==betaSession()?.token)return;
-        account=info;
-        if(info.enabled){
-          // Play may already have consumed a purchase whose verification response was lost.
-          for(const purchaseToken of interrupted)void verify(purchaseToken);
-          native('play-restore');
-        }
+        if(!active||owner!==token||token!==betaSession()?.token)return;
+        if(request===epoch||!account&&requestId)account=info;
+        if((request===epoch||requestId)&&account?.enabled)restore(requestId);
       } catch { if(active && request===epoch) notify('retry'); }
     }
     async function verify(token:string){
@@ -98,27 +102,46 @@ export function PlayPurchaseRecovery(){
 
 export function PlayCheckoutPage({preserve,returnPage}:{preserve:()=>Promise<void>;returnPage:string}){
   const {t}=useUiLanguage(),session=betaSession();
-  const [account,setAccount]=useState<Account>(),[products,setProducts]=useState<Product[]>(),[attempt,retry]=useState(0);
+  const [account,setAccount]=useState<Account>(),[products,setProducts]=useState<Product[]>();
+  const [check,setCheck]=useState<{owner:string;id:string}>();
+  const requestId=check && check.owner===session?.token?check.id:undefined;
   const [agreed,setAgreed]=useState(false),[policyReceipt,setPolicyReceipt]=useState<PurchaseTerms>();
   const [choice,choose]=useState('credits_100'),[busy,setBusy]=useState(false),[status,setStatus]=useState<Status>(),[balance,setBalance]=useState<number>();
   useEffect(()=>{
-    let active=true;
-    setAgreed(false);setPolicyReceipt(undefined);setAccount(undefined);setProducts(undefined);setStatus(undefined);setBalance(undefined);setBusy(false);
+    let active=true,awaiting=Boolean(requestId);
+    const hasCatalog=Boolean(requestId&&account?.enabled&&products?.length);
+    if(!hasCatalog){setAccount(undefined);setProducts(undefined);}
+    setAgreed(false);setPolicyReceipt(undefined);setStatus(awaiting?'checking':undefined);setBalance(undefined);setBusy(awaiting);
     if(!session)return;
-    function receive(event:Event){
-      const detail=(event as CustomEvent<NativeEvent>).detail;
-      if(detail?.type==='catalog'){const available=detail.products.filter(p=>pricingCatalog.packs.some(pack=>'credits_'+pack.credits===p.id));setProducts(available);choose(old=>available.some(p=>p.id===old)?old:available[0]?.id??'');}
-      if(detail?.type==='cancelled'||detail?.type==='error'){setBusy(false);setStatus(detail.type);}
+    const current=()=>active && session.token===betaSession()?.token;
+    const timer=requestId?window.setTimeout(()=>finishCheck('lookupFailed'),20000):undefined;
+    function stopWaiting(){awaiting=false;window.clearTimeout(timer);}
+    function finishCheck(outcome:Status|undefined){
+      if(!awaiting||!current())return;
+      stopWaiting();setBusy(false);setStatus(outcome);
     }
-    function update(event:Event){const v=(event as CustomEvent<{status:Status;balance?:number;policyReceipt?:PurchaseTerms}>).detail;setStatus(v.status);setPolicyReceipt(v.policyReceipt);setBusy(v.status==='verifying');if(v.balance!==undefined)setBalance(v.balance);}
+    function receive(event:Event){
+      if(!current())return;
+      const detail=(event as CustomEvent<NativeEvent>).detail;
+      if(detail?.type==='restore-result'&&detail.requestId===requestId)finishCheck(detail.ok?'empty':'lookupFailed');
+      if(detail?.type==='catalog'){const available=detail.products.filter(p=>pricingCatalog.packs.some(pack=>'credits_'+pack.credits===p.id));setProducts(available);choose(old=>available.some(p=>p.id===old)?old:available[0]?.id??'');}
+      if(!awaiting&&(detail?.type==='cancelled'||detail?.type==='error')){setBusy(false);setStatus(detail.type);}
+    }
+    function update(event:Event){
+      if(!current())return;
+      const v=(event as CustomEvent<{status:Status;balance?:number;policyReceipt?:PurchaseTerms}>).detail;
+      stopWaiting();setStatus(v.status);setPolicyReceipt(v.policyReceipt);setBusy(v.status==='verifying');if(v.balance!==undefined)setBalance(v.balance);
+    }
     window.addEventListener('aiadcast-play',receive);window.addEventListener('aiadcast-play-status',update);
     void apiRequest<Account>('/api/checkout/play/account').then(info=>{
-      if(!active)return;
+      if(!current())return;
       setAccount(info);
-      if(info.enabled){if(!native('play-catalog'))setStatus('error');window.dispatchEvent(new Event('aiadcast-play-recover'));}
-    }).catch(()=>{if(active)setStatus('error');});
-    return ()=>{active=false;window.removeEventListener('aiadcast-play',receive);window.removeEventListener('aiadcast-play-status',update);};
-  },[session?.token,attempt]);
+      if(!info.enabled){setProducts(undefined);finishCheck(undefined);return;}
+      if(!hasCatalog&&!native('play-catalog')){if(awaiting)finishCheck('lookupFailed');else setStatus('error');return;}
+      window.dispatchEvent(new CustomEvent('aiadcast-play-recover',{detail:{requestId}}));
+    }).catch(()=>{if(current()){if(awaiting)finishCheck('lookupFailed');else if(!requestId)setStatus('error');}});
+    return ()=>{active=false;stopWaiting();window.removeEventListener('aiadcast-play',receive);window.removeEventListener('aiadcast-play-status',update);};
+  },[session?.token,requestId]);
   async function buy(){
     if(!session){await preserve();rememberLoginDestination('checkout');location.hash='login';return;}
     if(busy||!agreed||!account?.policyAccountId||!account.enabled||!products?.some(p=>p.id===choice))return;
@@ -127,6 +150,9 @@ export function PlayCheckoutPage({preserve,returnPage}:{preserve:()=>Promise<voi
   }
   const product=products?.find(p=>p.id===choice);
   const messages:Record<Status,string>={
+    checking:t('Google Play 구매 내역을 확인하고 있습니다.','Checking your Google Play purchases.'),
+    empty:t('새로 복원할 구매가 없습니다.','There are no new purchases to restore.'),
+    lookupFailed:t('구매 내역을 확인하지 못했습니다. 잠시 후 다시 확인해 주세요.','Could not check your purchases. Please try again.'),
     pending:t('결제 대기 중입니다. 승인 후 크레딧이 지급됩니다.','Payment is pending. Credits are added after approval.'),
     paid:t('구매를 확인했습니다.','Purchase confirmed.'),verifying:t('Google Play 구매를 확인하고 있습니다.','Verifying your Google Play purchase.'),
     retry:t('구매 확인이 지연되고 있습니다. 결제 내역을 다시 확인해 주세요.','Verification is delayed. Check your purchases again.'),
@@ -153,6 +179,7 @@ export function PlayCheckoutPage({preserve,returnPage}:{preserve:()=>Promise<voi
     {(!session||account?.enabled)&&<button className="primary-action" disabled={Boolean(session)&&(!product||!agreed||!account?.policyAccountId||busy||status==='retry')} onClick={()=>void buy()}>
       {!session?t('로그인하고 계속','Sign in to continue'):product?product.price+' · '+t('Google Play 결제','Pay with Google Play'):t('Google Play 결제','Pay with Google Play')}</button>}
     {status&&<p role="status">{messages[status]} {status==='paid'&&balance!==undefined&&t('잔액 '+balance+' 크레딧 · 광고 '+Math.floor(balance/10)+'장','Balance: '+balance+' credits')}</p>}
-    {session&&<button className="guest-link" disabled={busy} onClick={()=>retry(n=>n+1)}>{t('구매 내역 다시 확인','Check purchases again')}</button>}
+    {(status==='empty'||status==='lookupFailed')&&<a className="guest-link" href="#credits">{t('내 이용권 보기','View my credits')}</a>}
+    {session&&<button className="guest-link" disabled={busy} onClick={()=>setCheck({owner:session.token,id:crypto.randomUUID()})}>{t('구매 내역 다시 확인','Check purchases again')}</button>}
   </section>;
 }

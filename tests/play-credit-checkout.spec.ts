@@ -111,6 +111,7 @@ async function interruptedCheckout(page: Page) {
         if (request.type === 'play-restore') {
           const ui = document.documentElement.dataset;
           ui.restores = String(Number(ui.restores || 0) + 1);
+          if (request.requestId) ui.restoreRequest = request.requestId;
         }
         if (request.type === 'play-buy') {
           const ui = document.documentElement.dataset;
@@ -185,4 +186,66 @@ test('a refused receipt is not replayed on reconnect', async ({page}) => {
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await expect.poll(() => page.locator('html').getAttribute('data-restores')).not.toBe(before);
   expect(requests).toBe(1);
+});
+
+async function manualRestore(page: Page) {
+  const button = page.getByRole('button', {name: '구매 내역 다시 확인'});
+  const root = page.locator('html');
+  const previous = await root.getAttribute('data-restore-request');
+  await button.click();
+  await expect(root).toHaveAttribute('data-restore-request', /.+/);
+  await expect.poll(() => root.getAttribute('data-restore-request')).not.toBe(previous);
+  await expect(button).toBeDisabled();
+  return (await root.getAttribute('data-restore-request'))!;
+}
+
+async function restoreReply(page: Page, requestId: string, ok: boolean) {
+  await page.evaluate(detail => window.dispatchEvent(new CustomEvent('aiadcast-play', {detail})),
+    {type: 'restore-result', requestId, ok});
+}
+
+test('manual restore distinguishes a failed lookup from an empty account and ignores late replies', async ({page}) => {
+  await interruptedCheckout(page);
+  await page.goto('/#checkout');
+  await expect(page.locator('html')).toHaveAttribute('data-restores', /[1-9]/);
+  const status = page.locator('.checkout-page [role=status]');
+  await expect(status).toHaveCount(0);
+  const first = await manualRestore(page);
+  await restoreReply(page, first, false);
+  await expect(status).toContainText('구매 내역을 확인하지 못했습니다');
+  const second = await manualRestore(page);
+  await restoreReply(page, first, true);
+  await expect(status).toContainText('구매 내역을 확인하고 있습니다');
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('aiadcast-play', {
+    detail: {type: 'pending', account: 'another-account'}
+  })));
+  await restoreReply(page, second, true);
+  await expect(status).toHaveText('새로 복원할 구매가 없습니다.');
+  await expect(page.getByRole('link', {name: '내 이용권 보기'})).toHaveAttribute('href', '#credits');
+  await expect(page.locator('html')).not.toHaveAttribute('data-buys', /.+/);
+});
+
+test('a completed restore lookup preserves the matching purchase status', async ({page}) => {
+  await interruptedCheckout(page);
+  await page.goto('/#checkout');
+  const requestId = await manualRestore(page);
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('aiadcast-play', {
+    detail: {type: 'pending', account: 'd'.repeat(64)}
+  })));
+  await restoreReply(page, requestId, true);
+  await expect(page.locator('.checkout-page [role=status]')).toContainText('결제 대기 중');
+});
+
+test('a silent native restore releases the retry button without claiming an empty account', async ({page}) => {
+  await interruptedCheckout(page);
+  await page.goto('/#checkout');
+  await expect(page.locator('html')).toHaveAttribute('data-restores', /[1-9]/);
+  await page.clock.install();
+  const requestId = await manualRestore(page);
+  await page.clock.fastForward(21000);
+  const status = page.locator('.checkout-page [role=status]');
+  await expect(status).toContainText('구매 내역을 확인하지 못했습니다');
+  await expect(page.getByRole('button', {name: '구매 내역 다시 확인'})).toBeEnabled();
+  await restoreReply(page, requestId, true);
+  await expect(status).toContainText('구매 내역을 확인하지 못했습니다');
 });
