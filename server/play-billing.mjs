@@ -1,3 +1,4 @@
+import {refundPolicyVersion} from '../src/refund-policy.ts';
 import {createHash, createPrivateKey, sign} from 'node:crypto';
 import {playOrderEvidence} from './play-order.mjs';
 import {readFileSync} from 'node:fs';
@@ -11,6 +12,7 @@ const digest = value => createHash('sha256').update(value).digest('hex');
 const unavailable = () => new ApiFailure('PLAY_VERIFICATION_UNAVAILABLE', 503);
 export const playAccountId = id => digest(packageName + '/' + id);
 
+export const playPolicyAccountId=id=>digest(packageName+'/'+id+'/'+refundPolicyVersion);
 export function googlePlayProvider(env, fetchImpl = fetch, now = Date.now) {
   if (env.AIADCAST_PLAY_BILLING_ENABLED !== 'true') return undefined;
   const credentials = JSON.parse(readFileSync(env.AIADCAST_PLAY_SERVICE_ACCOUNT_FILE, 'utf8'));
@@ -60,7 +62,8 @@ export async function verifyPlayPurchase(provider, userId, token, service) {
   if (typeof token !== 'string' || !token.length || token.length > 4096 || /[\s\x00-\x1f]/.test(token))
     throw new ApiFailure('INVALID_PURCHASE_TOKEN',400);
   const purchase = await provider.lookup(token);
-  if (purchase?.obfuscatedExternalAccountId !== playAccountId(userId))
+  const acceptedPolicy=purchase?.obfuscatedExternalAccountId===playPolicyAccountId(userId);
+  if (!acceptedPolicy && purchase?.obfuscatedExternalAccountId !== playAccountId(userId))
     throw new ApiFailure('PLAY_ACCOUNT_MISMATCH',403);
   const state = purchase.purchaseStateContext?.purchaseState;
   if (state === 'PENDING') return {state:'pending'};
@@ -78,6 +81,7 @@ export async function verifyPlayPurchase(provider, userId, token, service) {
   receipt.livePlayPurchase=!purchase.testPurchaseContext;
   if(receipt.livePlayPurchase){
     receipt.product=item.productId;
+    if(acceptedPolicy)receipt.refundPolicy=refundPolicyVersion;
     receipt.orderNo=purchase.orderId;
     receipt.purchasedAt=purchase.purchaseCompletionTime;
     if(provider.order){
@@ -97,7 +101,7 @@ export async function verifyPlayPurchase(provider, userId, token, service) {
       // A concurrent consumer or a lost success response can leave Play already settled.
       const latest = await provider.lookup(token);
       const settled = latest?.productLineItem?.[0];
-      if (latest?.obfuscatedExternalAccountId !== playAccountId(userId) ||
+      if (latest?.obfuscatedExternalAccountId !== purchase.obfuscatedExternalAccountId ||
           latest?.purchaseStateContext?.purchaseState !== 'PURCHASED' ||
           settled?.productId !== item.productId ||
           settled?.productOfferDetails?.consumptionState !== 'CONSUMPTION_STATE_CONSUMED') throw error;
@@ -106,5 +110,9 @@ export async function verifyPlayPurchase(provider, userId, token, service) {
     throw new ApiFailure('PLAY_PURCHASE_NOT_ELIGIBLE',409);
   }
   // For an already-consumed token a pre-existing local receipt is mandatory.
-  return {state:'paid',...await service.verifiedPurchaseReceipt(receipt)};
+  return {state:'paid',...await service.verifiedPurchaseReceipt(receipt),
+    ...(receipt.refundPolicy&&receipt.orderNo&&receipt.evidence?{policyReceipt:{
+      orderNo:receipt.orderNo,ads:receipt.credits/10,purchasedAt:receipt.evidence.purchasedAt,
+      currency:receipt.evidence.currency,paid:receipt.evidence.paid
+    }}:{})};
 }

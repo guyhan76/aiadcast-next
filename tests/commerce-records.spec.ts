@@ -102,3 +102,19 @@ test('member requests the entire paid balance without typing an amount, order or
  await expect(panel.getByLabel('환불 방법')).toHaveCount(0);await expect(panel.getByLabel('은행명')).toHaveCount(0);
  await panel.getByRole('button',{name:'환불 검토 요청하기'}).click();await expect(panel.locator('.case-confirmation strong')).toHaveText('20261118-0004');
 });
+
+test('expired ordinary refund keeps credits and allows a documented exception',async({page})=>{
+ await protectedScreen(page,mockSession('expired-refund-member'));
+ await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
+ const refundBalance={paidOrders:1,items:[],krw:0,expired:[{orderNo:'paid',deadline:'2026-11-25T14:59:59.999Z'}]};
+ await page.route('**/api/membership/records/mine',r=>r.fulfill({json:{orders:[],cases:[],refundBalance}}));
+ await page.route('**/api/membership/records/cases',r=>{
+  expect(r.request().postDataJSON()).toMatchObject({refundReason:'exception',description:'결제가 두 번 되었습니다.'});
+  return r.fulfill({json:{caseId:'20261118-0007'}});
+ });
+ await page.goto('/#credits');const panel=page.locator('details.commerce-records');await panel.locator('summary').first().click();
+ await panel.getByLabel('유형').selectOption('refund');const submit=panel.getByRole('button',{name:'환불 검토 요청하기'});
+ await expect(submit).toBeDisabled();await expect(panel.getByText(/남은 이용권은 계속 사용할 수 있습니다/)).toBeVisible();
+ await panel.getByLabel('환불 사유').selectOption('exception');await panel.getByLabel('접수 내용').fill('결제가 두 번 되었습니다.');
+ await submit.click();await expect(panel.locator('.case-confirmation strong')).toHaveText('20261118-0007');
+});

@@ -1,3 +1,4 @@
+import {PurchaseRefundReceipt,RefundNotice} from './RefundNotice';
 import {useEffect,useState} from 'react';
 import {useNativeVersion} from './app-version';
 import {apiRequest} from './generation-client';
@@ -7,10 +8,11 @@ import {useUiLanguage} from './ui-language';
 import {pricingCatalog} from './pricing';
 
 export const playPackage = 'com.selluplabs.aiadcast.next';
-type Account = {enabled:boolean;accountId:string};
+type Account = {enabled:boolean;accountId:string;policyAccountId?:string};
 type Product = {id:string;price:string};
 type Status = 'pending'|'paid'|'verifying'|'retry'|'cancelled'|'error';
-type Receipt = {state:'paid';grantedCredits:number;balance:number}|{state:'pending'};
+type PurchaseTerms={orderNo:string;ads:number;purchasedAt:string;currency:string;paid:string};
+type Receipt = {state:'paid';grantedCredits:number;balance:number;policyReceipt?:PurchaseTerms}|{state:'pending'};
 type NativeEvent = {type:'catalog';products:Product[]}|{type:'purchase';token:string;account:string}|
   {type:'pending';account:string}|{type:'cancelled'|'error'};
 function native(type:string, params:Record<string,string>={}) {
@@ -19,8 +21,8 @@ function native(type:string, params:Record<string,string>={}) {
   bridge.postMessage(JSON.stringify({type,...params}));
   return true;
 }
-function notify(status:Status, balance?:number) {
-  window.dispatchEvent(new CustomEvent('aiadcast-play-status',{detail:{status,balance}}));
+function notify(status:Status, balance?:number,policyReceipt?:PurchaseTerms) {
+  window.dispatchEvent(new CustomEvent('aiadcast-play-status',{detail:{status,balance,policyReceipt}}));
 }
 
 // Restore completed purchases on sign-in and startup, including purchases completed while the app was closed.
@@ -45,14 +47,15 @@ export function PlayPurchaseRecovery(){
     async function receive(event:Event){
       const detail=(event as CustomEvent<NativeEvent>).detail;
       if(!detail || !account?.enabled || owner!==betaSession()?.token) return;
-      if(detail.type==='pending' && detail.account===account.accountId){notify('pending');return;}
-      if(detail.type!=='purchase'||detail.account!==account.accountId||running.has(detail.token))return;
+      const matches='account' in detail&&typeof detail.account==='string'&&[account.accountId,account.policyAccountId].includes(detail.account);
+      if(detail.type==='pending' && matches){notify('pending');return;}
+      if(detail.type!=='purchase'||!matches||running.has(detail.token))return;
       const token=detail.token, session=owner;
       running.add(token);
       try {
         notify('verifying');
         const receipt=await apiRequest<Receipt>('/api/checkout/play/verify',{token});
-        if(active && session===betaSession()?.token)notify(receipt.state,receipt.state==='paid'?receipt.balance:undefined);
+        if(active && session===betaSession()?.token)notify(receipt.state,receipt.state==='paid'?receipt.balance:undefined,receipt.state==='paid'?receipt.policyReceipt:undefined);
       } catch { if(active && session===betaSession()?.token)notify('retry'); }
       finally{running.delete(token);}
     }
@@ -71,17 +74,18 @@ export function PlayPurchaseRecovery(){
 export function PlayCheckoutPage({preserve,returnPage}:{preserve:()=>Promise<void>;returnPage:string}){
   const {t}=useUiLanguage(),session=betaSession();
   const [account,setAccount]=useState<Account>(),[products,setProducts]=useState<Product[]>(),[attempt,retry]=useState(0);
+  const [agreed,setAgreed]=useState(false),[policyReceipt,setPolicyReceipt]=useState<PurchaseTerms>();
   const [choice,choose]=useState('credits_100'),[busy,setBusy]=useState(false),[status,setStatus]=useState<Status>(),[balance,setBalance]=useState<number>();
   useEffect(()=>{
     let active=true;
-    setAccount(undefined);setProducts(undefined);setStatus(undefined);setBalance(undefined);setBusy(false);
+    setAgreed(false);setPolicyReceipt(undefined);setAccount(undefined);setProducts(undefined);setStatus(undefined);setBalance(undefined);setBusy(false);
     if(!session)return;
     function receive(event:Event){
       const detail=(event as CustomEvent<NativeEvent>).detail;
       if(detail?.type==='catalog'){const available=detail.products.filter(p=>pricingCatalog.packs.some(pack=>'credits_'+pack.credits===p.id));setProducts(available);choose(old=>available.some(p=>p.id===old)?old:available[0]?.id??'');}
       if(detail?.type==='cancelled'||detail?.type==='error'){setBusy(false);setStatus(detail.type);}
     }
-    function update(event:Event){const v=(event as CustomEvent<{status:Status;balance?:number}>).detail;setStatus(v.status);setBusy(v.status==='verifying');if(v.balance!==undefined)setBalance(v.balance);}
+    function update(event:Event){const v=(event as CustomEvent<{status:Status;balance?:number;policyReceipt?:PurchaseTerms}>).detail;setStatus(v.status);setPolicyReceipt(v.policyReceipt);setBusy(v.status==='verifying');if(v.balance!==undefined)setBalance(v.balance);}
     window.addEventListener('aiadcast-play',receive);window.addEventListener('aiadcast-play-status',update);
     void apiRequest<Account>('/api/checkout/play/account').then(info=>{
       if(!active)return;
@@ -92,9 +96,9 @@ export function PlayCheckoutPage({preserve,returnPage}:{preserve:()=>Promise<voi
   },[session?.token,attempt]);
   async function buy(){
     if(!session){await preserve();rememberLoginDestination('checkout');location.hash='login';return;}
-    if(busy||!account?.enabled||!products?.some(p=>p.id===choice))return;
-    setBusy(true);setStatus(undefined);
-    if(!native('play-buy',{product:choice,account:account.accountId})){setStatus('error');setBusy(false);}
+    if(busy||!agreed||!account?.policyAccountId||!account.enabled||!products?.some(p=>p.id===choice))return;
+    setAgreed(false);setBusy(true);setStatus(undefined);
+    if(!native('play-buy',{product:choice,account:account.policyAccountId})){setStatus('error');setBusy(false);}
   }
   const product=products?.find(p=>p.id===choice);
   const messages:Record<Status,string>={
@@ -103,16 +107,24 @@ export function PlayCheckoutPage({preserve,returnPage}:{preserve:()=>Promise<voi
     retry:t('구매 확인이 지연되고 있습니다. 결제 내역을 다시 확인해 주세요.','Verification is delayed. Check your purchases again.'),
     cancelled:t('결제를 취소했습니다.','Purchase canceled.'),error:t('Google Play에 연결하지 못했습니다.','Could not connect to Google Play.')
   };
+  if(status==='paid'&&policyReceipt)return <section className="account-page checkout-page">
+    <h1>{t('결제 완료','Payment complete')}</h1><p role="status">{messages.paid} {balance!==undefined&&t('잔액 '+balance+' 크레딧','Balance: '+balance+' credits')}</p>
+    <section className="checkout-summary"><h2>{t('구매 영수증','Purchase receipt')}</h2><p>{t('판매자 셀업랩스 · 결제처 Google Play','Sellup Labs · Google Play')}</p><p>{t('주문번호','Order number')} {policyReceipt.orderNo}</p><p>{new Date(policyReceipt.purchasedAt).toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul'})} · {policyReceipt.ads}{t('장',' ads')} · {new Intl.NumberFormat(undefined,{style:'currency',currency:policyReceipt.currency}).format(Number(policyReceipt.paid)/1e9)}</p><PurchaseRefundReceipt key={policyReceipt.orderNo} orderNo={policyReceipt.orderNo}/></section>
+    <a className="primary-action" href="#credits">{t('내 이용권 보기','View my credits')}</a>
+    <button className="wallet-button wallet-secondary" onClick={()=>{setStatus(undefined);setPolicyReceipt(undefined);setAgreed(false);}}>{t('다른 이용권 구매','Make another purchase')}</button>
+  </section>;
   return <section className="account-page checkout-page"><a className="page-back" href={'#'+returnPage}>{t('돌아가기','Back')}</a><h1>{t('이용권 선택','Choose credits')}</h1>
     <p className="page-intro">{t('신규 가입 첫 광고 1장 무료 · 계정당 1회','One free ad per newly registered account')}</p>
     {session&&<>{!account?.enabled && !status && <p>{account?t('Google Play 결제 준비 중입니다.','Google Play billing is not available yet.'):t('결제 연결 확인 중…','Checking billing…')}</p>}
     {account?.enabled&&<fieldset className="checkout-packs"><legend>{t('광고 이용권','Ad credits')}</legend>
       {pricingCatalog.packs.map(pack=>{const item=products?.find(p=>p.id==='credits_'+pack.credits);return item&&<label key={item.id} className={choice===item.id?'selected':''}>
-        <input type="radio" name="play-credit-pack" checked={choice===item.id} disabled={busy} onChange={()=>choose(item.id)}/>
+        <input type="radio" name="play-credit-pack" checked={choice===item.id} disabled={busy} onChange={()=>{choose(item.id);setAgreed(false);}}/>
         <span>{pack.credits/pack.creditsPerGeneration}{t('장',' ads')}</span><b>{item.price}</b></label>;})}
       {!products?.length && <p>{products?t('구매 가능한 원화 상품이 없습니다.','No KRW credit packs are available.'):t('상품 가격을 불러오는 중…','Loading store prices…')}</p>}
     </fieldset>}</>}
-    {(!session||account?.enabled)&&<button className="primary-action" disabled={Boolean(session)&&(!product||busy||status==='retry')} onClick={()=>void buy()}>
+    <RefundNotice/>
+    {session&&account?.enabled&&<label className="checkout-consent"><input type="checkbox" checked={agreed} disabled={busy} onChange={e=>setAgreed(e.target.checked)}/>{t('이용권 수량, 금액과 환불 조건을 확인했습니다','I have checked the credits, price and refund conditions.')}</label>}
+    {(!session||account?.enabled)&&<button className="primary-action" disabled={Boolean(session)&&(!product||!agreed||!account?.policyAccountId||busy||status==='retry')} onClick={()=>void buy()}>
       {!session?t('로그인하고 계속','Sign in to continue'):product?product.price+' · '+t('Google Play 결제','Pay with Google Play'):t('Google Play 결제','Pay with Google Play')}</button>}
     {status&&<p role="status">{messages[status]} {status==='paid'&&balance!==undefined&&t('잔액 '+balance+' 크레딧 · 광고 '+Math.floor(balance/10)+'장','Balance: '+balance+' credits')}</p>}
     {session&&<button className="guest-link" disabled={busy} onClick={()=>retry(n=>n+1)}>{t('구매 내역 다시 확인','Check purchases again')}</button>}
