@@ -55,7 +55,7 @@ export class BillingLedger {
         });
     }
     // credits, modelRevision and expiresAt must come from a server-signed quote.
-    async reserve({ jobId, userId, credits, requestHash, modelRevision, kind = 'image', expiresAt, creditExempt = false, unit = 'legacy-ticket' }) {
+    async reserve({ jobId, userId, credits, requestHash, modelRevision, kind = 'image', expiresAt, creditExempt = false, unit = 'legacy-ticket', customerFunded = false }) {
         if (!['legacy-ticket', 'credit-v2'].includes(unit) || unit === 'credit-v2' && credits !== 10)
             throw Error('Invalid credit quote');
         const table = unit === 'credit-v2' ? 'credit_wallets' : 'wallets';
@@ -83,6 +83,11 @@ export class BillingLedger {
             await this.db.prepare('INSERT INTO jobs(id,user_id,credits,request_hash,model_revision,kind,status,expires_at) VALUES (?,?,?,?,?,?,?,?)').run(jobId, userId, credits, requestHash, modelRevision, kind, 'reserved', expiresAt);
             if (unit === 'credit-v2')
                 await this.db.prepare('INSERT INTO job_policies(job_id,unit,policy) VALUES (?,?,?)').run(jobId, unit, 'delivered-2026-10-18');
+            if (customerFunded) {
+                if (!this.customerCosts || creditExempt || unit !== 'credit-v2' || kind !== 'image')
+                    throw Error('Invalid customer funding');
+                await this.db.prepare('INSERT INTO customer_ad_jobs VALUES (?)').run(jobId);
+            }
             if (creditExempt)
                 await this.db.prepare('INSERT INTO admin_test_jobs(job_id) VALUES (?)').run(jobId);
             await this.event(`reserve:${jobId}`, userId, jobId, creditExempt ? 'admin-test-reserve' : 'reserve', credits);
@@ -108,6 +113,8 @@ export class BillingLedger {
                 return job;
             }
             if (job.unit === 'credit-v2') {
+                if (this.recordDelivery && !job.creditExempt)
+                    await this.recordDelivery(job, Boolean(await this.db.prepare('SELECT job_id FROM customer_ad_jobs WHERE job_id=?').get(jobId)));
                 if (!job.creditExempt)
                     await this.db.prepare('UPDATE credit_wallets SET reserved=reserved-? WHERE user_id=?').run(job.credits, job.user_id);
                 await this.db.prepare('UPDATE job_policies SET captured=1 WHERE job_id=?').run(jobId);
@@ -171,6 +178,8 @@ export class BillingLedger {
             if (!job.creditExempt)
                 await this.db.prepare(`UPDATE ${job.unit === 'credit-v2' ? 'credit_wallets' : 'wallets'} SET available=available+? WHERE user_id=?`).run(job.credits, job.user_id);
             await this.db.prepare("UPDATE jobs SET status='refunded',reason=? WHERE id=?").run(incidentId, jobId);
+            if (this.restoreDelivery)
+                await this.restoreDelivery(jobId);
             await this.event(`refund:${jobId}`, job.user_id, jobId, job.creditExempt ? 'admin-test-refund' : 'refund', job.credits);
             return await this.job(jobId);
         });
@@ -183,6 +192,8 @@ export class BillingLedger {
     }
     // USD micro-units (1 USD = 1,000,000); these are NEVER customer credits.
     async supplierBudget(period, monthlyLimit) {
+        if (this.sharedBudget)
+            return await this.sharedBudget(period);
         const policy = await this.db.prepare('SELECT * FROM supplier_budget_policy WHERE id=1').get();
         if (!policy)
             return null;
@@ -206,7 +217,6 @@ export class BillingLedger {
     async beginAttempt({ jobId, attemptId, period, maximumMicros, limitMicros, periodScoped = false }) {
         [attemptId, period].forEach(identifier);
         integer(maximumMicros);
-        integer(limitMicros);
         return await this.transaction(async () => {
             const old = await this.db.prepare('SELECT * FROM attempts WHERE id=?').get(attemptId);
             if (old) {
@@ -221,17 +231,26 @@ export class BillingLedger {
                 throw Error('Reconcile existing attempt; do not generate again');
             if ((await this.db.prepare('SELECT count(*) n FROM attempts WHERE job_id=?').get(jobId)).n >= 2)
                 throw Error('Retry limit reached');
-            const cumulative = await this.supplierBudget(period, limitMicros);
-            limitMicros = await this.reserveSupplierBudget(period, maximumMicros, limitMicros);
-            await this.db.prepare('INSERT INTO budgets(period,limit_micros) VALUES (?,?) ON CONFLICT DO NOTHING').run(period, limitMicros);
-            if (periodScoped || cumulative) {
-                if (period !== new Date(this.now()).toISOString().slice(0, 7))
-                    throw Error('BUDGET_PERIOD_CHANGED');
-                await this.db.prepare('UPDATE budgets SET limit_micros=? WHERE period=?').run(limitMicros, period);
+            const customerJob = await this.db.prepare('SELECT job_id FROM customer_ad_jobs WHERE job_id=?').get(jobId);
+            if (customerJob) {
+                // The period row is the attempt's foreign key. Its test spending and holds stay untouched.
+                await this.db.prepare('INSERT INTO budgets(period,limit_micros) VALUES (?,1) ON CONFLICT DO NOTHING').run(period);
+                await this.customerCosts.reserveOperatingCost(attemptId, jobId, maximumMicros);
             }
-            const held = await this.db.prepare('UPDATE budgets SET held_micros=held_micros+? WHERE period=? AND limit_micros=? AND spent_micros+held_micros+?<=limit_micros').run(maximumMicros, period, limitMicros, maximumMicros);
-            if (held.changes !== 1)
-                throw Error('Provider budget unavailable');
+            else {
+                integer(limitMicros);
+                const cumulative = await this.supplierBudget(period, limitMicros);
+                limitMicros = await this.reserveSupplierBudget(period, maximumMicros, limitMicros);
+                await this.db.prepare('INSERT INTO budgets(period,limit_micros) VALUES (?,?) ON CONFLICT DO NOTHING').run(period, limitMicros);
+                if (periodScoped || cumulative) {
+                    if (period !== new Date(this.now()).toISOString().slice(0, 7))
+                        throw Error('BUDGET_PERIOD_CHANGED');
+                    await this.db.prepare('UPDATE budgets SET limit_micros=? WHERE period=?').run(limitMicros, period);
+                }
+                const held = await this.db.prepare('UPDATE budgets SET held_micros=held_micros+? WHERE period=? AND limit_micros=? AND spent_micros+held_micros+?<=limit_micros').run(maximumMicros, period, limitMicros, maximumMicros);
+                if (held.changes !== 1)
+                    throw Error('Provider budget unavailable');
+            }
             await this.db.prepare('INSERT INTO attempts(id,job_id,period,maximum_micros,status) VALUES (?,?,?,?,?)').run(attemptId, jobId, period, maximumMicros, 'pending');
             await this.db.prepare("UPDATE jobs SET status='running' WHERE id=?").run(jobId);
             return { ...await this.db.prepare('SELECT * FROM attempts WHERE id=?').get(attemptId), shouldDispatch: true };
@@ -244,6 +263,8 @@ export class BillingLedger {
                 throw Error('Attempt not found');
             if (['completed', 'failed'].includes(a.status))
                 return;
+            if (await this.db.prepare('SELECT job_id FROM customer_ad_jobs WHERE job_id=?').get(a.job_id))
+                await this.customerCosts.flagUncertainCost(attemptId);
             await this.db.prepare("UPDATE attempts SET status='uncertain' WHERE id=?").run(attemptId);
             await this.db.prepare("UPDATE jobs SET status='uncertain' WHERE id=? AND status IN ('running','reserved')").run(a.job_id);
             // Keep the provider-cost hold until cost is known, even if customer credits expire.
@@ -262,7 +283,12 @@ export class BillingLedger {
                     throw Error('Cost replay mismatch');
                 return;
             }
-            await this.db.prepare('UPDATE budgets SET held_micros=held_micros-?, spent_micros=spent_micros+? WHERE period=?').run(a.maximum_micros, actualMicros, a.period);
+            if (await this.db.prepare('SELECT job_id FROM customer_ad_jobs WHERE job_id=?').get(a.job_id)) {
+                await this.customerCosts.settleOperatingCost(attemptId, actualMicros, outcome);
+            }
+            else {
+                await this.db.prepare('UPDATE budgets SET held_micros=held_micros-?, spent_micros=spent_micros+? WHERE period=?').run(a.maximum_micros, actualMicros, a.period);
+            }
             await this.db.prepare('UPDATE attempts SET actual_micros=?,status=? WHERE id=?').run(actualMicros, outcome, attemptId);
             await this.db.prepare("UPDATE jobs SET status=? WHERE id=? AND status IN ('running','uncertain')").run(outcome === 'failed' ? 'reserved' : 'running', a.job_id);
         });

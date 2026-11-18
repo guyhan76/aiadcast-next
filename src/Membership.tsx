@@ -51,19 +51,22 @@ export async function readCloudProject(id:string,signal:AbortSignal){
  return {...await importProject(data.project),id};
 }
 export function Withdrawal(){
+ const [requestRefund,setRequestRefund]=useState(false);
  const {t}=useUiLanguage(),[confirm,setConfirm]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  if(offlineDemo()||!betaSession())return null;
  async function withdraw(){
   setBusy(true);const scope=storageNamespace();
-  try{const r=await apiRequest<{receipt:string}>('/api/membership/withdraw',{confirm:'delete-my-account'});
+  try{const r=await apiRequest<{receipt:string;cases?:string[]}>('/api/membership/withdraw',{confirm:'delete-my-account',...(requestRefund?{requestRefund:true}:{})});
    if(storageNamespace()!==scope)return;
-   setBetaSession(null,'login');window.alert(t('탈퇴 요청을 접수했습니다. 모든 기기의 계정 접근이 해제되었습니다. 삭제 처리번호 ','Deletion requested. Access is revoked on all devices. Receipt ')+r.receipt);
+   setBetaSession(null,'login');window.alert(t('탈퇴 요청을 접수했습니다. 모든 기기의 계정 접근이 해제되었습니다. 삭제 처리번호 ','Deletion requested. Access is revoked on all devices. Receipt ')+r.receipt+(r.cases?.length?'\n환불 접수번호 '+r.cases.join(', '):''));
   }catch{setError(t('접수 상태를 확인하지 못했습니다. 다시 로그인하거나 삭제 안내 페이지에서 문의해주세요.','Could not confirm the request. Sign in again or contact support on the deletion page.'));}
   finally{setBusy(false);}
  }
  return <div className="membership-withdraw">{!confirm?<button onClick={()=>setConfirm(true)}>{t('회원탈퇴','Delete account')}</button>:<>
   <strong>{t('탈퇴하면 내 프로젝트를 복구할 수 없습니다.','Your server projects cannot be recovered after withdrawal.')}</strong>
   <p>{t('서버의 프로젝트, 첨부 원본, 생성 이미지와 영상이 삭제됩니다. 필요한 파일은 먼저 내려받으세요. 기기에 저장하거나 공유한 파일은 유지됩니다.','Server projects, originals, generated images and videos will be deleted. Download anything you want to keep. Device and shared copies remain.')}</p>
+  <p>탈퇴하면 남은 광고 이용권은 재가입 계정으로 이전되지 않습니다. 결제 내역과 접수번호는 탈퇴 전에 저장해 주세요.</p>
+  <label><input type="checkbox" checked={requestRefund} onChange={e=>setRequestRefund(e.target.checked)}/> 미사용 유료 광고의 환불 검토를 함께 요청합니다</label>
   <a href="/account-deletion.html" target="_blank" rel="noreferrer">{t('삭제 범위와 보관 기간','Deletion and retention details')}</a>
   <div><button disabled={busy} onClick={()=>setConfirm(false)}>{t('취소','Cancel')}</button><button disabled={busy} onClick={()=>void withdraw()}>{t('모든 프로젝트 삭제 및 탈퇴','Delete all projects and my account')}</button></div></>}{error&&<p role="alert">{error}</p>}</div>;
 }

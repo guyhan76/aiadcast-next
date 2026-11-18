@@ -18,6 +18,7 @@ export function existingAppRecommendationApi({store,pool,storage,adapter,origin,
   const exists=await db.prepare("SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema=? AND table_name='generation_records') AS present").get(cloudSchema(owner));if(!exists.present)throw Error('NOT_FOUND');
   const period=()=>store.budgetPeriod(),limit=p=>store.effectiveBudget(owner,p);
   const sharedBudget=new ExistingImageBudget({db,owner,period,limit,recommendationCap:policy?.monthlyCapMicros,cumulativeBudget:async(p,cap)=>{
+   if(store.sharedGenerationBudget?.active)return store.sharedGenerationBudget.view(owner,p);
    const present=await db.prepare("SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema=? AND table_name='supplier_budget_policy') AS present").get(cloudSchema(owner));
    if(!present.present)return null;
    const user=await store.db.prepare('SELECT role,disabled FROM users WHERE id=?').get(owner);

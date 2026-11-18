@@ -6,10 +6,10 @@ import {estimateUnitCost,estimatePackContribution,estimateMixedBreakEven} from '
 const assumptions=JSON.parse(readFileSync(new URL('../config/pricing-assumptions.json',import.meta.url),'utf8'));
 const legacyPacks=[{id:'trial',credits:3,prices:{KRW:6900,USD:499}},{id:'basic',credits:10,prices:{KRW:19900,USD:1499}},{id:'bundle',credits:30,prices:{KRW:49900,USD:3999}}];
 const base={pack:legacyPacks[1],currency:'KRW',unitCostKrw:350,krwPerUsd:1400,vatRate:.1,storeFeeRate:.15,refundReserveRate:.02};
-test('versioned test catalog uses approved KRW prices and uses approved USD display prices',()=>{
- assert.deepEqual(pricingCatalog.packs.map(p=>[p.credits,p.prices.KRW,p.prices.USD]),[[30,9900,790],[100,29800,2199],[180,48900,3599]]);
+test('Korean launch catalog has two paid packs and one free welcome ad',()=>{
+ assert.deepEqual(pricingCatalog.packs.map(p=>[p.credits,p.prices.KRW,p.prices.USD]),[[30,3300,null],[100,9900,null]]);
  assert.equal(pricingCatalog.status,'approved');assert.equal(pricingCatalog.purchasesEnabled,false);
- assert.equal(pricingCatalog.standardCredits,10);assert.equal('premiumCredits' in pricingCatalog,false);
+ assert.equal(pricingCatalog.welcomeCredits,10);assert.equal(pricingCatalog.standardCredits,10);assert.equal('premiumCredits' in pricingCatalog,false);
  assert.equal(pricingProposal,pricingCatalog);
  assert.equal(formatPrice(6900,'KRW','ko'),'₩6,900');assert.equal(formatPrice(499,'USD','en'),'$4.99');
  assert.throws(()=>formatPrice(-1,'USD','en'),/Invalid/);
@@ -51,4 +51,4 @@ test('cash break-even covers 22 million cash outflow including unsplit debt repa
  assert.throws(()=>estimateMixedBreakEven({...args,mix:{unknown:1}}),/Unknown/);
 });
 
-test('versioned new credits count ten per generation and use owner-approved USD display prices',()=>{const p=pricingCatalog.packs[1];const value=estimatePackContribution({...base,pack:p});assert.equal(value.ads,10);assert.equal(value.variableCost,3500);assert.equal(value.price,29800);assert.equal(formatPrice(p.prices.USD,'USD','en'),'$21.99');assert.equal(estimatePackContribution({...base,pack:p,currency:'USD'}).price,21.99);});
+test('new packs count ten credits per image without inventing a USD launch price',()=>{const p=pricingCatalog.packs[1];const value=estimatePackContribution({...base,pack:p});assert.equal(value.ads,10);assert.equal(value.variableCost,3500);assert.equal(value.price,9900);assert.equal(formatPrice(p.prices.USD,'USD','en'),'Not priced');assert.throws(()=>estimatePackContribution({...base,pack:p,currency:'USD'}),/Invalid price/);});

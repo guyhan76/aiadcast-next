@@ -66,6 +66,7 @@ export class GoogleAuth {
     }
     if(this.db.prepare('SELECT COUNT(*) n FROM users').get().n>=20)fail('BETA_ALLOCATION_EXCEEDED',409);
     const id=randomUUID();this.db.prepare('INSERT INTO users(id,label,budget,credits) VALUES(?,?,0,0)').run(id,claims.email.slice(0,80));
+    this.db.prepare('INSERT INTO welcome_ad_eligibility(user_id) VALUES(?)').run(id);
     this.db.prepare('INSERT INTO google_identities VALUES(?,?)').run(claims.subject,id);
     this.db.prepare('INSERT INTO email_identities VALUES(?,?)').run(claims.email,id);identity={user_id:id};
    }

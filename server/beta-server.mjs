@@ -16,6 +16,7 @@ import {GoogleAuth} from './google-auth.mjs';
 import {googleReturnPage,googleUiLanguage,googleReturnCsp} from './google-return-page.mjs';
 import {EmailAuth} from './email-auth.mjs';
 import {PasswordAuth} from './password-auth.mjs';
+import {playAccountId, verifyPlayPurchase} from './play-billing.mjs';
 import {TestCheckout} from './test-checkout.mjs';
 import {accountConfiguration} from './account-providers.mjs';
 import {demoSupport} from './demo-support.mjs';
@@ -30,7 +31,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
  // Bounded in-memory limiter: all traffic shares a global ceiling, including behind a proxy.
  let windowStart=now(),requests=0,logins=0,bodies=0;
  const limit=isLogin=>{if(now()-windowStart>=60_000){windowStart=now();requests=0;logins=0;}if(++requests>600||(isLogin&&++logins>20))throw new ApiFailure('RATE_LIMITED',429);};
- const service=user=>{if(!services.has(user.id))services.set(user.id,serviceFactory(user));const instance=services.get(user.id);instance.adminTestUnlimited=user.role==='admin';return instance;};
+ const service=user=>{if(!services.has(user.id))services.set(user.id,serviceFactory(user));const instance=services.get(user.id);instance.adminTestUnlimited=user.role==='admin';if(user.role!=='admin'&&store.db.prepare('SELECT user_id FROM welcome_ad_eligibility WHERE user_id=?').get(user.id))instance.grantWelcomeAd();return instance;};
  const email=new EmailAuth(store,{sendMail:accounts.sendMail,publicOrigin:origin,now});
  const google=new GoogleAuth(store,{provider:accounts.google,now});
  const password=new PasswordAuth(store,accounts.password,now);password.bootstrapOwner();
@@ -80,7 +81,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
    if(store.membership){
     releaseLease=await store.membership.enter(user);
     if(url.pathname.startsWith('/api/membership')){
-     const body=req.method==='POST'?await read(req,2048):undefined;
+     const body=req.method==='POST'?await read(req,url.pathname.startsWith('/api/membership/records/')?8192:2048):undefined;
      send(res,200,await store.membership.route(user,req.method,url.pathname,body,service),cors);return;
     }
    }
@@ -118,8 +119,24 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
     }
     throw new ApiFailure('NOT_FOUND',404);
    }
-   if(url.pathname==='/api/checkout/orders'&&req.method==='POST'){send(res,201,checkout.create(user,await read(req,2048)),cors);return;}
-   if(url.pathname==='/api/account/credits'&&req.method==='GET'){const orders=checkout.history(user),grants=store.db.prepare('SELECT id,credits,state,created FROM admin_grants WHERE user_id=? ORDER BY created DESC LIMIT 30').all(user.id);send(res,200,{wallet:service(user).wallet(),orders,grants},cors);return;}
+   if(url.pathname==='/api/checkout/play/account'&&req.method==='GET'){
+    send(res,200,{enabled:Boolean(accounts.play),accountId:playAccountId(user.id)},cors);return;
+   }
+   if(url.pathname==='/api/checkout/play/verify'&&req.method==='POST'){
+    if(!accounts.play)throw new ApiFailure('PLAY_BILLING_UNAVAILABLE',503);
+    const body=await read(req,8192);
+    send(res,200,await verifyPlayPurchase(accounts.play,user.id,body?.token,service(user)),cors);return;
+   }
+   if(url.pathname==='/api/checkout/orders'&&req.method==='POST'){
+    if(store.customerGeneration){const instance=service(user);if(instance.customerImagesEnabled&&!instance.adminTestUnlimited)throw new ApiFailure('TEST_CHECKOUT_UNAVAILABLE',403);}
+    send(res,201,checkout.create(user,await read(req,2048)),cors);return;}
+   if(url.pathname==='/api/account/credits'&&req.method==='GET'){
+    const instance=service(user),wallet=instance.wallet();
+    if(wallet.kind==='customer-ads'){
+     const sales=await instance.customerCosts.customerPurchases();
+     send(res,200,{wallet,sales,orders:[],grants:[]},cors);return;
+    }
+    const orders=checkout.history(user),grants=store.db.prepare('SELECT id,credits,state,created FROM admin_grants WHERE user_id=? ORDER BY created DESC LIMIT 30').all(user.id);send(res,200,{wallet,orders,grants},cors);return;}
    if(url.pathname==='/api/checkout/orders'&&req.method==='GET'){send(res,200,{orders:checkout.history(user)},cors);return;}
    const order=/^\/api\/checkout\/orders\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
    if(order&&req.method==='GET'){send(res,200,await checkout.status(user,order[1]),cors);return;}

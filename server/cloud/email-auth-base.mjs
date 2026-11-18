@@ -69,6 +69,7 @@ export class EmailAuth {
                     fail('BETA_ALLOCATION_EXCEEDED', 409);
                 const userId = randomUUID();
                 await this.db.prepare('INSERT INTO users(id,label,budget,credits) VALUES(?,?,0,0)').run(userId, row.email.slice(0, 80));
+                await this.db.prepare('INSERT INTO welcome_ad_eligibility(user_id) VALUES(?)').run(userId);
                 await this.db.prepare('INSERT INTO email_identities VALUES(?,?)').run(row.email, userId);
                 user = await this.db.prepare('SELECT * FROM users WHERE id=?').get(userId);
             }

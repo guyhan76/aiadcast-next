@@ -26,11 +26,11 @@ async function fixture(t,withCheckout){
  return {call,store,app,session:signup.data,calls:()=>({confirmCalls,imageCalls})};
 }
 
-test('new server member has no credits or API allocation and unavailable checkout cannot create an order',async t=>{
+test('new server member has one welcome ad and unavailable checkout cannot create an order or authorize spending',async t=>{
  const {call,store,session,calls}=await fixture(t,false);
  const cap=await call('/api/account/capabilities');assert.equal(cap.data.checkout.enabled,false);assert.equal(cap.data.checkout.test,true);
  const status=(await call('/api/status',undefined,session.token)).data;
- assert.equal(status.wallet.available,0);assert.equal(status.budget.limitMicros,0);assert.equal(status.generation.reason,'BUDGET_NOT_AVAILABLE');
+ assert.equal(status.wallet.available,0);assert.equal(status.wallet.credits.available,10);assert.equal(status.budget.limitMicros,0);assert.equal(status.generation.reason,'BUDGET_NOT_AVAILABLE');
  const order=await call('/api/checkout/orders',{pack:'credits-v2-30',requestId:'member-checkout-1',agreed:true},session.token);
  assert.equal(order.status,503);assert.equal(order.data.error.code,'CHECKOUT_UNAVAILABLE');
  assert.equal(store.db.prepare('SELECT COUNT(*) n FROM test_orders').get().n,0);
@@ -40,12 +40,14 @@ test('new server member has no credits or API allocation and unavailable checkou
 test('successful substitute sandbox receipt grants credits once but does not authorize provider spending for a new member',async t=>{
  const {call,store,session,calls}=await fixture(t,true);
  assert.equal((await call('/api/account/capabilities')).data.checkout.enabled,true);
+ const welcome=(await call('/api/status',undefined,session.token)).data.wallet.credits.available;
+ assert.equal(welcome,10);
  const order=(await call('/api/checkout/orders',{pack:'credits-v2-30',requestId:'member-checkout-2',agreed:true},session.token)).data;
  const q=new URLSearchParams(new URL(order.checkoutUrl).hash.split('?')[1]);
  const input={orderId:order.id,ticket:q.get('ticket'),amount:order.amount,paymentKey:'fixture-approved-payment'};
- for(let i=0;i<2;i++){const paid=await call('/api/checkout/confirm',input);assert.equal(paid.status,200);assert.equal(paid.data.state,'paid');assert.deepEqual(paid.data.receipt,{verified:true,grantedCredits:30,balance:30,unit:'credit-v2'});}
+ for(let i=0;i<2;i++){const paid=await call('/api/checkout/confirm',input);assert.equal(paid.status,200);assert.equal(paid.data.state,'paid');assert.deepEqual(paid.data.receipt,{verified:true,grantedCredits:30,balance:welcome+30,unit:'credit-v2'});}
  const status=(await call('/api/status',undefined,session.token)).data;
- assert.equal(status.wallet.credits.available,30);assert.equal(status.budget.limitMicros,0);assert.equal(status.generation.enabled,false);assert.equal(status.generation.reason,'BUDGET_NOT_AVAILABLE');
+ assert.equal(status.wallet.credits.available,welcome+30);assert.equal(status.budget.limitMicros,0);assert.equal(status.generation.enabled,false);assert.equal(status.generation.reason,'BUDGET_NOT_AVAILABLE');
  assert.equal(store.db.prepare('SELECT budget FROM users WHERE id=?').get(session.user.id).budget,0);
  assert.deepEqual(calls(),{confirmCalls:1,imageCalls:0});
 });

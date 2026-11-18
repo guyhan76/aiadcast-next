@@ -81,6 +81,7 @@ export class PasswordAuth {
                 fail('BETA_ALLOCATION_EXCEEDED', 409);
             const id = randomUUID(), salt = randomBytes(16).toString('hex');
             await this.db.prepare("INSERT INTO users(id,label,budget,credits,role) VALUES(?,?,0,0,'member')").run(id, label || email.slice(0, 80));
+            await this.db.prepare('INSERT INTO welcome_ad_eligibility(user_id) VALUES(?)').run(id);
             await this.db.prepare('INSERT INTO email_identities VALUES(?,?)').run(email, id);
             await this.db.prepare('INSERT INTO test_passwords VALUES(?,?,?)').run(id, salt, derive(password, salt).toString('hex'));
             return await this.store.createSession(await this.db.prepare('SELECT * FROM users WHERE id=?').get(id));

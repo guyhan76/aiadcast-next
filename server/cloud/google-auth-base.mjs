@@ -99,6 +99,7 @@ export class GoogleAuth {
                     fail('BETA_ALLOCATION_EXCEEDED', 409);
                 const id = randomUUID();
                 await this.db.prepare('INSERT INTO users(id,label,budget,credits) VALUES(?,?,0,0)').run(id, claims.email.slice(0, 80));
+                await this.db.prepare('INSERT INTO welcome_ad_eligibility(user_id) VALUES(?)').run(id);
                 await this.db.prepare('INSERT INTO google_identities VALUES(?,?)').run(claims.subject, id);
                 await this.db.prepare('INSERT INTO email_identities VALUES(?,?)').run(claims.email, id);
                 identity = { user_id: id };

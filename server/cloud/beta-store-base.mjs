@@ -15,6 +15,7 @@ export class BetaStore {
         await this.db.exec(`PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
    CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,label TEXT NOT NULL,budget INTEGER NOT NULL,credits INTEGER NOT NULL,disabled INTEGER NOT NULL DEFAULT 0);
+   CREATE TABLE IF NOT EXISTS welcome_ad_eligibility(user_id TEXT PRIMARY KEY REFERENCES users(id));
    CREATE TABLE IF NOT EXISTS monthly_budget_approvals(period TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),total_micros INTEGER NOT NULL,allocation_micros INTEGER NOT NULL,baseline_total INTEGER NOT NULL,baseline_allocation INTEGER NOT NULL,created INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS monthly_demo_support(period TEXT PRIMARY KEY REFERENCES monthly_budget_approvals(period),owner_id TEXT NOT NULL REFERENCES users(id),user_id TEXT NOT NULL REFERENCES users(id),email TEXT NOT NULL,micros INTEGER NOT NULL,credits INTEGER NOT NULL,request_id TEXT NOT NULL,created INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS invites(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires INTEGER NOT NULL);

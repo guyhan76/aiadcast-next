@@ -131,7 +131,7 @@ export class GenerationService {
     try { this.ledger = new BillingLedger(databasePath, now); }
     catch (error) { this.unlock(); throw error; }
     if (databasePath !== ':memory:') chmodSync(databasePath, 0o600);
-    this.db = this.ledger.db; this.now = now; this.adapter = adapter; this.enabled = enabled; this.assistantAdapter = assistantAdapter; this.assistantEnabled = assistantEnabled; this.budgetMicros = budgetMicros; this.providerConfigured = providerConfigured; this.tasks = new Set(); this.budgetForPeriod=budgetForPeriod;
+    this.db = this.ledger.db; this.ledger.customerCosts=this.customerCosts; this.now = now; this.adapter = adapter; this.enabled = enabled; this.assistantAdapter = assistantAdapter; this.assistantEnabled = assistantEnabled; this.budgetMicros = budgetMicros; this.providerConfigured = providerConfigured; this.tasks = new Set(); this.budgetForPeriod=budgetForPeriod;
     // The authenticated HTTP service sets this from the server-owned account
     // role. Request JSON, login form fields and client session labels cannot.
     this.adminTestUnlimited = false; this.selectiveEditingEnabled = enabled && adapter?.selectiveEditReady === true;
@@ -170,17 +170,30 @@ export class GenerationService {
     this.ledger.expire();
   }
   period() { return new Date(this.now()).toISOString().slice(0, 7); }
+  // Eligibility is recorded at signup by the authenticated server, never by a client request.
+  // A separate durable marker keeps a restart or a lost response from issuing another free ad.
+  grantWelcomeAd() {
+    return this.ledger.transaction(() => {
+      if(this.db.prepare("SELECT value FROM local_development_meta WHERE key='welcome-ad-v1'").get())return;
+      this.db.prepare('INSERT INTO credit_wallets(user_id) VALUES (?) ON CONFLICT DO NOTHING').run(LOCAL_USER);
+      this.db.prepare('UPDATE credit_wallets SET available=available+10 WHERE user_id=?').run(LOCAL_USER);
+      this.ledger.event('welcome-ad-v1',LOCAL_USER,null,'welcome',10);
+      this.db.prepare("INSERT INTO local_development_meta VALUES ('welcome-ad-v1','10')").run();
+    });
+  }
   increaseBudget(micros) {
     if(!Number.isSafeInteger(micros)||micros<this.budgetMicros||micros>100_000_000)fail('BUDGET_INCREASE_ONLY');
     if(!this.budgetForPeriod)this.ledger.transaction(()=>this.db.prepare('UPDATE budgets SET limit_micros=?').run(micros));
     this.budgetMicros=micros;
   }
-  testPurchaseReceipt({purchaseId,credits,unit='legacy-ticket'}) {
+  testPurchaseReceipt(purchase) { return this.verifiedPurchaseReceipt(purchase); }
+  verifiedPurchaseReceipt({purchaseId,credits,unit='legacy-ticket'}) {
     const row=this.db.prepare('SELECT * FROM purchases WHERE purchase_id=?').get(purchaseId);
     if(!row||row.user_id!==LOCAL_USER||row.credits!==credits||(this.db.prepare('SELECT unit FROM purchase_units WHERE purchase_id=?').get(purchaseId)?.unit??'legacy-ticket')!==unit)throw new ApiFailure('PURCHASE_NOT_VERIFIED',409);
     return {grantedCredits:row.credits,...(unit==='credit-v2'?{unit}:{}),balance:this.ledger.wallet(LOCAL_USER,unit).available};
   }
-  recordTestPurchase({purchaseId,credits,unit='legacy-ticket'}) { this.ledger.recordVerifiedPurchase({purchaseId,userId:LOCAL_USER,credits,unit});return this.wallet(); }
+  recordTestPurchase(purchase) { return this.recordVerifiedPurchase(purchase); }
+  recordVerifiedPurchase({purchaseId,credits,unit='legacy-ticket'}) { this.ledger.recordVerifiedPurchase({purchaseId,userId:LOCAL_USER,credits,unit});return this.wallet(); }
   wallet() { return { ...this.ledger.wallet(LOCAL_USER), credits:this.ledger.wallet(LOCAL_USER,'credit-v2'), kind: this.adminTestUnlimited ? 'admin-test-unlimited' : 'test-credits', ...(this.adminTestUnlimited ? {unlimited:true} : {}) }; }
   creditQuote(walletSnapshot) {
     const wallet=walletSnapshot??this.wallet();
@@ -229,15 +242,16 @@ export class GenerationService {
   }
   status() {
     readinessMeasure('expiry',()=>this.ledger.expire());
-    const period=this.period(),limit=readinessMeasure('budget',()=>this.budgetLimit(period)),budget = readinessMeasure('budget',()=>this.ledger.budget(period));
-    const cumulative=this.supplierBudget(period,limit);
+    const customer=this.customerImagesEnabled && !this.adminTestUnlimited;
+    const period=this.period(),limit=customer?0:readinessMeasure('budget',()=>this.budgetLimit(period)),budget = readinessMeasure('budget',()=>this.ledger.budget(period));
+    const cumulative=customer?null:this.supplierBudget(period,limit);
     const available = cumulative?.availableMicros ?? (limit - (budget?.spent_micros ?? 0) - (budget?.held_micros ?? 0));
     // Request-local only: expire first, then use one wallet read for reason/quote/body.
     // Admission still obtains a fresh quote and rechecks it inside its transaction.
     const wallet=readinessMeasure('wallet',()=>this.wallet());
-    const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : (cumulative?.limitMicros??limit) < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : !this.adminTestUnlimited && wallet.available < 1 && wallet.credits.available < 10 ? 'NO_TEST_CREDITS' : null;
-    const assistantReason = !this.assistantEnabled ? 'ASSISTANT_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : (cumulative?.availableMicros??(this.budgetMicros-(budget?.spent_micros??0)-(budget?.held_micros??0))) < TEXT_MAX_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : null;
-    return { mode: 'local-development', commercialReady: false, generation: { batchVersion:1, selectiveEditProofVersion:1, selectiveEdit: this.selectiveEditingEnabled===true&&this.adapter?.selectiveEditReady===true, creditQuote:this.creditQuote(wallet), enabled: reason === null, exactAdText:false, plannedAdText:false, manualDimensionOverlay:true, aiDimensionDisplay: true, photoPurposes: true, textExamples: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet, budget: { currency: 'USD', period, limitMicros: limit, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false, ...(cumulative?{scope:cumulative.scope,historyMode:cumulative.historyMode,activatedAt:cumulative.activatedAt,limitMicros:cumulative.limitMicros,spentMicros:cumulative.spentMicros,heldMicros:cumulative.heldMicros,availableMicros:cumulative.availableMicros}:{}) }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
+    const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : !customer && ((cumulative?.limitMicros??limit) < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS) ? 'BUDGET_NOT_AVAILABLE' : !this.adminTestUnlimited && wallet.available < 1 && wallet.credits.available < 10 ? 'NO_TEST_CREDITS' : null;
+    const assistantReason = customer || !this.assistantEnabled || (this.ledger.sharedBudget && !this.adminTestUnlimited) ? 'ASSISTANT_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : (cumulative?.availableMicros??(this.budgetMicros-(budget?.spent_micros??0)-(budget?.held_micros??0))) < TEXT_MAX_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : null;
+    return { mode: 'local-development', commercialReady: false, generation: { batchVersion:1, selectiveEditProofVersion:1, selectiveEdit: this.selectiveEditingEnabled===true&&this.adapter?.selectiveEditReady===true, creditQuote:this.creditQuote(wallet), enabled: reason === null, exactAdText:false, plannedAdText:false, manualDimensionOverlay:true, aiDimensionDisplay: true, photoPurposes: true, textExamples: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet, budget: customer?{scope:'customer-entitlement',limitMicros:0,spentMicros:0,heldMicros:0}:{ currency: 'USD', period, limitMicros: limit, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false, ...(cumulative?{scope:cumulative.scope,historyMode:cumulative.historyMode,activatedAt:cumulative.activatedAt,limitMicros:cumulative.limitMicros,spentMicros:cumulative.spentMicros,heldMicros:cumulative.heldMicros,availableMicros:cumulative.availableMicros}:{}) }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
   }
   storeAsset(asset) {
     this.db.prepare('INSERT INTO generation_assets VALUES (?,?,?,?,?) ON CONFLICT(hash) DO NOTHING').run(asset.sha256, asset.mime, asset.width, asset.height, asset.bytes);
@@ -297,7 +311,7 @@ export class GenerationService {
     const existing=this.db.prepare('SELECT fingerprint FROM ad_batches WHERE id=?').get(id);
     if(existing){
       if(existing.fingerprint!==fingerprint)fail('IDEMPOTENCY_CONFLICT',409);
-      return this.batchSummary(id);
+      return {...this.batchSummary(id),reused:true};
     }
     const status=this.status();
     if(!status.generation.enabled)fail(status.generation.reason,409);
@@ -319,7 +333,7 @@ export class GenerationService {
         const plannedRequest=plannedRequests[i];
         const key=hashBytes(JSON.stringify({projectId,request:plannedRequest,sourceHash:source?.sha256??null,revision:IMAGE_REVISION}));
         const legacy=price.admin||i<price.ticketsUsed;
-        this.ledger.reserve({jobId,userId:LOCAL_USER,kind:imageMediaType,unit:legacy?'legacy-ticket':'credit-v2',credits:legacy?1:10,creditExempt:price.admin,requestHash:key,modelRevision:IMAGE_REVISION,expiresAt:created+86400000});
+        this.ledger.reserve({jobId,userId:LOCAL_USER,kind:imageMediaType,customerFunded:this.customerImagesEnabled && !price.admin && !legacy,unit:legacy?'legacy-ticket':'credit-v2',credits:legacy?1:10,creditExempt:price.admin,requestHash:key,modelRevision:IMAGE_REVISION,expiresAt:created+86400000});
         this.db.prepare('INSERT INTO generation_records(id,project_id,fingerprint,request_json,source_hash,created_at) VALUES (?,?,?,?,?,?)').run(jobId,projectId,key,JSON.stringify(plannedRequest),source?.sha256??null,created);
         this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(projectId,key,jobId);
         jobIds.push(jobId);
@@ -332,7 +346,7 @@ export class GenerationService {
       this.tasks.add(work);
       work.then(()=>this.tasks.delete(work),()=>this.tasks.delete(work));
     }
-    return this.batchSummary(id);
+    return {...this.batchSummary(id),reused:jobIds.length===0};
   }
   async assertOutputCapacity(request, originals) { /* Local disk implementation has no cloud quota. */ }
   selectiveRequestStatus(requestId,sourceJobId) {
@@ -486,8 +500,10 @@ export class GenerationService {
           reusedJobId=duplicate.id;return;
         }
         if(this.tasks.size||this.db.prepare("SELECT id FROM jobs WHERE kind=? AND user_id=? AND status IN ('reserved','running') LIMIT 1").get(imageMediaType,LOCAL_USER))fail('GENERATION_ALREADY_RUNNING',409);
-        const currentQuote=this.creditQuote();if(currentQuote.unit!==quote.unit||currentQuote.amount!==quote.amount)fail('CREDIT_QUOTE_CHANGED',409);
-        this.ledger.reserve({ kind:imageMediaType, jobId: id, userId: LOCAL_USER, credits: quote.amount||1, unit:quote.unit, creditExempt: quote.amount===0, requestHash: fingerprint, modelRevision, expiresAt: createdAt + 24 * 60 * 60 * 1000 });
+        const currentWallet=this.wallet(),currentQuote=this.creditQuote(currentWallet);
+        if(this.customerImagesEnabled && !this.adminTestUnlimited && currentWallet.credits.available<10)fail('NO_TEST_CREDITS',409);
+        if(currentQuote.unit!==quote.unit||currentQuote.amount!==quote.amount)fail('CREDIT_QUOTE_CHANGED',409);
+        this.ledger.reserve({ customerFunded:this.customerImagesEnabled && !this.adminTestUnlimited && quote.unit==='credit-v2', kind:imageMediaType, jobId: id, userId: LOCAL_USER, credits: quote.amount||1, unit:quote.unit, creditExempt: quote.amount===0, requestHash: fingerprint, modelRevision, expiresAt: createdAt + 24 * 60 * 60 * 1000 });
         this.db.prepare('INSERT INTO generation_records(id,project_id,fingerprint,request_json,source_hash,created_at) VALUES (?,?,?,?,?,?)').run(id, body.projectId, fingerprint, JSON.stringify(request), source?.sha256 ?? null, createdAt);
         this.db.prepare('INSERT INTO generation_keys VALUES (?,?,?)').run(body.requestId, fingerprint, id);
       });
@@ -502,7 +518,9 @@ export class GenerationService {
     const attemptId = randomUUID(); let began = false, stage='reserve';
     try {
       const attempt = this.ledger.transaction(() => {
-        const period=this.period(),limit=this.budgetLimit(period);
+        const period=this.period();
+        const customerJob=this.db.prepare('SELECT job_id FROM customer_ad_jobs WHERE job_id=?').get(id);
+        const limit=customerJob?0:this.budgetLimit(period);
         return this.ledger.beginAttempt({ jobId: id, attemptId, period, maximumMicros: MODEL_COST_HOLD_MICROS + (region?.mask.scene || region?.mask.instruction || region?.mask.explicit ? 80000 : 0), limitMicros: limit, periodScoped:Boolean(this.budgetForPeriod) });
       });
       if (!attempt.shouldDispatch) return;
