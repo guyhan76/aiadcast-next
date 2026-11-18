@@ -99,3 +99,9 @@
 .studio-shell .payment-status-card h1 {margin:12px 0 8px;font-size:28px}.payment-status-card p {margin:8px 0 0;font-size:17px}
 .payment-facts {margin:18px 0 0}.payment-facts>div {display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid #e6e3de}
 .payment-facts dd {margin:0;font-size:19px;font-weight:700}.payment-return-help {border-top:1px solid #e3dfd9;padding-top:8px}
+
+.commerce-records .refund-balance {padding:16px;background:#f7f6f4;border-radius:10px}
+.commerce-records .refund-balance h4 {margin:0;font-size:16px}
+.commerce-records .refund-balance>strong {display:block;margin:4px 0 10px;font-size:24px;line-height:1.3}
+.commerce-records .refund-balance p {margin:6px 0 0;line-height:1.55}
+.commerce-records .case-facts dd {overflow-wrap:anywhere}

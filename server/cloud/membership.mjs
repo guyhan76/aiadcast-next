@@ -143,9 +143,9 @@ export class Membership {
     for(const {order_no} of orders){
      const order=await this.records.order(order_no);
      if(!order || order.remaining===0 || order.estimated==='0')continue;
-     const pending=await this.db.prepare("SELECT receipt_no FROM protected_complaints WHERE order_no=? AND category='refund' AND resolution IS NULL AND erase_at>now() ORDER BY received_at LIMIT 1").get(order_no);
+     const pending=await this.db.prepare("SELECT receipt_no FROM protected_complaints c WHERE (c.order_no=? OR EXISTS(SELECT 1 FROM commerce_withdrawals w WHERE w.case_id=c.case_id AND w.order_no=?)) AND category='refund' AND resolution IS NULL AND erase_at>now() ORDER BY received_at LIMIT 1").get(order_no,order_no);
      const result=pending?{caseId:pending.receipt_no}:await this.records.route(user,'POST','/api/membership/records/cases',{orderNo:order_no,category:'refund',description:'회원탈퇴 시 미사용 유료 광고 환불 검토 요청',requestId:randomUUID()});
-     cases.push(result.caseId);
+     if(!cases.includes(result.caseId))cases.push(result.caseId);
     }
    }
    await this.db.prepare('INSERT INTO deletion_requests(user_id,receipt) VALUES(?,?)').run(user.id,receipt);
