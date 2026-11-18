@@ -76,14 +76,29 @@ test('member supplements a refund destination and can read the dated final resul
  const caseId='20261118-0002',at='2026-11-18T02:00:00Z';let saved=false,closed=false;
  await page.route('**/api/account/credits',r=>r.fulfill({json:{wallet:{available:0,reserved:0},orders:[],grants:[]}}));
  await page.route('**/api/membership/records/mine',r=>r.fulfill({json:{orders:[],cases:[{case_id:caseId,category:'refund',order_no:null,description:'이용권 환불 문의',
-  received_at:at,resolved_at:closed?at:null,resolution:closed?'이체 확인':null,payout_bank:saved?'예시은행':null,payout_last4:saved?'7890':null,
+  received_at:at,resolved_at:closed?at:null,resolution:closed?'이체 확인':null,bank_requested:true,payout_bank:saved?'예시은행':null,payout_last4:saved?'7890':null,
   events:closed?[{kind:'closed',at,detail:'이체 확인',outcome:'transfer',amount:1200,reference:'transfer-100',processed_at:at}]:[]}]}}));
- await page.route('**/api/membership/records/details',r=>{expect(r.request().postDataJSON()).toMatchObject({caseId,requestedKrw:1200,payout:{bank:'예시은행',holder:'예시회원',number:'001234567890'}});saved=true;return r.fulfill({json:{saved:true}});});
+ await page.route('**/api/membership/records/details',r=>{expect(r.request().postDataJSON()).toMatchObject({caseId,payout:{bank:'예시은행',holder:'예시회원',number:'001234567890'}});saved=true;return r.fulfill({json:{saved:true}});});
  await page.goto('/#credits');const panel=page.locator('details.commerce-records');await panel.locator('summary').first().click();
- await panel.getByRole('button',{name:'환불 정보 보완'}).click();const form=panel.locator('.case-card form');await form.getByLabel('환불 방법').selectOption('transfer');
- await form.getByLabel('환불 요청 금액',{exact:false}).fill('1200');await form.getByLabel('은행명').fill('예시은행');await form.getByLabel('예금주').fill('예시회원');await form.getByLabel('계좌번호').fill('001234567890');
+ await panel.getByRole('button',{name:'환불계좌 등록'}).click();const form=panel.locator('.case-card form');
+ await form.getByLabel('은행명').fill('예시은행');await form.getByLabel('예금주').fill('예시회원');await form.getByLabel('계좌번호').fill('001234567890');
  await form.getByRole('button',{name:'보완 내용 저장'}).click();await expect(panel.getByText('예시은행 · 끝 4자리 7890')).toBeVisible();
  closed=true;await page.reload();await panel.locator('summary').first().click();
  await expect(panel.getByText('계좌 환불 · 1,200원')).toBeVisible();await expect(panel.getByText('처리 증빙번호 transfer-100')).toBeVisible();await expect(panel.getByText(/환불 실행 일시/)).toBeVisible();
  await expect(panel.getByText('001234567890')).toHaveCount(0);
+});
+
+test('member requests the entire paid balance without typing an amount, order or bank',async({page})=>{
+ await protectedScreen(page,mockSession('balance-refund-member'));
+ await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
+ const balance={paidOrders:2,krw:12600,items:[{orderNo:'a',amountKrw:6600},{orderNo:'b',amountKrw:6000}]};
+ await page.route('**/api/membership/records/mine',r=>r.fulfill({json:{orders:[],cases:[],refundBalance:balance}}));
+ await page.route('**/api/membership/records/cases',r=>{
+  expect(r.request().postDataJSON()).toMatchObject({category:'refund',balanceRefund:true,orderNo:null});
+  expect(r.request().postDataJSON()).not.toHaveProperty('requestedKrw');return r.fulfill({json:{caseId:'20261118-0004'}});
+ });
+ await page.goto('/#credits');const panel=page.locator('details.commerce-records');await panel.locator('summary').first().click();
+ await panel.getByLabel('유형').selectOption('refund');await expect(panel.getByText('12,600원')).toBeVisible();
+ await expect(panel.getByLabel('환불 방법')).toHaveCount(0);await expect(panel.getByLabel('은행명')).toHaveCount(0);
+ await panel.getByRole('button',{name:'환불 검토 요청하기'}).click();await expect(panel.locator('.case-confirmation strong')).toHaveText('20261118-0004');
 });

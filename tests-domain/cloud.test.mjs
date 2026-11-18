@@ -223,7 +223,7 @@ test('retained order and complaint evidence survives withdrawal and expires inde
   assert.equal(await db.prepare('SELECT 1 FROM '+table+' WHERE '+column+'=?').get(buyer),undefined);
  }
  assert.equal((await call('mine',token)).status,401);
- const rejoined=await emailCustomer(s,mails,'retention@example.com');assert.deepEqual((await call('mine',rejoined.token)).data,{orders:[],cases:[]});
+ const rejoined=await emailCustomer(s,mails,'retention@example.com');assert.deepEqual((await call('mine',rejoined.token)).data,{orders:[],cases:[],refundBalance:{items:[],paidOrders:0,krw:0}});
  assert.equal((await lookup(receipt)).orders[0].delivered,1);
  partial=true;const refreshed=await call('sync',admin,{orderNo});assert.equal(refreshed.status,200,JSON.stringify(refreshed.data));
  assert.equal(refreshed.data.order.refunded,'900000000000');assert.equal(refreshed.data.order.refunds.length,1);
@@ -1096,4 +1096,32 @@ test('legacy rectangles are soft location hints; review catches scene seams and 
  assert.equal(second.state,'ready');assert.equal(second.preservation.changedOutsidePixels,0);
  assert.deepEqual(steps.slice(2),['image','review_full_scene']);
  assert.equal(imagePrompts.length,2);assert.ok(imagePrompts[1].includes('Remove abrupt joins'));assert.ok(imagePrompts[1].includes('두 번째 커리어'));assert.ok(imagePrompts[1].includes('드론'));
+});
+
+test('balance refunds snapshot all real purchases and keep per-order settlements',async t=>{
+ const s=await setup(t),member=await s.member('Balance buyer'),other=await s.member('Unrelated');
+ const owner=await activateMemberFunding(s,true),invite=await s.app.store.issueInvite(owner);
+ const admin=(await s.call('/api/auth/login',{body:{invite:invite.invite}})).data.token;
+ const api=(actor,route,body)=>s.call('/api/membership/records/'+route,{token:actor,...(body?{body}:{})});
+ const records=s.app.store.membership.records,db=s.app.store.db,at=new Date().toISOString();
+ const sale=(id,price,who=member.user.id)=>records.recordSale({orderNo:id,product:'credits_30',purchaseId:id,credits:30,
+  evidence:{currency:'KRW',paid:String(price*1e9),refunds:[],purchasedAt:at,lastEvent:at,fullyRefunded:false}},who,false);
+ await sale('first',9900);await sale('second',6000);await sale('another-buyer',3000,other.user.id);
+ await db.prepare("INSERT INTO commerce_deliveries(job_key,order_no) VALUES('used-ad','first')").run();
+ const quote=(await api(member.token,'mine')).data.refundBalance;
+ assert.equal(quote.krw,12600);assert.equal(quote.items.length,2);
+ const input={balanceRefund:true,category:'refund',description:'잔여분 환불',requestId:randomUUID()};
+ assert.equal((await api(member.token,'cases',{...input,requestedKrw:500})).status,400);
+ const submit=await api(member.token,'cases',input);assert.equal(submit.status,200,JSON.stringify(submit.data));
+ const caseId=submit.data.caseId;assert.equal((await api(member.token,'cases',input)).data.caseId,caseId);
+ assert.equal((await api(member.token,'cases',{...input,requestId:randomUUID()})).data.caseId,caseId);
+ await sale('later',9000);
+ const c=(await api(admin,'lookup',{key:caseId,by:'receipt'})).data.cases[0];
+ assert.equal(c.requested_krw,12600);assert.deepEqual(c.refund_quote,quote);
+ const close={caseId,outcome:'transfer',resolution:'은행 이체 확인',amountKrw:12600,reference:'case-transfer',requestId:randomUUID(),processedAt:at};
+ assert.equal((await api(admin,'resolve',close)).status,400);
+ close.allocations=quote.items;assert.equal((await api(admin,'resolve',close)).status,200);
+ const later=(await api(member.token,'mine')).data.refundBalance;assert.equal(later.krw,9000);
+ await records.recordSale({orderNo:'unknown',product:'credits_30',purchaseId:'unknown',credits:30},member.user.id,true);
+ assert.equal((await api(member.token,'mine')).data.refundBalance.krw,null);
 });

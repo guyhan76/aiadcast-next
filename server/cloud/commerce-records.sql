@@ -96,3 +96,15 @@ CREATE TABLE IF NOT EXISTS complaint_events (
 );
 ALTER TABLE complaint_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE complaint_events ADD COLUMN IF NOT EXISTS processed_at timestamptz;
+
+ALTER TABLE protected_complaints ADD COLUMN IF NOT EXISTS refund_quote jsonb;
+ALTER TABLE protected_complaints ADD COLUMN IF NOT EXISTS bank_requested boolean NOT NULL DEFAULT false;
+-- A single balance request can cover purchases made at different prices.
+DO $withdrawal_key$
+BEGIN
+ IF EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='commerce_withdrawals'::regclass
+    AND conname='commerce_withdrawals_pkey' AND array_length(conkey,1)=1) THEN
+  ALTER TABLE commerce_withdrawals DROP CONSTRAINT commerce_withdrawals_pkey,
+   ADD PRIMARY KEY(case_id,order_no);
+ END IF;
+END $withdrawal_key$;
