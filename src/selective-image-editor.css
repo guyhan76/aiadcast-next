@@ -5,6 +5,7 @@
 .selective-editor h2{margin:0;font-size:22px}.selective-editor header button{width:44px;height:44px;font-size:28px;border:0;background:transparent}
 .edit-original{display:block;width:100%;height:min(40dvh,360px);object-fit:contain;background:#f6f5f2;border-radius:12px}
 .selective-editor label{display:block;margin:18px 0 12px;font-weight:600}
+.selective-editor select{display:block;width:100%;min-height:44px;margin-top:8px;padding:8px 12px;border:1px solid #c9c6c1;border-radius:10px;background:white;color:inherit;font:inherit;font-weight:400}
 .selective-editor textarea{display:block;box-sizing:border-box;width:100%;min-height:94px;margin-top:8px;border:1px solid #c9c6c1;border-radius:10px;padding:12px;color:#171717;background:#fff;font:inherit;font-weight:400}
 .selective-editor .primary-action,.result-actions button,.precision-launch{display:inline-flex;gap:8px;align-items:center;justify-content:center;min-height:48px;border-radius:10px;font:inherit;font-weight:600;cursor:pointer}
 .selective-editor .primary-action{width:100%;background:#191919;color:#fff;border:0}.selective-editor button:disabled{opacity:.5;cursor:default}

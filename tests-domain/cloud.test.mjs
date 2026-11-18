@@ -1090,7 +1090,7 @@ test('cloud upload reviews the composited pose and delivers the same artifact af
   }
   const request=JSON.parse(options.body),stage=request.response_format.json_schema.name;
   steps.push(stage);
-  const answers={review_full_scene:{requestedChangesApplied:true,sceneContinuous:true,unrelatedContentPreserved:true,copy:[],protectedObjects:[]}};
+  const answers={review_full_scene:{camera:{requested:'keep',observed:'front',matches:true},requestedChangesApplied:true,sceneContinuous:true,unrelatedContentPreserved:true,copy:[],protectedObjects:[]}};
   assert.ok(answers[stage],stage);
   return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(answers[stage])}}],usage:{prompt_tokens:100,completion_tokens:60}});
  }});
@@ -1151,7 +1151,7 @@ test('legacy rectangles are soft location hints; review catches scene seams and 
   }
   const stage=JSON.parse(options.body).response_format.json_schema.name;
   steps.push(stage);
-  const answers={review_full_scene:{requestedChangesApplied:true,sceneContinuous:imagePrompts.length===2,unrelatedContentPreserved:true,
+  const answers={review_full_scene:{camera:{requested:'keep',observed:'front',matches:true},requestedChangesApplied:true,sceneContinuous:imagePrompts.length===2,unrelatedContentPreserved:true,
    copy:[{source:'내 미래를 위한, 두 번째 커리어',replacement:null,observed:imagePrompts.length===1?'내 미래를 위한':'내 미래를 위한, 두 번째 커리어'}],
    protectedObjects:[{subject:'드론',originalCount:2,editedCount:imagePrompts.length===1?1:2}]}};
   assert.ok(answers[stage],stage);

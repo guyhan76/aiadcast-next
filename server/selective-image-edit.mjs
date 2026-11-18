@@ -123,10 +123,11 @@ export function selectiveEditForm({model,source,mask,prompt,references=[],instru
 
 function sceneEditPrompt(instruction,referenceCount,regionHints){
  return [
-  'Edit the complete original advertisement in image 1 directly using the customer instruction. Render one continuous scene in the original camera frame, composition and aspect ratio. Locate what to change from the words and the photo.',
+  'Edit image 1 as one continuous advertisement at the original aspect ratio. Keep the original camera and composition for ordinary edits, including changes to expression, pose, gaze, lighting or background. Move the camera only when the customer explicitly asks for a different viewpoint.',
+  'For a requested camera move, render the whole scene from that position relative to the subject. Reproject the subject, props and environment together with consistent perspective, scale, depth and occlusion. A crop, mirror flip, turned head or rotated subject against a fixed background does not move the camera. For a rear view show the back of the same subject in its original orientation or direction of travel.',
   'For weather, carry the requested atmosphere across the visible sky, gaps, edges and relevant lighting or reflections. Keep foreground silhouettes and occlusion natural. For a new character or pose, replace the full affected figure, including old hands and gestures, and restore the scenery behind it. Keep the requested subject count.',
-  'Preserve all unrelated copy exactly, including every Korean character in banners, logos, prices and CTA. Keep the original equipment and products, such as drones and handheld controllers, in the same locations. Do not split the scene, crop the artwork, paste panels or leave hard-edged patches. Plain outer padding belongs outside the artwork.',
-  referenceCount?'Additional images document the actual product only.':'',
+  'Preserve subject identity, clothing, product geometry, materials, proportions and object count unless explicitly changed by the customer. Keep equipment in the same physical relation to the subject. Preserve unrelated ad overlays, Korean copy, prices and brand graphics exactly in their layout. On physical objects respect the visible side; never mirror a logo or invent lettering, fasteners or features on unseen surfaces. Do not split the scene or crop or paste panels. Outer padding stays outside the artwork.',
+  referenceCount?'Use the additional actual-product photographs as evidence for details on newly visible surfaces. Do not copy their people, scene or composition.':'',
   regionHints?.length?'The older client marked approximate locations in 0..1000 coordinates: '+JSON.stringify(regionHints)+'. These coordinates refer to the entire supplied frame including any outer padding. Use them only to identify subjects. Follow natural boundaries across these coordinates.':'',
   'Customer instruction:',instruction
  ].filter(Boolean).join('\n');

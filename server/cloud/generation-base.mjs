@@ -477,7 +477,7 @@ export class GenerationService {
             ? "(j.status IN ('reserved','running','uncertain','ready','accepted') OR (g.error_code='PROVIDER_UNCERTAIN' AND NOT (j.status='released' AND j.reason='system_error' AND j.artifact_id IS NULL)))"
             : "(j.status IN ('reserved','running','uncertain','ready') OR g.error_code='PROVIDER_UNCERTAIN')";
         const compoundScene = region?.mask.scene === true;
-        const modelRevision = compoundScene ? IMAGE_REVISION + '/whole-scene-v1' : IMAGE_REVISION;
+        const modelRevision = compoundScene ? IMAGE_REVISION + '/whole-scene-v2-camera' : IMAGE_REVISION;
         const reviewFilter = compoundScene ? " AND (j.status NOT IN ('ready','accepted') OR j.model_revision=?)" : "";
         const matchSql = `SELECT g.id FROM generation_records g JOIN jobs j ON j.id=g.id WHERE g.fingerprint=? AND ${reusableJobs}${reviewFilter} ORDER BY g.created_at DESC LIMIT 1`;
         const matchArgs = compoundScene ? [fingerprint, modelRevision] : [fingerprint];

@@ -337,6 +337,8 @@ for(const native of [false,true])test('instruction editing, credit consent and i
  const source=await sharp({create:{width:32,height:48,channels:3,background:'#358191'}}).png().toBuffer();
  const thumb='data:image/webp;base64,'+(await sharp(source).webp().toBuffer()).toString('base64');
  const items=Array.from({length:7},(_,i)=>({id:'delivery-preview-'+i,name:'미리보기 광고 '+i,reviewRequired:false,expiresAt:new Date(Date.now()+86400000).toISOString()}));
+ const rear='카메라를 피사체 뒤로 옮겨 뒤에서 본 장면으로 바꿔주세요.';
+ const notes='가격을 599,000원으로, 하늘은 화창하게';
  const removed:string[]=[];let edits=0;
  const edited=await sharp({create:{width:32,height:48,channels:3,background:'#89c7e5'}}).png().toBuffer(),editedHash=createHash('sha256').update(edited).digest('hex');
  await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:20,reserved:0}},budget:{limitMicros:1000000}}}));
@@ -354,7 +356,7 @@ for(const native of [false,true])test('instruction editing, credit consent and i
    preservation:{version:1,sourceHash,maskHash,resultHash:editedHash,width:32,height:48,selectedPixels:1536,changedSelectedPixels:1536,changedOutsidePixels:0,bounds:{x:0,y:0,width:32,height:48},semanticQuality:'not-assessed'}};
  }
  await page.route('**/api/selective-edits/upload',r=>{
-  const body=r.request().postDataJSON();expect(body.mask).toEqual({mode:'scene'});expect(body.prompt).toBe('가격을 599,000원으로, 하늘은 화창하게');expect(body.creditQuote.amount).toBe(10);
+  const body=r.request().postDataJSON();expect(body.mask).toEqual({mode:'scene'});expect(body.prompt).toBe(rear+'\n'+notes);expect(body.creditQuote.amount).toBe(10);
   sourceInfo=body;edits++;return r.fulfill({json:{job:editJob('running')}});
  });
  await page.route('**/api/generations/instruction-job',async r=>{
@@ -370,9 +372,15 @@ for(const native of [false,true])test('instruction editing, credit consent and i
  await (await chooser).setFiles({name:'여행.png',mimeType:'image/png',buffer:source});
  const edit=page.getByRole('dialog',{name:'정밀 편집'});await expect(edit).toBeVisible();
  await expect(edit.locator('canvas')).toHaveCount(0);
- await edit.getByRole('textbox').fill('가격을 599,000원으로, 하늘은 화창하게');
- await page.clock.install();
+ const angle=edit.getByRole('combobox',{name:'카메라 앵글'}),instructions=edit.getByRole('textbox');
  const submit=edit.getByRole('button',{name:/수정하기.*10 크레딧/});
+ await expect(submit).toBeDisabled();
+ await angle.selectOption({label:'후면'});await expect(instructions).toHaveValue(rear);await expect(submit).toBeEnabled();
+ await instructions.fill(rear+'\n'+notes);
+ await angle.selectOption({label:'측면'});await expect(instructions).toHaveValue(/옆으로[^\n]+\n가격을/);
+ await angle.selectOption('');await expect(instructions).toHaveValue(notes);
+ await angle.selectOption({label:'후면'});await expect(instructions).toHaveValue(rear+'\n'+notes);
+ await page.clock.install();
  page.once('dialog',d=>{expect(d.message()).toContain('10 크레딧');return d.dismiss();});await submit.click();expect(edits).toBe(0);
  page.once('dialog',d=>d.accept());await submit.click();await expect.poll(()=>edits).toBe(1);
  const retry=edit.getByRole('button',{name:'결과 확인',exact:true});
