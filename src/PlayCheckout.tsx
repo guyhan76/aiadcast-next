@@ -1,7 +1,7 @@
 import {PurchaseRefundReceipt,RefundNotice} from './RefundNotice';
 import {useEffect,useState} from 'react';
 import {useNativeVersion} from './app-version';
-import {apiRequest} from './generation-client';
+import {ApiRequestFailure,apiRequest} from './generation-client';
 import {betaSession} from './beta-session';
 import {rememberLoginDestination} from './login-navigation';
 import {useUiLanguage} from './ui-language';
@@ -10,7 +10,7 @@ import {pricingCatalog} from './pricing';
 export const playPackage = 'com.selluplabs.aiadcast.next';
 type Account = {enabled:boolean;accountId:string;policyAccountId?:string};
 type Product = {id:string;price:string};
-type Status = 'pending'|'paid'|'verifying'|'retry'|'cancelled'|'error';
+type Status = 'pending'|'paid'|'verifying'|'retry'|'cancelled'|'error'|'ineligible';
 type PurchaseTerms={orderNo:string;ads:number;purchasedAt:string;currency:string;paid:string};
 type Receipt = {state:'paid';grantedCredits:number;balance:number;policyReceipt?:PurchaseTerms}|{state:'pending'};
 type NativeEvent = {type:'catalog';products:Product[]}|{type:'purchase';token:string;account:string}|
@@ -31,39 +31,58 @@ export function PlayPurchaseRecovery(){
   useEffect(()=>{
     if(version?.packageName!==playPackage) return;
     let active=true,account:Account|undefined,owner:string|undefined,epoch=0;
-    const running=new Set<string>();
+    let running=new Set<string>();
+    const interrupted=new Set<string>();
     async function recover(){
       const token=betaSession()?.token;
       const request=++epoch;
-      if(token!==owner){owner=token;account=undefined;}
+      if(token!==owner){owner=token;account=undefined;running=new Set();interrupted.clear();}
       if(!token)return;
       try {
         const info=await apiRequest<Account>('/api/checkout/play/account');
         if(!active||request!==epoch||owner!==betaSession()?.token)return;
         account=info;
-        if(info.enabled)native('play-restore');
+        if(info.enabled){
+          // Play may already have consumed a purchase whose verification response was lost.
+          for(const purchaseToken of interrupted)void verify(purchaseToken);
+          native('play-restore');
+        }
       } catch { if(active && request===epoch) notify('retry'); }
     }
-    async function receive(event:Event){
-      const detail=(event as CustomEvent<NativeEvent>).detail;
-      if(!detail || !account?.enabled || owner!==betaSession()?.token) return;
-      const matches='account' in detail&&typeof detail.account==='string'&&[account.accountId,account.policyAccountId].includes(detail.account);
-      if(detail.type==='pending' && matches){notify('pending');return;}
-      if(detail.type!=='purchase'||!matches||running.has(detail.token))return;
-      const token=detail.token, session=owner;
-      running.add(token);
+    async function verify(token:string){
+      if(running.has(token))return;
+      const session=owner,inFlight=running;
+      const current=()=>active&&inFlight===running&&session===betaSession()?.token;
+      inFlight.add(token);
       try {
         notify('verifying');
         const receipt=await apiRequest<Receipt>('/api/checkout/play/verify',{token});
-        if(!active || session!==betaSession()?.token)return;
+        if(!current())return;
+        interrupted.delete(token);
         if(receipt.state==='paid'){
           window.dispatchEvent(new Event('aiadcast-credit-refresh'));
           notify('paid',receipt.balance,receipt.policyReceipt);
         }else{
           notify('pending');
         }
-      } catch { if(active && session===betaSession()?.token)notify('retry'); }
-      finally{running.delete(token);}
+      } catch(error){
+        if(!current())return;
+        if(error instanceof ApiRequestFailure&&[400,403,409].includes(error.status)){
+          interrupted.delete(token);
+          notify('ineligible');
+        }else{
+          interrupted.add(token);
+          notify('retry');
+        }
+      } finally{inFlight.delete(token);}
+    }
+    function receive(event:Event){
+      const detail=(event as CustomEvent<NativeEvent>).detail;
+      if(!detail||!account?.enabled||owner!==betaSession()?.token)return;
+      const matches='account' in detail&&typeof detail.account==='string'&&[account.accountId,account.policyAccountId].includes(detail.account);
+      if(!matches)return;
+      if(detail.type==='pending')notify('pending');
+      if(detail.type==='purchase'&&typeof detail.token==='string'&&detail.token)void verify(detail.token);
     }
     const visible=()=>{if(document.visibilityState==='visible')void recover();};
     window.addEventListener('aiadcast-play',receive);
@@ -111,6 +130,7 @@ export function PlayCheckoutPage({preserve,returnPage}:{preserve:()=>Promise<voi
     pending:t('결제 대기 중입니다. 승인 후 크레딧이 지급됩니다.','Payment is pending. Credits are added after approval.'),
     paid:t('구매를 확인했습니다.','Purchase confirmed.'),verifying:t('Google Play 구매를 확인하고 있습니다.','Verifying your Google Play purchase.'),
     retry:t('구매 확인이 지연되고 있습니다. 결제 내역을 다시 확인해 주세요.','Verification is delayed. Check your purchases again.'),
+    ineligible:t('이 구매로 이용권을 지급할 수 없습니다. Google Play의 구매 계정과 주문 상태를 확인해 주세요.','These credits could not be granted. Check the purchasing account and order status in Google Play.'),
     cancelled:t('결제를 취소했습니다.','Purchase canceled.'),error:t('Google Play에 연결하지 못했습니다.','Could not connect to Google Play.')
   };
   if(status==='paid'&&policyReceipt)return <section className="account-page checkout-page">
