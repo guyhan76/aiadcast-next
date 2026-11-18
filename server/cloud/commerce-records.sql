@@ -111,3 +111,8 @@ END $withdrawal_key$;
 
 ALTER TABLE commerce_orders ADD COLUMN IF NOT EXISTS refund_policy text;
 ALTER TABLE commerce_orders ADD COLUMN IF NOT EXISTS refund_notice_received_at timestamptz;
+
+ALTER TABLE complaint_events ADD COLUMN IF NOT EXISTS payout_bank text;
+ALTER TABLE complaint_events ADD COLUMN IF NOT EXISTS payout_last4 text;
+ALTER TABLE complaint_events ADD COLUMN IF NOT EXISTS payout_secret text;
+CREATE UNIQUE INDEX IF NOT EXISTS one_transfer_account_supplement ON complaint_events(case_id) WHERE kind='transfer_account';

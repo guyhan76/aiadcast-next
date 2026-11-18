@@ -77,7 +77,11 @@ test('member supplements a refund destination and can read the dated final resul
  await page.route('**/api/account/credits',r=>r.fulfill({json:{wallet:{available:0,reserved:0},orders:[],grants:[]}}));
  await page.route('**/api/membership/records/mine',r=>r.fulfill({json:{orders:[],cases:[{case_id:caseId,category:'refund',order_no:null,description:'이용권 환불 문의',
   received_at:at,resolved_at:closed?at:null,resolution:closed?'이체 확인':null,bank_requested:true,payout_bank:saved?'예시은행':null,payout_last4:saved?'7890':null,
-  events:closed?[{kind:'closed',at,detail:'이체 확인',outcome:'transfer',amount:1200,reference:'transfer-100',processed_at:at}]:[]}]}}));
+  events:closed?[{kind:'member',at,detail:'환불계좌 보완',bank:'예시은행',last4:'7890',event_key:'entered',has_account:true},{kind:'closed',at,detail:'이체 확인',outcome:'transfer',amount:1200,reference:'transfer-100',processed_at:at,bank:'예시은행',last4:'6789',event_key:'sent',has_account:true}]:[]}]}}));
+ await page.route('**/api/membership/records/history-account',r=>{
+  const {caseId:id,eventKey}=r.request().postDataJSON();expect(id).toBe(caseId);
+  return r.fulfill({json:{bank:'예시은행',holder:eventKey==='entered'?'신청 예금주':'이체 예금주',number:eventKey==='entered'?'001234567890':'000123456789'}});
+ });
  await page.route('**/api/membership/records/details',r=>{expect(r.request().postDataJSON()).toMatchObject({caseId,payout:{bank:'예시은행',holder:'예시회원',number:'001234567890'}});saved=true;return r.fulfill({json:{saved:true}});});
  await page.goto('/#credits');const panel=page.locator('details.commerce-records');await panel.locator('summary').first().click();
  await panel.getByRole('button',{name:'환불계좌 등록'}).click();const form=panel.locator('.case-card form');
@@ -86,6 +90,12 @@ test('member supplements a refund destination and can read the dated final resul
  closed=true;await page.reload();await panel.locator('summary').first().click();
  await expect(panel.getByText('계좌 환불 · 1,200원')).toBeVisible();await expect(panel.getByText('처리 증빙번호 transfer-100')).toBeVisible();await expect(panel.getByText(/환불 실행 일시/)).toBeVisible();
  await expect(panel.getByText('001234567890')).toHaveCount(0);
+ const entered=panel.getByRole('region',{name:'신청자가 등록한 환불계좌'}),paid=panel.getByRole('region',{name:'이체 확인 계좌'});
+ for(const [section,holder,account] of [[entered,'신청 예금주','001234567890'],[paid,'이체 예금주','000123456789']] as const){
+  await section.getByRole('button',{name:'계좌 상세 보기'}).click();
+  for(const value of ['예시은행',holder,account,'1,200원'])await expect(section.getByText(value,{exact:true})).toBeVisible();
+  await section.getByRole('button',{name:'계좌 상세 숨기기'}).click();await expect(section.getByText(account)).toHaveCount(0);
+ }
 });
 
 test('member requests the entire paid balance without typing an amount, order or bank',async({page})=>{
@@ -117,4 +127,35 @@ test('expired ordinary refund keeps credits and allows a documented exception',a
  await expect(submit).toBeDisabled();await expect(panel.getByText(/남은 이용권은 계속 사용할 수 있습니다/)).toBeVisible();
  await panel.getByLabel('환불 사유').selectOption('exception');await panel.getByLabel('접수 내용').fill('결제가 두 번 되었습니다.');
  await submit.click();await expect(panel.locator('.case-confirmation strong')).toHaveText('20261118-0007');
+});
+
+test('admin supplements a legacy transfer from a receipt without changing the refund amount',async({page})=>{
+ await protectedScreen(page,mockSession('payout-history-admin','admin'));let saved=false;
+ const caseId='20261118-0001',at='2026-11-18T07:00:00Z',reference='transfer-legacy';
+ const legacy={kind:'member',at,detail:'환불계좌 예시은행 끝 4자리 5968 보완'};
+ const paid={kind:'closed',at,detail:'이체 완료',outcome:'transfer',amount:9900,reference};
+ await page.route('**/api/membership/records/lookup',r=>r.fulfill({json:{orders:[],cases:[{case_id:caseId,category:'refund',received_at:at,resolution:'이체 완료',erase_at:at,events:saved?[legacy,paid,{kind:'transfer_account',at,detail:'증빙 보완',actor:'담당자',amount:9900,reference,event_key:'proof',has_account:true,bank:'예시은행',last4:'5968'}]:[legacy,paid]}]}}));
+ await page.route('**/api/membership/records/transfer-account',r=>{expect(r.request().postDataJSON()).toMatchObject({caseId,reference,payout:{bank:'예시은행',holder:'테스트 예금주',number:'000000005968'}});saved=true;return r.fulfill({json:{saved:true}});});
+ await page.goto('/#admin');const panel=page.locator('details.commerce-records');await panel.locator('summary').first().click();
+ const entry=panel.getByRole('region',{name:'신청자가 등록한 환불계좌'});await expect(entry.getByText('보관 기록 없음')).toBeVisible();await expect(entry.getByText('9,900원')).toBeVisible();
+ await panel.getByRole('button',{name:'이체확인증으로 계좌 보완'}).click();
+ await panel.getByLabel('은행명').fill('예시은행');await panel.getByLabel('계좌번호').fill('000000005968');await panel.getByLabel('예금주').fill('테스트 예금주');
+ await panel.getByLabel('이체확인증의 증빙번호').fill(reference);await panel.getByRole('button',{name:'계좌 증빙 저장'}).click();
+ await expect(panel.getByText('이체 계좌 증빙 보완',{exact:true})).toBeVisible();await expect(panel.getByRole('button',{name:'이체확인증으로 계좌 보완'})).toHaveCount(0);
+});
+
+test('admin records the actual transfer destination even when it differs from the applicant account',async({page})=>{
+ await protectedScreen(page,mockSession('actual-destination-admin','admin'));
+ const caseId='20261118-0003',at='2026-11-18T01:00:00Z';let settled=false;
+ await page.route('**/api/membership/records/lookup',r=>r.fulfill({json:{orders:[],cases:[{case_id:caseId,category:'refund',received_at:at,erase_at:at,payout_bank:'예시은행',payout_last4:'0000',resolution:settled?'이체 완료':null,events:[]}]}}));
+ await page.route('**/api/membership/records/payout',r=>r.fulfill({json:{bank:'예시은행',number:'00010000000',holder:'신청인'}}));
+ await page.route('**/api/membership/records/resolve',r=>{expect(r.request().postDataJSON()).toMatchObject({caseId,outcome:'transfer',amountKrw:9900,reference:'proof-001',transferPayout:{bank:'예시은행',number:'00010001111',holder:'이체 예금주'}});settled=true;return r.fulfill({json:{caseId}});});
+ await page.goto('/#admin');const panel=page.locator('details.commerce-records');await panel.locator('summary').first().click();
+ await panel.getByLabel('처리 단계').selectOption('resolve');await panel.getByLabel('처리 방식').selectOption('transfer');
+ await panel.getByRole('button',{name:'신청자가 등록한 계좌 불러오기'}).click();
+ await expect(panel.getByLabel('계좌번호',{exact:true})).toHaveValue('00010000000');
+ await panel.getByLabel('계좌번호',{exact:true}).fill('00010001111');await panel.getByLabel('예금주').fill('이체 예금주');
+ await panel.getByLabel('실제 환불 금액').fill('9900');await panel.getByLabel('환불 실행 일시').fill('2026-11-18T10:00');
+ await panel.getByLabel('처리 증빙번호').fill('proof-001');await panel.getByLabel('처리 결과').fill('이체 완료');
+ await panel.getByRole('button',{name:'처리 완료 저장'}).click();await expect(panel.locator('.case-state')).toHaveText('처리 완료');
 });

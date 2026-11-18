@@ -109,3 +109,5 @@
 .studio-shell .refund-policy-notice{margin:20px 0;padding:16px;border:1px solid #ded8cf;border-radius:12px}
 .studio-shell .refund-policy-notice h3{margin:0 0 8px;font-size:1.05rem}
 .studio-shell .refund-policy-notice p{margin:0;font-size:1rem;line-height:1.6}
+
+.history-account .case-facts {margin:6px 0 8px;font-variant-numeric:tabular-nums}.history-account .wallet-button {min-height:44px}

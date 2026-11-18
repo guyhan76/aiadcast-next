@@ -5,7 +5,7 @@ import {apiRequest,ApiRequestFailure} from './generation-client';
 
 type Order={order_no:string;refund_policy?:string|null;refund_deadline?:string|null;product:string;ads:number;purchased_at:string;erase_at:string;currency:string|null;paid:string|null;refunded:string|null;estimated:string|null;delivered:number;returned:number;remaining:number|null;checked_at:string|null;refunds:{at:string;nanos:string}[]|null;refund_requests:string[];recorded_refunds?:{method:string;amount:number;at:string|null;recorded:string;reference:string}[]};
 type Balance={reason?:'exception';expired?:{orderNo:string;deadline:string}[];paidOrders:number;krw:number|null;items:{orderNo:string;amountKrw:number|null}[]};
-type CaseEvent={at:string;kind:string;detail:string;actor:string|null;outcome:string|null;amount:number|null;reference:string|null;processed_at?:string|null};
+type CaseEvent={event_key?:string;bank?:string|null;last4?:string|null;has_account?:boolean;at:string;kind:string;detail:string;actor:string|null;outcome:string|null;amount:number|null;reference:string|null;processed_at?:string|null};
 type Case={case_id:string;category:string;order_no:string|null;received_at:string;description:string;resolution:string|null;resolved_at:string|null;erase_at:string;
  refund_quote?:Balance|null;balance_review?:Balance|null;bank_requested?:boolean;requested_krw?:number|null;payout_bank?:string|null;payout_last4?:string|null;member_id?:string|null;member_name?:string|null;member_email?:string|null;
  member_orders?:number;test_purchases?:number;events?:CaseEvent[]};
@@ -55,17 +55,42 @@ function BalanceReason({balance}:{balance:Balance}){
  if(!balance.items.length)return <>확인된 구매에 환불할 잔액이 없습니다.</>;
  return <>구매 당시 결제한 금액을 기준으로 사용한 이용분과 이미 환불한 금액을 반영했습니다.</>;
 }
-function BankFields(){
- return <fieldset className="case-bank"><legend>환불받을 계좌</legend><label>은행명<input name="bank" maxLength={40} required/></label>
- <label>예금주<input name="holder" maxLength={60} required autoComplete="off"/></label><label>계좌번호<input name="number" type="text" inputMode="numeric" autoComplete="off" pattern="[0-9\- ]{7,30}" maxLength={30} required/></label></fieldset>;
+function HistoryAccount({event,receipt,settled}:{event:CaseEvent;receipt:string;settled?:CaseEvent}){
+ const [bank,setBank]=useState<Bank>(),[busy,setBusy]=useState(false),[failed,setFailed]=useState(false);
+ useEffect(()=>{if(!bank)return;const hide=()=>setBank(undefined);const timer=setTimeout(hide,30000);
+  document.addEventListener('visibilitychange',hide);return ()=>{clearTimeout(timer);document.removeEventListener('visibilitychange',hide);};},[bank]);
+ const legacy=event.kind==='member'&&event.detail.match(/환불계좌 (.+?) 끝 4자리 (\d{4})/);
+ const name=event.bank||(legacy&&legacy[1]),last4=event.last4||(legacy&&legacy[2]);
+ if(!name&&!event.has_account)return null;
+ async function reveal(){
+  if(bank){setBank(undefined);return;}
+  setBusy(true);setFailed(false);
+  try{setBank(await apiRequest<Bank>(path+'/history-account',{caseId:receipt,eventKey:event.event_key}));}
+  catch{setFailed(true);}finally{setBusy(false);}
+ }
+ const amount=event.kind==='member'?(settled?.amount??event.amount):event.amount;
+ return <section className="history-account" aria-label={event.kind==='member'?'신청자가 등록한 환불계좌':'이체 확인 계좌'}>
+  <dl className="case-facts"><dt>환불 은행</dt><dd>{bank?.bank||name}</dd>
+  <dt>계좌번호</dt><dd>{bank?.number||(last4?'끝 4자리 '+last4:'기록 없음')}</dd>
+  <dt>예금주</dt><dd>{bank?.holder||(event.has_account?'상세에서 확인':'보관 기록 없음')}</dd>
+  <dt>{event.kind==='member'?(settled?'접수 건 최종 환불액':'신청 당시 금액'):'실제 환불액'}</dt><dd>{amount==null?'미확정':won(amount)}</dd></dl>
+  {event.has_account&&<button type="button" className="wallet-button wallet-secondary" disabled={busy} aria-expanded={Boolean(bank)} onClick={()=>void reveal()}>{bank?'계좌 상세 숨기기':'계좌 상세 보기'}</button>}
+  {failed&&<p role="alert">계좌 상세를 불러오지 못했습니다. 다시 시도해 주세요.</p>}</section>;
+}
+function BankFields({legend='환불받을 계좌',initial}:{legend?:string;initial?:Bank}){
+ return <fieldset className="case-bank"><legend>{legend}</legend><label>은행명<input name="bank" defaultValue={initial?.bank} maxLength={40} required/></label>
+ <label>예금주<input name="holder" defaultValue={initial?.holder} maxLength={60} required autoComplete="off"/></label><label>계좌번호<input name="number" defaultValue={initial?.number} type="text" inputMode="numeric" autoComplete="off" pattern="[0-9\- ]{7,30}" maxLength={30} required/></label></fieldset>;
 }
 function CaseCard({c,orders,admin,refresh}:{c:Case;orders:Order[];admin:boolean;refresh:()=>Promise<void>}){
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[edit,setEdit]=useState(false),[bank,setBank]=useState<Bank>(),[action,setAction]=useState('note'),[outcome,setOutcome]=useState('reply');
  const request=useRef<{input:string;id:string}|undefined>(undefined),lock=useRef(false);
  const active=!c.resolution,refund=c.category==='refund',order=orders.find(o=>o.order_no===c.order_no),events=c.events??[];
  const quote=c.refund_quote??c.balance_review;
+ const transfer=events.find(e=>e.kind==='closed'&&e.outcome==='transfer');
+ const needsAccountProof=transfer&&!transfer.has_account&&!events.some(e=>e.kind==='transfer_account')&&transfer.reference;
+ const [addProof,setAddProof]=useState(false),[prefill,setPrefill]=useState<Bank>();
  useEffect(()=>{if(bank){const t=setTimeout(()=>setBank(undefined),30000);return()=>clearTimeout(t);}},[bank]);
- async function perform(fn:()=>Promise<void>){if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await fn();}catch{setError('저장 또는 조회하지 못했습니다. 입력 내용과 최신 처리 상태를 확인해 주세요.');}finally{setBusy(false);lock.current=false;}}
+ async function perform(fn:()=>Promise<void>){if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await fn();}catch(e){setError(e instanceof ApiRequestFailure&&e.code==='TRANSFER_REFERENCE_MISMATCH'?'이체확인증의 증빙번호가 기존 처리 기록과 일치하는지 확인해 주세요.':'저장 또는 조회하지 못했습니다. 입력 내용과 최신 처리 상태를 확인해 주세요.');}finally{setBusy(false);lock.current=false;}}
  async function save(route:string,body:Record<string,unknown>){
   const input=JSON.stringify([route,body]);if(request.current?.input!==input)request.current={input,id:crypto.randomUUID()};
   await apiRequest(path+'/'+route,{caseId:c.case_id,...body,requestId:request.current.id});await refresh();request.current=undefined;
@@ -89,24 +114,33 @@ function CaseCard({c,orders,admin,refresh}:{c:Case;orders:Order[];admin:boolean;
  {admin&&active&&c.payout_last4&&<><button type="button" className="wallet-button wallet-secondary" disabled={busy} onClick={()=>bank?setBank(undefined):void perform(async()=>setBank(await apiRequest<Bank>(path+'/payout',{caseId:c.case_id})))}>{bank?'계좌번호 숨기기':'환불계좌 확인'}</button>
  {bank&&<span>{bank.bank} {bank.number} · 예금주 {bank.holder}</span>}</>}</dd></>}</dl>}
  <h5>처리 이력</h5><ol className="case-timeline"><li><strong>접수</strong><time>{date(c.received_at)}</time></li>
- {events.map((e,i)=><li key={i}><strong>{e.kind==='closed'?'처리 완료':e.kind==='member'?'신청자 정보 보완':'처리 중'}</strong><time>{date(e.at)}</time>
- {admin&&e.actor&&<span>담당자 {e.actor}</span>}<p>{e.detail}</p>
+ {events.map((e,i)=><li key={i}><strong>{e.kind==='closed'?'처리 완료':e.kind==='member'?'신청자 정보 보완':e.kind==='transfer_account'?'이체 계좌 증빙 보완':'처리 중'}</strong><time>{date(e.at)}</time>
+ {admin&&e.actor&&<span>담당자 {e.actor}</span>}{!(e.kind==='member'&&(e.detail==='환불계좌 보완'||/^환불계좌 .+ 끝 4자리 \d{4} 보완$/.test(e.detail)))&&<p>{e.detail}</p>}
+ <HistoryAccount event={e} receipt={c.case_id} settled={transfer}/>
  {e.kind==='closed'&&refund&&e.outcome&&<span>{outcomes[e.outcome]}{e.amount!=null?' · '+won(e.amount):''}</span>}
  {e.processed_at&&<span>환불 실행 일시 {date(e.processed_at)}</span>}{e.reference&&<span>처리 증빙번호 {e.reference}</span>}</li>)}
  {c.resolution&&!events.some(e=>e.kind==='closed')&&<li><strong>처리 완료</strong>{c.resolved_at&&<time>{date(c.resolved_at)}</time>}<p>{c.resolution}</p></li>}</ol>
+ {admin&&needsAccountProof&&<><button type="button" className="wallet-button wallet-secondary" onClick={()=>setAddProof(v=>!v)}>{addProof?'보완 닫기':'이체확인증으로 계좌 보완'}</button>
+ {addProof&&<form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void perform(async()=>{await save('transfer-account',{payout:{bank:f.get('bank'),number:f.get('number'),holder:f.get('holder')},reference:f.get('reference')});setAddProof(false);});}}>
+ <BankFields legend="이체확인증에 기재된 환불계좌"/><p>기록된 환불액 {won(transfer.amount!)} · 이체확인증과 계좌 정보를 대조해 주세요.</p>
+ <label>이체확인증의 증빙번호<input name="reference" required maxLength={100}/></label>
+ <button disabled={busy}>계좌 증빙 저장</button></form>}</>}
  {admin&&<p>보관 종료 {date(c.erase_at)}</p>}
  {error&&<p role="alert">{error}</p>}
  {!admin&&active&&refund&&(c.payout_bank||c.bank_requested)&&<><button type="button" className="wallet-button wallet-secondary" onClick={()=>setEdit(!edit)}>{edit?'닫기':c.payout_bank?'환불계좌 변경':'환불계좌 등록'}</button>
  {edit&&<form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void perform(async()=>{await save('details',{payout:{bank:f.get('bank'),holder:f.get('holder'),number:f.get('number')}});setEdit(false);});}}>
- <BankFields/><button disabled={busy}>보완 내용 저장</button></form>}</>}
+ <BankFields/><p>계좌 이체로 환불하면 은행·계좌번호·예금주를 환불 처리 이력의 보관 종료일까지 보관합니다. 본인과 담당 관리자가 조회할 수 있습니다.</p><button disabled={busy}>보완 내용 저장</button></form>}</>}
  {admin&&active&&c.category!=='defect'&&<form onSubmit={e=>{e.preventDefault();const form=e.currentTarget,f=new FormData(form);void perform(async()=>{
   const financial=action==='resolve'&&refund;
   const parts=c.refund_quote?.items??[];
   const allocations=financial&&parts.length>1&&['original','transfer'].includes(outcome)?parts.map((i,index)=>({orderNo:i.orderNo,amountKrw:Number(f.get('part'+index))})):undefined;
-  await save(action,{allocations,requestBank:f.has('requestBank'),resolution:String(f.get('resolution')).trim(),outcome:financial?outcome:'reply',amountKrw:allocations?allocations.reduce((n,i)=>n+i.amountKrw,0):f.get('amount')?Number(f.get('amount')):null,reference:f.get('reference')||null,processedAt:f.get('processed')?new Date(f.get('processed')+':00+09:00').toISOString():null});form.reset();setAction('note');setOutcome('reply');setBank(undefined);
+  await save(action,{allocations,...(financial&&outcome==='transfer'?{transferPayout:{bank:f.get('bank'),holder:f.get('holder'),number:f.get('number')}}:{}),requestBank:f.has('requestBank'),resolution:String(f.get('resolution')).trim(),outcome:financial?outcome:'reply',amountKrw:allocations?allocations.reduce((n,i)=>n+i.amountKrw,0):f.get('amount')?Number(f.get('amount')):null,reference:f.get('reference')||null,processedAt:f.get('processed')?new Date(f.get('processed')+':00+09:00').toISOString():null});form.reset();setAction('note');setOutcome('reply');setBank(undefined);setPrefill(undefined);
  });}}>
- <label>처리 단계<select value={action} onChange={e=>setAction(e.target.value)}><option value="note">처리 경과 기록</option><option value="resolve">처리 완료</option></select></label>
- {action==='resolve'&&refund&&<label>처리 방식<select value={outcome} onChange={e=>setOutcome(e.target.value)}>{Object.entries(outcomes).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>}
+ <label>처리 단계<select value={action} onChange={e=>{setAction(e.target.value);setPrefill(undefined);}}><option value="note">처리 경과 기록</option><option value="resolve">처리 완료</option></select></label>
+ {action==='resolve'&&refund&&<label>처리 방식<select value={outcome} onChange={e=>{setOutcome(e.target.value);setPrefill(undefined);}}>{Object.entries(outcomes).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>}
+ {action==='resolve'&&refund&&outcome==='transfer'&&<>
+ {c.payout_last4&&!prefill&&<button type="button" className="wallet-button wallet-secondary" disabled={busy} onClick={()=>void perform(async()=>setPrefill(await apiRequest<Bank>(path+'/payout',{caseId:c.case_id})))}>신청자가 등록한 계좌 불러오기</button>}
+ <BankFields key={prefill?'loaded':'manual'} initial={prefill} legend="이체확인증에 기재된 환불계좌"/></>}
  {action==='resolve'&&refund&&['original','transfer'].includes(outcome)&&<><p>결제 취소 또는 이체가 끝난 뒤 실제 처리 금액과 증빙번호를 기록해 주세요.</p>
  {(c.refund_quote?.items.length??0)>1?c.refund_quote!.items.map((i,index)=><label key={i.orderNo}>{i.orderNo} 실제 환불액 (원)<input type="number" name={'part'+index} min="0" max="999999999" step="1" required/></label>):<label>실제 환불 금액 (원)<input type="number" name="amount" min="1" max="999999999" step="1" required/></label>}
  <label>환불 실행 일시 (한국시간)<input type="datetime-local" name="processed" required/></label>
