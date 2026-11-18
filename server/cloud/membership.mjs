@@ -1,6 +1,7 @@
 import sharp from 'sharp';
 import {randomUUID,createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
+import {CommerceRecords} from './commerce-records.mjs';
 import {cloudSchema} from './postgres.mjs';
 import {ApiFailure} from '../generation-service.mjs';
 
@@ -10,6 +11,8 @@ export class Membership {
  constructor(store,storage){this.store=store;this.db=store.db;this.storage=storage;this.active=new Map();this.jobs=new Map();this.cleaning=new Set();}
  async initialize(){
   await this.db.transaction(()=>this.db.exec(readFileSync(new URL('./membership.sql',import.meta.url),'utf8')));
+  await this.db.transaction(()=>this.db.exec(readFileSync(new URL('./commerce-records.sql',import.meta.url),'utf8')));
+  this.records=new CommerceRecords(this.db);
   const {started_at}=await this.db.prepare('SELECT started_at FROM retention_settings WHERE id=1').get();
   this.cutover=new Date(started_at).getTime();
  }
@@ -30,6 +33,7 @@ export class Membership {
   return {plan:standard?'standard':'free',storage:'device',downloadWindowHours:24,limitBytes:0,usedBytes:0};
  }
  async route(user,method,path,body,serviceFor){
+  if(path.startsWith("/api/membership/records/"))return this.records.route(user,method,path,body);
   const file=/^\/api\/membership\/downloads\/([A-Za-z0-9_-]{8,100})\/(preview|original)$/.exec(path);
   if(file&&method==='GET')return this.downloadFile(user.id,file[1],file[2]);
   if(path==='/api/membership/remove-downloads'&&method==='POST'){
@@ -56,7 +60,7 @@ export class Membership {
   }
   if(path==='/api/membership/withdraw'&&method==='POST'){
    if(body?.confirm!=='delete-my-account')fail('CONFIRM_DELETION',400);
-   return this.withdraw(user);
+   return this.withdraw(user,body.requestRefund===true);
   }
   if(path==='/api/membership/remove-project'&&method==='POST'){
    if(!projectId(body?.id))fail('INVALID_PROJECT',400);
@@ -129,18 +133,28 @@ export class Membership {
   this.kick();
   return {removed:ids};
  }
- async withdraw(user){
-  const receipt=randomUUID();
+ async withdraw(user,requestRefund=false){
+  const receipt=randomUUID(),cases=[];
   await this.store.transaction(async()=>{
    const old=await this.db.prepare('SELECT receipt FROM deletion_requests WHERE user_id=?').get(user.id);
    if(old)fail('DELETION_ALREADY_REQUESTED',409);
+   if(requestRefund){
+    const orders=await this.db.prepare('SELECT order_no FROM commerce_order_links WHERE account_id=?').all(user.id);
+    for(const {order_no} of orders){
+     const order=await this.records.order(order_no);
+     if(!order || order.remaining===0 || order.estimated==='0')continue;
+     const pending=await this.db.prepare("SELECT case_id FROM protected_complaints WHERE order_no=? AND category='refund' AND resolution IS NULL AND erase_at>now() ORDER BY received_at LIMIT 1").get(order_no);
+     const result=pending?{caseId:pending.case_id}:await this.records.route(user,'POST','/api/membership/records/cases',{orderNo:order_no,category:'refund',description:'회원탈퇴 시 미사용 유료 광고 환불 검토 요청',requestId:randomUUID()});
+     cases.push(result.caseId);
+    }
+   }
    await this.db.prepare('INSERT INTO deletion_requests(user_id,receipt) VALUES(?,?)').run(user.id,receipt);
    await this.db.prepare("INSERT INTO member_events(receipt,kind) VALUES(?,'requested')").run(receipt);
    await this.db.prepare('UPDATE users SET disabled=1 WHERE id=?').run(user.id);
    await this.db.prepare('DELETE FROM sessions WHERE user_id=?').run(user.id);
    await this.db.prepare('DELETE FROM invites WHERE user_id=?').run(user.id);
   });
-  this.kick();return {receipt,state:'requested'};
+  this.kick();return {receipt,state:'requested',cases};
  }
  kick(){if(!this.stopped&&!this.kickTimer){this.kickTimer=setTimeout(()=>{this.kickTimer=null;void this.run();},100);this.kickTimer.unref();}}
  start(){this.timer=setInterval(()=>void this.run(),30000);this.timer.unref();this.kick();}
@@ -160,9 +174,11 @@ export class Membership {
     else await this.expire(id);
    }catch{console.error('Member cleanup deferred');}finally{this.cleaning.delete(id);}
   }
+  await this.db.prepare('DELETE FROM commerce_orders WHERE erase_at<=now()').run();
   await this.db.prepare('DELETE FROM retired_generation_keys WHERE expires_at<=now()').run();
   await this.db.prepare('DELETE FROM protected_complaints WHERE erase_at<=now()').run();
   await this.db.prepare("DELETE FROM member_events e WHERE happened_at < now()-interval '30 days' AND NOT EXISTS(SELECT 1 FROM deletion_requests r WHERE r.receipt=e.receipt)").run();
+  await this.records.reconcileDue();
  }
  async expire(id){
   const tenant=cloudSchema(id), q='"'+tenant+'".';
@@ -183,7 +199,7 @@ export class Membership {
     await this.db.prepare('DELETE FROM '+q+'recommendation_requests WHERE job_id IN ('+subset+')').run(...args);
     await this.db.prepare('DELETE FROM '+q+'recommendation_jobs WHERE generation_id IN ('+expired+')').run(...args);
    }
-   await this.db.prepare("INSERT INTO protected_complaints(case_id,received_at,description,resolution,erase_at) SELECT id,to_timestamp(created_at/1000.0),description,resolution,to_timestamp(created_at/1000.0)+interval '3 years' FROM "+q+"defect_reports WHERE job_id IN ("+expired+") AND to_timestamp(created_at/1000.0)+interval '3 years'>now() ON CONFLICT DO NOTHING").run(...args);
+   await this.db.prepare("INSERT INTO protected_complaints(case_id,received_at,description,resolution,resolved_at,erase_at) SELECT id,to_timestamp(created_at/1000.0),description,resolution,to_timestamp(reviewed_at/1000.0),to_timestamp(coalesce(reviewed_at,created_at)/1000.0)+interval '3 years' FROM "+q+"defect_reports WHERE job_id IN ("+expired+") AND to_timestamp(coalesce(reviewed_at,created_at)/1000.0)+interval '3 years'>now() ON CONFLICT DO NOTHING").run(...args);
    await this.db.prepare('DELETE FROM '+q+'defect_reports WHERE job_id IN ('+expired+')').run(...args);
    await this.db.prepare("INSERT INTO retired_generation_keys(digest,expires_at) SELECT encode(sha256(convert_to(?||':'||request_id,'UTF8')),'hex'),now()+interval '30 days' FROM "+q+"generation_keys WHERE job_id IN ("+expired+") ON CONFLICT DO NOTHING").run(id,...args);
    await this.db.prepare('DELETE FROM '+q+'generation_keys WHERE job_id IN ('+expired+')').run(...args);
@@ -215,11 +231,13 @@ export class Membership {
   const identity=await this.db.prepare('SELECT email FROM email_identities WHERE user_id=?').get(id);
   if(identity)await this.removeMailIdentity(identity.email);
   await this.store.transaction(async()=>{
+   await this.db.prepare('DELETE FROM complaint_member_links WHERE account_id=?').run(id);
+   await this.db.prepare('DELETE FROM commerce_order_links WHERE account_id=?').run(id);
    // Keep aggregate operating costs and verified sales after removing the account link.
    await this.store.sharedGenerationBudget?.archive(id,receipt);
    if(this.store.customerGeneration!==undefined){
     await this.db.prepare('UPDATE customer_image_costs SET account_id=NULL WHERE account_id=?').run(id);
-    await this.db.prepare('UPDATE customer_image_sales SET account_id=NULL WHERE account_id=?').run(id);
+    await this.db.prepare('UPDATE customer_image_sales SET account_id=NULL, purchase_id=gen_random_uuid()::text WHERE account_id=?').run(id);
    }
    if(await this.exists('aiadcast_accounts','dimension_analysis_calls'))await this.db.prepare('DELETE FROM dimension_analysis_calls WHERE actor_id=?').run(id);
    const owner=await this.db.prepare('SELECT role FROM users WHERE id=?').get(id);
@@ -236,7 +254,7 @@ export class Membership {
    await this.db.prepare('DELETE FROM monthly_budget_approvals WHERE user_id=?').run(id);
    // Tenant name is generated exclusively from the authenticated account's UUID.
    if(await this.exists(tenant,'defect_reports')){
-    await this.db.prepare('INSERT INTO protected_complaints(case_id,received_at,description,resolution,erase_at) SELECT id,to_timestamp(created_at/1000.0),description,resolution,to_timestamp(created_at/1000.0)+interval \'3 years\' FROM "'+tenant+'".defect_reports WHERE to_timestamp(created_at/1000.0)+interval \'3 years\'>now() ON CONFLICT DO NOTHING').run();
+    await this.db.prepare('INSERT INTO protected_complaints(case_id,received_at,description,resolution,resolved_at,erase_at) SELECT id,to_timestamp(created_at/1000.0),description,resolution,to_timestamp(reviewed_at/1000.0),to_timestamp(coalesce(reviewed_at,created_at)/1000.0)+interval \'3 years\' FROM "'+tenant+'".defect_reports WHERE to_timestamp(coalesce(reviewed_at,created_at)/1000.0)+interval \'3 years\'>now() ON CONFLICT DO NOTHING').run();
    }
    await this.db.exec('DROP SCHEMA IF EXISTS "'+tenant+'" CASCADE');
    await this.db.prepare('DELETE FROM deletion_requests WHERE user_id=? AND receipt=?').run(id,receipt);

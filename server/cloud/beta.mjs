@@ -56,6 +56,17 @@ export class CloudGenerationService extends GenerationService {
   if(row.artifact_hash && ['ready','accepted'].includes(result.state))result.downloadExpiresAt=new Date(expires).toISOString();
   return result;
  }
+ async archiveDefect(report){
+  const db=this.membership.db;
+  await db.prepare(`INSERT INTO protected_complaints(case_id,received_at,description,resolution,resolved_at,erase_at)
+   VALUES(?,to_timestamp(?/1000.0),?,?,to_timestamp(?/1000.0),to_timestamp(?/1000.0)+interval '3 years')
+   ON CONFLICT(case_id) DO UPDATE SET resolution=EXCLUDED.resolution,resolved_at=EXCLUDED.resolved_at,erase_at=EXCLUDED.erase_at`)
+   .run(report.id,report.created_at,report.description,report.resolution,report.reviewed_at,report.reviewed_at??report.created_at);
+  await db.prepare('INSERT INTO complaint_member_links VALUES(?,?) ON CONFLICT DO NOTHING').run(report.id,this.cloudUser);
+  return report;
+ }
+ async reportDefect(id,body){return this.ledger.transaction(async()=>this.archiveDefect(await super.reportDefect(id,body)));}
+ async reviewDefect(id,body){return this.ledger.transaction(async()=>this.archiveDefect(await super.reviewDefect(id,body)));}
  async defectEvidence(id){
   const info=await this.job(id,{includeArtifact:false});
   if(info.state==='expired')fail('PROJECT_EXPIRED',410);
@@ -71,19 +82,21 @@ export class CloudGenerationService extends GenerationService {
  }
  async recordVerifiedPurchase(receipt){
   return this.ledger.transaction(async()=>{
-   if(receipt.livePlayPurchase && this.customerImagesEnabled && !this.adminTestUnlimited){
+   if(receipt.livePlayPurchase){
     const prior=await this.db.prepare('SELECT 1 FROM purchases WHERE purchase_id=?').get(receipt.purchaseId);
-    await this.customerCosts.sale(receipt,Boolean(prior));
+    if(this.customerImagesEnabled && !this.adminTestUnlimited)await this.customerCosts.sale(receipt,Boolean(prior));
+    await this.membership.records.recordSale(receipt,this.cloudUser,Boolean(prior));
    }
    return super.recordVerifiedPurchase(receipt);
   });
  }
  async verifiedPurchaseReceipt(receipt){
   const result=await super.verifiedPurchaseReceipt(receipt);
-  if(receipt.livePlayPurchase && this.customerImagesEnabled && !this.adminTestUnlimited){
-   await this.customerCosts.sale(receipt,true); // Restored, already-consumed Play receipt.
+  if(receipt.livePlayPurchase)await this.ledger.transaction(async()=>{
+   if(this.customerImagesEnabled && !this.adminTestUnlimited)await this.customerCosts.sale(receipt,true);
+   await this.membership.records.recordSale(receipt,this.cloudUser,true);
    result.balance=(await this.wallet()).credits.available;
-  }
+  });
   return result;
  }
  async history(projectId){return readGenerationHistory(this,projectId);}
@@ -159,6 +172,7 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
   const gate=providerGate(2),adapter=injectedAdapter??new OpenAIImageAdapter({apiKey:config.key,enableEdits:config.enabled});
   const supabaseMail=env.AIADCAST_EMAIL_ENABLED==='true'&&env.AIADCAST_EMAIL_PROVIDER==='supabase';
   const accounts=injectedAccounts??accountConfiguration(env);
+  membership.records.provider=accounts.play;
   if(accounts.password&&await accountsDb.prepare("SELECT value FROM settings WHERE key='owner_withdrawn'").get())accounts.password={...accounts.password,adminPassword:undefined};
   if(!injectedAccounts&&supabaseMail)accounts.sendMail=options=>storage.sendAuthEmail(options);
   app=await createBetaServer({store,recommendations:recommendationRuntime({store,pool,storage,origin:config.publicUrl,extraOrigins:['https://appassets.androidplatform.net',...extraOrigins],apiKey:config.key,policy:config.recommendationPolicy,transport:recommendationTransport,guard:()=>instance?.assert()}),generationHistoryReader:(actor,search)=>readAdminGenerationPage({pool,guard,actor,search}),overviewReader:(actor,admin,options)=>readAdminOverview({pool,guard,actor,admin,...options,enabled:config.enabled,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter)}),publicUrl:config.publicUrl,singleBox:singleBoxService({apiKey:config.key,statusReader:(actor,id)=>readSingleBoxEvaluation(accountsDb,actor,id),ledgerFactory:()=>new SingleBoxLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),dimensionAnalysis:dimensionAnalysisService({evaluationEnabled:true,apiKey:config.key,statusReader:(actor,id)=>readCloudEvaluation(accountsDb,actor,id),ledgerFactory:()=>new CloudVisionLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),extraOrigins,staticDirectory,accounts,serviceFactory:async user=>{
@@ -169,6 +183,11 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
     'SELECT 1 FROM email_identities e WHERE e.user_id=? AND NOT EXISTS(SELECT 1 FROM test_passwords t WHERE t.user_id=e.user_id)'
    ).get(user.id));
    await readinessMeasure('generation_initialize',()=>s.initialize({db,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:config.enabled,assistantEnabled:config.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter),adapter:guardedImageAdapter(adapter,()=>instance?.assert(),gate),assistantAdapter:options=>{instance?.assert();return gate(()=>assistCopy({...options,apiKey:config.key}));}}));
+   s.ledger.recordDelivery=async(job,customer)=>{
+    const funds=customer?await db.prepare(customerBalanceSql('','?')).get(user.id):await s.ledger.wallet(job.user_id,'credit-v2');
+    await membership.records.capture(user.id,job.id,(Number(funds.available)+Number(funds.reserved))/10);
+   };
+   s.ledger.restoreDelivery=id=>membership.records.restore(id);
    if(sharedBudget.active){
     await sharedBudget.protectTenant(db.schema);
     s.ledger.sharedBudget=period=>sharedBudget.view(user.id,period);

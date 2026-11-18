@@ -3,6 +3,7 @@ import {AppVersionInfo} from './AppVersionInfo';
 import {DefectReviews} from './DefectReviews';
 import {AdminDemoSupport} from './AdminDemoSupport';
 import {useAdminRead} from './use-admin-read';
+import {CommerceRecords} from './CommerceRecords';
 import {AdminGenerationHistory} from './AdminGenerationHistory';
 import {useEffect,useRef,useState} from 'react';
 import {apiRequest,ApiRequestFailure} from './generation-client';
@@ -40,6 +41,7 @@ export function AdminPage({backHref='#home'}:{backHref?:string}){
   <div className="admin-heading"><div><p className="admin-eyebrow">AIADCAST / OPERATIONS</p><h1>{t('관리자','Administration')}</h1><p>{t('회원과 생성 운영을 한 곳에서 확인합니다.','Manage members and generation in one place.')}</p></div><button disabled={busy} onClick={()=>{setError('');void overview.read('/api/admin/overview?jobs=none');}}>{t('새로고침','Refresh')}</button></div>
   {!betaSession()&&<a className="primary-action" href="#login">{t('관리자 계정 로그인','Sign in as administrator')}</a>}
   {busy&&<p role="status">{overview.pending?t('운영 정보를 조회 중…','Loading operations…'):t('요청을 처리 중…','Processing request…')}</p>}{overview.confirmedAt&&!overview.pending&&<p role="status" aria-label={t('운영 정보 조회 결과','Operations refresh result')}>{overview.error?t('마지막 성공한 운영 정보 확인','Last successful operations check'):overview.unchanged?t('운영 정보 확인 완료 · 변경 없음','Operations checked · No changes'):t('운영 정보 확인 완료','Operations checked')} · <time dateTime={new Date(overview.confirmedAt).toISOString()}>{new Date(overview.confirmedAt).toLocaleTimeString(language==='ko'?'ko-KR':'en-US')}</time></p>}{(overview.error||error)&&<p role="alert">{overview.error||error}</p>}{notice&&<p role="status" className="admin-notice">{notice}</p>}
+  {betaSession()?.user.role==='admin'&&<CommerceRecords key={betaSession()?.user.id} admin/>}
   {data&&<>
    <AppVersionInfo/>
    <div className="admin-stats"><article><span>{t('가입 회원','Members')}</span><strong>{data.users.length}</strong><small>{t('중지 계정 포함','Includes suspended accounts')}</small></article><article><span>{data.budget.shared?t('개발·테스트 누적 한도','Lifetime development and test budget'):t('공급사 월예산','Monthly provider budget')}</span><strong>{usd(data.budget.limitMicros)}</strong><small>{data.budget.shared?t('월이 바뀌어도 누적','No monthly reset'):<>{t('배정','Allocated')} {usd(data.budget.allocatedMicros)}</>}</small></article><article><span>{t('테스트 사용 비용','Test usage cost')}</span><strong>{usd(data.budget.spentMicros)}</strong><small>{t('보류','Held')} {usd(data.budget.heldMicros)}</small></article></div>

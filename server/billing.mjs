@@ -116,6 +116,7 @@ export class BillingLedger {
         return job;
       }
       if(job.unit==='credit-v2'){
+        if(this.recordDelivery && !job.creditExempt)this.recordDelivery(job,Boolean(this.db.prepare('SELECT job_id FROM customer_ad_jobs WHERE job_id=?').get(jobId)));
         if(!job.creditExempt)this.db.prepare('UPDATE credit_wallets SET reserved=reserved-? WHERE user_id=?').run(job.credits,job.user_id);
         this.db.prepare('UPDATE job_policies SET captured=1 WHERE job_id=?').run(jobId);
         this.event(`capture:${jobId}`,job.user_id,jobId,'delivered-capture',job.credits);
@@ -163,6 +164,7 @@ export class BillingLedger {
       if (job.status !== 'accepted' && !job.captured) throw Error('Only captured credits can be refunded');
       if (!job.creditExempt) this.db.prepare(`UPDATE ${job.unit==='credit-v2'?'credit_wallets':'wallets'} SET available=available+? WHERE user_id=?`).run(job.credits, job.user_id);
       this.db.prepare("UPDATE jobs SET status='refunded',reason=? WHERE id=?").run(incidentId, jobId);
+      if(this.restoreDelivery)this.restoreDelivery(jobId);
       this.event(`refund:${jobId}`, job.user_id, jobId, job.creditExempt ? 'admin-test-refund' : 'refund', job.credits);
       return this.job(jobId);
     });

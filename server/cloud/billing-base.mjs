@@ -113,6 +113,8 @@ export class BillingLedger {
                 return job;
             }
             if (job.unit === 'credit-v2') {
+                if (this.recordDelivery && !job.creditExempt)
+                    await this.recordDelivery(job, Boolean(await this.db.prepare('SELECT job_id FROM customer_ad_jobs WHERE job_id=?').get(jobId)));
                 if (!job.creditExempt)
                     await this.db.prepare('UPDATE credit_wallets SET reserved=reserved-? WHERE user_id=?').run(job.credits, job.user_id);
                 await this.db.prepare('UPDATE job_policies SET captured=1 WHERE job_id=?').run(jobId);
@@ -176,6 +178,8 @@ export class BillingLedger {
             if (!job.creditExempt)
                 await this.db.prepare(`UPDATE ${job.unit === 'credit-v2' ? 'credit_wallets' : 'wallets'} SET available=available+? WHERE user_id=?`).run(job.credits, job.user_id);
             await this.db.prepare("UPDATE jobs SET status='refunded',reason=? WHERE id=?").run(incidentId, jobId);
+            if (this.restoreDelivery)
+                await this.restoreDelivery(jobId);
             await this.event(`refund:${jobId}`, job.user_id, jobId, job.creditExempt ? 'admin-test-refund' : 'refund', job.credits);
             return await this.job(jobId);
         });

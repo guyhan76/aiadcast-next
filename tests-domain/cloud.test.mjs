@@ -154,6 +154,59 @@ test('commercial customers keep free and paid ads when the test budget is exhaus
  assert.equal(report.operatingCosts.spentMicros,2*imageUsageCost(usage).microUsd);assert.equal(report.operatingCosts.heldMicros,0);assert.equal(s.calls(),2);
 });
 
+test('retained order and complaint evidence survives withdrawal and expires independently',async t=>{
+ const orderNo='GPA.retention-fixture',mails=[],key='fixture-retained-receipt',paidAt='2026-10-20T10:00:00.000Z';
+ const money=units=>({currencyCode:'KRW',units:String(units)});
+ let buyer,consumed=false,partial=false;
+ const play={
+  lookup:async()=>({orderId:orderNo,obfuscatedExternalAccountId:playAccountId(buyer),purchaseStateContext:{purchaseState:'PURCHASED'},
+   productLineItem:[{productId:'credits_30',productOfferDetails:{quantity:1,consumptionState:consumed?'CONSUMPTION_STATE_CONSUMED':'CONSUMPTION_STATE_YET_TO_BE_CONSUMED'}}]}),
+  consume:async()=>{consumed=true;},
+  order:async()=>({orderId:orderNo,purchaseToken:key,createTime:paidAt,lastEventTime:partial?'2026-10-21T12:00:00Z':paidAt,
+   state:partial?'PARTIALLY_REFUNDED':'PROCESSED',lineItems:[{productId:'credits_30'}],total:money(2700),
+   orderHistory:{partialRefundEvents:partial?[{processTime:'2026-10-21T12:00:00Z',state:'PROCESSED_SUCCESSFULLY',refundDetails:{total:money(900)}}]:[]}})
+ };
+ const s=await setup(t,{accounts:{sendMail:async m=>mails.push(m),play}});
+ const owner=await activateMemberFunding(s,true),invite=await s.app.store.issueInvite(owner);
+ const admin=(await s.call('/api/auth/login',{body:{invite:invite.invite}})).data.token;
+ const customer=await emailCustomer(s,mails,'retention@example.com'),other=await s.member('Other');
+ buyer=customer.user.id;const token=customer.token,base='/api/membership/records/';
+ const call=(route,actor,body)=>s.call(base+route,{token:actor,...(body?{body}:{})});
+ const purchase=()=>s.call('/api/checkout/play/verify',{token,body:{token:key}});
+ for(let i=0;i<2;i++){const r=await purchase();assert.equal(r.status,200,JSON.stringify(r.data));}
+ for(let i=0;i<2;i++){const g=generation();g.request.copy.title='Delivery '+i;assert.equal((await finishGeneration(s,token,g)).data.job.state,'ready');}
+ const lookup=async key=>(await call('lookup',admin,{key})).data;
+ const [o]=(await lookup(orderNo)).orders;assert.equal(o.ads,3);assert.equal(o.delivered,1);assert.equal(o.remaining,2);
+ assert.equal(o.paid,'2700000000000');assert.equal(o.estimated,'1800000000000');assert.equal(o.refunded,'0');
+ const input={orderNo,description:'환불 검토를 요청합니다.',category:'refund',requestId:randomUUID()};
+ assert.equal((await call('lookup',other.token,{key:orderNo})).status,403);
+ assert.equal((await call('cases',other.token,input)).status,404);
+ const receipt=(await call('cases',token,input)).data.caseId;assert.ok(receipt);
+ assert.equal((await call('cases',token,input)).data.caseId,receipt);
+ const w=await s.call('/api/membership/withdraw',{token,body:{confirm:'delete-my-account',requestRefund:true}});
+ assert.equal(w.status,200,JSON.stringify(w.data));assert.deepEqual(w.data.cases,[receipt]);
+ await s.app.store.membership.run();
+ const db=s.app.store.db;
+ for(const table of ['users','commerce_order_links','complaint_member_links']){
+  const column=table==='users'?'id':'account_id';
+  assert.equal(await db.prepare('SELECT 1 FROM '+table+' WHERE '+column+'=?').get(buyer),undefined);
+ }
+ assert.equal((await call('mine',token)).status,401);
+ const rejoined=await emailCustomer(s,mails,'retention@example.com');assert.deepEqual((await call('mine',rejoined.token)).data,{orders:[],cases:[]});
+ assert.equal((await lookup(receipt)).orders[0].delivered,1);
+ partial=true;const refreshed=await call('sync',admin,{orderNo});assert.equal(refreshed.status,200,JSON.stringify(refreshed.data));
+ assert.equal(refreshed.data.order.refunded,'900000000000');assert.equal(refreshed.data.order.refunds.length,1);
+ await call('sync',admin,{orderNo});assert.equal((await lookup(orderNo)).orders[0].refunds.length,1);
+ assert.equal((await call('resolve',admin,{caseId:receipt,resolution:'결제처 환불 내역을 확인했습니다.'})).status,200);
+ assert.ok((await lookup(orderNo)).cases[0].resolved_at);
+ assert.equal((await db.prepare("SELECT erase_at>=resolved_at+interval '3 years' AS ok FROM protected_complaints WHERE case_id=?").get(receipt)).ok,true);
+ await db.prepare("UPDATE protected_complaints SET erase_at=now()-interval '1 second' WHERE case_id=?").run(receipt);
+ await s.app.store.membership.sweep();assert.equal((await lookup(orderNo)).cases.length,0);assert.equal((await lookup(orderNo)).orders[0].refund_requests.length,1);
+ await db.prepare("UPDATE commerce_orders SET erase_at=now()-interval '1 second' WHERE order_no=?").run(orderNo);
+ await s.app.store.membership.sweep();
+ for(const table of ['commerce_orders','commerce_deliveries','commerce_withdrawals'])assert.equal(await db.prepare('SELECT 1 FROM '+table+' WHERE order_no=?').get(orderNo),undefined);
+});
+
 test('commercial customer failure restores ad and retains uncertain operating cost across restart',async t=>{
  const mails=[];let unknown=false,calls=0;
  const adapter={generate:async()=>{calls++;if(unknown)throw Error('fixture lost response');throw new ProviderFailure('FIXTURE_REJECTED',{uncertain:false});}};

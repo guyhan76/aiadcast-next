@@ -197,7 +197,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
             if (store.membership) {
                 releaseLease = await store.membership.enter(user);
                 if (url.pathname.startsWith('/api/membership')) {
-                    const body = req.method === 'POST' ? await read(req, 2048) : undefined;
+                    const body = req.method === 'POST' ? await read(req, url.pathname.startsWith('/api/membership/records/') ? 8192 : 2048) : undefined;
                     send(res, 200, await store.membership.route(user, req.method, url.pathname, body, service), cors);
                     return;
                 }

@@ -1,3 +1,4 @@
+import {CommerceRecords} from './CommerceRecords';
 import {checkoutContinuation} from './checkout-return';
 import {useEffect,useRef,useState} from 'react';
 import {apiRequest,ApiRequestFailure,type ApiStatus} from './generation-client';
@@ -27,5 +28,6 @@ export function CreditsPage({returnPage}:{returnPage:string}){
  {error&&<p role="alert">{error}</p>}{expired&&<a className="primary-action" href="#login" onClick={()=>{setBetaSession(null,'login');}}>{t('같은 계정으로 로그인','Sign in with the same account')}</a>}{session?<button disabled={busy} onClick={()=>void refresh()}>{busy?t('조회 중…','Checking…'):t('이용권 다시 조회','Refresh credits')}</button>:<a className="primary-action" href="#login">{t('로그인','Sign in')}</a>}
  <h2>{t('최근 구매 내역','Recent purchases')}</h2>{!data?<p>{t('구매 내역 미조회','Purchases not checked')}</p>:data.sales?.length?<ul className="credit-history">{data.sales.map(s=><li key={s.id}><strong>{t(`광고 ${s.ads}장`,`${s.ads} ads`)}</strong><span>{s.restored?t('구매 복원','Purchase restored'):t('구매 확인','Purchase verified')} · {new Date(s.verified).toLocaleString(language==='ko'?'ko-KR':'en-US')}</span></li>)}</ul>:!data.orders.length?<p>{t('조회된 구매 내역이 없습니다.','No purchases found.')}</p>:<ul className="credit-history">{data.orders.map(o=><li key={o.id}><strong>{o.credits}{o.unit==='credit-v2'?t(' 크레딧',' credits'):t('개 기존 이용권',' legacy tickets')} · {state(o.state)}</strong><span>{new Date(o.created).toLocaleString(language==='ko'?'ko-KR':'en-US')} · {o.amount.toLocaleString()} KRW</span></li>)}</ul>}
  <a className="primary-action" href="#checkout">{t('이용권 구매하기','Buy credits')}</a>{session&&<a className="guest-link" href={checkoutContinuation()?"#checkout-return":"#create"}>{t('광고 이미지 만들기','Create an ad image')}</a>}
+ {session&&<CommerceRecords key={session.user.id}/>}
  </section>;
 }

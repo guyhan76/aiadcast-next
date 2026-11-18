@@ -1,9 +1,10 @@
 import {createHash, createPrivateKey, sign} from 'node:crypto';
+import {playOrderEvidence} from './play-order.mjs';
 import {readFileSync} from 'node:fs';
 import {ApiFailure} from './generation-service.mjs';
 
 const packageName = 'com.selluplabs.aiadcast.next';
-const publisher = 'https://androidpublisher.googleapis.com/androidpublisher/v3/applications/' + packageName + '/purchases/';
+const publisher = 'https://androidpublisher.googleapis.com/androidpublisher/v3/applications/' + packageName + '/';
 const oauth = 'https://oauth2.googleapis.com/token';
 const packs = new Map([['credits_30', 30], ['credits_100', 100], ['credits_180', 180]]);
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -48,8 +49,9 @@ export function googlePlayProvider(env, fetchImpl = fetch, now = Date.now) {
     } catch (error) { if (error instanceof ApiFailure) throw error; throw unavailable(); }
   }
   return {
-    lookup: token => request('productsv2/tokens/'+encodeURIComponent(token),'GET'),
-    consume: (product,token) => request('products/'+encodeURIComponent(product)+'/tokens/'+encodeURIComponent(token)+':consume','POST')
+    order: id => request('orders/'+encodeURIComponent(id),'GET'),
+    lookup: token => request('purchases/productsv2/tokens/'+encodeURIComponent(token),'GET'),
+    consume: (product,token) => request('purchases/products/'+encodeURIComponent(product)+'/tokens/'+encodeURIComponent(token)+':consume','POST')
   };
 }
 
@@ -74,6 +76,18 @@ export async function verifyPlayPurchase(provider, userId, token, service) {
   if (purchase.testPurchaseContext && service.customerImagesEnabled && !service.adminTestUnlimited)
     throw new ApiFailure('PLAY_TEST_PURCHASE_NOT_ELIGIBLE',409);
   receipt.livePlayPurchase=!purchase.testPurchaseContext;
+  if(receipt.livePlayPurchase){
+    receipt.product=item.productId;
+    receipt.orderNo=purchase.orderId;
+    receipt.purchasedAt=purchase.purchaseCompletionTime;
+    if(provider.order){
+      if(typeof purchase.orderId!=='string'||!purchase.orderId.trim())throw unavailable();
+      const order=await provider.order(purchase.orderId);
+      if(['REFUNDED','PARTIALLY_REFUNDED','PENDING_REFUND'].includes(order?.state))throw new ApiFailure('PLAY_PURCHASE_NOT_ELIGIBLE',409);
+      try{receipt.evidence=playOrderEvidence(order,purchase.orderId,item.productId,token);}
+      catch{throw unavailable();}
+    }
+  }
   if (offer?.consumptionState === 'CONSUMPTION_STATE_YET_TO_BE_CONSUMED') {
     await service.recordVerifiedPurchase(receipt);
     // If Play is unavailable after the DB commit, the next delivery uses the same ledger key.

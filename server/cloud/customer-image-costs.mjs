@@ -11,6 +11,7 @@ export async function initializeCustomerAccounting(db) {
   CREATE TABLE IF NOT EXISTS customer_image_sales(
    purchase_id TEXT PRIMARY KEY, account_id TEXT, restored BOOLEAN NOT NULL, credits BIGINT NOT NULL CHECK(credits>0),
    recorded_at TIMESTAMPTZ NOT NULL DEFAULT now());
+  ALTER TABLE customer_image_sales ADD COLUMN IF NOT EXISTS revoked_credits bigint NOT NULL DEFAULT 0;
   CREATE INDEX IF NOT EXISTS customer_sale_account ON customer_image_sales(account_id,recorded_at);
   CREATE INDEX IF NOT EXISTS customer_sale_time ON customer_image_sales(recorded_at);
   CREATE TABLE IF NOT EXISTS customer_image_retries(
@@ -22,8 +23,8 @@ export function customerBalanceSql(prefix,accountParameter,tagged=true) {
  const isCustomer=tagged?'c.job_id IS NOT NULL':'false';
  return `SELECT GREATEST(0, GREATEST(0,welcome+restored-legacy_used)+paid-customer_used) AS available, held AS reserved
   FROM (SELECT COALESCE(SUM(credits),0) AS welcome FROM ${prefix}credit_events WHERE kind='welcome') w
-  CROSS JOIN (SELECT COALESCE(SUM(credits) FILTER(WHERE restored),0) AS restored,
-    COALESCE(SUM(credits) FILTER(WHERE NOT restored),0) AS paid FROM aiadcast_accounts.customer_image_sales WHERE account_id=${accountParameter}) sales
+  CROSS JOIN (SELECT COALESCE(SUM(credits-revoked_credits) FILTER(WHERE restored),0) AS restored,
+    COALESCE(SUM(credits-revoked_credits) FILTER(WHERE NOT restored),0) AS paid FROM aiadcast_accounts.customer_image_sales WHERE account_id=${accountParameter}) sales
   CROSS JOIN (SELECT COALESCE(SUM(j.credits) FILTER(WHERE ${isCustomer}),0) AS customer_used,
    COALESCE(SUM(j.credits) FILTER(WHERE NOT (${isCustomer})),0) AS legacy_used,
    COALESCE(SUM(j.credits) FILTER(WHERE ${isCustomer} AND p.captured=0),0) AS held
