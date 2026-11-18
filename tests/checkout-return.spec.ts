@@ -9,11 +9,11 @@ async function context(page:Page,userId=session.user.id,age=0,route='create'){aw
 test('native return verifies paid ledger, refreshes credits and resumes original photo/description/dimensions without generating',async({page},info)=>{
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
  const calls=await mocks(page);await page.addInitScript(s=>sessionStorage.setItem('aiadcast.beta-session',JSON.stringify(s)),session);await page.goto('/#create');
- const form=page.locator('.create-page');await form.getByLabel('산업 선택').selectOption('boxes');await form.getByLabel('상품명',{exact:true}).fill('복귀 검증 박스');
+ const form=page.locator('.create-page');await form.getByRole('button',{name:'상품',exact:true}).click();await form.getByLabel('상품명',{exact:true}).fill('복귀 검증 박스');
  const photo=await sharp({create:{width:200,height:300,channels:4,background:'#ddd'}}).png().toBuffer();await form.getByLabel('참조사진 추가').setInputFiles({name:'mock-box.png',mimeType:'image/png',buffer:photo});
- const textboxes=await form.locator('textarea').all();await textboxes[0].fill('사진과 설명을 유지하는 테스트 박스');
+ await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('사진과 설명을 유지하는 테스트 박스');
  await form.getByRole('button',{name:'규격 넣기',exact:true}).click();
- await form.getByRole('textbox',{name:'가로 cm',exact:true}).fill('34');await form.getByRole('textbox',{name:'세로 cm',exact:true}).fill('25');await form.getByRole('textbox',{name:'높이 cm',exact:true}).fill('21');await form.getByRole('radio',{name:'본제품에 직접 표시',exact:true}).check();
+ await form.getByLabel('규격 단위').selectOption('cm');await form.getByRole('textbox',{name:'가로 cm',exact:true}).fill('34');await form.getByRole('textbox',{name:'세로 cm',exact:true}).fill('25');await form.getByRole('textbox',{name:'높이 cm',exact:true}).fill('21');await form.getByRole('radio',{name:'본제품에 직접 표시',exact:true}).check();
  const before=await form.locator('input,textarea,select').evaluateAll(nodes=>nodes.map(n=>({name:n.getAttribute('name'),value:(n as HTMLInputElement).value,type:(n as HTMLInputElement).type})).filter(n=>n.type!=='file'));
  await waitForSavedDraft(page);await context(page);await openWorkspaceMenu(page);await page.locator('.app-header').getByRole('link',{name:'내 이용권'}).click();await page.locator('.credits-page').getByRole('link',{name:'광고 이미지 만들기',exact:true}).click();
  await expect(page).toHaveURL(/#create$/);expect(calls).not.toContain('/api/checkout/orders/'+order.id);
