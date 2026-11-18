@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {BetaStore} from '../server/beta-store.mjs';
 import {TestCheckout} from '../server/test-checkout.mjs';
+import {TossTestProvider} from '../server/account-providers.mjs';
 import {GenerationService,ApiFailure} from '../server/generation-service.mjs';
 function fixture(t){let now=Date.now(),payment,calls=0;const dir=mkdtempSync(join(tmpdir(),'checkout-return-')),store=new BetaStore(dir),user={id:store.provision({label:'Receipt test',credits:0}).userId},service=new GenerationService({databasePath:join(dir,'ledger.sqlite'),testCredits:0});t.after(async()=>{await service.close();store.close();rmSync(dir,{recursive:true,force:true});});const provider={lookup:async()=>{if(!payment)throw new ApiFailure('PAYMENT_NOT_FOUND',404);return payment;},confirm:async p=>{calls++;return payment={...p,status:'DONE',currency:'KRW',totalAmount:p.amount};}};const config={provider,clientKey:'test_ck_fixture',publicOrigin:'https://beta.example.com',now:()=>now,creditPurchase:async(id,p)=>{assert.equal(id,user.id);return service.recordTestPurchase(p);},readPurchase:async(id,p)=>{assert.equal(id,user.id);return service.testPurchaseReceipt(p);}};const checkout=new TestCheckout(store,config),seed=legacyOrder(store.db,user.id,'trial','receipt-request-123',now),order=checkout.create(user,{pack:'trial',agreed:true,requestId:'receipt-request-123'}),q=new URLSearchParams(new URL(order.checkoutUrl).hash.split('?')[1]),grant={orderId:order.id,ticket:q.get('ticket')},input={...grant,amount:6900,paymentKey:'mock-paid-key'};return {store,user,service,checkout,config,order,grant,input,calls:()=>calls,advance:ms=>now+=ms};}
 test('receipt verifies exact +3 ledger purchase and current balance; replay, restart and read do not issue credits',async t=>{const f=fixture(t);await assert.rejects(f.checkout.receipt(f.grant),/PURCHASE_NOT_VERIFIED/);const paid=await f.checkout.confirm(f.input);assert.deepEqual(paid.receipt,{grantedCredits:3,balance:3,verified:true});await Promise.all([f.checkout.confirm(f.input),f.checkout.confirm(f.input)]);const restart=new TestCheckout(f.store,f.config);assert.deepEqual((await restart.receipt(f.grant)).receipt,paid.receipt);f.service.recordTestPurchase({purchaseId:'other-verified-purchase',credits:2});assert.deepEqual((await restart.status(f.user,f.order.id)).receipt,{grantedCredits:3,balance:5,verified:true});assert.equal(f.calls(),1);assert.equal(f.service.wallet().available,5);assert.equal(f.service.db.prepare('SELECT COUNT(*) n FROM purchases WHERE purchase_id=?').get('toss-test:'+f.order.id).n,1);});
@@ -19,10 +20,34 @@ test('wallet refresh distinguishes missing approval, failed lookup and provider 
  f.config.provider.lookup=async()=>{throw new ApiFailure('PAYMENT_UNCERTAIN',503);};
  f.advance(16000);await f.checkout.refreshOutstanding(f.user);
  assert.equal(f.checkout.history(f.user)[0].providerStatus,'UNAVAILABLE');
+ f.config.provider.lookup=async()=>{throw new ApiFailure('PAYMENT_LOOKUP_DENIED',503);};
+ f.advance(16000);await f.checkout.refreshOutstanding(f.user);
+ assert.equal(f.checkout.history(f.user)[0].providerStatus,'LOOKUP_DENIED');
  f.config.provider.lookup=async()=>({orderId:f.order.id,currency:'KRW',totalAmount:f.order.amount,status:'EXPIRED'});
  f.advance(16000);await f.checkout.refreshOutstanding(f.user);
  assert.equal(f.checkout.history(f.user)[0].state,'canceled');
  assert.equal(f.checkout.history(f.user)[0].providerStatus,'EXPIRED');
  assert.equal(f.calls(),0);assert.equal(f.service.wallet().available,0);
+});
+test('denied lookup never grants credits but a valid checkout return can complete approval and grant once',async t=>{
+ const f=fixture(t);
+ f.config.provider.lookup=async()=>{throw new ApiFailure('PAYMENT_LOOKUP_DENIED',503);};
+ assert.equal((await f.checkout.status(f.user,f.order.id)).state,'pending');
+ assert.equal(f.service.wallet().available,0);
+ assert.equal((await f.checkout.confirm(f.input)).state,'paid');
+ assert.equal((await f.checkout.confirm(f.input)).receipt.balance,3);
+ assert.equal(f.calls(),1);
+});
+test('checkout adapter reports refused reads and retrieves an already processed callback by its payment key',async()=>{
+ const requests=[],receipt={status:'DONE',orderId:'fixture-order',paymentKey:'fixture-payment',currency:'KRW',totalAmount:6900};
+ const provider=new TossTestProvider({secretKey:'test_sk_fixture',fetchImpl:async(url,options)=>{
+  const path=new URL(url).pathname;requests.push([options.method,path]);
+  if(path.includes('/orders/'))return new Response('',{status:403});
+  if(options.method==='POST')return Response.json({code:'ALREADY_PROCESSED_PAYMENT'},{status:409});
+  return Response.json(receipt);
+ }});
+ await assert.rejects(provider.lookup(receipt.orderId),error=>error.code==='PAYMENT_LOOKUP_DENIED');
+ assert.deepEqual(await provider.confirm({...receipt,amount:6900}),receipt);
+ assert.deepEqual(requests,[['GET','/v1/payments/orders/fixture-order'],['POST','/v1/payments/confirm'],['GET','/v1/payments/fixture-payment']]);
 });
 test('expired public confirmation cannot disclose current balance; authenticated owner recovery stays available',async t=>{const f=fixture(t);await f.checkout.confirm(f.input);f.advance(86400001);await assert.rejects(f.checkout.confirm(f.input),/ORDER_EXPIRED/);await assert.rejects(f.checkout.receipt(f.grant),/ORDER_EXPIRED/);assert.deepEqual((await f.checkout.status(f.user,f.order.id)).receipt,{verified:true,grantedCredits:3,balance:3});assert.equal(f.calls(),1);assert.equal(f.service.wallet().available,3);});

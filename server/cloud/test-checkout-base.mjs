@@ -128,7 +128,7 @@ export class TestCheckout {
                 payment = await this.provider.lookup(orderId);
             }
             catch (error) {
-                if (error.code !== 'PAYMENT_NOT_FOUND' && (error.code !== 'PAYMENT_UNCERTAIN' || this.now() - current.created > checkoutWindow))
+                if (error.code !== 'PAYMENT_NOT_FOUND' && (!['PAYMENT_UNCERTAIN', 'PAYMENT_LOOKUP_DENIED'].includes(error.code) || this.now() - current.created > checkoutWindow))
                     throw error;
             }
             if (payment?.status !== 'DONE' && (closedStates.has(payment?.status) || current.state === 'canceled' || this.now() - current.created > checkoutWindow))
@@ -161,6 +161,8 @@ export class TestCheckout {
             catch (error) {
                 if (error.code === 'PAYMENT_NOT_FOUND')
                     observation = 'NOT_FOUND';
+                else if (error.code === 'PAYMENT_LOOKUP_DENIED')
+                    observation = 'LOOKUP_DENIED';
                 else if (error.code === 'PAYMENT_UNCERTAIN')
                     observation = 'UNAVAILABLE';
                 else

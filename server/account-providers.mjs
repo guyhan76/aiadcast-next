@@ -20,11 +20,12 @@ export class TossTestProvider {
  async call(path,body,idempotencyKey){
   let response;try{response=await this.fetch('https://api.tosspayments.com'+path,{method:body?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(body?15_000:4_000),headers:{Authorization:this.authorization,...(body?{'Content-Type':'application/json','Idempotency-Key':idempotencyKey}:{})},...(body?{body:JSON.stringify(body)}:{})});}catch{fail('PAYMENT_UNCERTAIN');}
   if(!response.ok){
-   const error=await response.json().catch(()=>({}));
+   const error=await response.json().catch(()=>null);
    if(response.status===404&&error?.code==='NOT_FOUND_PAYMENT')fail('PAYMENT_NOT_FOUND',404);
-   if(body&&error?.code==='ALREADY_PROCESSED_PAYMENT')return this.lookup(body.orderId);
-   const reason=['UNAUTHORIZED_KEY','INVALID_API_KEY','FORBIDDEN_REQUEST','UNAUTHORIZED_ACCESS','NOT_FOUND_PAYMENT_SESSION'].includes(error?.code)?error.code:'OTHER';
+   if(body&&error?.code==='ALREADY_PROCESSED_PAYMENT')return this.call('/v1/payments/'+encodeURIComponent(body.paymentKey));
+   const reason=error===null?'NON_JSON_RESPONSE':typeof error.code==='string'&&error.code.length<=64&&/^[A-Z]+(?:_[A-Z]+){1,8}$/.test(error.code)?error.code:'UNCLASSIFIED';
    console.warn('Toss test checkout',body?'approval':'lookup',response.status,reason);
+   if(!body&&(response.status===401||response.status===403))fail('PAYMENT_LOOKUP_DENIED',503);
    fail('PAYMENT_UNCERTAIN');
   }
   try{return await response.json();}catch{fail('PAYMENT_UNCERTAIN');}
