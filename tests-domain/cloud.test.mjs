@@ -1120,7 +1120,8 @@ test('balance refunds snapshot all real purchases and keep per-order settlements
  await sale('later',9000);
  const c=(await api(admin,'lookup',{key:caseId,by:'receipt'})).data.cases[0];
  assert.equal(c.requested_krw,12600);assert.deepEqual(c.refund_quote,quote);
- const close={caseId,outcome:'transfer',resolution:'은행 이체 확인',amountKrw:12600,reference:'case-transfer',requestId:randomUUID(),processedAt:at};
+ s.app.store.membership.records.configurePayout('04'.repeat(32));
+ const close={caseId,outcome:'transfer',transferPayout:{bank:'테스트은행',holder:'예시회원',number:'0123456789'},resolution:'은행 이체 확인',amountKrw:12600,reference:'case-transfer',requestId:randomUUID(),processedAt:at};
  assert.equal((await api(admin,'resolve',close)).status,400);
  close.allocations=quote.items;assert.equal((await api(admin,'resolve',close)).status,200);
  const later=(await api(member.token,'mine')).data.refundBalance;assert.equal(later.krw,9000);
@@ -1176,4 +1177,53 @@ test('seven day refund window enforces each notified order while preserving earl
  await db.prepare("UPDATE commerce_deliveries SET credit_returned_at=now() WHERE job_key='used-3'").run();
  const withdrawal=await s.call('/api/membership/withdraw',{token:member.token,body:{confirm:'delete-my-account',requestRefund:true}});
  assert.equal(withdrawal.status,200);assert.ok(withdrawal.data.cases.includes(initial.data.caseId));
+});
+
+test('refund history keeps each submitted account and the verified transfer receipt through closure',async t=>{
+ const s=await setup(t),member=await s.member('History buyer'),other=await s.member('Other buyer');
+ const owner=await activateMemberFunding(s,true),invite=await s.app.store.issueInvite(owner);
+ const admin=(await s.call('/api/auth/login',{body:{invite:invite.invite}})).data.token;
+ const records=s.app.store.membership.records,db=s.app.store.db;
+ records.configurePayout('13'.repeat(32));
+ const api=(token,route,body)=>s.call('/api/membership/records/'+route,{token,...(body?{body}:{})});
+ const bank=(suffix,name)=>({bank:'테스트은행',holder:name,number:'0000000'+suffix});
+ const first=bank('1001','첫 예금주'),second=bank('2002','둘째 예금주'),actual=bank('3003','이체 예금주');
+ const open=async()=> (await api(member.token,'cases',{category:'refund',description:'계좌 증빙 테스트',requestId:randomUUID()})).data.caseId;
+ const caseId=await open();
+ const change=async(payout,key)=>api(member.token,'details',{caseId,requestId:key,payout,requestedKrw:2500});
+ const one=randomUUID(),two=randomUUID(),closing=randomUUID();
+ assert.equal((await change(first,one)).status,200);assert.equal((await change(second,two)).status,200);
+ assert.equal((await change(first,one)).status,200);assert.equal((await change(second,one)).status,409);
+ const close={caseId,requestId:closing,outcome:'transfer',amountKrw:2300,reference:'BANK-100',resolution:'이체 완료',transferPayout:actual};
+ assert.equal((await api(admin,'resolve',{...close,transferPayout:undefined})).data.error.code,'TRANSFER_ACCOUNT_REQUIRED');
+ assert.equal((await api(admin,'resolve',close)).status,200);
+ assert.equal((await api(admin,'resolve',close)).status,200);
+ assert.equal((await api(admin,'resolve',{...close,transferPayout:second})).status,409);
+ const read=(token,receipt,eventKey)=>api(token,'history-account',{caseId:receipt,eventKey});
+ for(const token of [admin,member.token]){
+  for(const [key,b] of [[one,first],[two,second],[closing,actual]])assert.deepEqual((await read(token,caseId,key)).data,b);
+ }
+ assert.equal((await read(other.token,caseId,one)).status,404);
+ const row=(await api(member.token,'mine')).data.cases.find(c=>c.case_id===caseId);
+ assert.deepEqual(row.events.map(e=>[e.bank,e.last4,e.amount,e.has_account]),[[first.bank,'1001',2500,true],[second.bank,'2002',2500,true],[actual.bank,'3003',2300,true]]);
+ for(const b of [first,second,actual]){assert.ok(!JSON.stringify(row).includes(b.number));assert.ok(!JSON.stringify(row).includes(b.holder));}
+ const supplement={caseId,requestId:randomUUID(),payout:actual,reference:close.reference};
+ assert.equal((await api(admin,'transfer-account',supplement)).status,409);
+ const legacy=await open();
+ // This fixture represents a transfer closed by the previous release, which discarded the account.
+ const archived=await db.prepare("UPDATE protected_complaints SET resolved_at=now(),resolution='이체 완료' WHERE receipt_no=? RETURNING case_id").get(legacy);
+ await db.prepare("INSERT INTO complaint_events(case_id,request_id,kind,detail,outcome,amount_krw,reference) VALUES(?,?,'closed','이체 완료','transfer',?,?)")
+  .run(archived.case_id,randomUUID(),close.amountKrw,close.reference);
+ const proof={...supplement,caseId:legacy};
+ assert.equal((await api(member.token,'transfer-account',proof)).status,403);
+ assert.equal((await api(admin,'transfer-account',{...proof,reference:'wrong'})).status,409);
+ for(let i=0;i<2;i++)assert.equal((await api(admin,'transfer-account',proof)).status,200);
+ assert.equal((await api(admin,'transfer-account',{...proof,requestId:randomUUID()})).status,409);
+ const corrected=(await api(member.token,'mine')).data.cases.find(c=>c.case_id===legacy);
+ assert.deepEqual(corrected.events.map(e=>e.kind),['closed','transfer_account']);assert.equal(corrected.events[1].amount,2300);
+ assert.deepEqual((await read(member.token,legacy,proof.requestId)).data,actual);
+ assert.equal((await read(member.token,caseId,proof.requestId)).status,404);
+ await db.prepare("UPDATE protected_complaints SET erase_at=now()-interval '1 second' WHERE receipt_no=?").run(caseId);
+ assert.equal((await read(admin,caseId,one)).status,404);await s.app.store.membership.sweep();
+ assert.equal(await db.prepare('SELECT 1 FROM complaint_events WHERE request_id=?').get(one),undefined);
 });

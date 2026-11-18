@@ -18,6 +18,7 @@ const selectOrders=`SELECT o.order_no,o.product,o.ads,o.purchased_at,o.erase_at,
  FROM commerce_orders o`;
 const caseColumns='c.receipt_no AS case_id,c.category,c.order_no,c.received_at,c.description,c.resolution,c.resolved_at,c.erase_at';
 const events=admin=>`(SELECT coalesce(jsonb_agg(jsonb_build_object('at',v.happened_at,'kind',v.kind,'detail',v.detail,
+ 'event_key',v.request_id,'bank',v.payout_bank,'last4',v.payout_last4,'has_account',v.payout_secret IS NOT NULL,
  'actor',${admin?'v.actor_label':'NULL'},'outcome',v.outcome,'amount',v.amount_krw,'reference',v.reference,'processed_at',v.processed_at) ORDER BY v.id),'[]'::jsonb)
  FROM complaint_events v WHERE v.case_id=c.case_id)`;
 function requestedAmount(value){
@@ -32,6 +33,7 @@ function payoutDetails(value){
     typeof number!=='string'||number.length>30||!/^\d{7,20}$/.test(number.replace(/[ -]/g,'')))fail('INVALID_PAYOUT_DETAILS',400);
  return {bank:bank.trim(),holder:holder.trim(),number:number.replace(/[ -]/g,'')};
 }
+function sameBank(a,b){return a.bank===b.bank&&a.holder===b.holder&&a.number===b.number;}
 function summary(row) {
  if(!row)return null;
  const remaining=Math.max(0,row.ads-Number(row.delivered)+Number(row.returned));
@@ -50,6 +52,11 @@ function summary(row) {
 export class CommerceRecords {
  constructor(db,provider,now=Date.now){this.now=now;this.db=db;this.provider=provider;this.configurePayout();}
  configurePayout(key){this.payout=casePayout(key);}
+ async storeEventAccount(id,eventKey,bank){
+  const secret=this.payout.seal(id+'/'+eventKey,bank);
+  await this.db.prepare('UPDATE complaint_events SET payout_bank=?,payout_last4=?,payout_secret=? WHERE case_id=? AND request_id=?')
+   .run(bank.bank,bank.number.slice(-4),secret,id,eventKey);
+ }
  async cases(admin,userId,key,receiptOnly=false){
   const requester=admin?`,u.id AS member_id,u.label AS member_name,e.email AS member_email,
    (SELECT count(*) FROM commerce_order_links ol WHERE ol.account_id=u.id) AS member_orders,
@@ -201,6 +208,10 @@ export class CommerceRecords {
      VALUES(?,?,?,?,now(),now()+interval '3 years',?,?,?,?,?::jsonb) RETURNING receipt_no`).get(id,category,linked||null,description.trim(),quote?quote.krw:amount,bank?.bank??null,bank?.number.slice(-4)??null,bank?this.payout.seal(id,bank):null,quote?JSON.stringify(quote):null);
     if(quote){for(const item of quote.items)await this.linkRefund(id,item.orderNo);}
     else if(category==='refund'&&orderNo)await this.linkRefund(id,orderNo);
+    if(bank){
+     await this.db.prepare("INSERT INTO complaint_events(case_id,request_id,kind,detail,amount_krw) VALUES(?,?,'member','환불계좌 등록',?)").run(id,requestId,amount);
+     await this.storeEventAccount(id,requestId,bank);
+    }
     await this.db.prepare('INSERT INTO complaint_member_links VALUES(?,?)').run(id,user.id);
     return {caseId:receipt.receipt_no};
    });
@@ -216,7 +227,11 @@ export class CommerceRecords {
     const row=await this.db.prepare(`SELECT c.* FROM protected_complaints c JOIN complaint_member_links l USING(case_id)
      WHERE receipt_no=? AND l.account_id=? AND category='refund' AND erase_at>now() FOR UPDATE OF c`).get(body.caseId,user.id);
     if(!row)fail('CASE_NOT_FOUND',404);
-    if(await this.db.prepare('SELECT 1 FROM complaint_events WHERE case_id=? AND request_id=?').get(row.case_id,body.requestId))return {saved:true};
+    const prior=await this.db.prepare('SELECT kind,payout_secret FROM complaint_events WHERE case_id=? AND request_id=?').get(row.case_id,body.requestId);
+    if(prior){
+     if(prior.kind!=='member'||prior.payout_secret&&(!body.payout||!sameBank(payoutDetails(body.payout),this.payout.open(row.case_id+'/'+body.requestId,prior.payout_secret))))fail('CASE_CONFLICT',409);
+     return {saved:true};
+    }
     if(row.resolution)fail('CASE_CLOSED_OR_MISSING',409);
     const orderNo=body.orderNo||row.order_no,bank=payoutDetails(body.payout),amount=requestedAmount(body.requestedKrw)??row.requested_krw;
     if(row.refund_quote&&(body.orderNo||body.requestedKrw!=null))fail('FIXED_REFUND_QUOTE',400);
@@ -228,12 +243,42 @@ export class CommerceRecords {
     await this.db.prepare(`UPDATE protected_complaints SET order_no=?,requested_krw=?,payout_bank=coalesce(?,payout_bank),
      payout_last4=coalesce(?,payout_last4),payout_secret=coalesce(?,payout_secret) WHERE case_id=?`)
      .run(orderNo,amount,bank?.bank??null,bank?.number.slice(-4)??null,bank?this.payout.seal(row.case_id,bank):null,row.case_id);
-    const changes=[orderNo!==row.order_no?'관련 구매 연결':null,amount!==row.requested_krw?'요청 금액 '+amount.toLocaleString('ko-KR')+'원':null,bank?'환불계좌 '+bank.bank+' 끝 4자리 '+bank.number.slice(-4):null].filter(Boolean);
-    await this.db.prepare("INSERT INTO complaint_events(case_id,request_id,kind,detail) VALUES(?,?,'member',?)").run(row.case_id,body.requestId,changes.join(' · ')+' 보완');
+    const changes=[orderNo!==row.order_no?'관련 구매 연결':null,amount!==row.requested_krw?'요청 금액 '+amount.toLocaleString('ko-KR')+'원':null,bank?'환불계좌':null].filter(Boolean);
+    await this.db.prepare("INSERT INTO complaint_events(case_id,request_id,kind,detail,amount_krw) VALUES(?,?,'member',?,?)").run(row.case_id,body.requestId,changes.join(' · ')+' 보완',amount);
+    if(bank)await this.storeEventAccount(row.case_id,body.requestId,bank);
     return {saved:true};
    });
   }
+  if(method==='POST'&&path===base+'/history-account'){
+   if(typeof body?.caseId!=='string'||typeof body.eventKey!=='string')fail('INVALID_CASE',400);
+   return this.db.transaction(async()=>{
+    const row=await this.db.prepare(`SELECT c.case_id,v.payout_secret FROM protected_complaints c JOIN complaint_events v USING(case_id)
+     WHERE c.receipt_no=? AND c.category='refund' AND c.erase_at>now() AND v.request_id=? AND v.payout_secret IS NOT NULL
+     AND (? OR EXISTS(SELECT 1 FROM complaint_member_links l WHERE l.case_id=c.case_id AND l.account_id=?))`).get(body.caseId,body.eventKey,admin,user.id);
+    if(!row)fail('PAYOUT_NOT_AVAILABLE',404);
+    const bank=this.payout.open(row.case_id+'/'+body.eventKey,row.payout_secret);
+    if(admin)await this.db.prepare('INSERT INTO admin_audit VALUES(?,?,?,?,?,?)').run(randomUUID(),user.id,'case_payout_view',null,JSON.stringify({receipt:body.caseId,event:body.eventKey}),Date.now());
+    return bank;
+   });
+  }
   if(!admin)fail('ADMIN_REQUIRED',403);
+  if(method==='POST'&&path===base+'/transfer-account'){
+   const bank=payoutDetails(body?.payout),requestId=body?.requestId;
+   if(!bank||!uuid.test(requestId)||typeof body.caseId!=='string'||typeof body.reference!=='string')fail('INVALID_CASE',400);
+   return this.db.transaction(async()=>{
+    const row=await this.db.prepare(`SELECT c.case_id,v.amount_krw,v.reference,v.payout_secret FROM protected_complaints c
+     JOIN complaint_events v USING(case_id) WHERE c.receipt_no=? AND c.category='refund' AND c.resolution IS NOT NULL
+     AND c.erase_at>now() AND v.kind='closed' AND v.outcome='transfer' FOR UPDATE OF c`).get(body.caseId);
+    if(!row||row.reference!==body.reference.trim())fail('TRANSFER_REFERENCE_MISMATCH',409);
+    const prior=await this.db.prepare("SELECT request_id,payout_secret FROM complaint_events WHERE case_id=? AND kind='transfer_account'").get(row.case_id);
+    if(prior?.request_id===requestId&&sameBank(bank,this.payout.open(row.case_id+'/'+requestId,prior.payout_secret)))return {saved:true};
+    if(prior||row.payout_secret)fail('TRANSFER_ACCOUNT_RECORDED',409);
+    await this.db.prepare(`INSERT INTO complaint_events(case_id,request_id,kind,detail,actor_label,amount_krw,reference)
+     VALUES(?,?,'transfer_account','이체확인증으로 환불계좌를 확인했습니다.',?,?,?)`).run(row.case_id,requestId,user.label||'관리자',row.amount_krw,row.reference);
+    await this.storeEventAccount(row.case_id,requestId,bank);
+    return {saved:true};
+   });
+  }
   if(method==='POST'&&path===base+'/lookup'){
    const key=body?.key??'';
    if(typeof key!=='string'||key.length>160)fail('INVALID_REFERENCE',400);
@@ -262,6 +307,8 @@ export class CommerceRecords {
    const outcome=body.outcome??'reply',amount=requestedAmount(body.amountKrw),ref=typeof body.reference==='string'?body.reference.trim():'';
    const paid=['original','transfer'].includes(outcome);
    if(!['reply','original','transfer','declined'].includes(outcome)||ref.length>100||(paid&&(!closing||!amount||!ref))||(!paid&&(amount!==null||ref)))fail('INVALID_REFUND_RESULT',400);
+   const transferBank=payoutDetails(body.transferPayout);
+   if(transferBank&&(!closing||outcome!=='transfer'))fail('INVALID_REFUND_RESULT',400);
    const processed=body.processedAt;
    if(processed!=null&&(!paid||typeof processed!=='string'||!Number.isFinite(Date.parse(processed))||Date.parse(processed)>Date.now()+60000))fail('INVALID_REFUND_RESULT',400);
    return this.db.transaction(async()=>{
@@ -270,11 +317,13 @@ export class CommerceRecords {
     if(!row||row.category!=='refund'&&outcome!=='reply')fail('CASE_CLOSED_OR_MISSING',409);
     const old=await this.db.prepare('SELECT * FROM complaint_events WHERE case_id=? AND request_id=?').get(row.case_id,requestId);
     if(old){
-     if(old.kind!==kind||old.detail!==resolution||old.outcome!==outcome||old.amount_krw!==amount||(old.reference??'')!==ref||
+     const accountChanged=Boolean(transferBank)!==Boolean(old.payout_secret)||transferBank&&!sameBank(transferBank,this.payout.open(row.case_id+'/'+requestId,old.payout_secret));
+     if(accountChanged||old.kind!==kind||old.detail!==resolution||old.outcome!==outcome||old.amount_krw!==amount||(old.reference??'')!==ref||
         (processed&&new Date(old.processed_at).getTime()!==Date.parse(processed)))fail('CASE_CONFLICT',409);
      return {caseId:row.receipt_no};
     }
     if(row.resolution)fail('CASE_CLOSED_OR_MISSING',409);
+    if(outcome==='transfer'&&!transferBank)fail('TRANSFER_ACCOUNT_REQUIRED',400);
     if(!closing&&body.requestBank===true){
      if(row.category!=='refund')fail('INVALID_CASE',400);
      await this.db.prepare('UPDATE protected_complaints SET bank_requested=true WHERE case_id=?').run(row.case_id);
@@ -295,6 +344,8 @@ export class CommerceRecords {
     }
     await this.db.prepare(`INSERT INTO complaint_events(case_id,request_id,kind,detail,actor_label,outcome,amount_krw,reference,processed_at)
      VALUES(?,?,?,?,?,?,?,?,?::timestamptz)`).run(row.case_id,requestId,kind,resolution,user.label||'관리자',outcome,amount,ref||null,processed??null);
+    if(transferBank)await this.storeEventAccount(row.case_id,requestId,transferBank);
+    if(closing&&outcome!=='transfer')await this.db.prepare('UPDATE complaint_events SET payout_secret=NULL WHERE case_id=? AND payout_secret IS NOT NULL').run(row.case_id);
     if(closing)await this.db.prepare("UPDATE protected_complaints SET resolution=?,resolved_at=now(),erase_at=now()+interval '3 years',payout_secret=NULL WHERE case_id=?").run(resolution,row.case_id);
     return {caseId:row.receipt_no};
    });
