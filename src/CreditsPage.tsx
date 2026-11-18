@@ -18,7 +18,22 @@ export function CreditsPage({returnPage}:{returnPage:string}){
   catch(e){if(request.current===controller){setExpired(e instanceof ApiRequestFailure&&e.status===401);setError(controller.signal.aborted?t('15초 안에 이용권 정보를 확인하지 못했습니다. 다시 조회해주세요.','Credits lookup timed out after 15 seconds. Please retry.'):e instanceof ApiRequestFailure&&e.status===401?t('로그인이 만료되었습니다. 같은 계정으로 로그인해주세요.','Your session expired. Sign in with the same account.'):t('이용권 정보를 확인하지 못했습니다. 잔액을 0으로 처리하지 않았습니다. 다시 조회해주세요.','Could not check your credits. Your balance has not been treated as zero. Please retry.'));}}
   finally{clearTimeout(timer);if(request.current===controller){request.current=null;setBusy(false);}}
  }
- useEffect(()=>{void refresh();return()=>{request.current?.abort();request.current=null;};},[session?.token]);
+ useEffect(()=>{
+  void refresh();
+  function afterPurchase(){
+   if(!session || session.token!==betaSession()?.token)return;
+   // An in-flight balance read may have started before the purchase was credited.
+   request.current?.abort();
+   request.current=null;
+   void refresh();
+  }
+  window.addEventListener('aiadcast-credit-refresh',afterPurchase);
+  return ()=>{
+   window.removeEventListener('aiadcast-credit-refresh',afterPurchase);
+   request.current?.abort();
+   request.current=null;
+  };
+ },[session?.token]);
  const orderStatus=(order:TestOrder)=>{
   if(order.state==='paid')return t('결제 완료','Paid');
   if(order.state==='verified')return t('결제 완료 · 지급 중','Paid · Adding credits');

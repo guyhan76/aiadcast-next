@@ -41,3 +41,53 @@ test('store build shows Play KRW prices, restores interrupted payments, and neve
   expect(verifications).toBeGreaterThan(0);expect(webOrders).toBe(0);
   await expect(page.getByText(/USD|표시 통화/)).toHaveCount(0);
 });
+
+test('an open wallet replaces an older read when Play restores a paid purchase',async({page})=>{
+  await protectedScreen(page,mockSession('play-wallet-member'));
+  const account='a'.repeat(64);
+  await page.route('**/api/checkout/play/account',route=>route.fulfill({json:{enabled:true,accountId:account}}));
+  await page.addInitScript(()=>{
+    localStorage.setItem('aiadcast.ui-language','ko');
+    Object.assign(window,{
+      __AIADCAST_NATIVE_VERSION__:{versionName:'0.2.113',versionCode:115,packageName:'com.selluplabs.aiadcast.next'},
+      AiadcastNative:{postMessage:(message:string)=>{
+        if(JSON.parse(message).type==='play-restore')document.documentElement.dataset.playReady='yes';
+      }},
+    });
+  });
+  const wallet=(credits:number)=>({wallet:{kind:'customer-ads',available:0,reserved:0,credits:{available:credits,reserved:0}},sales:[],orders:[],grants:[]});
+  let walletReads=0,verifications=0;
+  let finishOldRead!:()=>void;
+  const oldRead=new Promise<void>(done=>{finishOldRead=done;});
+  await page.route('**/api/account/credits',async route=>{
+    if(++walletReads===1){
+      await oldRead;
+      await route.fulfill({json:wallet(10)}).catch(()=>{ /* The pre-purchase request was aborted. */ });
+      return;
+    }
+    await route.fulfill({json:wallet(190)});
+  });
+  await page.route('**/api/checkout/play/verify',route=>{
+    expect(route.request().postDataJSON()).toEqual({token:'retired-pack-receipt'});
+    verifications++;
+    return route.fulfill({json:{state:'paid',grantedCredits:180,balance:190}});
+  });
+  try{
+    await page.goto('/#credits');
+    await expect.poll(()=>walletReads).toBe(1);
+    await page.waitForFunction(()=>document.documentElement.dataset.playReady==='yes');
+    await page.evaluate(id=>{
+      const emit=(detail:object)=>window.dispatchEvent(new CustomEvent('aiadcast-play',{detail}));
+      emit({type:'pending',account:id});
+      emit({type:'purchase',account:'other-account',token:'other-receipt'});
+      emit({type:'purchase',account:id,token:'retired-pack-receipt'});
+      emit({type:'purchase',account:id,token:'retired-pack-receipt'});
+    },account);
+    const balance=page.locator('.credit-summary dd');
+    await expect(balance).toHaveText('광고 19장');
+    finishOldRead();
+    await expect(balance).toHaveText('광고 19장');
+    expect(walletReads).toBe(2);
+    expect(verifications).toBe(1);
+  }finally{finishOldRead();}
+});
