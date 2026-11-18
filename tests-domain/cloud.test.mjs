@@ -1170,6 +1170,10 @@ test('seven day refund window enforces each notified order while preserving earl
  const q=(await api('mine')).data.refundBalance;
  assert.deepEqual(q.expired,[{orderNo:'notified',deadline:end}]);assert.deepEqual(q.items.map(i=>i.orderNo).sort(),['old','restored']);
  const mixed=await api('cases',{...input,requestId:randomUUID()});assert.equal(mixed.status,200);
+ await db.prepare("INSERT INTO commerce_deliveries(job_key,order_no) VALUES('used-1','notified'),('used-2','notified'),('used-3','notified')").run();
+ const spent=await api('cases',{category:'refund',orderNo:'notified',description:'단순 변심',requestId:randomUUID()});
+ assert.equal(spent.data.error.code,'REFUND_WINDOW_ENDED');
+ await db.prepare("UPDATE commerce_deliveries SET credit_returned_at=now() WHERE job_key='used-3'").run();
  const withdrawal=await s.call('/api/membership/withdraw',{token:member.token,body:{confirm:'delete-my-account',requestRefund:true}});
  assert.equal(withdrawal.status,200);assert.ok(withdrawal.data.cases.includes(initial.data.caseId));
 });

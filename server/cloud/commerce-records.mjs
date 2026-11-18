@@ -76,10 +76,10 @@ export class CommerceRecords {
   const requestedAt=before?new Date(before).getTime():this.now();
   for(const row of rows){
    const o=summary(row);
-   if(o.remaining===0||o.estimated==='0')continue;
    if(reason==='change'&&o.refund_deadline&&requestedAt>Date.parse(o.refund_deadline)){
     expired.push({orderNo:o.order_no,deadline:o.refund_deadline});continue;
    }
+   if(o.remaining===0||o.estimated==='0')continue;
    const calendarNeedsReview=o.refund_policy===refundPolicyVersion&&o.refund_notice_received_at&&!o.refund_deadline;
    const amount=!calendarNeedsReview&&o.currency==='KRW'&&o.estimated!==null?Number(BigInt(o.estimated)/1000000000n):null;
    if(amount!==0)items.push({orderNo:o.order_no,amountKrw:amount});
