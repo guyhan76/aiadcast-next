@@ -3,7 +3,7 @@ import {apiRequest,ApiRequestFailure} from './generation-client';
 import {betaSession,type BetaSession} from './beta-session';
 export type Capabilities={email:{enabled:boolean};password?:{enabled:boolean;test:true;adminReady:boolean;adminEmail:string};checkout:{enabled:boolean;test:true;currency:'KRW'}};
 export type EmailRequest={requestId:string;pollToken:string;expires:number};
-export type TestOrder={unit?:'legacy-ticket'|'credit-v2';policy?:string;id:string;pack:string;credits:number;amount:number;currency:'KRW';state:'pending'|'verified'|'paid'|'canceled';created:number;test:true;checkoutUrl?:string;receipt?:{verified:true;grantedCredits:number;balance:number}};
+export type TestOrder={unit?:'legacy-ticket'|'credit-v2';policy?:string;providerStatus?:string;id:string;pack:string;credits:number;amount:number;currency:'KRW';state:'pending'|'verified'|'paid'|'canceled';created:number;test:true;checkoutUrl?:string;receipt?:{verified:true;grantedCredits:number;balance:number}};
 const exchanges=new Map<string,Promise<{state:'pending'|'verified';session?:BetaSession}>>();
 window.addEventListener('aiadcast-session-change',()=>{exchanges.clear();for(const key of Object.keys(sessionStorage))if(key.startsWith('aiadcast.email-request:'))sessionStorage.removeItem(key);});
 export function exchangeEmail(request:EmailRequest){

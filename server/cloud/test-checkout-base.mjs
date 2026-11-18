@@ -8,15 +8,23 @@ const retiredPacks = new Set(['credits-v2-180', 'trial', 'basic', 'bundle']);
 const orderUnit = row => row.pack.startsWith('credits-v2-') ? 'credit-v2' : 'legacy-ticket';
 const digest = s => createHash('sha256').update(s).digest('hex');
 const fail = (code, status = 400) => { throw new ApiFailure(code, status); };
+const checkoutWindow = 30 * 60000;
+const providerStates = new Set(['READY', 'IN_PROGRESS', 'WAITING_FOR_DEPOSIT', 'CANCELED', 'EXPIRED', 'ABORTED', 'PARTIAL_CANCELED']);
+const closedStates = new Set(['CANCELED', 'EXPIRED', 'ABORTED']);
 export class TestCheckout {
     async initialize(store, { provider, clientKey, publicOrigin, creditPurchase, readPurchase, now = () => Date.now() } = {}) {
         Object.assign(this, { store, db: store.db, provider, clientKey, origin: publicOrigin, creditPurchase, readPurchase, now });
         this.pending = new Map();
         await this.db.exec(`CREATE TABLE IF NOT EXISTS test_orders(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),request_id TEXT NOT NULL,pack TEXT NOT NULL,credits INTEGER NOT NULL,amount INTEGER NOT NULL,created INTEGER NOT NULL,ticket_hash TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending',payment_key TEXT UNIQUE,UNIQUE(user_id,request_id));`);
+        const columns = (await this.db.prepare('PRAGMA table_info(test_orders)').all()).map(column => column.name);
+        if (!columns.includes('provider_status'))
+            await this.db.exec('ALTER TABLE test_orders ADD COLUMN provider_status TEXT');
+        if (!columns.includes('checked_at'))
+            await this.db.exec('ALTER TABLE test_orders ADD COLUMN checked_at INTEGER NOT NULL DEFAULT 0');
         return this;
     }
     available() { return Boolean(this.provider && this.clientKey); }
-    view(order) { return { id: order.id, pack: order.pack, unit: orderUnit(order), policy: orderUnit(order) === 'credit-v2' ? 'delivered-2026-10-18' : 'legacy-accept-v1', credits: order.credits, amount: order.amount, currency: 'KRW', state: order.state, created: order.created, test: true }; }
+    view(order) { return { id: order.id, pack: order.pack, unit: orderUnit(order), policy: orderUnit(order) === 'credit-v2' ? 'delivered-2026-10-18' : 'legacy-accept-v1', credits: order.credits, amount: order.amount, currency: 'KRW', state: order.state, providerStatus: order.provider_status ?? undefined, created: order.created, test: true }; }
     async create(user, { pack, requestId, agreed } = {}) {
         if (!this.available())
             fail('CHECKOUT_UNAVAILABLE', 503);
@@ -74,9 +82,12 @@ export class TestCheckout {
         const row = await this.byTicket(orderId, ticket);
         if (this.now() - row.created > 86400000)
             fail('ORDER_EXPIRED', 409);
-        if (row.state !== 'paid' || !this.readPurchase)
+        if (!this.readPurchase)
             fail('PURCHASE_NOT_VERIFIED', 409);
-        return this.paidView(row);
+        const result = await this.status({ id: row.user_id }, row.id);
+        if (!result.receipt?.verified)
+            fail('PURCHASE_NOT_VERIFIED', 409);
+        return result;
     }
     async serialize(id, fn) { const previous = this.pending.get(id) ?? Promise.resolve(); const p = previous.catch(() => { }).then(fn); this.pending.set(id, p); try {
         return await p;
@@ -90,11 +101,11 @@ export class TestCheckout {
             fail('PAYMENT_MISMATCH', 409);
         if (row.payment_key && row.payment_key !== payment.paymentKey)
             fail('PAYMENT_MISMATCH', 409);
-        await this.db.prepare("UPDATE test_orders SET state='verified',payment_key=? WHERE id=?").run(payment.paymentKey, row.id);
+        await this.db.prepare("UPDATE test_orders SET state='verified',payment_key=?,provider_status='DONE',checked_at=? WHERE id=?").run(payment.paymentKey, this.now(), row.id);
         // The ledger is in another SQLite file. Its purchase ID makes replay after a crash safe.
         await this.creditPurchase(row.user_id, { purchaseId: 'toss-test:' + row.id, credits: row.credits, unit: orderUnit(row) });
         await this.db.prepare("UPDATE test_orders SET state='paid' WHERE id=?").run(row.id);
-        return this.paidView({ ...row, state: 'paid' });
+        return this.paidView({ ...row, state: 'paid', provider_status: 'DONE' });
     }
     async confirm({ orderId, ticket, paymentKey, amount } = {}) {
         if (!this.available())
@@ -116,11 +127,11 @@ export class TestCheckout {
             try {
                 payment = await this.provider.lookup(orderId);
             }
-            catch (e) {
-                if (e.code !== 'PAYMENT_NOT_FOUND')
-                    throw e;
+            catch (error) {
+                if (error.code !== 'PAYMENT_NOT_FOUND' && (error.code !== 'PAYMENT_UNCERTAIN' || this.now() - current.created > checkoutWindow))
+                    throw error;
             }
-            if (payment?.status !== 'DONE' && (current.state === 'canceled' || this.now() - current.created > 30 * 60000))
+            if (payment?.status !== 'DONE' && (closedStates.has(payment?.status) || current.state === 'canceled' || this.now() - current.created > checkoutWindow))
                 fail('ORDER_EXPIRED', 409);
             if (payment?.status !== 'DONE')
                 payment = await this.provider.confirm({ orderId, paymentKey, amount: row.amount });
@@ -129,7 +140,7 @@ export class TestCheckout {
             return await this.settle(current, payment);
         });
     }
-    async status(user, id) {
+    async status(user, id, { cached = false } = {}) {
         const row = await this.db.prepare('SELECT * FROM test_orders WHERE id=? AND user_id=?').get(id, user.id);
         if (!row)
             fail('ORDER_NOT_FOUND', 404);
@@ -141,19 +152,63 @@ export class TestCheckout {
             const fresh = await this.db.prepare('SELECT * FROM test_orders WHERE id=?').get(id);
             if (fresh.state === 'paid')
                 return this.paidView(fresh);
-            let payment;
+            if (fresh.state === 'canceled' || (cached && fresh.checked_at > this.now() - 15000))
+                return this.view(fresh);
+            let payment, observation;
             try {
                 payment = await this.provider.lookup(id);
             }
-            catch (e) {
-                if (e.code === 'PAYMENT_NOT_FOUND')
-                    return this.view(row);
-                throw e;
+            catch (error) {
+                if (error.code === 'PAYMENT_NOT_FOUND')
+                    observation = 'NOT_FOUND';
+                else if (error.code === 'PAYMENT_UNCERTAIN')
+                    observation = 'UNAVAILABLE';
+                else
+                    throw error;
             }
-            if (payment.status === 'DONE')
+            if (payment?.status === 'DONE')
                 return await this.settle(fresh, payment);
-            return this.view(fresh);
+            if (payment && (payment.orderId !== id || payment.currency !== 'KRW' || payment.totalAmount !== fresh.amount))
+                fail('PAYMENT_MISMATCH', 409);
+            if (!observation)
+                observation = providerStates.has(payment?.status) ? payment.status : 'UNAVAILABLE';
+            if (observation === 'NOT_FOUND' && this.now() - fresh.created > checkoutWindow)
+                observation = 'NO_APPROVAL';
+            const state = closedStates.has(observation) && fresh.state === 'pending' ? 'canceled' : fresh.state;
+            await this.db.prepare('UPDATE test_orders SET state=?,provider_status=?,checked_at=? WHERE id=?').run(state, observation, this.now(), id);
+            return this.view({ ...fresh, state, provider_status: observation });
         });
+    }
+    async refreshOutstanding(user) {
+        if (!this.available())
+            return;
+        const rows = await this.db.prepare(`SELECT id FROM test_orders WHERE user_id=? AND state IN ('verified','pending') AND checked_at<=?
+   AND id IN (SELECT id FROM test_orders WHERE user_id=? ORDER BY created DESC LIMIT 30)
+   ORDER BY checked_at ASC,created DESC LIMIT 3`).all(user.id, this.now() - 15000, user.id);
+        const check = async (row) => await this.status(user, row.id, { cached: true });
+        const results = await Promise.allSettled(rows.map(check));
+        if (results.some(result => result.status === 'rejected'))
+            console.warn('Test checkout order could not be reconciled.');
+    }
+    async recoverOutstanding() {
+        if (!this.available())
+            return;
+        const members = await this.db.prepare(`SELECT o.user_id AS id FROM test_orders o JOIN users u ON u.id=o.user_id
+   WHERE u.disabled=0 AND o.state IN ('verified','pending') GROUP BY o.user_id ORDER BY MIN(o.checked_at),MAX(o.created) DESC LIMIT 4`).all();
+        for (const user of members) {
+            let release;
+            try {
+                release = await this.store.membership?.enter(user);
+                await this.refreshOutstanding(user);
+            }
+            catch (error) {
+                if (error.code !== 'AUTH_REQUIRED' && error.code !== 'ACCOUNT_MAINTENANCE')
+                    throw error;
+            }
+            finally {
+                release?.();
+            }
+        }
     }
     async history(user) { return (await this.db.prepare('SELECT * FROM test_orders WHERE user_id=? ORDER BY created DESC LIMIT 30').all(user.id)).map(row => this.view(row)); }
 }

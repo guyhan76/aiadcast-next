@@ -1,5 +1,4 @@
 import {CommerceRecords} from './CommerceRecords';
-import {checkoutContinuation} from './checkout-return';
 import {useEffect,useRef,useState} from 'react';
 import {apiRequest,ApiRequestFailure,type ApiStatus} from './generation-client';
 import {betaSession,setBetaSession} from './beta-session';
@@ -20,7 +19,17 @@ export function CreditsPage({returnPage}:{returnPage:string}){
   finally{clearTimeout(timer);if(request.current===controller){request.current=null;setBusy(false);}}
  }
  useEffect(()=>{void refresh();return()=>{request.current?.abort();request.current=null;};},[session?.token]);
- const state=(v:string)=>({paid:t('결제 완료','Paid'),pending:t('확인 중','Pending'),verified:t('지급 확인 중','Verifying grant'),canceled:t('취소','Canceled'),completed:t('지급 완료','Granted')}[v]??v);
+ const orderStatus=(order:TestOrder)=>{
+  if(order.state==='paid')return t('결제 완료','Paid');
+  if(order.state==='verified')return t('결제 완료 · 지급 중','Paid · Adding credits');
+  if(order.providerStatus==='EXPIRED')return t('승인 만료','Approval expired');
+  if(order.providerStatus==='ABORTED')return t('승인 실패','Approval failed');
+  if(order.state==='canceled')return t('결제 취소','Canceled');
+  if(order.providerStatus==='NO_APPROVAL')return t('승인 내역 없음','No approval found');
+  if(order.providerStatus==='UNAVAILABLE')return t('승인 조회 지연','Approval lookup delayed');
+  if(order.providerStatus==='PARTIAL_CANCELED')return t('부분 취소','Partially canceled');
+  return t('승인 대기','Awaiting approval');
+ };
  const locale=language==='ko'?'ko-KR':'en-US';
  const shortDate=(timestamp:string|number)=>new Intl.DateTimeFormat(locale,{year:'numeric',month:'short',day:'numeric'}).format(new Date(timestamp));
  const available=data?(data.wallet.unlimited?t('관리자 · 차감 없음','Administrator · No charge'):data.wallet.kind==='customer-ads'
@@ -39,13 +48,13 @@ export function CreditsPage({returnPage}:{returnPage:string}){
   {error&&<p role="alert">{error}</p>}
   {!session||expired?<a className="wallet-button wallet-primary" href="#login" onClick={()=>{if(expired)setBetaSession(null,'login');}}>{expired?t('같은 계정으로 로그인','Sign in with the same account'):t('로그인','Sign in')}</a>:null}
   <div className="wallet-actions"><a className="wallet-button wallet-primary" href="#checkout">{t('이용권 구매하기','Buy credits')}</a>
-   {session&&<a className="wallet-button wallet-secondary" href={checkoutContinuation()?'#checkout-return':'#create'}><ImagePlus size={20} aria-hidden="true"/>{t('광고 이미지 만들기','Create an ad image')}</a>}</div>
+   {session&&<a className="wallet-button wallet-secondary" href="#create"><ImagePlus size={20} aria-hidden="true"/>{t('광고 이미지 만들기','Create an ad image')}</a>}</div>
   <h2>{t('최근 구매 내역','Recent purchases')}</h2>
   {!data?<p>{t('구매 내역 미조회','Purchases not checked')}</p>:data.sales?.length?<ul className="wallet-history">{data.sales.map(s=><li key={s.id}>
    <strong>{t(`광고 ${s.ads}장`,`${s.ads} ads`)}</strong><span className="wallet-state">{s.restored?t('구매 복원','Restored'):t('구매 확인','Verified')}</span><time>{shortDate(s.verified)}</time></li>)}</ul>
    :!data.orders.length?<p>{t('조회된 구매 내역이 없습니다.','No purchases found.')}</p>:<ul className="wallet-history">{data.orders.map(o=><li key={o.id}>
     <strong>{o.credits}{o.unit==='credit-v2'?t(' 크레딧',' credits'):t('개 기존 이용권',' legacy tickets')}</strong>
-    <span className={'wallet-state state-'+o.state}>{state(o.state)}</span><time>{shortDate(o.created)}</time><b>{o.amount.toLocaleString(locale)}{t('원',' KRW')}</b>
+    <span className={'wallet-state state-'+o.state}>{orderStatus(o)}</span><time>{shortDate(o.created)}</time><b>{o.amount.toLocaleString(locale)}{t('원',' KRW')}</b>
    </li>)}</ul>}
   {session&&<CommerceRecords key={session.user.id}/>}
  </section>;

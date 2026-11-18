@@ -202,6 +202,7 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
   await accountsDb.protectTables();
   membership.forgetService=app.forgetService;
   membership.start();
-  return {...app,store,storage,pool,close:async()=>{if(closing)return;closing=true;await membership.stop();await app.close();await store.close();await instance?.close();await pool.end();}};
+  const checkoutRecovery=app.recoverCheckoutOrders().catch(()=>console.warn('Test checkout reconciliation deferred until wallet refresh.'));
+  return {...app,store,storage,pool,close:async()=>{if(closing)return;closing=true;await checkoutRecovery;await membership.stop();await app.close();await store.close();await instance?.close();await pool.end();}};
  }catch(e){await instance?.close().catch(()=>{});await pool.end().catch(()=>{});throw e;}
 }

@@ -18,8 +18,15 @@ export class TossTestProvider {
   this.authorization='Basic '+Buffer.from(secretKey+':').toString('base64');this.fetch=fetchImpl;
  }
  async call(path,body,idempotencyKey){
-  let response;try{response=await this.fetch('https://api.tosspayments.com'+path,{method:body?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(15_000),headers:{Authorization:this.authorization,...(body?{'Content-Type':'application/json','Idempotency-Key':idempotencyKey}:{})},...(body?{body:JSON.stringify(body)}:{})});}catch{fail('PAYMENT_UNCERTAIN');}
-  if(!response.ok){if(response.status===404)fail('PAYMENT_NOT_FOUND',404);fail('PAYMENT_UNCERTAIN');}
+  let response;try{response=await this.fetch('https://api.tosspayments.com'+path,{method:body?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(body?15_000:4_000),headers:{Authorization:this.authorization,...(body?{'Content-Type':'application/json','Idempotency-Key':idempotencyKey}:{})},...(body?{body:JSON.stringify(body)}:{})});}catch{fail('PAYMENT_UNCERTAIN');}
+  if(!response.ok){
+   const error=await response.json().catch(()=>({}));
+   if(response.status===404&&error?.code==='NOT_FOUND_PAYMENT')fail('PAYMENT_NOT_FOUND',404);
+   if(body&&error?.code==='ALREADY_PROCESSED_PAYMENT')return this.lookup(body.orderId);
+   const reason=['UNAUTHORIZED_KEY','INVALID_API_KEY','FORBIDDEN_REQUEST','UNAUTHORIZED_ACCESS','NOT_FOUND_PAYMENT_SESSION'].includes(error?.code)?error.code:'OTHER';
+   console.warn('Toss test checkout',body?'approval':'lookup',response.status,reason);
+   fail('PAYMENT_UNCERTAIN');
+  }
   try{return await response.json();}catch{fail('PAYMENT_UNCERTAIN');}
  }
  confirm({paymentKey,orderId,amount}){return this.call('/v1/payments/confirm',{paymentKey,orderId,amount},orderId);}

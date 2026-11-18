@@ -324,8 +324,9 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                     send(res, 200, { wallet, sales, orders: [], grants: [] }, cors);
                     return;
                 }
+                await checkout.refreshOutstanding(user);
                 const orders = await checkout.history(user), grants = await store.db.prepare('SELECT id,credits,state,created FROM admin_grants WHERE user_id=? ORDER BY created DESC LIMIT 30').all(user.id);
-                send(res, 200, { wallet, orders, grants }, cors);
+                send(res, 200, { wallet: await instance.wallet(), orders, grants }, cors);
                 return;
             }
             if (url.pathname === '/api/checkout/orders' && req.method === 'GET') {
@@ -431,5 +432,5 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
     server.requestTimeout = 30000;
     server.headersTimeout = 10000;
     server.maxConnections = 100;
-    return { server, forgetService: id => services.delete(id), close: async () => { await new Promise(resolve => server.close(resolve)); await Promise.all(await Promise.all([...services.values()].map(async (s) => await (await s).close()))); services.clear(); await dimensionAnalysis.close(); await singleBox.close(); } };
+    return { server, recoverCheckoutOrders: () => checkout.recoverOutstanding(), forgetService: id => services.delete(id), close: async () => { await new Promise(resolve => server.close(resolve)); await Promise.all(await Promise.all([...services.values()].map(async (s) => await (await s).close()))); services.clear(); await dimensionAnalysis.close(); await singleBox.close(); } };
 }

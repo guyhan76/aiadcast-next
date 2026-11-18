@@ -136,7 +136,8 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
      const sales=await instance.customerCosts.customerPurchases();
      send(res,200,{wallet,sales,orders:[],grants:[]},cors);return;
     }
-    const orders=checkout.history(user),grants=store.db.prepare('SELECT id,credits,state,created FROM admin_grants WHERE user_id=? ORDER BY created DESC LIMIT 30').all(user.id);send(res,200,{wallet,orders,grants},cors);return;}
+    await checkout.refreshOutstanding(user);
+    const orders=checkout.history(user),grants=store.db.prepare('SELECT id,credits,state,created FROM admin_grants WHERE user_id=? ORDER BY created DESC LIMIT 30').all(user.id);send(res,200,{wallet:instance.wallet(),orders,grants},cors);return;}
    if(url.pathname==='/api/checkout/orders'&&req.method==='GET'){send(res,200,{orders:checkout.history(user)},cors);return;}
    const order=/^\/api\/checkout\/orders\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
    if(order&&req.method==='GET'){send(res,200,await checkout.status(user,order[1]),cors);return;}
@@ -165,7 +166,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
  };
  const server=createServer((req,res)=>observeSubmission(req,res,()=>observeReadiness(req,res,()=>handle(req,res))));
  server.requestTimeout=30_000;server.headersTimeout=10_000;server.maxConnections=100;
- return {server,forgetService:id=>services.delete(id),close:async()=>{await new Promise(resolve=>server.close(resolve));await Promise.all([...services.values()].map(s=>s.close()));services.clear();await dimensionAnalysis.close();await singleBox.close();}};
+ return {server,recoverCheckoutOrders:()=>checkout.recoverOutstanding(),forgetService:id=>services.delete(id),close:async()=>{await new Promise(resolve=>server.close(resolve));await Promise.all([...services.values()].map(s=>s.close()));services.clear();await dimensionAnalysis.close();await singleBox.close();}};
 }
 export function betaConfig(env=process.env){
  const publicUrl=publicOrigin(env.AIADCAST_BETA_PUBLIC_ORIGIN??env.RENDER_EXTERNAL_URL??''),directory=resolve(env.AIADCAST_BETA_DATA_DIR??'release/beta-runtime');
