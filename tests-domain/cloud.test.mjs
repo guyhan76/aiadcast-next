@@ -3,7 +3,7 @@ import {refundPolicyVersion} from '../src/refund-policy.ts';
 import manifest from '../package.json' with {type:'json'};
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
+import {mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
@@ -13,7 +13,7 @@ import pg from 'pg';
 import {PostgresDatabase,postgresConfiguration,cloudSchema,acquireInstanceLock} from '../server/cloud/postgres.mjs';
 import {createCloudBackend} from '../server/cloud/beta.mjs';
 import {OpenAIImageAdapter,ProviderFailure,IMAGE_MODEL,IMAGE_REVISION,hashBytes,imageUsageCost} from '../server/openai-image-adapter.mjs';
-import {playAccountId} from '../server/play-billing.mjs';
+import {playAccountId,playPolicyAccountId} from '../server/play-billing.mjs';
 import {betaStartupCode} from '../server/beta-server.mjs';
 const origin='https://beta.example.com',ref='sxpzbfapbizlmsuqlrfu';
 const env={SUPABASE_URL:`https://${ref}.supabase.co`,SUPABASE_SECRET_KEY:'sb_secret_test_fixture'};
@@ -115,6 +115,88 @@ async function emailCustomer(s,mails,email){
  const signed=await s.call('/api/auth/email/exchange',{body:auth.data});assert.equal(signed.status,200);
  return signed.data.session;
 }
+test('a member can restore a Play test purchase, save one original and reopen it with two ads left', async t => {
+  const productId = 'credits_30';
+  const purchaseToken = 'fixture-license-tester-purchase';
+  let buyerId, purchaseState = 'PENDING', consumeCalls = 0;
+  const play = {
+    async lookup(token) {
+      assert.equal(token, purchaseToken);
+      return {
+        obfuscatedExternalAccountId: playPolicyAccountId(buyerId),
+        testPurchaseContext: {},
+        purchaseStateContext: {purchaseState},
+        productLineItem: [{productId, productOfferDetails: {
+          quantity: 1,
+          consumptionState: consumeCalls ? 'CONSUMPTION_STATE_CONSUMED' : 'CONSUMPTION_STATE_YET_TO_BE_CONSUMED'
+        }}]
+      };
+    },
+    async consume(product, token) {
+      assert.equal(product, productId);
+      assert.equal(token, purchaseToken);
+      consumeCalls++;
+    }
+  };
+  const s = await setup(t, {accounts: {play}});
+  const {token, user} = await s.member('Internal Play tester', 1_000_000, 0);
+  buyerId = user.id;
+  const verify = () => s.call('/api/checkout/play/verify', {token, body: {token: purchaseToken}});
+  const balance = async () => {
+    const status = await s.call('/api/status', {token});
+    assert.equal(status.status, 200);
+    return status.data.wallet.credits.available;
+  };
+
+  const pending = await verify();
+  assert.equal(pending.status, 200);
+  assert.equal(pending.data.state, 'pending');
+  assert.equal(await balance(), 0);
+  assert.equal(consumeCalls, 0);
+
+  purchaseState = 'PURCHASED';
+  for (let delivery = 0; delivery < 2; delivery++) {
+    const approved = await verify();
+    assert.equal(approved.status, 200, JSON.stringify(approved.data));
+    assert.equal(approved.data.state, 'paid');
+    assert.equal(approved.data.balance, 30);
+    assert.equal(approved.data.policyReceipt, undefined);
+  }
+  assert.equal(consumeCalls, 1);
+  const result = await finishGeneration(s, token);
+  assert.equal(result.status, 200);
+  assert.equal(result.data.job.state, 'ready');
+  assert.equal(result.data.wallet.credits.available, 20);
+  const {id, artifactId} = result.data.job;
+  const accepted = await s.call('/api/generations/' + id + '/accept', {token, body: {artifactId}});
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  const original = async () => {
+    const response = await s.call('/api/membership/downloads/' + id + '/original', {token});
+    assert.equal(response.status, 200, JSON.stringify(response.data));
+    assert.equal(response.data.reviewRequired, false);
+    assert.equal(response.data.artifactId, artifactId);
+    assert.match(response.data.artifact.dataUrl, /^data:image\/png;base64,/);
+    const file = Buffer.from(response.data.artifact.dataUrl.split(',')[1], 'base64');
+    assert.equal(hashBytes(file), artifactId);
+    return file;
+  };
+  const directory = mkdtempSync(join(tmpdir(), 'aiadcast-play-original-'));
+  t.after(() => rmSync(directory, {recursive: true, force: true}));
+  const path = join(directory, 'ad.png');
+  writeFileSync(path, await original());
+  assert.deepEqual(readFileSync(path), bytes);
+  assert.equal(await balance(), 20);
+
+  await s.restart();
+  const restored = await verify();
+  assert.equal(restored.status, 200);
+  assert.equal(restored.data.balance, 20);
+  assert.equal(consumeCalls, 1);
+  assert.deepEqual(await original(), readFileSync(path));
+  assert.equal(await balance(), 20);
+  assert.equal(s.calls(), 1);
+});
+
 test('commercial customers keep free and paid ads when the test budget is exhausted',async t=>{
  const mails=[];let buyer,consumed=false,isTest=false;
  const play={lookup:async()=>({obfuscatedExternalAccountId:playAccountId(buyer),...(isTest?{testPurchaseContext:{}}:{}),
