@@ -73,7 +73,7 @@ export class BillingLedger {
     });
   }
   // credits, modelRevision and expiresAt must come from a server-signed quote.
-  reserve({ jobId, userId, credits, requestHash, modelRevision, kind = 'image', expiresAt, creditExempt = false, unit='legacy-ticket' }) {
+  reserve({ jobId, userId, credits, requestHash, modelRevision, kind = 'image', expiresAt, creditExempt = false, unit='legacy-ticket', customerFunded=false }) {
     if(!['legacy-ticket','credit-v2'].includes(unit)||unit==='credit-v2'&&credits!==10)throw Error('Invalid credit quote');
     const table=unit==='credit-v2'?'credit_wallets':'wallets';
     [jobId, userId, requestHash, modelRevision].forEach(identifier); integer(credits);
@@ -93,6 +93,10 @@ export class BillingLedger {
       }
       this.db.prepare('INSERT INTO jobs(id,user_id,credits,request_hash,model_revision,kind,status,expires_at) VALUES (?,?,?,?,?,?,?,?)').run(jobId, userId, credits, requestHash, modelRevision, kind, 'reserved', expiresAt);
       if(unit==='credit-v2')this.db.prepare('INSERT INTO job_policies(job_id,unit,policy) VALUES (?,?,?)').run(jobId,unit,'delivered-2026-10-18');
+      if (customerFunded) {
+        if (!this.customerCosts || creditExempt || unit!=='credit-v2' || kind!=='image') throw Error('Invalid customer funding');
+        this.db.prepare('INSERT INTO customer_ad_jobs VALUES (?)').run(jobId);
+      }
       if (creditExempt) this.db.prepare('INSERT INTO admin_test_jobs(job_id) VALUES (?)').run(jobId);
       this.event(`reserve:${jobId}`, userId, jobId, creditExempt ? 'admin-test-reserve' : 'reserve', credits);
       return this.job(jobId);
@@ -189,7 +193,7 @@ export class BillingLedger {
     return policy.monthlyLimitMicros;
   }
   beginAttempt({ jobId, attemptId, period, maximumMicros, limitMicros, periodScoped=false }) {
-    [attemptId, period].forEach(identifier); integer(maximumMicros); integer(limitMicros);
+    [attemptId, period].forEach(identifier); integer(maximumMicros);
     return this.transaction(() => {
       const old = this.db.prepare('SELECT * FROM attempts WHERE id=?').get(attemptId);
       if (old) {
@@ -200,12 +204,20 @@ export class BillingLedger {
       if (!['reserved','running'].includes(job.status) || job.expires_at <= this.now()) throw Error('Job is not dispatchable');
       if (this.db.prepare("SELECT id FROM attempts WHERE job_id=? AND status IN ('pending','uncertain','completed')").get(jobId)) throw Error('Reconcile existing attempt; do not generate again');
       if (this.db.prepare('SELECT count(*) n FROM attempts WHERE job_id=?').get(jobId).n >= 2) throw Error('Retry limit reached');
-      const cumulative=this.supplierBudget(period,limitMicros);
-      limitMicros=this.reserveSupplierBudget(period,maximumMicros,limitMicros);
-      this.db.prepare('INSERT INTO budgets(period,limit_micros) VALUES (?,?) ON CONFLICT DO NOTHING').run(period, limitMicros);
-      if(periodScoped||cumulative){if(period!==new Date(this.now()).toISOString().slice(0,7))throw Error('BUDGET_PERIOD_CHANGED');this.db.prepare('UPDATE budgets SET limit_micros=? WHERE period=?').run(limitMicros,period);}
-      const held = this.db.prepare('UPDATE budgets SET held_micros=held_micros+? WHERE period=? AND limit_micros=? AND spent_micros+held_micros+?<=limit_micros').run(maximumMicros, period, limitMicros, maximumMicros);
-      if (held.changes !== 1) throw Error('Provider budget unavailable');
+      const customerJob=this.db.prepare('SELECT job_id FROM customer_ad_jobs WHERE job_id=?').get(jobId);
+      if (customerJob) {
+        // The period row is the attempt's foreign key. Its test spending and holds stay untouched.
+        this.db.prepare('INSERT INTO budgets(period,limit_micros) VALUES (?,1) ON CONFLICT DO NOTHING').run(period);
+        this.customerCosts.reserveOperatingCost(attemptId, jobId, maximumMicros);
+      } else {
+        integer(limitMicros);
+        const cumulative=this.supplierBudget(period,limitMicros);
+        limitMicros=this.reserveSupplierBudget(period,maximumMicros,limitMicros);
+        this.db.prepare('INSERT INTO budgets(period,limit_micros) VALUES (?,?) ON CONFLICT DO NOTHING').run(period, limitMicros);
+        if(periodScoped||cumulative){if(period!==new Date(this.now()).toISOString().slice(0,7))throw Error('BUDGET_PERIOD_CHANGED');this.db.prepare('UPDATE budgets SET limit_micros=? WHERE period=?').run(limitMicros,period);}
+        const held = this.db.prepare('UPDATE budgets SET held_micros=held_micros+? WHERE period=? AND limit_micros=? AND spent_micros+held_micros+?<=limit_micros').run(maximumMicros, period, limitMicros, maximumMicros);
+        if (held.changes !== 1) throw Error('Provider budget unavailable');
+      }
       this.db.prepare('INSERT INTO attempts(id,job_id,period,maximum_micros,status) VALUES (?,?,?,?,?)').run(attemptId, jobId, period, maximumMicros, 'pending');
       this.db.prepare("UPDATE jobs SET status='running' WHERE id=?").run(jobId);
       return { ...this.db.prepare('SELECT * FROM attempts WHERE id=?').get(attemptId), shouldDispatch: true };
@@ -216,6 +228,7 @@ export class BillingLedger {
       const a = this.db.prepare('SELECT * FROM attempts WHERE id=?').get(attemptId);
       if (!a) throw Error('Attempt not found');
       if (['completed','failed'].includes(a.status)) return;
+      if (this.db.prepare('SELECT job_id FROM customer_ad_jobs WHERE job_id=?').get(a.job_id)) this.customerCosts.flagUncertainCost(attemptId);
       this.db.prepare("UPDATE attempts SET status='uncertain' WHERE id=?").run(attemptId);
       this.db.prepare("UPDATE jobs SET status='uncertain' WHERE id=? AND status IN ('running','reserved')").run(a.job_id);
       // Keep the provider-cost hold until cost is known, even if customer credits expire.
@@ -231,7 +244,11 @@ export class BillingLedger {
         if (a.actual_micros !== actualMicros || a.status !== outcome) throw Error('Cost replay mismatch');
         return;
       }
-      this.db.prepare('UPDATE budgets SET held_micros=held_micros-?, spent_micros=spent_micros+? WHERE period=?').run(a.maximum_micros, actualMicros, a.period);
+      if (this.db.prepare('SELECT job_id FROM customer_ad_jobs WHERE job_id=?').get(a.job_id)) {
+        this.customerCosts.settleOperatingCost(attemptId, actualMicros, outcome);
+      } else {
+        this.db.prepare('UPDATE budgets SET held_micros=held_micros-?, spent_micros=spent_micros+? WHERE period=?').run(a.maximum_micros, actualMicros, a.period);
+      }
       this.db.prepare('UPDATE attempts SET actual_micros=?,status=? WHERE id=?').run(actualMicros, outcome, attemptId);
       this.db.prepare("UPDATE jobs SET status=? WHERE id=? AND status IN ('running','uncertain')").run(outcome === 'failed' ? 'reserved' : 'running', a.job_id);
     });

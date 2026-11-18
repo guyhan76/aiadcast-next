@@ -127,8 +127,16 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
     const body=await read(req,8192);
     send(res,200,await verifyPlayPurchase(accounts.play,user.id,body?.token,service(user)),cors);return;
    }
-   if(url.pathname==='/api/checkout/orders'&&req.method==='POST'){send(res,201,checkout.create(user,await read(req,2048)),cors);return;}
-   if(url.pathname==='/api/account/credits'&&req.method==='GET'){const orders=checkout.history(user),grants=store.db.prepare('SELECT id,credits,state,created FROM admin_grants WHERE user_id=? ORDER BY created DESC LIMIT 30').all(user.id);send(res,200,{wallet:service(user).wallet(),orders,grants},cors);return;}
+   if(url.pathname==='/api/checkout/orders'&&req.method==='POST'){
+    if(store.customerGeneration){const instance=service(user);if(instance.customerImagesEnabled&&!instance.adminTestUnlimited)throw new ApiFailure('TEST_CHECKOUT_UNAVAILABLE',403);}
+    send(res,201,checkout.create(user,await read(req,2048)),cors);return;}
+   if(url.pathname==='/api/account/credits'&&req.method==='GET'){
+    const instance=service(user),wallet=instance.wallet();
+    if(wallet.kind==='customer-ads'){
+     const sales=await instance.customerCosts.customerPurchases();
+     send(res,200,{wallet,sales,orders:[],grants:[]},cors);return;
+    }
+    const orders=checkout.history(user),grants=store.db.prepare('SELECT id,credits,state,created FROM admin_grants WHERE user_id=? ORDER BY created DESC LIMIT 30').all(user.id);send(res,200,{wallet,orders,grants},cors);return;}
    if(url.pathname==='/api/checkout/orders'&&req.method==='GET'){send(res,200,{orders:checkout.history(user)},cors);return;}
    const order=/^\/api\/checkout\/orders\/([A-Za-z0-9_-]{8,100})$/.exec(url.pathname);
    if(order&&req.method==='GET'){send(res,200,await checkout.status(user,order[1]),cors);return;}

@@ -50,10 +50,14 @@ export class SharedGenerationBudget {
   for(const {schema} of await this.tenants()){
    const hex=schema.slice('aiadcast_user_'.length),owner=[hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-');
    const rows=async table=>await this.exists(schema,table)?this.db.prepare(`SELECT * FROM "${schema}".${table}`).all():[];
-   auditSupplierHistory({budgets:await rows('budgets'),attempts:await rows('attempts'),assistants:await rows('assistant_requests'),recommendations:await rows('recommendation_supplier_costs'),externalRows:external,ownerId:owner});
+   auditSupplierHistory({budgets:await rows('budgets'),attempts:await this.testAttempts(schema,rows),assistants:await rows('assistant_requests'),recommendations:await rows('recommendation_supplier_costs'),externalRows:external,ownerId:owner});
    checked.add(owner);
   }
   for(const owner of new Set(external.map(r=>r.actor_id)))if(!checked.has(owner))auditSupplierHistory({budgets:[],attempts:[],assistants:[],recommendations:[],externalRows:external,ownerId:owner});
+ }
+ async testAttempts(schema,rows){
+  if(!await this.exists(schema,'customer_ad_jobs'))return rows('attempts');
+  return this.db.prepare(`SELECT a.* FROM "${schema}".attempts a LEFT JOIN "${schema}".customer_ad_jobs c ON c.job_id=a.job_id WHERE c.job_id IS NULL`).all();
  }
  async snapshot(){
   const row=await this.db.prepare('SELECT * FROM aiadcast_accounts.shared_generation_budget_totals()').get();

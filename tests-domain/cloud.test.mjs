@@ -64,10 +64,10 @@ function bucketFixture(){
  return {objects,calls,fetchImpl};
 }
 async function setup(t,{adapter,accounts,fault={}}={}){
- const folder=mkdtempSync(join(tmpdir(),'aiadcast-cloud-')),bucket=bucketFixture();let app,calls=0;
+ const folder=mkdtempSync(join(tmpdir(),'aiadcast-cloud-')),bucket=bucketFixture();let app,calls=0,customerGeneration=false;
  const defaultAdapter={generate:async()=>{calls++;return {bytes,mime:'image/png',width:8,height:8,sha256:hash,role:'background',usage,cost:imageUsageCost(usage),model:IMAGE_MODEL,revision:IMAGE_REVISION,providerRequestId:'fixture-provider'};}};
  const start=async()=>{
-  app=await createCloudBackend(config,env,{pool:await pgPool(join(folder,'pg'),fault),storageFetch:bucket.fetchImpl,adapter:adapter??defaultAdapter,accounts:accounts??{},staticDirectory:null,skipInstanceLock:true});
+  app=await createCloudBackend(config,{...env,AIADCAST_CUSTOMER_GENERATION_ENABLED:String(customerGeneration)},{pool:await pgPool(join(folder,'pg'),fault),storageFetch:bucket.fetchImpl,adapter:adapter??defaultAdapter,accounts:accounts??{},staticDirectory:null,skipInstanceLock:true});
   await new Promise(r=>app.server.listen(0,'127.0.0.1',r));return app;
  };
  await start();t.after(async()=>{if(app)await app.close();rmSync(folder,{recursive:true,force:true});});
@@ -75,7 +75,7 @@ async function setup(t,{adapter,accounts,fault={}}={}){
   const r=await fetch('http://127.0.0.1:'+app.server.address().port+path,{method:body===undefined?'GET':'POST',headers:{Origin:requestOrigin,...(token?{Authorization:'Bearer '+token}:{}),...(body!==undefined?{'Content-Type':'application/json','X-Aiadcast-Client':'local-studio'}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{})});
   return {status:r.status,data:await r.json()};
  };
- return {get app(){return app;},bucket,call,calls:()=>calls,async restart(){await app.close();app=null;return start();},async member(label='Tester',budgetMicros=0,credits=0){const i=await app.store.provision({label,budgetMicros,credits});const r=await call('/api/auth/login',{body:{invite:i.invite}});assert.equal(r.status,200,JSON.stringify(r.data));return r.data;}};
+ return {get app(){return app;},bucket,call,calls:()=>calls,async restart(enableCustomers=false){customerGeneration=enableCustomers;await app.close();app=null;return start();},async member(label='Tester',budgetMicros=0,credits=0){const i=await app.store.provision({label,budgetMicros,credits});const r=await call('/api/auth/login',{body:{invite:i.invite}});assert.equal(r.status,200,JSON.stringify(r.data));return r.data;}};
 }
 async function legacyProject(app,userId,project){
  const bytes=Buffer.from(JSON.stringify(project));
@@ -85,7 +85,7 @@ async function legacyProject(app,userId,project){
  return path;
 }
 
-async function activateMemberFunding(s){
+async function activateMemberFunding(s,enableCustomers=false){
  const owner=await s.member('Lifetime budget owner');
  await s.call('/api/status',{token:owner.token});
  await s.app.store.setRole(owner.user.id,'admin');
@@ -94,7 +94,7 @@ async function activateMemberFunding(s){
  await s.app.store.db.exec('CREATE TABLE dimension_analysis_calls(id TEXT PRIMARY KEY,actor_id TEXT,state TEXT,hold BIGINT,actual BIGINT)');
  await s.app.store.sharedGenerationBudget.initialize(owner.user.id);
  // No environment opt-in on restart: a durable policy must never silently fall back.
- await s.restart();return owner.user.id;
+ await s.restart(enableCustomers);return owner.user.id;
 }
 async function finishGeneration(s,token,body=generation()){
  const status=await s.call('/api/status',{token});assert.equal(status.status,200,JSON.stringify(status.data));
@@ -104,6 +104,77 @@ async function finishGeneration(s,token,body=generation()){
  await s.app.store.membership.jobs.get(user.id).waitForIdle();
  return s.call('/api/generations/'+made.data.job.id,{token});
 }
+
+async function emailCustomer(s,mails,email){
+ const auth=await s.call('/api/auth/email/request',{body:{email}});
+ assert.equal(auth.status,200);
+ const token=new URL(mails.at(-1).url).hash.match(/token=([^&]+)/)?.[1];assert.ok(token);
+ assert.equal((await s.call('/api/auth/email/verify',{body:{token}})).status,200);
+ const signed=await s.call('/api/auth/email/exchange',{body:auth.data});assert.equal(signed.status,200);
+ return signed.data.session;
+}
+test('commercial customers keep free and paid ads when the test budget is exhausted',async t=>{
+ const mails=[];let buyer,consumed=false,isTest=false;
+ const play={lookup:async()=>({obfuscatedExternalAccountId:playAccountId(buyer),...(isTest?{testPurchaseContext:{}}:{}),
+  purchaseStateContext:{purchaseState:'PURCHASED'},productLineItem:[{productId:'credits_30',productOfferDetails:{quantity:1,consumptionState:consumed?'CONSUMPTION_STATE_CONSUMED':'CONSUMPTION_STATE_YET_TO_BE_CONSUMED'}}]}),consume:async()=>{consumed=true;}};
+ const s=await setup(t,{accounts:{sendMail:async mail=>mails.push(mail),play}});
+ const owner=await activateMemberFunding(s,true),invite=await s.app.store.issueInvite(owner);
+ const admin=(await s.call('/api/auth/login',{body:{invite:invite.invite}})).data;
+ await s.call('/api/status',{token:admin.token});
+ const ledger=s.app.store.membership.jobs.get(owner).ledger,jobId=randomUUID(),attemptId=randomUUID();
+ await ledger.reserve({jobId,userId:'aiadcast-next-local-developer',credits:1,creditExempt:true,requestHash:'budget-fixture',modelRevision:'fixture',expiresAt:Date.now()+60000});
+ await ledger.beginAttempt({jobId,attemptId,period:new Date().toISOString().slice(0,7),maximumMicros:500000,limitMicros:100000000,periodScoped:true});
+ await ledger.settleAttempt(attemptId,100000000,'failed');await ledger.release(jobId,'aiadcast-next-local-developer','system_error');
+ assert.equal((await s.call('/api/status',{token:admin.token})).data.generation.reason,'BUDGET_NOT_AVAILABLE');
+ const {token,user}=await emailCustomer(s,mails,'customer-budget@example.com');buyer=user.id;
+ const before=(await s.call('/api/status',{token})).data;
+ assert.equal(before.generation.enabled,true);assert.equal(before.wallet.credits.available,10);assert.equal(before.budget.scope,'customer-entitlement');assert.equal(before.budget.limitMicros,0);
+ const body=generation();assert.equal((await finishGeneration(s,token,body)).data.job.state,'ready');
+ const again=await s.call('/api/generations',{token,body:{...body,creditQuote:before.generation.creditQuote}});assert.equal(again.data.reused,true);
+ assert.equal(s.calls(),1);
+ const customer=s.app.store.membership.jobs.get(user.id);
+ await customer.recordTestPurchase({purchaseId:'fake-toss-fixture',unit:'credit-v2',credits:30});
+ assert.equal((await s.call('/api/status',{token})).data.wallet.credits.available,0);
+ isTest=true;const purchase=()=>s.call('/api/checkout/play/verify',{token,body:{token:'fixture-customer-purchase'}});
+ assert.equal((await purchase()).status,409);isTest=false;
+ for(let i=0;i<2;i++){const result=await purchase();assert.equal(result.status,200,JSON.stringify(result.data));assert.equal(result.data.balance,30);}
+ const paid=generation();paid.request.copy.title='Paid ad fixture';
+ assert.equal((await finishGeneration(s,token,paid)).data.wallet.credits.available,20);
+ const credits=await s.call('/api/account/credits',{token});assert.equal(credits.status,200);
+ assert.equal(credits.data.wallet.credits.available,20);assert.deepEqual(credits.data.sales.map(x=>x.ads),[3]);assert.deepEqual(credits.data.orders,[]);
+ assert.equal((await s.call('/api/checkout/orders',{token,body:{}})).status,403);
+ const second=await emailCustomer(s,mails,'independent-budget@example.com');
+ assert.equal((await s.call('/api/status',{token:second.token})).data.wallet.credits.available,10);
+ await s.restart();
+ assert.equal((await s.call('/api/status',{token})).data.wallet.credits.available,20);
+ const result=await s.call('/api/admin/overview',{token:admin.token});assert.equal(result.status,200,JSON.stringify(result.data));
+ const report=result.data;assert.equal(report.budget.spentMicros,100000000);assert.equal(report.budget.heldMicros,0);
+ const member=report.users.find(u=>u.id===user.id);assert.equal(member.customerFunded,true);assert.equal(member.generation.enabled,true);assert.equal(member.wallet.credits.available,20);assert.equal(member.supplierBudget,undefined);
+ assert.equal(report.operatingCosts.soldAds,3);assert.equal(report.operatingCosts.attempts,2);assert.equal(report.operatingCosts.duplicateRequests,1);
+ assert.equal(report.operatingCosts.spentMicros,2*imageUsageCost(usage).microUsd);assert.equal(report.operatingCosts.heldMicros,0);assert.equal(s.calls(),2);
+});
+
+test('commercial customer failure restores ad and retains uncertain operating cost across restart',async t=>{
+ const mails=[];let unknown=false,calls=0;
+ const adapter={generate:async()=>{calls++;if(unknown)throw Error('fixture lost response');throw new ProviderFailure('FIXTURE_REJECTED',{uncertain:false});}};
+ const s=await setup(t,{adapter,accounts:{sendMail:async mail=>mails.push(mail)}});
+ const owner=await activateMemberFunding(s,true),invite=await s.app.store.issueInvite(owner);
+ const admin=(await s.call('/api/auth/login',{body:{invite:invite.invite}})).data;
+ const {token,user}=await emailCustomer(s,mails,'customer-failure@example.com');
+ const failed=await finishGeneration(s,token);assert.equal(failed.data.job.state,'failed');assert.equal(failed.data.wallet.credits.available,10);
+ unknown=true;const body=generation();body.request.copy.title='Lost response fixture';
+ const uncertain=await finishGeneration(s,token,body);assert.equal(uncertain.data.job.state,'uncertain');assert.equal(uncertain.data.wallet.credits.available,10);
+ await s.restart();
+ const retry=await s.call('/api/generations',{token,body:{...body,creditQuote:(await s.call('/api/status',{token})).data.generation.creditQuote}});
+ assert.equal(retry.data.reused,true);assert.equal(calls,2);
+ const adminOverview=async()=>{const r=await s.call('/api/admin/overview',{token:admin.token});assert.equal(r.status,200,JSON.stringify(r.data));return r.data;};
+ const report=await adminOverview();assert.equal(report.budget.heldMicros,0);assert.equal(report.operatingCosts.heldMicros,500000);
+ assert.equal(report.operatingCosts.uncertain,1);assert.equal(report.operatingCosts.duplicateRequests,1);
+ await s.app.store.db.prepare(`INSERT INTO customer_image_costs(attempt_id,job_id,account_id,maximum,state,actual)
+  SELECT 'fixture-attempt-'||n,'fixture-job-'||n,?,500000,'completed',50000 FROM generate_series(1,30) n`).run(user.id);
+ const alerts=(await adminOverview()).operatingCosts;assert.equal(alerts.burstAccounts,1);assert.equal(alerts.costSpike,true);
+ assert.equal((await s.call('/api/status',{token})).data.generation.enabled,true);
+});
 
 test('shared member budget connects signup, free generation, verified Play purchase and restart without manual allocation',async t=>{
  let buyer,consumed=false;

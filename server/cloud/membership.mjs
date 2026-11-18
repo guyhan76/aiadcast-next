@@ -215,9 +215,12 @@ export class Membership {
   const identity=await this.db.prepare('SELECT email FROM email_identities WHERE user_id=?').get(id);
   if(identity)await this.removeMailIdentity(identity.email);
   await this.store.transaction(async()=>{
-   // The beta accepts test orders only. Any future real billing integration must
-   // archive legally required transaction fields separately before enabling sales.
+   // Keep aggregate operating costs and verified sales after removing the account link.
    await this.store.sharedGenerationBudget?.archive(id,receipt);
+   if(this.store.customerGeneration!==undefined){
+    await this.db.prepare('UPDATE customer_image_costs SET account_id=NULL WHERE account_id=?').run(id);
+    await this.db.prepare('UPDATE customer_image_sales SET account_id=NULL WHERE account_id=?').run(id);
+   }
    if(await this.exists('aiadcast_accounts','dimension_analysis_calls'))await this.db.prepare('DELETE FROM dimension_analysis_calls WHERE actor_id=?').run(id);
    const owner=await this.db.prepare('SELECT role FROM users WHERE id=?').get(id);
    if(owner?.role==='admin')await this.db.prepare("INSERT INTO settings(key,value) VALUES('owner_withdrawn',1) ON CONFLICT(key) DO UPDATE SET value=1").run();

@@ -57,6 +57,9 @@ CREATE TABLE IF NOT EXISTS purchase_units(purchase_id TEXT PRIMARY KEY REFERENCE
 CREATE TABLE IF NOT EXISTS job_policies(job_id TEXT PRIMARY KEY REFERENCES jobs(id), unit TEXT NOT NULL CHECK(unit='credit-v2'), policy TEXT NOT NULL, captured INTEGER NOT NULL DEFAULT 0 CHECK(captured IN (0,1)));
 CREATE TABLE IF NOT EXISTS defect_reports(id TEXT PRIMARY KEY, job_id TEXT NOT NULL UNIQUE REFERENCES jobs(id), description TEXT NOT NULL, created_at INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'pending', reviewer TEXT, resolution TEXT, reviewed_at INTEGER);
 
+-- Funding source is fixed when the customer reserves an image.
+CREATE TABLE IF NOT EXISTS customer_ad_jobs(job_id TEXT PRIMARY KEY REFERENCES jobs(id));
+
 -- Empty by default. Activation is a separately approved, quiesced operation.
 CREATE TABLE IF NOT EXISTS supplier_budget_policy (
  id INTEGER PRIMARY KEY CHECK(id=1),

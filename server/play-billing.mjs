@@ -71,6 +71,9 @@ export async function verifyPlayPurchase(provider, userId, token, service) {
       (offer?.refundableQuantity !== undefined && offer.refundableQuantity !== quantity))
     throw new ApiFailure('PLAY_PURCHASE_NOT_ELIGIBLE',409);
   const receipt = {purchaseId:'play:'+digest(token),credits:credits*quantity,unit:'credit-v2'};
+  if (purchase.testPurchaseContext && service.customerImagesEnabled && !service.adminTestUnlimited)
+    throw new ApiFailure('PLAY_TEST_PURCHASE_NOT_ELIGIBLE',409);
+  receipt.livePlayPurchase=!purchase.testPurchaseContext;
   if (offer?.consumptionState === 'CONSUMPTION_STATE_YET_TO_BE_CONSUMED') {
     await service.recordVerifiedPurchase(receipt);
     // If Play is unavailable after the DB commit, the next delivery uses the same ledger key.

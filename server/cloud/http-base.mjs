@@ -309,12 +309,23 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 return;
             }
             if (url.pathname === '/api/checkout/orders' && req.method === 'POST') {
+                if (store.customerGeneration) {
+                    const instance = await service(user);
+                    if (instance.customerImagesEnabled && !instance.adminTestUnlimited)
+                        throw new ApiFailure('TEST_CHECKOUT_UNAVAILABLE', 403);
+                }
                 send(res, 201, await checkout.create(user, await read(req, 2048)), cors);
                 return;
             }
             if (url.pathname === '/api/account/credits' && req.method === 'GET') {
+                const instance = await service(user), wallet = await instance.wallet();
+                if (wallet.kind === 'customer-ads') {
+                    const sales = await instance.customerCosts.customerPurchases();
+                    send(res, 200, { wallet, sales, orders: [], grants: [] }, cors);
+                    return;
+                }
                 const orders = await checkout.history(user), grants = await store.db.prepare('SELECT id,credits,state,created FROM admin_grants WHERE user_id=? ORDER BY created DESC LIMIT 30').all(user.id);
-                send(res, 200, { wallet: await (await service(user)).wallet(), orders, grants }, cors);
+                send(res, 200, { wallet, orders, grants }, cors);
                 return;
             }
             if (url.pathname === '/api/checkout/orders' && req.method === 'GET') {

@@ -1,3 +1,4 @@
+import {CustomerImageCosts, customerBalanceSql, initializeCustomerAccounting} from './customer-image-costs.mjs';
 import {Membership} from './membership.mjs';
 import {SharedGenerationBudget} from './shared-generation-budget.mjs';
 import {readExternalSupplierBudget} from '../external-supplier-budget.mjs';
@@ -60,6 +61,31 @@ export class CloudGenerationService extends GenerationService {
   if(info.state==='expired')fail('PROJECT_EXPIRED',410);
   return super.defectEvidence(id);
  }
+ async wallet(){
+  const wallet=await super.wallet();
+  if(!this.customerImagesEnabled || this.adminTestUnlimited)return wallet;
+  // Only delivered ads and currently reserved jobs consume customer entitlements.
+  const row=await this.db.prepare(customerBalanceSql('','?')).get(this.cloudUser);
+  const available=Math.max(0,Math.min(wallet.credits.available,row.available));
+  return {...wallet,kind:'customer-ads',available:0,reserved:0,credits:{available,reserved:row.reserved}};
+ }
+ async recordVerifiedPurchase(receipt){
+  return this.ledger.transaction(async()=>{
+   if(receipt.livePlayPurchase && this.customerImagesEnabled && !this.adminTestUnlimited){
+    const prior=await this.db.prepare('SELECT 1 FROM purchases WHERE purchase_id=?').get(receipt.purchaseId);
+    await this.customerCosts.sale(receipt,Boolean(prior));
+   }
+   return super.recordVerifiedPurchase(receipt);
+  });
+ }
+ async verifiedPurchaseReceipt(receipt){
+  const result=await super.verifiedPurchaseReceipt(receipt);
+  if(receipt.livePlayPurchase && this.customerImagesEnabled && !this.adminTestUnlimited){
+   await this.customerCosts.sale(receipt,true); // Restored, already-consumed Play receipt.
+   result.balance=(await this.wallet()).credits.available;
+  }
+  return result;
+ }
  async history(projectId){return readGenerationHistory(this,projectId);}
  async create(body,options){
   if(typeof body?.requestId==='string'&&this.membership){
@@ -73,7 +99,11 @@ export class CloudGenerationService extends GenerationService {
   this.admissions=(this.admissions??0)+1;
   const work=(this.admissionTail??Promise.resolve()).then(()=>super.create(body,options));
   this.admissionTail=work.catch(()=>{});
-  try{return await work;}finally{this.admissions--;}
+  try{
+   const result=await work;
+   if(result.reused && this.customerImagesEnabled && !this.adminTestUnlimited)await this.customerCosts.retry();
+   return result;
+  }finally{this.admissions--;}
  }
  async assertOutputCapacity(request, originals){
   // Admission check, not a durable reservation: concurrent saves may still consume
@@ -116,6 +146,14 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
   const store=await new CloudBetaStore().initialize(accountsDb,{monthlyBudgetMicros:config.monthlyBudgetMicros});
   const sharedBudget=await new SharedGenerationBudget(accountsDb).initialize(env.AIADCAST_MEMBER_GENERATION_BUDGET_OWNER_ID);
   store.sharedGenerationBudget=sharedBudget;
+  store.customerGeneration=await accountsDb.transaction(async()=>{
+   await initializeCustomerAccounting(accountsDb);
+   if(env.AIADCAST_CUSTOMER_GENERATION_ENABLED==='true'){
+    if(!sharedBudget.active)throw Error('TEST_BUDGET_POLICY_REQUIRED');
+    await accountsDb.exec('INSERT INTO customer_generation_policy VALUES(1) ON CONFLICT DO NOTHING');
+   }
+   return Boolean(await accountsDb.prepare('SELECT id FROM customer_generation_policy WHERE id=1').get());
+  });
   const storage=injectedStorage??await new SupabaseStorage({url:env.SUPABASE_URL,secretKey:env.SUPABASE_SECRET_KEY,accountsDb,fetchImpl:storageFetch}).initialize();store.storage=storage;
   const membership=new Membership(store,storage);await membership.initialize();store.membership=membership;
   const gate=providerGate(2),adapter=injectedAdapter??new OpenAIImageAdapter({apiKey:config.key,enableEdits:config.enabled});
@@ -126,6 +164,10 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
   app=await createBetaServer({store,recommendations:recommendationRuntime({store,pool,storage,origin:config.publicUrl,extraOrigins:['https://appassets.androidplatform.net',...extraOrigins],apiKey:config.key,policy:config.recommendationPolicy,transport:recommendationTransport,guard:()=>instance?.assert()}),generationHistoryReader:(actor,search)=>readAdminGenerationPage({pool,guard,actor,search}),overviewReader:(actor,admin,options)=>readAdminOverview({pool,guard,actor,admin,...options,enabled:config.enabled,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter)}),publicUrl:config.publicUrl,singleBox:singleBoxService({apiKey:config.key,statusReader:(actor,id)=>readSingleBoxEvaluation(accountsDb,actor,id),ledgerFactory:()=>new SingleBoxLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),dimensionAnalysis:dimensionAnalysisService({evaluationEnabled:true,apiKey:config.key,statusReader:(actor,id)=>readCloudEvaluation(accountsDb,actor,id),ledgerFactory:()=>new CloudVisionLedger().initialize(accountsDb),gate:fn=>{instance?.assert();return gate(fn);}}),extraOrigins,staticDirectory,accounts,serviceFactory:async user=>{
    instance?.assert();const db=await readinessMeasure('schema_setup',()=>new PostgresDatabase(pool,cloudSchema(user.id),{guard}).initialize());
    const s=new CloudGenerationService();s.storage=storage;s.cloudUser=user.id;s.membership=membership;
+   s.customerCosts=new CustomerImageCosts(accountsDb,user.id);
+   s.customerImagesEnabled=store.customerGeneration && Boolean(await accountsDb.prepare(
+    'SELECT 1 FROM email_identities e WHERE e.user_id=? AND NOT EXISTS(SELECT 1 FROM test_passwords t WHERE t.user_id=e.user_id)'
+   ).get(user.id));
    await readinessMeasure('generation_initialize',()=>s.initialize({db,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:config.enabled,assistantEnabled:config.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter),adapter:guardedImageAdapter(adapter,()=>instance?.assert(),gate),assistantAdapter:options=>{instance?.assert();return gate(()=>assistCopy({...options,apiKey:config.key}));}}));
    if(sharedBudget.active){
     await sharedBudget.protectTenant(db.schema);
