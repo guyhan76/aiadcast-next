@@ -1,5 +1,7 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {randomUUID} from 'node:crypto';import sharp from 'sharp';
 import {GenerationService} from '../server/generation-service.mjs';import {hashBytes,ProviderFailure,OpenAIImageAdapter} from '../server/openai-image-adapter.mjs';
+import {cameraViews,replaceCameraView,selectedCameraView} from '../src/edit-camera.ts';
+import {reviewPoseResult} from '../server/edit-vision.mjs';
 import {rasterizeEditRegion} from '../server/locate-edit-region.mjs';
 import {prepareSelectiveEdit,prepareSelectiveProviderInput,compositeSelectiveEdit,selectiveEditForm,restoreSelectiveProviderResult,verifyPreparedSelectiveInput} from '../server/selective-image-edit.mjs';
 const bytes=await sharp({create:{width:8,height:8,channels:4,background:'#345678'}}).png().toBuffer(),sha=hashBytes(bytes);
@@ -344,7 +346,7 @@ test('unmasked 1080px text edit preserves a continuous provider frame and retrie
   assert.equal(images.length,2);
   const actual=await sharp(Buffer.from(images[1].image_url.url.split(',')[1],'base64')).ensureAlpha().raw().toBuffer();
   assert.deepEqual(actual,expected);
-  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({requestedChangesApplied:true,sceneContinuous:true,unrelatedContentPreserved:true,copy:[],protectedObjects:[]})}}],usage:{prompt_tokens:100,completion_tokens:60}});
+  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({requestedChangesApplied:true,sceneContinuous:true,unrelatedContentPreserved:true,copy:[],protectedObjects:[],camera:{requested:'keep',observed:'other',matches:true}})}}],usage:{prompt_tokens:100,completion_tokens:60}});
  }});
  const request={original,sourceHash:hash,prompt,mask:{mode:'scene'},requestId:randomUUID(),projectId:randomUUID(),creditQuote:s.creditQuote()};
  const first=await s.createUploadedEdit(request);await s.waitForIdle();
@@ -354,7 +356,9 @@ test('unmasked 1080px text edit preserves a continuous provider frame and retrie
  assert.deepEqual(delivered,expected);
  const again=()=>({...request,requestId:randomUUID(),projectId:randomUUID()});
  assert.equal((await s.createUploadedEdit(again())).job.id,job.id);
- s.db.prepare('UPDATE jobs SET model_revision=? WHERE id=?').run('old-rectangle-edit',job.id);
+ const revision=s.db.prepare('SELECT model_revision FROM jobs WHERE id=?').get(job.id).model_revision;
+ assert.ok(revision.endsWith('/whole-scene-v2-camera'));
+ s.db.prepare('UPDATE jobs SET model_revision=? WHERE id=?').run(revision.replace('/whole-scene-v2-camera','/whole-scene-v1'),job.id);
  assert.equal((await s.createUploadedEdit(request)).job.id,job.id);
  const fresh=await s.createUploadedEdit(again());await s.waitForIdle();
  assert.notEqual(fresh.job.id,job.id);assert.equal(s.job(fresh.job.id).state,'ready');
@@ -401,7 +405,7 @@ test('the accepted project path sends the complete ad with text alone and keeps 
    return Response.json({data:[{b64_json:generated.toString('base64')}],usage:{input_tokens:2,input_tokens_details:{text_tokens:1,image_tokens:1},output_tokens:1}});
   }
   steps.push(JSON.parse(options.body).response_format.json_schema.name);
-  const report={requestedChangesApplied:true,sceneContinuous:true,unrelatedContentPreserved:true,copy:[],protectedObjects:[]};
+  const report={requestedChangesApplied:true,sceneContinuous:true,unrelatedContentPreserved:true,copy:[],protectedObjects:[],camera:{requested:'keep',observed:'other',matches:true}};
   return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(report)}}],usage:{prompt_tokens:100,completion_tokens:60}});
  }});
  const edit=await s.createSelectiveEdit({...body,mask:{mode:'instruction'},prompt:'하늘을 먹구름으로 바꿔주세요.',creditQuote:s.creditQuote()},true);
@@ -411,4 +415,52 @@ test('the accepted project path sends the complete ad with text alone and keeps 
  assert.equal(child.preservation.scope,'whole-image');assert.equal(child.selectiveEdit.sourceJobId,parent.id);
  assert.notEqual(child.artifactId,parent.artifactId);
  assert.deepEqual(s.job(parent.id).artifact,parent.artifact);
+});
+
+test('all camera presets round-trip across languages and preserve free-form instructions',()=>{
+ const notes='같은 인물의 표정만 바꿔주세요.\n꽃바구니는 그대로.';
+ assert.equal(selectedCameraView(notes),undefined);
+ assert.equal(new Set(cameraViews.map(view=>view.id)).size,7);
+ for(const view of cameraViews){
+  const korean=replaceCameraView(notes,view.koText);
+  assert.equal(selectedCameraView(korean)?.id,view.id);
+  const english=replaceCameraView(korean,view.enText);
+  assert.equal(english,view.enText+'\n'+notes);
+  assert.equal(selectedCameraView(english)?.id,view.id);
+  assert.equal(replaceCameraView(english,''),notes);
+ }
+});
+
+test('whole-scene review compares the visible direction with the requested angle',async()=>{
+ const rear=cameraViews.find(view=>view.id==='rear').koText;
+ const natural='같은 인물과 자전거를 뒤에서 본 장면으로 바꿔주세요.';
+ const expression='정면 구도는 유지하고 표정만 바꿔주세요.';
+ const final={...result,bytes:editBytes,sha256:hashBytes(editBytes),preservation:{sourceHash:sha}};
+ for(const [prompt,camera,failed] of [
+  [rear,{requested:'rear',observed:'rear',matches:true},null],
+  [rear,{requested:'keep',observed:'front',matches:true},'requestedChangesApplied'],
+  [rear,{requested:'rear',observed:'unclear',matches:true},'requestedChangesApplied'],
+  [natural,{requested:'rear',observed:'rear',matches:true},null],
+  [natural,{requested:'rear',observed:'side',matches:true},'requestedChangesApplied'],
+  [natural,{requested:'rear',observed:'rear',matches:false},'requestedChangesApplied'],
+  [expression,{requested:'keep',observed:'other',matches:true},null],
+  [expression,{requested:'keep',observed:'side',matches:false},'unrelatedContentPreserved'],
+  [rear,undefined,'missing']
+ ]){
+  const options={scene:true,prompt,apiKey:'fixture',attemptId:randomUUID(),timeoutMs:10000,readResponse:r=>r.json(),
+   fetchImpl:async(_url,request)=>{
+    const payload=JSON.parse(request.body),format=payload.response_format.json_schema;
+    assert.equal(format.name,'review_full_scene');assert.ok(format.schema.required.includes('camera'));
+    const [instruction,...images]=payload.messages[1].content;
+    assert.equal(JSON.parse(instruction.text).requestedChange,prompt);assert.equal(images.length,2);
+    const report={requestedChangesApplied:true,sceneContinuous:true,unrelatedContentPreserved:true,copy:[],protectedObjects:[],camera};
+    return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(report)}}],usage:{prompt_tokens:100,completion_tokens:60}});
+   }};
+  const review=reviewPoseResult(options,{bytes},final);
+  if(failed){
+   await assert.rejects(review,error=>error.code==='EDIT_POSE_QUALITY_FAILED' && (failed==='missing'||error.editReview?.failedChecks.includes(failed)));
+  }else{
+   assert.equal((await review).poseReview.resultHash,final.sha256);
+  }
+ }
 });

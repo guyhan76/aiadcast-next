@@ -11,6 +11,7 @@ import {generatedCompatibilityKey} from './generated';
 import {generationSourceHash} from './generation-input';
 import {completeAdKey} from './complete-ad';
 import {useUiLanguage} from './ui-language';
+import {cameraViews,replaceCameraView,selectedCameraView} from './edit-camera';
 import './selective-image-editor.css';
 type Pending={requestId:string;projectId:string;sourceHash:string;maskHash?:string;jobId?:string};
 export function SelectiveImageEditor({source,project,quote,onClose,uploaded}:{source:Pick<GenerationJob,'id'|'artifactId'|'artifact'|'projectId'>;project:Project;quote:CreditQuote;onClose:()=>void;uploaded?:Asset}){
@@ -140,6 +141,15 @@ export function SelectiveImageEditor({source,project,quote,onClose,uploaded}:{so
   {!result&&!working&&<>
 
    <label>{t('무엇을 바꿀까요?','What would you like to change?')}<textarea maxLength={2000} value={prompt} disabled={busy} onChange={e=>setPrompt(e.target.value)} placeholder={t('예: 가격을 599,000원으로 바꾸고 하늘을 화창하게 해주세요.','For example, change the price to $599 and make the sky sunny.')}/></label>
+   <label>{t('카메라 앵글','Camera angle')}<select value={selectedCameraView(prompt)?.id??''} disabled={busy} onChange={e=>{
+    const view=cameraViews.find(item=>item.id===e.target.value);
+    const next=replaceCameraView(prompt,view?t(view.koText,view.enText):'');
+    if(next.length>2000){setMessage(t('앵글을 추가하려면 수정 내용을 조금 줄여주세요.','Shorten the edit instructions to add a camera angle.'));return;}
+    setPrompt(next);setMessage('');
+   }}>
+    <option value="">{t('수정 내용에 따름','Follow edit instructions')}</option>
+    {cameraViews.map(view=><option key={view.id} value={view.id}>{t(view.ko,view.en)}</option>)}
+   </select></label>
    <button className="primary-action" disabled={!ready||busy||!prompt.trim()} onClick={()=>void submit()}>{t('수정하기','Edit')} · {charge}</button>
   </>}
   {working&&<div role="status"><p>{job?jobStatus[job.state]:t('수정 요청 확인 중…','Checking your edit…')}</p>{manualCheck&&<button disabled={busy} onClick={()=>void recover()}>{t('결과 확인','Check result')}</button>}</div>}
