@@ -27,8 +27,35 @@ async function setup(page:Page){
 const panel=(page:Page)=>page.getByRole('region',{name:'승인 원본 사진 분석'});
 const feedback=(page:Page)=>panel(page).getByRole('status',{name:'참조 분석 상태 조회'});
 
+test('admin navigation shows only home and refresh in one row below the divider',async({page})=>{
+ await setup(page);
+ await page.goto('/#admin');
+ const nav=page.getByRole('navigation',{name:'관리자 화면 이동'});
+ const controls=nav.locator('a,button');
+ await expect(controls).toHaveText(['홈으로','새로고침']);
+ const viewport=page.viewportSize()!;
+ for(const width of [viewport.width,320]){
+  await page.setViewportSize({...viewport,width});
+  const row=await nav.evaluate(el=>{
+   const rect=el.getBoundingClientRect();
+   return {
+    top:rect.top,
+    right:Math.min(rect.right,document.documentElement.clientWidth),
+    buttons:Array.from(el.children,child=>child.getBoundingClientRect().toJSON()),
+   };
+  });
+  const [home,refresh]=row.buttons;
+  expect(home.top-row.top).toBeGreaterThanOrEqual(12);
+  expect(refresh.top).toBe(home.top);
+  expect(home.right).toBeLessThan(refresh.left);
+  expect(refresh.right).toBeLessThanOrEqual(row.right+1);
+  for(const button of row.buttons)expect(button.height).toBeGreaterThanOrEqual(44);
+ }
+});
+
 test('overview timeout and authorization failure keep navigation available and never start reference analysis',async({page})=>{
- await page.clock.install();const s=await setup(page);s.setOverview('hold');await page.goto('/#admin');await expect(page.locator('.admin-heading').getByRole('button',{name:'새로고침',exact:true})).toBeDisabled();await expect(page.getByRole('link',{name:'홈으로',exact:true})).toBeVisible();await page.clock.fastForward(15001);await expect(page.locator('.admin-page').getByRole('alert')).toContainText('15초');expect(s.gets()).toBe(0);
- s.setOverview('auth');await page.locator('.admin-heading').getByRole('button',{name:'새로고침',exact:true}).click();await expect(page.locator('.admin-page').getByRole('alert')).toContainText('관리자 로그인');expect(s.gets()).toBe(0);expect(s.posts()).toBe(0);
- s.setOverview('ok');await page.locator('.admin-heading').getByRole('button',{name:'새로고침',exact:true}).click();await expect(page.locator('.admin-history')).toBeVisible();expect(s.gets()).toBe(0);await s.release();await expect(page.locator('.admin-stats')).toContainText('$5.0000');await expect(page.locator('.admin-stats')).toContainText('$0.5273');expect(s.posts()).toBe(0);
+ const refresh=page.getByRole('navigation',{name:'관리자 화면 이동'}).getByRole('button',{name:'새로고침',exact:true});
+ await page.clock.install();const s=await setup(page);s.setOverview('hold');await page.goto('/#admin');await expect(refresh).toBeDisabled();await expect(page.getByRole('link',{name:'홈으로',exact:true})).toBeVisible();await page.clock.fastForward(15001);await expect(page.locator('.admin-page').getByRole('alert')).toContainText('15초');expect(s.gets()).toBe(0);
+ s.setOverview('auth');await refresh.click();await expect(page.locator('.admin-page').getByRole('alert')).toContainText('관리자 로그인');expect(s.gets()).toBe(0);expect(s.posts()).toBe(0);
+ s.setOverview('ok');await refresh.click();await expect(page.locator('.admin-history')).toBeVisible();expect(s.gets()).toBe(0);await s.release();await expect(page.locator('.admin-stats')).toContainText('$5.0000');await expect(page.locator('.admin-stats')).toContainText('$0.5273');expect(s.posts()).toBe(0);
 });

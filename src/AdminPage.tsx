@@ -15,7 +15,7 @@ type Budget={limitMicros:number;spentMicros:number;heldMicros:number};
 type Member={id:string;customerFunded?:boolean;joinedAt?:string|null;label:string;email:string|null;role:'member'|'admin';disabled:boolean;projects:number;wallet:{available:number;reserved:number;unlimited?:boolean;credits?:{available:number;reserved:number}};budget:Budget;supplierBudget?:Budget&{scope:'lifetime';shared?:boolean;availableMicros:number};generation:{enabled:boolean;reason:string|null}};
 type Overview={operatingCosts?:{spentMicros:number;heldMicros:number;previousMicros:number;soldAds:number;attempts:number;duplicateRequests:number;uncertain:number;burstAccounts:number;costSpike:boolean}|null;demoSupportAvailable?:boolean;octoberApproval?:{eligible:boolean;active:boolean;baselineTotalMicros:number};readiness:{emailConfigured:boolean;checkoutConfigured:boolean;imageProviderConfigured:boolean;generationSwitch:boolean};budget:Budget&{allocatedMicros:number;shared?:boolean;availableMicros?:number};users:Member[];jobs:{id:string;userLabel:string;state:string;createdAt:string;model:string;outputFormat:string;errorCode:string|null;costMicros:number|null}[];orders:{id:string;userId:string;credits:number;amount:number;state:string;created:number;test:true}[];audit:{id:string;action:string;targetId:string;created:number}[]};
 const usd=(n:number)=>'$'+(n/1e6).toFixed(4);
-export function AdminPage({backHref='#home'}:{backHref?:string}){
+export function AdminPage(){
  const {t,language}=useUiLanguage(),[data,setData]=useState<Overview|null>(null),[mutating,setMutating]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const [selected,setSelected]=useState(''),[credits,setCredits]=useState('1'),[budget,setBudget]=useState(''),[revoke,setRevoke]=useState(false);
  const grantRequest=useRef<{key:string;id:string}|undefined>(undefined),testRequest=useRef<{userId:string;id:string}|undefined>(undefined),locked=useRef(false),active=useRef(true);
@@ -25,7 +25,10 @@ export function AdminPage({backHref='#home'}:{backHref?:string}){
  async function load(){if(!await overview.read('/api/admin/overview?jobs=none'))throw Error('ADMIN_REFRESH_FAILED');}
  async function run(task:()=>Promise<void>){if(locked.current||overview.isPending())return;locked.current=true;setMutating(true);setError('');setNotice('');try{await task();}catch(e){if(active.current)setError(explain(e));}finally{locked.current=false;if(active.current)setMutating(false);}}
  useEffect(()=>{active.current=true;if(!offlineDemo())void overview.read('/api/admin/overview?jobs=none');return()=>{active.current=false};},[]);
- const navigation=<nav className="admin-navigation" aria-label={t('관리자 화면 이동','Administrator navigation')}><a href={backHref}>{t('← 뒤로가기','← Back')}</a><a href="#home">{t('홈으로','Home')}</a></nav>;
+ const navigation=<nav className="admin-navigation" aria-label={t('관리자 화면 이동','Administrator navigation')}>
+  <a href="#home">{t('홈으로','Home')}</a>
+  {!offlineDemo()&&<button type="button" disabled={busy} onClick={()=>{setError('');void overview.read('/api/admin/overview?jobs=none');}}>{t('새로고침','Refresh')}</button>}
+ </nav>;
  const user=data?.users.find(u=>u.id===selected);
  const budgetNumber=/^\d+(?:\.\d{1,6})?$/.test(budget)?Number(budget):NaN,budgetMicros=Math.round(budgetNumber*1e6);
  const creditNumber=/^\d+$/.test(credits)?Number(credits):NaN;
@@ -38,7 +41,7 @@ export function AdminPage({backHref='#home'}:{backHref?:string}){
  if(offlineDemo())return <section className="admin-page">{navigation}<h1>{t('관리자','Administration')}</h1><p>{t('관리자 기능은 서버의 관리자 계정으로 이용합니다. 기기 내 체험 모드를 끄고 서버를 연결해주세요.','Administration requires a server administrator account. Turn off the local demo and connect your server.')}</p></section>;
  return <section className="admin-page" aria-label={t('관리자 페이지','Administration page')}>
   {navigation}
-  <div className="admin-heading"><div><p className="admin-eyebrow">AIADCAST / OPERATIONS</p><h1>{t('관리자','Administration')}</h1><p>{t('회원과 생성 운영을 한 곳에서 확인합니다.','Manage members and generation in one place.')}</p></div><button disabled={busy} onClick={()=>{setError('');void overview.read('/api/admin/overview?jobs=none');}}>{t('새로고침','Refresh')}</button></div>
+  <div className="admin-heading"><p className="admin-eyebrow">AIADCAST / OPERATIONS</p><h1>{t('관리자','Administration')}</h1><p>{t('회원과 생성 운영을 한 곳에서 확인합니다.','Manage members and generation in one place.')}</p></div>
   {!betaSession()&&<a className="primary-action" href="#login">{t('관리자 계정 로그인','Sign in as administrator')}</a>}
   {busy&&<p role="status">{overview.pending?t('운영 정보를 조회 중…','Loading operations…'):t('요청을 처리 중…','Processing request…')}</p>}{overview.confirmedAt&&!overview.pending&&<p role="status" aria-label={t('운영 정보 조회 결과','Operations refresh result')}>{overview.error?t('마지막 성공한 운영 정보 확인','Last successful operations check'):overview.unchanged?t('운영 정보 확인 완료 · 변경 없음','Operations checked · No changes'):t('운영 정보 확인 완료','Operations checked')} · <time dateTime={new Date(overview.confirmedAt).toISOString()}>{new Date(overview.confirmedAt).toLocaleTimeString(language==='ko'?'ko-KR':'en-US')}</time></p>}{(overview.error||error)&&<p role="alert">{overview.error||error}</p>}{notice&&<p role="status" className="admin-notice">{notice}</p>}
   {betaSession()?.user.role==='admin'&&<CommerceRecords key={betaSession()?.user.id} admin/>}
