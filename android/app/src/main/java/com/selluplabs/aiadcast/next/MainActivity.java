@@ -121,6 +121,7 @@ public final class MainActivity extends ComponentActivity {
                 try { apiOrigin = TestServerOrigin.normalize(getPreferences(MODE_PRIVATE).getString("test-api-origin", apiOrigin)); }
                 catch (IllegalArgumentException invalid) { apiOrigin = BuildConfig.API_ORIGIN; }
             }
+            recordKakaoReturn(getIntent());
             updateBridgeScript();
         } catch (Exception error) {
             bridgeScript = "";
@@ -142,6 +143,8 @@ public final class MainActivity extends ComponentActivity {
                                 return;
                             }
                             if ("export-context".equals(request.optString("type"))) { exportContext(request.optString("owner")); return; }
+                            if ("kakao-open".equals(request.optString("type"))) { openKakao(request); return; }
+                            if ("kakao-clear".equals(request.optString("type"))) { clearPending("kakao-flow",request.optString("state")); return; }
                             if ("google-sign-in".equals(request.optString("type"))) { openGoogle(request); return; }
                             if ("google-sign-in-clear".equals(request.optString("type"))) { clearGoogle(request.optString("state")); return; }
                             if ("configure-test-server".equals(request.optString("type"))) {
@@ -305,6 +308,9 @@ public final class MainActivity extends ComponentActivity {
         if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction()) && GoogleSignInPolicy.returnUrl(intent.getDataString(), BuildConfig.APPLICATION_ID)) {
             setIntent(intent); googleResume(); return;
         }
+        if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction()) && recordKakaoReturn(intent)) {
+            setIntent(intent); kakaoResume(); return;
+        }
         if (checkoutReturn(intent)) {
             setIntent(intent);
             // A fixed wake-up signal only. No URLs, order identifiers or credentials enter JS.
@@ -323,15 +329,17 @@ public final class MainActivity extends ComponentActivity {
             + ";window.__AIADCAST_NATIVE_VERSION__={versionName:" + JSONObject.quote(BuildConfig.VERSION_NAME)
             + ",versionCode:" + BuildConfig.VERSION_CODE + ",packageName:" + JSONObject.quote(BuildConfig.APPLICATION_ID) + "};"
             + "window.dispatchEvent(new Event('aiadcast-native-version'));"
+            + "window.__AIADCAST_KAKAO_NATIVE__={packageId:" + JSONObject.quote(BuildConfig.APPLICATION_ID) + ",pending:" + pendingFlow("kakao-flow") + "};"
             + "window.__AIADCAST_GOOGLE_NATIVE__={version:1,packageId:" + JSONObject.quote(BuildConfig.APPLICATION_ID) + ",pending:" + googlePending() + "};"
             + "window.__AIADCAST_TEST_CONNECTION__=" + BuildConfig.ALLOW_TEST_CONFIG + ";" + bridgeSource;
     }
 
-    private String googlePending() {
+    private String googlePending() { return pendingFlow("google-flow"); }
+    private String pendingFlow(String key) {
         try {
-            JSONObject flow = new JSONObject(getPreferences(MODE_PRIVATE).getString("google-flow", "{}"));
+            JSONObject flow = new JSONObject(getPreferences(MODE_PRIVATE).getString(key, "{}"));
             if (flow.optLong("expires") <= System.currentTimeMillis() || !apiOrigin.equals(flow.optString("origin"))) {
-                getPreferences(MODE_PRIVATE).edit().remove("google-flow").apply(); return "null";
+                getPreferences(MODE_PRIVATE).edit().remove(key).apply(); return "null";
             }
             return flow.toString();
         } catch (Exception invalid) { return "null"; }
@@ -343,12 +351,54 @@ public final class MainActivity extends ComponentActivity {
             documentStartScript = WebViewCompat.addDocumentStartJavaScript(webView, bridgeScript, Collections.singleton(APP_ORIGIN));
         }
     }
-    private void clearGoogle(String state) {
+    private void clearGoogle(String state) { clearPending("google-flow",state); }
+    private void clearPending(String key,String state) {
         try {
-            JSONObject pending = new JSONObject(googlePending());
+            JSONObject pending = new JSONObject(pendingFlow(key));
             if (!state.equals(pending.optString("state"))) return;
-            getPreferences(MODE_PRIVATE).edit().remove("google-flow").commit(); refreshGoogleBridge();
+            getPreferences(MODE_PRIVATE).edit().remove(key).commit(); refreshGoogleBridge();
         } catch (Exception ignored) { }
+    }
+    private void openKakao(JSONObject request) {
+        try {
+            String state=request.getString("state"),proof=request.getString("proof");
+            long expires=request.getLong("expires"),now=System.currentTimeMillis();
+            if (!state.matches("[A-Za-z0-9_-]{43}") || !proof.matches("[A-Za-z0-9_-]{43}") ||
+                expires<=now || expires-now>610000 || !apiOrigin.startsWith("https://") ||
+                !apiOrigin.equals(request.optString("origin")) || !BuildConfig.APPLICATION_ID.equals(request.optString("destination"))) throw new IllegalArgumentException();
+            JSONObject flow=new JSONObject().put("state",state).put("proof",proof).put("expires",expires)
+                .put("origin",apiOrigin).put("destination",BuildConfig.APPLICATION_ID)
+                .put("owner",request.getString("owner")).put("intent",request.getString("intent"));
+            if (!getPreferences(MODE_PRIVATE).edit().putString("kakao-flow",flow.toString()).commit()) throw new IllegalStateException();
+            refreshGoogleBridge();
+            Uri launch=Uri.parse(apiOrigin+"/api/auth/kakao/authorize?state="+state);
+            startActivity(new Intent(Intent.ACTION_VIEW,launch).addCategory(Intent.CATEGORY_BROWSABLE).setPackage("com.android.chrome"));
+        } catch(Exception unavailable) {
+            clearPending("kakao-flow",request.optString("state"));
+            webView.evaluateJavascript("window.dispatchEvent(new Event('aiadcast-kakao-open-failed'));",null);
+        }
+    }
+    private boolean recordKakaoReturn(Intent intent) {
+        if (intent==null || !Intent.ACTION_VIEW.equals(intent.getAction()) || intent.getData()==null) return false;
+        Uri data=intent.getData();
+        String receipt=data.getEncodedFragment();
+        if (receipt==null || !receipt.matches("[A-Za-z0-9_-]{43}\\.[A-Za-z0-9_-]{43}") ||
+            !(BuildConfig.APPLICATION_ID+"://kakao/return#"+receipt).equals(data.toString())) return false;
+        try {
+            JSONObject flow=new JSONObject(pendingFlow("kakao-flow"));
+            if (!receipt.substring(0,43).equals(flow.optString("state"))) return false;
+            flow.put("receipt",receipt.substring(44));
+            if (!getPreferences(MODE_PRIVATE).edit().putString("kakao-flow",flow.toString()).commit()) return false;
+            if (bridgeReady) {
+                refreshGoogleBridge();
+                webView.evaluateJavascript("if(window.__AIADCAST_KAKAO_NATIVE__)window.__AIADCAST_KAKAO_NATIVE__.pending="+flow.toString()+";",null);
+            }
+            return true;
+        } catch(Exception invalid) {return false;}
+    }
+    private void kakaoResume() {
+        if (webView!=null && !"null".equals(pendingFlow("kakao-flow")))
+            webView.evaluateJavascript("window.dispatchEvent(new Event('aiadcast-kakao-return'));",null);
     }
     private void openGoogle(JSONObject request) {
         try {
@@ -374,7 +424,7 @@ public final class MainActivity extends ComponentActivity {
         if (webView != null && !"null".equals(googlePending()))
             webView.evaluateJavascript("window.dispatchEvent(new Event('aiadcast-google-return'));",null);
     }
-    @Override protected void onResume() { super.onResume(); googleResume(); if (playBilling != null) playBilling.restore(); }
+    @Override protected void onResume() { super.onResume(); googleResume(); kakaoResume(); if (playBilling != null) playBilling.restore(); }
 
     private void configureTestServer(String value) {
         if (!BuildConfig.ALLOW_TEST_CONFIG || exportInProgress) {

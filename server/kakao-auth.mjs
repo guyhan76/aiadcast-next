@@ -14,21 +14,70 @@ export class KakaoAuth {
     this.db.exec(`CREATE TABLE IF NOT EXISTS kakao_identities (
       subject TEXT PRIMARY KEY, user_id TEXT UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE);
       CREATE TABLE IF NOT EXISTS kakao_requests (state_hash TEXT PRIMARY KEY, proof_hash TEXT NOT NULL,
-      session_hash TEXT NOT NULL, intent TEXT NOT NULL, expires INTEGER NOT NULL);`);
+      session_hash TEXT NOT NULL, intent TEXT NOT NULL, expires INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS kakao_handoffs (state_hash TEXT PRIMARY KEY REFERENCES kakao_requests(state_hash) ON DELETE CASCADE,
+      destination TEXT NOT NULL, phase TEXT NOT NULL, subject TEXT, receipt_hash TEXT);`);
   }
-  startKakao(intent, authorization) {
+  startKakao(intent, authorization, destination) {
     if (!this.provider) fail('KAKAO_UNAVAILABLE', 503);
     if (!['login','signup','link'].includes(intent) || (intent === 'link') !== Boolean(authorization))
       fail('KAKAO_INTENT_INVALID', 400);
     if (authorization) this.store.authenticate(authorization);
+    if (destination !== undefined && (typeof destination !== 'string' || (destination !== 'web' &&
+        !/^com\.selluplabs\.aiadcast\.next(?:\.(?:demo|dev|preview))?$/.test(destination)))) fail('KAKAO_DESTINATION_INVALID',400);
     const state = secret(), proof = secret(), expires = this.now() + 600000;
     this.store.transaction(() => {
       this.db.prepare('DELETE FROM kakao_requests WHERE expires<=?').run(this.now());
       if (this.db.prepare('SELECT COUNT(*) n FROM kakao_requests').get().n >= 1000) fail('RATE_LIMITED',429);
       this.db.prepare('INSERT INTO kakao_requests VALUES(?,?,?,?,?)').run(digest(state), digest(proof),
         authorization ? digest(authorization) : '', intent, expires);
+      if (destination) this.db.prepare("INSERT INTO kakao_handoffs VALUES(?,?,'pending',NULL,NULL)").run(digest(state),destination);
     });
+    if (destination) return {state,proof,expires,url:new URL('/api/auth/kakao/authorize?state='+state,this.provider.redirectUri).href};
     return {state, proof, expires, javascriptKey:this.provider.javascriptKey, redirectUri:this.provider.redirectUri};
+  }
+  kakaoLaunch(state) {
+    if (!this.provider || !valid(state)) fail('KAKAO_FLOW_INVALID',401);
+    const row = this.db.prepare("SELECT r.intent FROM kakao_requests r JOIN kakao_handoffs h ON h.state_hash=r.state_hash WHERE r.state_hash=? AND r.expires>? AND h.phase='pending'").get(digest(state),this.now());
+    if (!row) fail('KAKAO_FLOW_INVALID',401);
+    return {state,intent:row.intent,javascriptKey:this.provider.javascriptKey,redirectUri:new URL('/api/auth/kakao/callback',this.provider.redirectUri).href};
+  }
+  async receiveKakao(state, code, error) {
+    if (!this.provider || !valid(state)) return null;
+    const hash = digest(state);
+    const row = this.db.prepare("SELECT h.destination,h.phase FROM kakao_handoffs h JOIN kakao_requests r ON h.state_hash=r.state_hash WHERE h.state_hash=? AND r.expires>?").get(hash,this.now());
+    if (!row) return null;
+    if (row.phase !== 'pending') return {destination:row.destination};
+    const claim = this.db.prepare("UPDATE kakao_handoffs SET phase='checking' WHERE state_hash=? AND phase='pending' RETURNING state_hash").get(hash);
+    if (!claim) return {destination:row.destination};
+    let subject = null, phase = error === 'access_denied' ? 'cancelled' : 'failed';
+    if (!error && typeof code === 'string' && code.length && code.length <= 4096) {
+      try { subject = await this.provider.subjectForCode(code,true); phase = 'verified'; }
+      catch { /* A new flow is required after a failed or uncertain exchange. */ }
+    }
+    const receipt = secret();
+    this.db.prepare("UPDATE kakao_handoffs SET phase=?,subject=?,receipt_hash=? WHERE state_hash=? AND phase='checking'").run(phase,subject,digest(receipt),hash);
+    return {destination:row.destination,receipt};
+  }
+  pollKakao(body, authorization) {
+    if (!this.provider || !valid(body?.state) || !valid(body?.proof)) fail('KAKAO_FLOW_INVALID',401);
+    return this.store.transaction(() => {
+      const hash = digest(body.state);
+      const row = this.db.prepare('SELECT h.phase,h.subject,h.receipt_hash,r.intent,r.expires FROM kakao_handoffs h JOIN kakao_requests r ON h.state_hash=r.state_hash WHERE r.state_hash=? AND r.proof_hash=? AND r.session_hash=? AND r.expires>?')
+        .get(hash,digest(body.proof),authorization ? digest(authorization) : '',this.now());
+      if (!row) fail('KAKAO_FLOW_INVALID',401);
+      const owner = authorization ? this.store.authenticate(authorization) : undefined;
+      // The initiating device must also receive the callback on that same device.
+      if (!valid(body.receipt) || row.receipt_hash !== digest(body.receipt)) return {state:'pending'};
+      this.db.prepare('DELETE FROM kakao_requests WHERE state_hash=?').run(hash);
+      if (row.phase !== 'verified') return {state:row.phase};
+      try { return {state:'verified',session:this.kakaoSession(row,owner,row.subject)}; }
+      catch (error) {
+        if (error.code==='KAKAO_ACCOUNT_UNKNOWN') return {state:'unknown'};
+        if (error.code==='KAKAO_LINK_CONFLICT') return {state:'conflict'};
+        throw error;
+      }
+    });
   }
   async finishKakao(body, authorization) {
     if (!this.provider) fail('KAKAO_UNAVAILABLE', 503);
@@ -36,7 +85,7 @@ export class KakaoAuth {
         !body.code.length || body.code.length > 4096) fail('KAKAO_FLOW_INVALID', 401);
     const sessionHash = authorization ? digest(authorization) : '';
     const flow = this.store.transaction(() => {
-      const row = this.db.prepare('DELETE FROM kakao_requests WHERE state_hash=? AND proof_hash=? AND session_hash=? AND expires>? RETURNING intent,expires')
+      const row = this.db.prepare('DELETE FROM kakao_requests WHERE state_hash=? AND proof_hash=? AND session_hash=? AND expires>? AND NOT EXISTS (SELECT 1 FROM kakao_handoffs h WHERE h.state_hash=kakao_requests.state_hash) RETURNING intent,expires')
         .get(digest(body.state), digest(body.proof), sessionHash, this.now());
       if (!row) fail('KAKAO_FLOW_INVALID',401);
       if (authorization) this.store.authenticate(authorization);
@@ -48,6 +97,10 @@ export class KakaoAuth {
     return this.store.transaction(() => {
       if (flow.expires <= this.now()) fail('KAKAO_FLOW_INVALID',401);
       const owner = authorization ? this.store.authenticate(authorization) : undefined;
+      return this.kakaoSession(flow,owner,subject);
+    });
+  }
+  kakaoSession(flow,owner,subject) {
       const identity = this.db.prepare('SELECT user_id FROM kakao_identities WHERE subject=?').get(subject);
       let userId = identity?.user_id;
       if (owner) {
@@ -66,6 +119,5 @@ export class KakaoAuth {
       const user = this.db.prepare('SELECT * FROM users WHERE id=? AND disabled=0').get(userId);
       if (!user) fail('AUTH_REQUIRED',401);
       return this.store.createSession(user);
-    });
   }
 }

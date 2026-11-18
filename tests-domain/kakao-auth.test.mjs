@@ -124,4 +124,51 @@ test('HTTP discovery, signup and authenticated session use the public app entry 
   const read = await fetch(base+'/api/auth/session', {headers:{Authorization:'Bearer '+session.token}});
   assert.equal((await read.json()).user.id, session.user.id);
   assert.equal(session.user.role,'member');
+
+  for (const destination of ['web','com.selluplabs.aiadcast.next.preview']) {
+    const flow = await (await post('start',{intent:'login',destination})).json();
+    const launch = await fetch(base + new URL(flow.url).pathname + '?state=' + flow.state);
+    assert.equal(launch.status,200);
+    assert.equal(launch.headers.get('referrer-policy'),'no-referrer');
+    const page = await launch.text();
+    assert.ok(page.includes('Kakao.Auth.authorize') && page.includes('sha384-') && !page.includes(flow.proof));
+    const finish = await fetch(base+'/api/auth/kakao/callback?state='+flow.state+'&code=fixture',{redirect:'manual'});
+    const target = destination==='web' ? finish.headers.get('location') : await finish.text();
+    const pattern = destination==='web' ? /^\/#kakao-return\// : /com\.selluplabs\.aiadcast\.next\.preview:\/\/kakao\/return#/;
+    assert.match(target,pattern);
+    assert.ok(!target.includes(flow.proof));
+    const receipt = target.split(flow.state+'.')[1].slice(0,43);
+    assert.deepEqual(await (await post('poll',flow)).json(),{state:'pending'});
+    const result = await (await post('poll',{...flow,receipt})).json();
+    assert.equal(result.session.user.id,session.user.id);
+    assert.equal((await post('poll',{...flow,receipt})).status,401);
+  }
+});
+
+test('callback and initiating device must reunite before a signup or account link can finish',async t => {
+  const f=fixture(t), flow=f.auth.startKakao('signup',undefined,'web');
+  assert.throws(()=>f.auth.startKakao('login',undefined,'invalid'),/KAKAO_DESTINATION_INVALID/);
+  await assert.rejects(f.auth.finishKakao({...flow,code:'fixture'}),/KAKAO_FLOW_INVALID/);
+  const reply=await f.auth.receiveKakao(flow.state,'fixture');
+  assert.equal((await f.auth.receiveKakao(flow.state,'fixture')).receipt,undefined);
+  assert.deepEqual(f.auth.pollKakao({...flow,receipt:'x'.repeat(43)}),{state:'pending'});
+  assert.throws(()=>f.auth.pollKakao({...flow,proof:'x'.repeat(43),receipt:reply.receipt}),/KAKAO_FLOW_INVALID/);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM users').get().n,0);
+  const member=f.auth.pollKakao({...flow,receipt:reply.receipt}).session;
+  const header='Bearer '+member.token;
+  const link=f.auth.startKakao('link',header,'com.selluplabs.aiadcast.next.preview');
+  const approval=await f.auth.receiveKakao(link.state,'fixture');
+  f.store.logout(header);
+  assert.throws(()=>f.auth.pollKakao({...link,receipt:approval.receipt},header),/AUTH_REQUIRED/);
+});
+
+test('Kakao cancellation and unknown accounts return once without creating a user',async t=>{
+  const f=fixture(t);
+  for (const [providerError,state] of [['access_denied','cancelled'],['other','failed'],[null,'unknown']]) {
+    const flow=f.auth.startKakao('login',undefined,'web');
+    const reply=await f.auth.receiveKakao(flow.state,'fixture',providerError);
+    assert.deepEqual(f.auth.pollKakao({...flow,receipt:reply.receipt}),{state});
+    assert.throws(()=>f.auth.pollKakao({...flow,receipt:reply.receipt}),/KAKAO_FLOW_INVALID/);
+  }
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM users').get().n,0);
 });

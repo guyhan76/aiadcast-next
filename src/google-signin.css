@@ -1,5 +1,6 @@
 .google-signin{min-height:100dvh;display:grid;place-items:center;padding:24px;background:#faf8f5;color:#202124}.google-signin-card{width:min(100%,380px);text-align:center}.google-signin h1{display:flex;justify-content:center;font-size:clamp(28px,10vw,40px);margin:0 0 12px}.google-signin p{font-size:16px;line-height:1.6}.google-continue{width:100%;min-height:52px;margin-top:28px;border:1px solid #747775;border-radius:28px;background:#fff;color:#1f1f1f;font-size:17px;font-weight:600;cursor:pointer}.google-continue:disabled{opacity:.55;cursor:default}.google-signin [role=alert]{color:#a32121}.google-recovery{max-width:520px;margin:auto;padding:24px}
 
+.kakao-continue{display:block;width:100%;min-height:48px;margin:10px 0;border:0;border-radius:12px;background:#fee500;color:#191919;font:600 16px/1.4 system-ui,sans-serif;cursor:pointer}.kakao-continue:disabled{opacity:.55}.kakao-continue:focus-visible{outline:3px solid #202124;outline-offset:3px}
 .auth-language{display:flex;justify-content:center;margin:24px 0 0}
 
 .signin-options{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px 22px;margin-top:20px}

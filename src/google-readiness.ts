@@ -3,7 +3,7 @@ import {apiIdentity} from './api-origin';
 import {betaSession} from './beta-session';
 import {signInBoundary} from './sign-in-boundary';
 
-type Capabilities={google?:{enabled:boolean}};
+type Capabilities={google?:{enabled:boolean};kakao?:{enabled:boolean}};
 type Pending={key:string;controller:AbortController;promise:Promise<Capabilities>};
 let pending:Pending|undefined,ready:{key:string;until:number;value:Capabilities}|undefined;
 window.addEventListener('aiadcast-session-change',()=>{pending?.controller.abort();pending=undefined;ready=undefined;});

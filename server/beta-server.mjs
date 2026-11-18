@@ -12,6 +12,8 @@ import {BetaStore} from './beta-store.mjs';
 import {GenerationService,ApiFailure} from './generation-service.mjs';
 import {OpenAIImageAdapter,ProviderFailure} from './openai-image-adapter.mjs';
 import {assistCopy} from './text-assistant.mjs';
+import {kakaoLaunchPage,kakaoPagePolicy} from './kakao-launch-page.mjs';
+import {kakaoReturnPage} from './google-return-page.mjs';
 import {KakaoAuth} from './kakao-auth.mjs';
 import {GoogleAuth} from './google-auth.mjs';
 import {googleReturnPage,googleUiLanguage,googleReturnCsp} from './google-return-page.mjs';
@@ -46,6 +48,17 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
   const cors=allowed.has(req.headers.origin)?req.headers.origin:null;
   try {
    const url=new URL(req.url,origin);
+   if(req.method==='GET'&&url.pathname==='/api/auth/kakao/authorize'){
+    const launch=kakao.kakaoLaunch(url.searchParams.get('state'));
+    res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':kakaoPagePolicy,'X-Content-Type-Options':'nosniff'});res.end(kakaoLaunchPage(launch));return;
+   }
+   if(req.method==='GET'&&url.pathname==='/api/auth/kakao/callback'){
+    const target=await kakao.receiveKakao(url.searchParams.get('state'),url.searchParams.get('code'),url.searchParams.get('error'));
+    const state=url.searchParams.get('state'),receipt=target?.receipt?'/'+state+'.'+target.receipt:'';
+    if(target?.destination==='web'){res.writeHead(303,{Location:'/#kakao-return'+receipt,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});res.end();return;}
+    if(target){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':googleReturnCsp});res.end(kakaoReturnPage(target.destination+'://kakao/return'+(receipt?'#'+receipt.slice(1):'')));return;}
+    res.writeHead(303,{Location:'/#kakao-return','Cache-Control':'no-store','Referrer-Policy':'no-referrer'});res.end();return;
+   }
    if(req.method==='GET'&&!url.pathname.startsWith('/api/')){const path=['/','/exact-text-trial'].includes(url.pathname)?'/index.html':url.pathname;const bytes=assets.get(path);if(!bytes)throw new ApiFailure('NOT_FOUND',404);const ext=path.split('.').pop();res.writeHead(200,{'Content-Type':({html:'text/html; charset=utf-8',json:'application/json',js:'text/javascript',css:'text/css',woff2:'font/woff2',png:'image/png',webp:'image/webp',svg:'image/svg+xml'})[ext]??'application/octet-stream','X-Content-Type-Options':'nosniff','Cache-Control':path.startsWith('/assets/')?'public, max-age=31536000, immutable':'no-store','Content-Security-Policy':"default-src 'self'; script-src 'self' https://js.tosspayments.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' data: blob: https://*.tosspayments.com; frame-src https://*.tosspayments.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",'Referrer-Policy':'no-referrer'});res.end(bytes);return;}
    limit(['/api/auth/kakao/start','/api/auth/kakao/finish','/api/auth/google/start','/api/auth/google/finish','/api/auth/google/native-callback','/api/auth/google/link/request','/api/auth/login','/api/auth/test/signup','/api/auth/test/login','/api/auth/email/request','/api/auth/email/verify','/api/checkout/confirm','/api/checkout/launch'].includes(url.pathname));
    if(req.headers.origin&&!cors)throw new ApiFailure('ORIGIN_NOT_ALLOWED',403);
@@ -72,7 +85,8 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
     else if(url.pathname.endsWith('/cancel'))result=google.cancelLink(b,req.headers.authorization);
     else throw new ApiFailure('NOT_FOUND',404);send(res,200,result,cors);return;
    }
-   if(req.method==='POST'&&url.pathname==='/api/auth/kakao/start'){const b=await read(req,1024);send(res,200,kakao.startKakao(b?.intent,req.headers.authorization),cors);return;}
+   if(req.method==='POST'&&url.pathname==='/api/auth/kakao/start'){const b=await read(req,1024);send(res,200,kakao.startKakao(b?.intent,req.headers.authorization,b?.destination),cors);return;}
+   if(req.method==='POST'&&url.pathname==='/api/auth/kakao/poll'){const b=await read(req,1024);send(res,200,kakao.pollKakao(b,req.headers.authorization),cors);return;}
    if(req.method==='POST'&&url.pathname==='/api/auth/kakao/finish'){const b=await read(req,8192);send(res,200,await kakao.finishKakao(b,req.headers.authorization),cors);return;}
    if(req.method==='POST'&&url.pathname==='/api/auth/google/start'){const b=await read(req,1024);send(res,200,google.startGoogle(req.headers.authorization,b?.packageId,googleUiLanguage(b?.language,req.headers['accept-language']),b?.linkRecovery),cors);return;}
    if(req.method==='GET'&&url.pathname==='/api/auth/google/native-callback'){const state=url.searchParams.get('state'),target=await google.approveNativeGoogle(state,url.searchParams.get('code')),language=await google.nativeGoogleLanguage(state)??googleUiLanguage(undefined,req.headers['accept-language']);res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':googleReturnCsp});res.end(googleReturnPage(target,language));return;}

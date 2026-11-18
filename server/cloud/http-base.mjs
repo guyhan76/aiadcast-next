@@ -10,6 +10,8 @@ import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ApiFailure } from '../generation-service.mjs';
 import { ProviderFailure } from '../openai-image-adapter.mjs';
+import { kakaoLaunchPage, kakaoPagePolicy } from '../kakao-launch-page.mjs';
+import { kakaoReturnPage } from '../google-return-page.mjs';
 import { KakaoAuth } from './kakao-auth-base.mjs';
 import { GoogleAuth } from './google-auth-base.mjs';
 import { googleReturnPage, googleUiLanguage, googleReturnCsp } from '../google-return-page.mjs';
@@ -90,6 +92,29 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
         const cors = allowed.has(req.headers.origin) ? req.headers.origin : null;
         try {
             const url = new URL(req.url, origin);
+            if (req.method === 'GET' && url.pathname === '/api/auth/kakao/authorize') {
+                const launch = await kakao.kakaoLaunch(url.searchParams.get('state'));
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': kakaoPagePolicy, 'X-Content-Type-Options': 'nosniff' });
+                res.end(kakaoLaunchPage(launch));
+                return;
+            }
+            if (req.method === 'GET' && url.pathname === '/api/auth/kakao/callback') {
+                const target = await kakao.receiveKakao(url.searchParams.get('state'), url.searchParams.get('code'), url.searchParams.get('error'));
+                const state = url.searchParams.get('state'), receipt = target?.receipt ? '/' + state + '.' + target.receipt : '';
+                if (target?.destination === 'web') {
+                    res.writeHead(303, { Location: '/#kakao-return' + receipt, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+                    res.end();
+                    return;
+                }
+                if (target) {
+                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': googleReturnCsp });
+                    res.end(kakaoReturnPage(target.destination + '://kakao/return' + (receipt ? '#' + receipt.slice(1) : '')));
+                    return;
+                }
+                res.writeHead(303, { Location: '/#kakao-return', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+                res.end();
+                return;
+            }
             if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
                 const path = ['/', '/exact-text-trial'].includes(url.pathname) ? '/index.html' : url.pathname;
                 const bytes = assets.get(path);
@@ -168,7 +193,12 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
             }
             if (req.method === 'POST' && url.pathname === '/api/auth/kakao/start') {
                 const b = await read(req, 1024);
-                send(res, 200, await kakao.startKakao(b?.intent, req.headers.authorization), cors);
+                send(res, 200, await kakao.startKakao(b?.intent, req.headers.authorization, b?.destination), cors);
+                return;
+            }
+            if (req.method === 'POST' && url.pathname === '/api/auth/kakao/poll') {
+                const b = await read(req, 1024);
+                send(res, 200, await kakao.pollKakao(b, req.headers.authorization), cors);
                 return;
             }
             if (req.method === 'POST' && url.pathname === '/api/auth/kakao/finish') {

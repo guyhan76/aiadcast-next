@@ -14,7 +14,7 @@ const returnScript=`(()=>{
 export const googleReturnCsp="default-src 'none'; script-src 'sha256-"+createHash('sha256').update(returnScript).digest('base64')+"'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 
 // Use the same supplied outlines and original colors as BrandLogo.tsx.
-const wordmark=readFileSync(new URL('../src/assets/aiadcast-wordmark.svg',import.meta.url),'utf8')
+export const wordmark=readFileSync(new URL('../src/assets/aiadcast-wordmark.svg',import.meta.url),'utf8')
  .replace('viewBox="0 0 1179 341" width="1179" height="341"','viewBox="83.43 83.43 1013.14 174.6" width="1013.14" height="174.6" aria-hidden="true" focusable="false"');
 
 export function googleUiLanguage(preference,acceptLanguage=''){
@@ -30,8 +30,13 @@ export function googleUiLanguage(preference,acceptLanguage=''){
 }
 
 export function googleReturnPage(target,language='en'){
- // The link only wakes the installed app; it never carries authentication credentials.
- if(!/^com\.selluplabs\.aiadcast\.next(?:\.(?:demo|dev|preview))?:\/\/google\/return$/.test(target))throw Error('GOOGLE_NATIVE_INVALID');
+ return renderAppReturn(target,language,'google');
+}
+export function kakaoReturnPage(target) { return renderAppReturn(target,'ko','kakao'); }
+function renderAppReturn(target,language,provider) {
+ const [base,receipt,...extra]=target.split('#');
+ if(!/^com\.selluplabs\.aiadcast\.next(?:\.(?:demo|dev|preview))?:\/\/(?:google|kakao)\/return$/.test(base)||!base.endsWith('://'+provider+'/return')||
+    extra.length || (receipt!==undefined && (provider!=='kakao'||!/^[A-Za-z0-9_-]{43}\.[A-Za-z0-9_-]{43}$/.test(receipt))))throw Error('GOOGLE_NATIVE_INVALID');
  const ko=language==='ko',lang=ko?'ko':'en';
  const message=ko?'aiadcast를 여는 중…':'Opening aiadcast…';
  const fallback=ko?'앱이 열리지 않으면 아래 버튼을 눌러주세요.':'If the app did not open, tap below.';
