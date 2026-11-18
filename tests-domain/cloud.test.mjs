@@ -1,7 +1,7 @@
 import manifest from '../package.json' with {type:'json'};
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
@@ -154,6 +154,18 @@ test('commercial customers keep free and paid ads when the test budget is exhaus
  assert.equal(report.operatingCosts.spentMicros,2*imageUsageCost(usage).microUsd);assert.equal(report.operatingCosts.heldMicros,0);assert.equal(s.calls(),2);
 });
 
+test('receipt numbering backfills prior cases in Seoul date order and survives reinitialization',async t=>{
+ const db=new PGlite();await db.waitReady;t.after(()=>db.close());
+ await db.exec("CREATE SCHEMA aiadcast_accounts;SET search_path TO aiadcast_accounts,pg_catalog; CREATE TABLE protected_complaints(case_id text PRIMARY KEY,received_at timestamptz NOT NULL,description text NOT NULL,resolution text,erase_at timestamptz NOT NULL)");
+ const add=(key,time)=>db.query("INSERT INTO protected_complaints(case_id,received_at,description,erase_at) VALUES($1,$2,'fixture',now()+interval '3 years')",[key,time]);
+ await add('after','2026-11-18T15:00:00Z');await add('before','2026-11-18T14:59:59Z');
+ const migration=readFileSync(new URL('../server/cloud/commerce-records.sql',import.meta.url),'utf8');
+ await db.exec(migration);await db.exec(migration);await add('next','2026-11-18T15:00:01Z');
+ const {rows}=await db.query('SELECT case_id,receipt_no FROM protected_complaints ORDER BY received_at');
+ assert.deepEqual(rows.map(row=>row.receipt_no),['20261118-0001','20261119-0001','20261119-0002']);
+ assert.deepEqual(rows.map(row=>row.case_id),['before','after','next']);
+});
+
 test('retained order and complaint evidence survives withdrawal and expires independently',async t=>{
  const orderNo='GPA.retention-fixture',mails=[],key='fixture-retained-receipt',paidAt='2026-10-20T10:00:00.000Z';
  const money=units=>({currencyCode:'KRW',units:String(units)});
@@ -181,8 +193,14 @@ test('retained order and complaint evidence survives withdrawal and expires inde
  const input={orderNo,description:'환불 검토를 요청합니다.',category:'refund',requestId:randomUUID()};
  assert.equal((await call('lookup',other.token,{key:orderNo})).status,403);
  assert.equal((await call('cases',other.token,input)).status,404);
- const receipt=(await call('cases',token,input)).data.caseId;assert.ok(receipt);
+ const receipt=(await call('cases',token,input)).data.caseId;assert.match(receipt,/^\d{8}-\d{4,}$/);
  assert.equal((await call('cases',token,input)).data.caseId,receipt);
+ assert.equal((await lookup('CS-'+input.requestId)).cases[0].case_id,receipt);
+ const otherCases=await Promise.all(['first','second'].map(description=>call('cases',token,{category:'complaint',description,requestId:randomUUID()})));
+ assert.ok(otherCases.every(r=>r.status===200),JSON.stringify(otherCases));
+ const serials=otherCases.map(r=>r.data.caseId);
+ const initial=Number(receipt.split('-')[1]);
+ assert.deepEqual(serials.map(id=>Number(id.split('-')[1])).sort((a,b)=>a-b),[initial+1,initial+2]);
  const w=await s.call('/api/membership/withdraw',{token,body:{confirm:'delete-my-account',requestRefund:true}});
  assert.equal(w.status,200,JSON.stringify(w.data));assert.deepEqual(w.data.cases,[receipt]);
  await s.app.store.membership.run();
@@ -199,8 +217,8 @@ test('retained order and complaint evidence survives withdrawal and expires inde
  await call('sync',admin,{orderNo});assert.equal((await lookup(orderNo)).orders[0].refunds.length,1);
  assert.equal((await call('resolve',admin,{caseId:receipt,resolution:'결제처 환불 내역을 확인했습니다.'})).status,200);
  assert.ok((await lookup(orderNo)).cases[0].resolved_at);
- assert.equal((await db.prepare("SELECT erase_at>=resolved_at+interval '3 years' AS ok FROM protected_complaints WHERE case_id=?").get(receipt)).ok,true);
- await db.prepare("UPDATE protected_complaints SET erase_at=now()-interval '1 second' WHERE case_id=?").run(receipt);
+ assert.equal((await db.prepare("SELECT erase_at>=resolved_at+interval '3 years' AS ok FROM protected_complaints WHERE receipt_no=?").get(receipt)).ok,true);
+ await db.prepare("UPDATE protected_complaints SET erase_at=now()-interval '1 second' WHERE receipt_no=?").run(receipt);
  await s.app.store.membership.sweep();assert.equal((await lookup(orderNo)).cases.length,0);assert.equal((await lookup(orderNo)).orders[0].refund_requests.length,1);
  await db.prepare("UPDATE commerce_orders SET erase_at=now()-interval '1 second' WHERE order_no=?").run(orderNo);
  await s.app.store.membership.sweep();

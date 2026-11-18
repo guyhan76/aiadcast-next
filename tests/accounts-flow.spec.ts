@@ -4,6 +4,7 @@ import sharp from 'sharp';
 // These existing assertions exercise the explicitly selected Korean UI.
 test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));});
 const photo=await sharp({create:{width:200,height:300,channels:4,background:'#abcdef'}}).png().toBuffer();
+test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));});
 const session={token:'a'.repeat(43),expires:Date.now()+86400000,user:{id:'email-user-123',label:'test@example.com'}};
 async function setup(page:Page){const state={approved:false,requests:[] as string[],order:undefined as any,paid:false};await page.route('**/api/**',async route=>{
  const req=route.request(),path=new URL(req.url()).pathname;state.requests.push(path);
@@ -50,7 +51,7 @@ test('hosted payment uses the server quote and confirms a return before displayi
   return reply({error:{code:'UNAVAILABLE'}});
  });
  await page.goto('/#pay?orderId='+grant.orderId+'&ticket='+grant.ticket);await page.getByRole('button',{name:'결제',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).testPayment?.options?.amount)).toEqual({currency:'KRW',value:6900});expect(page.url()).not.toContain('ticket=');
- await page.goto('/?checkout=return&orderId='+grant.orderId+'&paymentKey=approved&amount=6900');await expect(page.getByRole('heading',{name:'결제 완료'})).toBeVisible();expect(confirmation).toEqual({...grant,paymentKey:'approved',amount:6900});expect(page.url()).not.toContain('paymentKey=');await expect(page.getByText('3개 지급 확인 · 현재 잔액')).toBeVisible();await expect(page.getByRole('link',{name:'광고 만들기 계속'})).toHaveAttribute('href','aiadcast-demo://checkout/return');expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();await page.reload();await expect(page.getByRole('heading',{name:'결제 완료'})).toBeVisible();await page.screenshot({path:info.outputPath('checkout-complete-mock.png'),fullPage:true});
+ await page.goto('/?checkout=return&orderId='+grant.orderId+'&paymentKey=approved&amount=6900');await expect(page.getByRole('heading',{name:'결제 완료'})).toBeVisible();expect(confirmation).toEqual({...grant,paymentKey:'approved',amount:6900});expect(page.url()).not.toContain('paymentKey=');await expect(page.locator('.payment-facts div').filter({hasText:'지급 완료'})).toHaveText('지급 완료3개');await expect(page.getByRole('link',{name:'광고 만들기 계속'})).toHaveAttribute('href','aiadcast-demo://checkout/return');expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();await page.reload();await expect(page.getByRole('heading',{name:'결제 완료'})).toBeVisible();await page.screenshot({path:info.outputPath('checkout-complete-mock.png'),fullPage:true});
 });
 
 test('private email recovery with test login enabled preserves the existing administrator password path',async({page})=>{

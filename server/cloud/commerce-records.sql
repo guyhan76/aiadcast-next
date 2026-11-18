@@ -37,3 +37,41 @@ ALTER TABLE commerce_order_links ENABLE ROW LEVEL SECURITY;
 ALTER TABLE commerce_deliveries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE complaint_member_links ENABLE ROW LEVEL SECURITY;
 ALTER TABLE protected_complaints ENABLE ROW LEVEL SECURITY;
+
+-- Public receipt numbers use the Seoul business date. Internal case IDs continue
+-- to identify retries, original defect reports and previously issued references.
+CREATE TABLE IF NOT EXISTS complaint_daily_numbers (
+ business_day date PRIMARY KEY,
+ last_number integer NOT NULL CHECK(last_number>0)
+);
+ALTER TABLE complaint_daily_numbers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE protected_complaints ADD COLUMN IF NOT EXISTS receipt_no text;
+CREATE OR REPLACE FUNCTION assign_complaint_number() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,aiadcast_accounts AS $number$
+DECLARE business_date date; ordinal integer;
+BEGIN
+ IF TG_OP='UPDATE' THEN
+  IF OLD.receipt_no IS NOT NULL THEN NEW.receipt_no:=OLD.receipt_no; RETURN NEW; END IF;
+ ELSE
+  SELECT receipt_no INTO NEW.receipt_no FROM protected_complaints WHERE case_id=NEW.case_id;
+  IF NEW.receipt_no IS NOT NULL THEN RETURN NEW; END IF;
+ END IF;
+ business_date:=(NEW.received_at AT TIME ZONE 'Asia/Seoul')::date;
+ INSERT INTO complaint_daily_numbers(business_day,last_number) VALUES(business_date,1)
+ ON CONFLICT(business_day) DO UPDATE SET last_number=complaint_daily_numbers.last_number+1
+ RETURNING last_number INTO ordinal;
+ NEW.receipt_no:=to_char(business_date,'YYYYMMDD')||'-'||lpad(ordinal::text,greatest(4,length(ordinal::text)),'0');
+ RETURN NEW;
+END $number$;
+REVOKE ALL ON FUNCTION assign_complaint_number() FROM PUBLIC;
+CREATE OR REPLACE TRIGGER complaint_receipt_number BEFORE INSERT OR UPDATE OF receipt_no ON protected_complaints
+ FOR EACH ROW EXECUTE FUNCTION assign_complaint_number();
+DO $backfill$
+DECLARE id text;
+BEGIN
+ FOR id IN SELECT case_id FROM protected_complaints WHERE receipt_no IS NULL ORDER BY received_at,case_id LOOP
+  UPDATE protected_complaints SET receipt_no=NULL WHERE case_id=id AND receipt_no IS NULL;
+ END LOOP;
+END $backfill$;
+ALTER TABLE protected_complaints ALTER COLUMN receipt_no SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS complaint_receipt_no ON protected_complaints(receipt_no);

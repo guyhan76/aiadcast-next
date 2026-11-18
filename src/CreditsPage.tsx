@@ -5,6 +5,7 @@ import {apiRequest,ApiRequestFailure,type ApiStatus} from './generation-client';
 import {betaSession,setBetaSession} from './beta-session';
 import {useUiLanguage} from './ui-language';
 import type {TestOrder} from './account-client';
+import {ArrowLeft,ImagePlus,RefreshCw} from 'lucide-react';
 import './account-pages.css';
 type Grant={id:string;credits:number;state:'pending'|'completed';created:number};
 type CustomerSale={id:string;ads:number;verified:string;restored:boolean};
@@ -20,14 +21,32 @@ export function CreditsPage({returnPage}:{returnPage:string}){
  }
  useEffect(()=>{void refresh();return()=>{request.current?.abort();request.current=null;};},[session?.token]);
  const state=(v:string)=>({paid:t('결제 완료','Paid'),pending:t('확인 중','Pending'),verified:t('지급 확인 중','Verifying grant'),canceled:t('취소','Canceled'),completed:t('지급 완료','Granted')}[v]??v);
- return <section className="account-page credits-page"><a href={'#'+returnPage}>{t('돌아가기','Back')}</a><h1>{t('내 이용권','My credits')}</h1>
- <p>{session?.user.label??t('로그인 후 내 이용권을 확인할 수 있습니다.','Sign in to view your credits.')}</p>
- <dl className="credit-summary"><div><dt>{t('사용 가능','Available')}</dt><dd>{data?(data.wallet.unlimited?t('관리자 · 차감 없음','Administrator · No charge'):data.wallet.kind==='customer-ads'?t(`광고 ${Math.floor((data.wallet.credits?.available??0)/10)}장`,`${Math.floor((data.wallet.credits?.available??0)/10)} ads`):data.wallet.credits?data.wallet.credits.available+t(' 크레딧',' credits'):data.wallet.available+t('개',' credits')):t('미조회','Not checked')}</dd></div></dl>
- {data?.wallet.credits&&data.wallet.available>0&&<p>{t('기존 이용권','Legacy tickets')}: {data.wallet.available}{t('개 · 먼저 사용합니다.',' · Used first.')}</p>}
- <p role="status">{busy?t('이용권을 불러오는 중…','Loading credits…'):checked?t('조회 완료','Checked'):t('이용권 정보 미조회','Credits not checked')}</p>
- {error&&<p role="alert">{error}</p>}{expired&&<a className="primary-action" href="#login" onClick={()=>{setBetaSession(null,'login');}}>{t('같은 계정으로 로그인','Sign in with the same account')}</a>}{session?<button disabled={busy} onClick={()=>void refresh()}>{busy?t('조회 중…','Checking…'):t('이용권 다시 조회','Refresh credits')}</button>:<a className="primary-action" href="#login">{t('로그인','Sign in')}</a>}
- <h2>{t('최근 구매 내역','Recent purchases')}</h2>{!data?<p>{t('구매 내역 미조회','Purchases not checked')}</p>:data.sales?.length?<ul className="credit-history">{data.sales.map(s=><li key={s.id}><strong>{t(`광고 ${s.ads}장`,`${s.ads} ads`)}</strong><span>{s.restored?t('구매 복원','Purchase restored'):t('구매 확인','Purchase verified')} · {new Date(s.verified).toLocaleString(language==='ko'?'ko-KR':'en-US')}</span></li>)}</ul>:!data.orders.length?<p>{t('조회된 구매 내역이 없습니다.','No purchases found.')}</p>:<ul className="credit-history">{data.orders.map(o=><li key={o.id}><strong>{o.credits}{o.unit==='credit-v2'?t(' 크레딧',' credits'):t('개 기존 이용권',' legacy tickets')} · {state(o.state)}</strong><span>{new Date(o.created).toLocaleString(language==='ko'?'ko-KR':'en-US')} · {o.amount.toLocaleString()} KRW</span></li>)}</ul>}
- <a className="primary-action" href="#checkout">{t('이용권 구매하기','Buy credits')}</a>{session&&<a className="guest-link" href={checkoutContinuation()?"#checkout-return":"#create"}>{t('광고 이미지 만들기','Create an ad image')}</a>}
- {session&&<CommerceRecords key={session.user.id}/>}
+ const locale=language==='ko'?'ko-KR':'en-US';
+ const shortDate=(timestamp:string|number)=>new Intl.DateTimeFormat(locale,{year:'numeric',month:'short',day:'numeric'}).format(new Date(timestamp));
+ const available=data?(data.wallet.unlimited?t('관리자 · 차감 없음','Administrator · No charge'):data.wallet.kind==='customer-ads'
+  ?t(`광고 ${Math.floor((data.wallet.credits?.available??0)/10)}장`,`${Math.floor((data.wallet.credits?.available??0)/10)} ads`)
+  :data.wallet.credits?data.wallet.credits.available+t(' 크레딧',' credits'):data.wallet.available+t('개',' credits')):t('미조회','Not checked');
+ const legacy=!!data?.wallet.credits&&data.wallet.available>0;
+ return <section className="account-page credits-page">
+  <a className="page-back" href={'#'+returnPage}><ArrowLeft size={18} aria-hidden="true"/>{t('돌아가기','Back')}</a>
+  <header className="wallet-heading"><h1>{t('내 이용권','My credits')}</h1>{session&&<span>{session.user.label}</span>}</header>
+  <div className="wallet-card"><dl className="credit-summary"><dt>{t('사용 가능','Available')}</dt><dd>{available}</dd></dl>
+   {legacy&&<div className="wallet-legacy"><span>{t('기존 이용권','Legacy tickets')}</span><strong>{data.wallet.available}{t('개',' tickets')}</strong><span>{t('먼저 사용','Used first')}</span></div>}
+   <div className="wallet-tools"><p role="status" title={checked?new Date(checked).toLocaleTimeString(locale):undefined}>{busy?t('조회 중…','Checking…'):checked?t('조회 완료','Checked'):t('미조회','Not checked')}</p>
+    {session&&<button className="wallet-button wallet-refresh" disabled={busy} onClick={()=>void refresh()}><RefreshCw size={17} aria-hidden="true"/>{t('이용권 다시 조회','Refresh credits')}</button>}
+   </div>
+  </div>
+  {error&&<p role="alert">{error}</p>}
+  {!session||expired?<a className="wallet-button wallet-primary" href="#login" onClick={()=>{if(expired)setBetaSession(null,'login');}}>{expired?t('같은 계정으로 로그인','Sign in with the same account'):t('로그인','Sign in')}</a>:null}
+  <div className="wallet-actions"><a className="wallet-button wallet-primary" href="#checkout">{t('이용권 구매하기','Buy credits')}</a>
+   {session&&<a className="wallet-button wallet-secondary" href={checkoutContinuation()?'#checkout-return':'#create'}><ImagePlus size={20} aria-hidden="true"/>{t('광고 이미지 만들기','Create an ad image')}</a>}</div>
+  <h2>{t('최근 구매 내역','Recent purchases')}</h2>
+  {!data?<p>{t('구매 내역 미조회','Purchases not checked')}</p>:data.sales?.length?<ul className="wallet-history">{data.sales.map(s=><li key={s.id}>
+   <strong>{t(`광고 ${s.ads}장`,`${s.ads} ads`)}</strong><span className="wallet-state">{s.restored?t('구매 복원','Restored'):t('구매 확인','Verified')}</span><time>{shortDate(s.verified)}</time></li>)}</ul>
+   :!data.orders.length?<p>{t('조회된 구매 내역이 없습니다.','No purchases found.')}</p>:<ul className="wallet-history">{data.orders.map(o=><li key={o.id}>
+    <strong>{o.credits}{o.unit==='credit-v2'?t(' 크레딧',' credits'):t('개 기존 이용권',' legacy tickets')}</strong>
+    <span className={'wallet-state state-'+o.state}>{state(o.state)}</span><time>{shortDate(o.created)}</time><b>{o.amount.toLocaleString(locale)}{t('원',' KRW')}</b>
+   </li>)}</ul>}
+  {session&&<CommerceRecords key={session.user.id}/>}
  </section>;
 }

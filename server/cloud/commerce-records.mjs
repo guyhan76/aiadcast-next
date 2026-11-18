@@ -9,7 +9,7 @@ const selectOrders=`SELECT o.order_no,o.product,o.ads,o.purchased_at,o.erase_at,
  (SELECT coalesce(jsonb_agg(w.requested_at ORDER BY w.requested_at),'[]'::jsonb) FROM commerce_withdrawals w WHERE w.order_no=o.order_no) AS refund_requests, (SELECT count(*) FROM commerce_deliveries d WHERE d.order_no=o.order_no) AS delivered,
  (SELECT count(*) FROM commerce_deliveries d WHERE d.order_no=o.order_no AND d.credit_returned_at IS NOT NULL) AS returned
  FROM commerce_orders o`;
-const caseColumns='c.case_id,c.category,c.order_no,c.received_at,c.description,c.resolution,c.resolved_at,c.erase_at';
+const caseColumns='c.receipt_no AS case_id,c.category,c.order_no,c.received_at,c.description,c.resolution,c.resolved_at,c.erase_at';
 function summary(row) {
  if(!row)return null;
  const remaining=Math.max(0,row.ads-Number(row.delivered)+Number(row.returned));
@@ -99,16 +99,16 @@ export class CommerceRecords {
     const existing=await this.db.prepare(`SELECT c.*,l.account_id FROM protected_complaints c LEFT JOIN complaint_member_links l USING(case_id) WHERE case_id=?`).get(id);
     if(existing){
      if(existing.account_id!==user.id || existing.description!==description.trim() || existing.category!==category || existing.order_no!==(orderNo||null))fail('CASE_CONFLICT',409);
-     return {caseId:id};
+     return {caseId:existing.receipt_no};
     }
-    await this.db.prepare(`INSERT INTO protected_complaints(case_id,category,order_no,description,received_at,erase_at)
-     VALUES(?,?,?,?,now(),now()+interval '3 years')`).run(id,category,orderNo||null,description.trim());
+    const receipt=await this.db.prepare(`INSERT INTO protected_complaints(case_id,category,order_no,description,received_at,erase_at)
+     VALUES(?,?,?,?,now(),now()+interval '3 years') RETURNING receipt_no`).get(id,category,orderNo||null,description.trim());
     if(category==='refund'&&orderNo){
      await this.db.prepare('INSERT INTO commerce_withdrawals(case_id,order_no) VALUES(?,?)').run(id,orderNo);
      await this.db.prepare("UPDATE commerce_orders SET erase_at=greatest(erase_at,now()+interval '5 years') WHERE order_no=?").run(orderNo);
     }
     await this.db.prepare('INSERT INTO complaint_member_links VALUES(?,?)').run(id,user.id);
-    return {caseId:id};
+    return {caseId:receipt.receipt_no};
    });
   }
   if(method==='GET' && path===base+'/mine'){
@@ -121,7 +121,7 @@ export class CommerceRecords {
    const key=body?.key??'';
    if(typeof key!=='string'||key.length>160)fail('INVALID_REFERENCE',400);
    const orders=key?[await this.order(key)].filter(Boolean):(await this.db.prepare(selectOrders+' WHERE o.erase_at>now() ORDER BY o.purchased_at DESC,o.order_no LIMIT 20').all()).map(summary);
-   const cases=await this.db.prepare('SELECT '+caseColumns+' FROM protected_complaints c WHERE c.erase_at>now() '+(key?'AND (c.case_id=? OR c.order_no=?) ':'')+'ORDER BY c.received_at DESC,c.case_id LIMIT 30').all(...(key?[key,key]:[]));
+   const cases=await this.db.prepare('SELECT '+caseColumns+' FROM protected_complaints c WHERE c.erase_at>now() '+(key?'AND (c.receipt_no=? OR c.case_id=? OR c.order_no=?) ':'')+'ORDER BY c.received_at DESC,c.case_id LIMIT 30').all(...(key?[key,key,key]:[]));
    if(!orders.length&&cases[0]?.order_no){const o=await this.order(cases[0].order_no);if(o)orders.push(o);}
    return {orders,cases};
   }
@@ -129,8 +129,8 @@ export class CommerceRecords {
    const resolution=body?.resolution?.trim?.();
    if(typeof body?.caseId!=='string'||typeof resolution!=='string'||!resolution||resolution.length>800)fail('INVALID_CASE',400);
    const row=await this.db.prepare(`UPDATE protected_complaints SET resolution=?,resolved_at=now(),erase_at=now()+interval '3 years'
-    WHERE case_id=? AND erase_at>now() AND resolution IS NULL AND (category<>'defect' OR NOT EXISTS(SELECT 1 FROM complaint_member_links l WHERE l.case_id=protected_complaints.case_id)) RETURNING case_id`).get(resolution,body.caseId);
-   if(!row && !await this.db.prepare('SELECT 1 FROM protected_complaints WHERE case_id=? AND resolution=? AND erase_at>now()').get(body.caseId,resolution))fail('CASE_CLOSED_OR_MISSING',409);
+    WHERE (case_id=? OR receipt_no=?) AND erase_at>now() AND resolution IS NULL AND (category<>'defect' OR NOT EXISTS(SELECT 1 FROM complaint_member_links l WHERE l.case_id=protected_complaints.case_id)) RETURNING case_id`).get(resolution,body.caseId,body.caseId);
+   if(!row && !await this.db.prepare('SELECT 1 FROM protected_complaints WHERE (case_id=? OR receipt_no=?) AND resolution=? AND erase_at>now()').get(body.caseId,body.caseId,resolution))fail('CASE_CLOSED_OR_MISSING',409);
    return {caseId:body.caseId};
   }
   if(method==='POST'&&path===base+'/sync'){

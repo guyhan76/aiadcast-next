@@ -2,6 +2,7 @@ import {test,expect,type Page} from '@playwright/test';
 import sharp from 'sharp';
 import {createHash} from 'node:crypto';
 import {newProject} from '../src/model';
+test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));});
 const bytes=await sharp({create:{width:200,height:300,channels:4,background:'#abc'}}).png().toBuffer();
 const photo={name:'saved.png',data:'data:image/png;base64,'+bytes.toString('base64'),width:200,height:300,sha256:createHash('sha256').update(bytes).digest('hex')};
 const userId='payment-web-user',orderId='payment-web-order';
