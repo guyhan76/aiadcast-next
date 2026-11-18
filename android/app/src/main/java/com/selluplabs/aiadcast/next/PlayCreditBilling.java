@@ -9,7 +9,6 @@ import java.util.*;
 import java.util.function.Consumer;
 
 final class PlayCreditBilling implements PurchasesUpdatedListener {
-    private static final List<String> PRODUCTS = Arrays.asList("credits_30", "credits_100");
     private final Activity activity;
     private final Consumer<JSONObject> sink;
     private final BillingClient client;
@@ -66,14 +65,14 @@ final class PlayCreditBilling implements PurchasesUpdatedListener {
             case "play-restore": restore(); break;
             case "play-buy":
                 String id = request.optString("product"), account = request.optString("account");
-                if (PRODUCTS.contains(id) && account.matches("[0-9a-f]{64}")) ready(() -> buy(id, account));
+                if (PlayCreditCatalog.ON_SALE.contains(id) && account.matches("[0-9a-f]{64}")) ready(() -> buy(id, account));
                 break;
             default: break;
         }
     }
     private void catalog() {
         List<QueryProductDetailsParams.Product> query = new ArrayList<>();
-        for (String id : PRODUCTS) query.add(QueryProductDetailsParams.Product.newBuilder()
+        for (String id : PlayCreditCatalog.ON_SALE) query.add(QueryProductDetailsParams.Product.newBuilder()
             .setProductId(id).setProductType(BillingClient.ProductType.INAPP).build());
         client.queryProductDetailsAsync(QueryProductDetailsParams.newBuilder().setProductList(query).build(), (result, response) ->
             activity.runOnUiThread(() -> {
@@ -119,7 +118,7 @@ final class PlayCreditBilling implements PurchasesUpdatedListener {
     }
     private void deliver(List<Purchase> purchases) {
         for (Purchase purchase : purchases) {
-            if (purchase.getProducts().size() != 1 || !PRODUCTS.contains(purchase.getProducts().get(0))) continue;
+            if (purchase.getProducts().size() != 1 || !PlayCreditCatalog.canRestore(purchase.getProducts().get(0))) continue;
             AccountIdentifiers ids = purchase.getAccountIdentifiers();
             if (ids == null || ids.getObfuscatedAccountId() == null) continue;
             if (purchase.getPurchaseState() == Purchase.PurchaseState.PURCHASED)

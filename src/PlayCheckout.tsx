@@ -55,7 +55,13 @@ export function PlayPurchaseRecovery(){
       try {
         notify('verifying');
         const receipt=await apiRequest<Receipt>('/api/checkout/play/verify',{token});
-        if(active && session===betaSession()?.token)notify(receipt.state,receipt.state==='paid'?receipt.balance:undefined,receipt.state==='paid'?receipt.policyReceipt:undefined);
+        if(!active || session!==betaSession()?.token)return;
+        if(receipt.state==='paid'){
+          window.dispatchEvent(new Event('aiadcast-credit-refresh'));
+          notify('paid',receipt.balance,receipt.policyReceipt);
+        }else{
+          notify('pending');
+        }
       } catch { if(active && session===betaSession()?.token)notify('retry'); }
       finally{running.delete(token);}
     }
