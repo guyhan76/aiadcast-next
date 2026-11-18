@@ -27,6 +27,7 @@ export function CreditsPage({returnPage}:{returnPage:string}){
   if(order.state==='canceled')return t('결제 취소','Canceled');
   if(order.providerStatus==='NO_APPROVAL')return t('승인 내역 없음','No approval found');
   if(order.providerStatus==='UNAVAILABLE')return t('승인 조회 지연','Approval lookup delayed');
+  if(order.providerStatus==='LOOKUP_DENIED')return t('승인 조회 불가','Approval lookup unavailable');
   if(order.providerStatus==='PARTIAL_CANCELED')return t('부분 취소','Partially canceled');
   return t('승인 대기','Awaiting approval');
  };

@@ -35,12 +35,14 @@ test('wallet shows payment outcomes and opens the creator directly with an unfin
  await page.route('**/api/checkout/orders/*',route=>{orderReads.push(route.request().url());return route.fulfill({status:503});});
  await page.route('**/api/account/credits',route=>route.fulfill({json:{...snapshot,orders:[
   {...snapshot.orders[0],id:'paid-order',state:'paid'},
-  {...snapshot.orders[0],id:'unresolved-order',state:'pending',providerStatus:'NO_APPROVAL'}
+  {...snapshot.orders[0],id:'unresolved-order',state:'pending',providerStatus:'NO_APPROVAL'},
+  {...snapshot.orders[0],id:'lookup-denied-order',state:'pending',providerStatus:'LOOKUP_DENIED'}
  ]}}));
  await page.goto('/#credits');
  const history=page.locator('.wallet-history');
  await expect(history.getByText('결제 완료',{exact:true})).toBeVisible();
  await expect(history.getByText('승인 내역 없음',{exact:true})).toBeVisible();
+ await expect(history.getByText('승인 조회 불가',{exact:true})).toBeVisible();
  await page.getByRole('link',{name:'광고 이미지 만들기',exact:true}).click();
  await expect(page).toHaveURL(/#create$/);
  await expect(page.getByRole('textbox',{name:'상품명',exact:true})).toBeVisible();
