@@ -460,6 +460,19 @@ test('cloud test checkout confirms only once and preserves credits and orders af
  const verified=await s.call('/api/checkout/receipt',{body:{orderId:body.orderId,ticket:body.ticket}});assert.equal(verified.status,200,JSON.stringify(verified.data));assert.deepEqual(verified.data.receipt,{grantedCredits:100,balance:100,verified:true,unit:'credit-v2'});
  await s.restart();assert.equal((await s.call('/api/status',{token:a.token})).data.wallet.credits.available,100);assert.equal((await s.call('/api/checkout/confirm',{body})).data.state,'paid');assert.equal(calls,1);
 });
+test('cloud wallet reconciles a missed callback and returns the paid purchase and updated balance together',async t=>{
+ let receipt,lookups=0,confirms=0;
+ const provider={lookup:async()=>{lookups++;return receipt;},confirm:async()=>{confirms++;throw Error('Unexpected approval');}};
+ const s=await setup(t,{accounts:{provider,clientKey:'test_ck_fixture'}}),a=await s.member('Wallet buyer');
+ const order=(await s.call('/api/checkout/orders',{token:a.token,body:{pack:'credits-v2-100',requestId:'missing-callback',agreed:true}})).data;
+ receipt={orderId:order.id,paymentKey:'simulated-approved',currency:'KRW',totalAmount:order.amount,status:'DONE'};
+ for(let i=0;i<2;i++){
+  const response=await s.call('/api/account/credits',{token:a.token});
+  assert.equal(response.status,200);assert.equal(response.data.orders[0].state,'paid');
+  assert.equal(response.data.wallet.credits.available,100);
+ }
+ assert.equal(lookups,1);assert.equal(confirms,0);
+});
 test('private storage reserves quota before upload and rejects corrupted bytes',async t=>{
  const s=await setup(t),a=await s.member('Storage tester'),storage=s.app.storage;
  const path=await storage.put(a.user.id,hash+'.png',bytes,'image/png');assert.deepEqual(await storage.get(a.user.id,path),bytes);

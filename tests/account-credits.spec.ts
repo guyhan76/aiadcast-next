@@ -29,3 +29,20 @@ test('available new credits stay separate from legacy tickets and malformed bala
 test('create image without a pending checkout resumes the saved draft without a payment or generation request',async({page})=>{
  const writes=await setup(page);await page.goto('/#create');await page.getByRole('textbox',{name:'상품명',exact:true}).fill('이어 만들 상품');await waitForSavedDraft(page);await openWorkspaceMenu(page);await page.locator('.app-header').getByRole('link',{name:'내 이용권',exact:true}).click();await page.locator('.credits-page').getByRole('link',{name:'광고 이미지 만들기',exact:true}).click();await expect(page).toHaveURL(/#create$/);await expect(page.getByRole('textbox',{name:'상품명',exact:true})).toHaveValue('이어 만들 상품');expect(writes).toEqual([]);
 });
+test('wallet shows payment outcomes and opens the creator directly with an unfinished checkout',async({page})=>{
+ const writes=await setup(page),orderReads:string[]=[];
+ await page.addInitScript(userId=>localStorage.setItem('aiadcast.checkout-continuation',JSON.stringify({userId,orderId:'unresolved-order',origin:location.origin,created:Date.now(),route:'create'})),session.user.id);
+ await page.route('**/api/checkout/orders/*',route=>{orderReads.push(route.request().url());return route.fulfill({status:503});});
+ await page.route('**/api/account/credits',route=>route.fulfill({json:{...snapshot,orders:[
+  {...snapshot.orders[0],id:'paid-order',state:'paid'},
+  {...snapshot.orders[0],id:'unresolved-order',state:'pending',providerStatus:'NO_APPROVAL'}
+ ]}}));
+ await page.goto('/#credits');
+ const history=page.locator('.wallet-history');
+ await expect(history.getByText('결제 완료',{exact:true})).toBeVisible();
+ await expect(history.getByText('승인 내역 없음',{exact:true})).toBeVisible();
+ await page.getByRole('link',{name:'광고 이미지 만들기',exact:true}).click();
+ await expect(page).toHaveURL(/#create$/);
+ await expect(page.getByRole('textbox',{name:'상품명',exact:true})).toBeVisible();
+ expect(orderReads).toEqual([]);expect(writes).toEqual([]);
+});
