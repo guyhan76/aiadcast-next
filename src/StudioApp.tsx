@@ -2,6 +2,7 @@ import type {BatchPrice} from './batch-price';
 import {submitAdBatch} from './submit-ad-batch';
 import {createResultSet} from './result-set';
 import {useWorkspaceHistory} from './workspace-history';
+import {KakaoBoundary} from './KakaoSignIn';
 import {GoogleGate} from './GoogleSignIn';
 import {PreviewLeaveGuard,requestPreviewLeave} from './PreviewLeaveGuard';
 import {clearLoginDestination} from './login-navigation';
@@ -44,7 +45,7 @@ const navigation=[['home','홈',Home],['create','광고 만들기',Plus],['proje
 function currentPage():Page {if(new URLSearchParams(location.search).get('checkout')==='return')return 'payment-return';const route=location.hash.slice(1).split('?')[0];return ['portfolio','home','create','projects','guide','studio','signup','login','credits','checkout','verify','pay','payment-return','checkout-return','admin','editor'].includes(route)?route as Page:'home';}
 export default function StudioApp(){
  useEffect(()=>{const publish=()=>window.dispatchEvent(new CustomEvent('aiadcast-export-context',{detail:{owner:storageNamespace()}}));window.addEventListener('aiadcast-session-change',publish);return()=>window.removeEventListener('aiadcast-session-change',publish);},[]);
- return <GoogleGate><AuthenticatedStudioApp/></GoogleGate>;
+ return <KakaoBoundary><GoogleGate><AuthenticatedStudioApp/></GoogleGate></KakaoBoundary>;
 }
 function AuthenticatedStudioApp(){
  const [route,setRoute]=useState(currentPage);

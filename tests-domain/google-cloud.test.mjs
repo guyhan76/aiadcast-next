@@ -4,6 +4,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {BetaStore} from '../server/cloud/beta-store-base.mjs';
 import {EmailAuth} from '../server/cloud/email-auth-base.mjs';
 import {GoogleAuth} from '../server/cloud/google-auth-base.mjs';
+import {KakaoAuth} from '../server/cloud/kakao-auth-base.mjs';
 // Local PostgreSQL engine: real constraints, no Supabase connection or credentials.
 test('PostgreSQL Google identity transactions retain one account and original credits across concurrent logins',async t=>{
  const engine=new PGlite();await engine.waitReady;t.after(()=>engine.close());let active=engine,tail=Promise.resolve();
@@ -25,4 +26,26 @@ test('PostgreSQL Google identity transactions retain one account and original cr
  const outcomes=await Promise.allSettled([recovery.completeLink(pending),recovery.completeLink(pending)]);assert.equal(outcomes.filter(r=>r.status==='fulfilled').length,1);assert.equal(outcomes.filter(r=>r.status==='rejected').length,1);
  const restoredRecovery=await new GoogleAuth().initialize(store,{provider:recovery.provider});const next=await restoredRecovery.startGoogle();const again=await restoredRecovery.finishGoogle({...next,code:'mock'});assert.equal(again.user.id,legacy.userId);assert.equal(Number((await store.authenticate('Bearer '+again.token)).credits),19);
 
+ await t.test('Kakao and Google authenticate the same PostgreSQL member after explicit linking', async () => {
+  const provider = {javascriptKey:'fixture-js', redirectUri:'https://beta.example.com/?kakao=1',
+   subjectForCode:async () => '9223372036854775806'};
+  const kakao = await new KakaoAuth().initialize(store,{provider});
+  const header = 'Bearer ' + again.token;
+  const start = await kakao.startKakao('link',header);
+  const linked = await kakao.finishKakao({...start,code:'fixture'},header);
+  assert.equal(linked.user.id,legacy.userId);
+  await assert.rejects(kakao.finishKakao({...start,code:'fixture'},header), /KAKAO_FLOW_INVALID/);
+  const flows = await Promise.all([kakao.startKakao('login'),kakao.startKakao('login')]);
+  for (const session of await Promise.all(flows.map(f => kakao.finishKakao({...f,code:'fixture'})))) {
+   assert.equal(session.user.id, legacy.userId);
+   assert.equal(Number((await store.authenticate('Bearer '+session.token)).credits),19);
+  }
+  const app=await kakao.startKakao('login',undefined,'com.selluplabs.aiadcast.next.preview');
+  const reply=await kakao.receiveKakao(app.state,'fixture');
+  assert.deepEqual(await kakao.pollKakao(app),{state:'pending'});
+  const signed=await kakao.pollKakao({...app,receipt:reply.receipt});
+  assert.equal(signed.session.user.id,legacy.userId);
+  await assert.rejects(kakao.pollKakao({...app,receipt:reply.receipt}),/KAKAO_FLOW_INVALID/);
+  assert.equal((await db.prepare('SELECT subject FROM kakao_identities WHERE user_id=?').get(legacy.userId)).subject, '9223372036854775806');
+ });
 });

@@ -1,3 +1,4 @@
+import {KakaoButton} from './KakaoSignIn';
 import {CommerceRecords} from './CommerceRecords';
 import {useEffect,useRef,useState} from 'react';
 import {apiRequest,ApiRequestFailure,type ApiStatus} from './generation-client';
@@ -72,6 +73,7 @@ export function CreditsPage({returnPage}:{returnPage:string}){
     <strong>{o.credits}{o.unit==='credit-v2'?t(' 크레딧',' credits'):t('개 기존 이용권',' legacy tickets')}</strong>
     <span className={'wallet-state state-'+o.state}>{orderStatus(o)}</span><time>{shortDate(o.created)}</time><b>{o.amount.toLocaleString(locale)}{t('원',' KRW')}</b>
    </li>)}</ul>}
+  {session&&<KakaoButton intent="link"/>}
   {session&&<CommerceRecords key={session.user.id}/>}
  </section>;
 }

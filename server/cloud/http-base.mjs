@@ -10,6 +10,9 @@ import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ApiFailure } from '../generation-service.mjs';
 import { ProviderFailure } from '../openai-image-adapter.mjs';
+import { kakaoLaunchPage, kakaoPagePolicy } from '../kakao-launch-page.mjs';
+import { kakaoReturnPage } from '../google-return-page.mjs';
+import { KakaoAuth } from './kakao-auth-base.mjs';
 import { GoogleAuth } from './google-auth-base.mjs';
 import { googleReturnPage, googleUiLanguage, googleReturnCsp } from '../google-return-page.mjs';
 import { EmailAuth } from './email-auth-base.mjs';
@@ -53,6 +56,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
         services.set(user.id, Promise.resolve().then(() => serviceFactory(user))); const instance = await services.get(user.id); instance.adminTestUnlimited = user.role === 'admin'; if (user.role !== 'admin' && await store.db.prepare('SELECT user_id FROM welcome_ad_eligibility WHERE user_id=?').get(user.id))
         await instance.grantWelcomeAd(); return instance; };
     const email = await new EmailAuth().initialize(store, { sendMail: accounts.sendMail, publicOrigin: origin, now });
+    const kakao = await new KakaoAuth().initialize(store, { provider: accounts.kakao, now });
     const google = await new GoogleAuth().initialize(store, { provider: accounts.google, now });
     const password = await new PasswordAuth().initialize(store, accounts.password, now);
     await password.bootstrapOwner();
@@ -88,6 +92,29 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
         const cors = allowed.has(req.headers.origin) ? req.headers.origin : null;
         try {
             const url = new URL(req.url, origin);
+            if (req.method === 'GET' && url.pathname === '/api/auth/kakao/authorize') {
+                const launch = await kakao.kakaoLaunch(url.searchParams.get('state'));
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': kakaoPagePolicy, 'X-Content-Type-Options': 'nosniff' });
+                res.end(kakaoLaunchPage(launch));
+                return;
+            }
+            if (req.method === 'GET' && url.pathname === '/api/auth/kakao/callback') {
+                const target = await kakao.receiveKakao(url.searchParams.get('state'), url.searchParams.get('code'), url.searchParams.get('error'));
+                const state = url.searchParams.get('state'), receipt = target?.receipt ? '/' + state + '.' + target.receipt : '';
+                if (target?.destination === 'web') {
+                    res.writeHead(303, { Location: '/#kakao-return' + receipt, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+                    res.end();
+                    return;
+                }
+                if (target) {
+                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': googleReturnCsp });
+                    res.end(kakaoReturnPage(target.destination + '://kakao/return' + (receipt ? '#' + receipt.slice(1) : '')));
+                    return;
+                }
+                res.writeHead(303, { Location: '/#kakao-return', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+                res.end();
+                return;
+            }
             if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
                 const path = ['/', '/exact-text-trial'].includes(url.pathname) ? '/index.html' : url.pathname;
                 const bytes = assets.get(path);
@@ -98,7 +125,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 res.end(bytes);
                 return;
             }
-            limit(['/api/auth/google/start', '/api/auth/google/finish', '/api/auth/google/native-callback', '/api/auth/google/link/request', '/api/auth/login', '/api/auth/test/signup', '/api/auth/test/login', '/api/auth/email/request', '/api/auth/email/verify', '/api/checkout/confirm', '/api/checkout/launch'].includes(url.pathname));
+            limit(['/api/auth/kakao/start', '/api/auth/kakao/finish', '/api/auth/google/start', '/api/auth/google/finish', '/api/auth/google/native-callback', '/api/auth/google/link/request', '/api/auth/login', '/api/auth/test/signup', '/api/auth/test/login', '/api/auth/email/request', '/api/auth/email/verify', '/api/checkout/confirm', '/api/checkout/launch'].includes(url.pathname));
             if (req.headers.origin && !cors)
                 throw new ApiFailure('ORIGIN_NOT_ALLOWED', 403);
             if (req.method === 'OPTIONS') {
@@ -126,7 +153,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 return;
             }
             if (req.method === 'GET' && url.pathname === '/api/account/capabilities') {
-                send(res, 200, { email: { enabled: Boolean(accounts.sendMail) }, ...(google.available() ? { google: { enabled: true } } : {}), ...(password.available() ? { password: { enabled: true, test: true, adminReady: await password.ownerReady(), adminEmail: password.adminEmail } } : {}), checkout: { enabled: checkout.available(), test: true, currency: 'KRW' } }, cors);
+                send(res, 200, { email: { enabled: Boolean(accounts.sendMail) }, ...(accounts.kakao ? { kakao: { enabled: true } } : {}), ...(google.available() ? { google: { enabled: true } } : {}), ...(password.available() ? { password: { enabled: true, test: true, adminReady: await password.ownerReady(), adminEmail: password.adminEmail } } : {}), checkout: { enabled: checkout.available(), test: true, currency: 'KRW' } }, cors);
                 return;
             }
             if (req.method === 'POST' && ['/api/auth/test/signup', '/api/auth/test/login'].includes(url.pathname)) {
@@ -162,6 +189,21 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 else
                     throw new ApiFailure('NOT_FOUND', 404);
                 send(res, 200, result, cors);
+                return;
+            }
+            if (req.method === 'POST' && url.pathname === '/api/auth/kakao/start') {
+                const b = await read(req, 1024);
+                send(res, 200, await kakao.startKakao(b?.intent, req.headers.authorization, b?.destination), cors);
+                return;
+            }
+            if (req.method === 'POST' && url.pathname === '/api/auth/kakao/poll') {
+                const b = await read(req, 1024);
+                send(res, 200, await kakao.pollKakao(b, req.headers.authorization), cors);
+                return;
+            }
+            if (req.method === 'POST' && url.pathname === '/api/auth/kakao/finish') {
+                const b = await read(req, 8192);
+                send(res, 200, await kakao.finishKakao(b, req.headers.authorization), cors);
                 return;
             }
             if (req.method === 'POST' && url.pathname === '/api/auth/google/start') {
