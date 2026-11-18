@@ -81,6 +81,14 @@
 .commerce-records article {padding:14px 0;border-top:1px solid #e1dfdb}
 .commerce-records article :is(h3,h4,p,dl) {margin:6px 0}.commerce-records dt {font-weight:600}.commerce-records dd {margin:0 0 12px}
 .studio-shell .commerce-records .case-form h3 {margin:4px 0 0}
+.case-card header {display:grid;gap:4px}.case-card h4 {display:flex;align-items:center;gap:10px;font-size:20px}
+.case-state {background:#f3eee7;border-radius:7px;padding:3px 9px;font-size:14px;font-weight:650}
+.commerce-records .case-facts {display:grid;grid-template-columns:minmax(80px,auto) minmax(0,1fr);gap:8px 14px;padding:14px;background:#f7f6f4;border-radius:10px}
+.commerce-records .case-facts dd {margin:0}.case-facts dd>button,.case-facts dd>span {display:block;margin-top:8px}
+.case-card h5 {font-size:17px;margin:18px 0 8px}.case-timeline {list-style:none;margin:0 0 16px;padding:0 0 0 14px;border-left:3px solid #d2b9a5}
+.case-timeline li {display:grid;gap:2px;padding:4px 0 12px}.case-timeline time {font-size:15px;color:#534d49}
+.case-description,.case-timeline p {white-space:pre-wrap}.case-bank {display:grid;gap:10px;border:1px solid #d5d0ca;border-radius:10px;padding:12px}
+.case-orders>summary {cursor:pointer;padding:12px 0;font-weight:650}
 .case-confirmation {margin:16px 0;padding:18px;border:1px solid #b7d3bd;border-radius:12px;background:#eff7f0;color:#1d472c}
 .case-confirmation p {display:flex;align-items:center;gap:8px;font-size:18px;font-weight:700;margin:0 0 12px}
 .case-confirmation>strong {display:block;margin:2px 0 12px;user-select:all;font-size:clamp(23px,5.5vw,30px);font-variant-numeric:tabular-nums;letter-spacing:.01em}

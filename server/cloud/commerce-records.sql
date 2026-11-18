@@ -22,6 +22,13 @@ CREATE TABLE IF NOT EXISTS commerce_withdrawals (
  requested_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS commerce_withdrawal_order ON commerce_withdrawals(order_no);
+ALTER TABLE commerce_withdrawals ADD COLUMN IF NOT EXISTS refund_method text;
+ALTER TABLE commerce_withdrawals ADD COLUMN IF NOT EXISTS amount_krw bigint;
+ALTER TABLE commerce_withdrawals ADD COLUMN IF NOT EXISTS processed_at timestamptz;
+ALTER TABLE commerce_withdrawals ADD COLUMN IF NOT EXISTS recorded_at timestamptz;
+ALTER TABLE commerce_withdrawals ADD COLUMN IF NOT EXISTS refund_reference text;
+CREATE UNIQUE INDEX IF NOT EXISTS one_recorded_order_refund ON commerce_withdrawals(order_no,refund_method,refund_reference)
+ WHERE refund_reference IS NOT NULL;
 ALTER TABLE commerce_withdrawals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE protected_complaints ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT 'defect';
 ALTER TABLE protected_complaints ADD COLUMN IF NOT EXISTS order_no text;
@@ -75,3 +82,17 @@ BEGIN
 END $backfill$;
 ALTER TABLE protected_complaints ALTER COLUMN receipt_no SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS complaint_receipt_no ON protected_complaints(receipt_no);
+
+ALTER TABLE protected_complaints ADD COLUMN IF NOT EXISTS requested_krw bigint;
+ALTER TABLE protected_complaints ADD COLUMN IF NOT EXISTS payout_bank text;
+ALTER TABLE protected_complaints ADD COLUMN IF NOT EXISTS payout_last4 text;
+ALTER TABLE protected_complaints ADD COLUMN IF NOT EXISTS payout_secret text;
+CREATE TABLE IF NOT EXISTS complaint_events (
+ id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ case_id text NOT NULL REFERENCES protected_complaints ON DELETE CASCADE,
+ request_id text NOT NULL, kind text NOT NULL, happened_at timestamptz NOT NULL DEFAULT now(),
+ actor_label text, detail text NOT NULL, outcome text, amount_krw bigint, reference text,
+ UNIQUE(case_id,request_id)
+);
+ALTER TABLE complaint_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE complaint_events ADD COLUMN IF NOT EXISTS processed_at timestamptz;
