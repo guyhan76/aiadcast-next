@@ -49,3 +49,23 @@ for(const changed of ['signed-out','other-account'])test(`web return with ${chan
  await page.evaluate(changed=>{if(changed==='signed-out')sessionStorage.removeItem('aiadcast.beta-session');else{const s=JSON.parse(sessionStorage.getItem('aiadcast.beta-session')!);s.user.id='different-user';sessionStorage.setItem('aiadcast.beta-session',JSON.stringify(s));}},changed);
  await page.getByRole('link',{name:'광고 만들기 계속',exact:true}).click();await expect(page).toHaveURL(/#checkout-return$/);await expect(page.getByText('결제를 시작한 계정으로 로그인해주세요.',{exact:false})).toBeVisible();expect(calls).not.toContain('GET /api/checkout/orders/'+orderId);
 });
+
+test('Preview checkout keeps its native return after leaving for payment, even with a browser session',async({page})=>{
+ await page.addInitScript(()=>sessionStorage.setItem('aiadcast.beta-session',JSON.stringify({
+  token:'a'.repeat(43),expires:Date.now()+86400000,user:{id:'unrelated-web-user',label:'Browser account',role:'member'}
+ })));
+ const receiptRequests:unknown[]=[];
+ await page.route('**/api/**',route=>{
+  const path=new URL(route.request().url()).pathname;
+  if(path==='/api/checkout/receipt')receiptRequests.push(route.request().postDataJSON());
+  return route.fulfill({json:path==='/api/checkout/launch'||path==='/api/checkout/receipt'?order:{}});
+ });
+ await page.goto('/#pay?orderId='+orderId+'&ticket=mock-browser-ticket&app=preview');
+ await expect(page.getByRole('button',{name:'결제',exact:true})).toBeVisible();
+ await page.goto('/?checkout=return&orderId='+orderId);
+ const link=page.getByRole('link',{name:'광고 만들기 계속',exact:true});
+ await expect(link).toHaveAttribute('href','com.selluplabs.aiadcast.next.preview://checkout/return');
+ await page.reload();
+ await expect(link).toHaveAttribute('href','com.selluplabs.aiadcast.next.preview://checkout/return');
+ expect(receiptRequests).toEqual(Array(2).fill({orderId,ticket:'mock-browser-ticket'}));
+});

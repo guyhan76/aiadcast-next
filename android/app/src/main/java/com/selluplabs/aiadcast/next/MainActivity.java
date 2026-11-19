@@ -300,9 +300,8 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private boolean checkoutReturn(Intent intent) {
-        return BuildConfig.APPLICATION_ID.equals("com.selluplabs.aiadcast.next.demo")
-            && intent != null && Intent.ACTION_VIEW.equals(intent.getAction())
-            && CheckoutReturnPolicy.valid(intent.getDataString());
+        return intent != null && Intent.ACTION_VIEW.equals(intent.getAction())
+            && CheckoutReturnPolicy.valid(intent.getDataString(), BuildConfig.APPLICATION_ID);
     }
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);

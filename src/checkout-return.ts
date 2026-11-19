@@ -2,6 +2,8 @@ import {apiIdentity} from './api-origin';
 import {betaSession} from './beta-session';
 import type {TestOrder} from './account-client';
 export const DEMO_CHECKOUT_RETURN='aiadcast-demo://checkout/return';
+export const PREVIEW_PACKAGE='com.selluplabs.aiadcast.next.preview';
+export const PREVIEW_CHECKOUT_RETURN=PREVIEW_PACKAGE+'://checkout/return';
 const key='aiadcast.checkout-continuation';
 export type Continuation={orderId:string;userId:string;origin:string;route:'create'|'studio'|'editor';created:number};
 export function rememberCheckout(order:TestOrder,route:string){
