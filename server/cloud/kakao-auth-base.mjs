@@ -45,10 +45,10 @@ export class KakaoAuth {
     async kakaoLaunch(state) {
         if (!this.provider || !valid(state))
             fail('KAKAO_FLOW_INVALID', 401);
-        const row = await this.db.prepare("SELECT r.intent FROM kakao_requests r JOIN kakao_handoffs h ON h.state_hash=r.state_hash WHERE r.state_hash=? AND r.expires>? AND h.phase='pending'").get(digest(state), this.now());
+        const row = await this.db.prepare("SELECT 1 FROM kakao_requests r JOIN kakao_handoffs h ON h.state_hash=r.state_hash WHERE r.state_hash=? AND r.expires>? AND h.phase='pending'").get(digest(state), this.now());
         if (!row)
             fail('KAKAO_FLOW_INVALID', 401);
-        return { state, intent: row.intent, javascriptKey: this.provider.javascriptKey, redirectUri: new URL('/api/auth/kakao/callback', this.provider.redirectUri).href };
+        return this.provider.authorizationUrl(state);
     }
     async receiveKakao(state, code, error) {
         if (!this.provider || !valid(state))

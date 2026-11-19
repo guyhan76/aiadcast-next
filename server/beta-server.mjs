@@ -12,7 +12,6 @@ import {BetaStore} from './beta-store.mjs';
 import {GenerationService,ApiFailure} from './generation-service.mjs';
 import {OpenAIImageAdapter,ProviderFailure} from './openai-image-adapter.mjs';
 import {assistCopy} from './text-assistant.mjs';
-import {kakaoLaunchPage,kakaoPagePolicy} from './kakao-launch-page.mjs';
 import {kakaoReturnPage} from './google-return-page.mjs';
 import {KakaoAuth} from './kakao-auth.mjs';
 import {GoogleAuth} from './google-auth.mjs';
@@ -49,8 +48,10 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
   try {
    const url=new URL(req.url,origin);
    if(req.method==='GET'&&url.pathname==='/api/auth/kakao/authorize'){
-    const launch=kakao.kakaoLaunch(url.searchParams.get('state'));
-    res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':kakaoPagePolicy,'X-Content-Type-Options':'nosniff'});res.end(kakaoLaunchPage(launch));return;
+    const location=kakao.kakaoLaunch(url.searchParams.get('state'));
+    res.writeHead(303,{Location:location,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});
+    res.end();
+    return;
    }
    if(req.method==='GET'&&url.pathname==='/api/auth/kakao/callback'){
     const target=await kakao.receiveKakao(url.searchParams.get('state'),url.searchParams.get('code'),url.searchParams.get('error'));

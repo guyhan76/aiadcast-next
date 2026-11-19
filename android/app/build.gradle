@@ -12,11 +12,11 @@ if (publicApiOrigin) {
     publicApiOrigin = publicApiOrigin.replaceAll('/$', '')
 }
 
-def buildVersionCode = providers.gradleProperty('AIADCAST_BUILD_VERSION_CODE').getOrElse('115').toInteger()
+def buildVersionCode = providers.gradleProperty('AIADCAST_BUILD_VERSION_CODE').getOrElse('116').toInteger()
 if (buildVersionCode < 83 || buildVersionCode > 2100000000) {
     throw new GradleException('AIADCAST_BUILD_VERSION_CODE must be between 83 and 2100000000.')
 }
-def buildVersionName = providers.gradleProperty('AIADCAST_BUILD_VERSION_NAME').getOrElse('0.2.113')
+def buildVersionName = providers.gradleProperty('AIADCAST_BUILD_VERSION_NAME').getOrElse('0.2.114')
 
 android {
     sourceSets.main.res.srcDir('generated/launcher-res')
@@ -58,7 +58,7 @@ android {
             // Separate install/data from older Dev APKs with unknown signing keys.
             applicationIdSuffix '.preview'
             versionNameSuffix '-preview'
-            resValue 'string', 'app_name', 'aiadcast Preview'
+            resValue 'string', 'app_name', 'aiadcast'
             debuggable false
             signingConfig providers.gradleProperty('AIADCAST_SIGNED_PREVIEW').getOrElse('false') == 'true' ? signingConfigs.demo : signingConfigs.debug
             matchingFallbacks = ['debug']

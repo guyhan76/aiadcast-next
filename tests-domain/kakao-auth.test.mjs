@@ -17,7 +17,7 @@ function fixture(t) {
   let time = Date.now();
   const store = new BetaStore(dir, {now:() => time});
   t.after(() => {store.close(); rmSync(dir, {recursive:true, force:true});});
-  const provider = {javascriptKey:'fixture-js', redirectUri:origin + '/?kakao=1', subjectForCode:async () => '10001'};
+  const provider = {...kakaoProvider(env), subjectForCode:async () => '10001'};
   const auth = new KakaoAuth(store, {provider, now:() => time});
   async function complete(intent, header) {
     return auth.finishKakao({...auth.startKakao(intent, header), code:'fixture'}, header);
@@ -127,11 +127,17 @@ test('HTTP discovery, signup and authenticated session use the public app entry 
 
   for (const destination of ['web','com.selluplabs.aiadcast.next.preview']) {
     const flow = await (await post('start',{intent:'login',destination})).json();
-    const launch = await fetch(base + new URL(flow.url).pathname + '?state=' + flow.state);
-    assert.equal(launch.status,200);
+    const startUrl = new URL(flow.url);
+    const launch = await fetch(base + startUrl.pathname + startUrl.search, {redirect:'manual'});
+    assert.equal(launch.status,303);
     assert.equal(launch.headers.get('referrer-policy'),'no-referrer');
-    const page = await launch.text();
-    assert.ok(page.includes('Kakao.Auth.authorize') && page.includes('sha384-') && !page.includes(flow.proof));
+    assert.equal(launch.headers.get('cache-control'),'no-store');
+    const authorize = new URL(launch.headers.get('location'));
+    assert.equal(authorize.origin + authorize.pathname,'https://kauth.kakao.com/oauth/authorize');
+    assert.deepEqual(Object.fromEntries(authorize.searchParams), {
+      client_id:'fixture-rest', redirect_uri:origin+'/api/auth/kakao/callback',
+      response_type:'code', prompt:'login', state:flow.state
+    });
     const finish = await fetch(base+'/api/auth/kakao/callback?state='+flow.state+'&code=fixture',{redirect:'manual'});
     const target = destination==='web' ? finish.headers.get('location') : await finish.text();
     const pattern = destination==='web' ? /^\/#kakao-return\// : /com\.selluplabs\.aiadcast\.next\.preview:\/\/kakao\/return#/;
