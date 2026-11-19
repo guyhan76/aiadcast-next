@@ -9,7 +9,7 @@ export function kakaoProvider(env, fetchImpl = fetch) {
   const redirectUri = origin.origin + '/?kakao=1';
   const callbackUri = new URL('/api/auth/kakao/callback', origin).href;
   return {
-    javascriptKey, redirectUri,
+    javascriptKey, redirectUri, callbackUri,
     authorizationUrl(state) {
       const url = new URL('https://kauth.kakao.com/oauth/authorize');
       url.search = new URLSearchParams({

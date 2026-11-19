@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { ApiFailure } from '../generation-service.mjs';
 import { ProviderFailure } from '../openai-image-adapter.mjs';
 import { kakaoReturnPage } from '../google-return-page.mjs';
+import { kakaoTalkPage, kakaoTalkCsp } from '../kakao-talk-page.mjs';
 import { KakaoAuth } from './kakao-auth-base.mjs';
 import { GoogleAuth } from './google-auth-base.mjs';
 import { googleReturnPage, googleUiLanguage, googleReturnCsp } from '../google-return-page.mjs';
@@ -92,6 +93,12 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
         try {
             const url = new URL(req.url, origin);
             if (req.method === 'GET' && url.pathname === '/api/auth/kakao/authorize') {
+                if (url.searchParams.get('talk') === '1') {
+                    const launch = await kakao.kakaoLaunch(url.searchParams.get('state'), true);
+                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': kakaoTalkCsp, 'X-Content-Type-Options': 'nosniff' });
+                    res.end(kakaoTalkPage(launch));
+                    return;
+                }
                 const location = await kakao.kakaoLaunch(url.searchParams.get('state'));
                 res.writeHead(303, { Location: location, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
                 res.end();

@@ -53,6 +53,7 @@ import java.util.concurrent.Executors;
 public final class MainActivity extends ComponentActivity {
     private static final String APP_ORIGIN = "https://appassets.androidplatform.net";
     private static final int PICK_FILE = 71;
+    private static final int KAKAO_TALK_LOGIN = 72;
     private WebView webView;
     private ValueCallback<Uri[]> filePicker;
     private boolean filePickerMultiple;
@@ -371,12 +372,46 @@ public final class MainActivity extends ComponentActivity {
                 .put("owner",request.getString("owner")).put("intent",request.getString("intent"));
             if (!getPreferences(MODE_PRIVATE).edit().putString("kakao-flow",flow.toString()).commit()) throw new IllegalStateException();
             refreshGoogleBridge();
-            Uri launch=Uri.parse(apiOrigin+"/api/auth/kakao/authorize?state="+state);
-            startActivity(new Intent(Intent.ACTION_VIEW,launch).addCategory(Intent.CATEGORY_BROWSABLE).setPackage("com.android.chrome"));
+            if (KakaoTalkLoginActivity.available(getPackageManager())) {
+                Intent launch = new Intent(this, KakaoTalkLoginActivity.class)
+                    .putExtra("state", state).putExtra("origin", apiOrigin).putExtra("expires", expires);
+                startActivityForResult(launch, KAKAO_TALK_LOGIN);
+            } else {
+                openKakaoBrowser(state);
+            }
         } catch(Exception unavailable) {
             clearPending("kakao-flow",request.optString("state"));
             webView.evaluateJavascript("window.dispatchEvent(new Event('aiadcast-kakao-open-failed'));",null);
         }
+    }
+    private void openKakaoBrowser(String state) {
+        Uri launch = Uri.parse(apiOrigin + "/api/auth/kakao/authorize?state=" + state);
+        startActivity(new Intent(Intent.ACTION_VIEW, launch).addCategory(Intent.CATEGORY_BROWSABLE));
+    }
+
+    private void finishKakaoTalk(int result, Intent data) {
+        if (data == null) return;
+        try {
+            JSONObject flow = new JSONObject(pendingFlow("kakao-flow"));
+            String state = flow.getString("state");
+            if (!state.equals(data.getStringExtra("state"))) return;
+            if (result == RESULT_OK && recordKakaoReturn(data)) { kakaoResume(); return; }
+            if (result == KakaoTalkLoginActivity.USE_BROWSER) {
+                try { openKakaoBrowser(state); return; }
+                catch (android.content.ActivityNotFoundException unavailable) { /* Report in the app. */ }
+            }
+            flow.put("outcome", result == RESULT_CANCELED ? "cancelled" : "failed");
+            if (getPreferences(MODE_PRIVATE).edit().putString("kakao-flow", flow.toString()).commit()) {
+                publishKakaoFlow(flow);
+                kakaoResume();
+            }
+        } catch (org.json.JSONException obsolete) { /* No matching pending flow. */ }
+    }
+
+    private void publishKakaoFlow(JSONObject flow) {
+        refreshGoogleBridge();
+        if (bridgeReady) webView.evaluateJavascript(
+            "if(window.__AIADCAST_KAKAO_NATIVE__)window.__AIADCAST_KAKAO_NATIVE__.pending=" + flow + ";", null);
     }
     private boolean recordKakaoReturn(Intent intent) {
         if (intent==null || !Intent.ACTION_VIEW.equals(intent.getAction()) || intent.getData()==null) return false;
@@ -389,10 +424,7 @@ public final class MainActivity extends ComponentActivity {
             if (!receipt.substring(0,43).equals(flow.optString("state"))) return false;
             flow.put("receipt",receipt.substring(44));
             if (!getPreferences(MODE_PRIVATE).edit().putString("kakao-flow",flow.toString()).commit()) return false;
-            if (bridgeReady) {
-                refreshGoogleBridge();
-                webView.evaluateJavascript("if(window.__AIADCAST_KAKAO_NATIVE__)window.__AIADCAST_KAKAO_NATIVE__.pending="+flow.toString()+";",null);
-            }
+            publishKakaoFlow(flow);
             return true;
         } catch(Exception invalid) {return false;}
     }
@@ -581,6 +613,7 @@ public final class MainActivity extends ComponentActivity {
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if (request == KAKAO_TALK_LOGIN) { finishKakaoTalk(result, data); return; }
         if (request == PICK_FILE && filePicker != null) {
             ValueCallback<Uri[]> callback = filePicker; filePicker = null;
             Uri[] selected = null;

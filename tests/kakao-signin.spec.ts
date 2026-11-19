@@ -92,3 +92,26 @@ test('Android starts in its app, resumes from the native return and signs in onc
   expect(f.starts).toEqual(['login']);
   expect(f.polls.filter(body=>body.receipt===receipt)).toHaveLength(1);
 });
+
+test('returning from KakaoTalk after cancellation does not start a browser login or issue a session',async({page})=>{
+  const f=await api(page,true);
+  await page.addInitScript(()=>{
+    const host=window as any;
+    host.__AIADCAST_API_ORIGIN__='https://kakao-preview.example';
+    host.__AIADCAST_KAKAO_NATIVE__={packageId:'com.selluplabs.aiadcast.next.preview'};
+    host.AiadcastNative={postMessage:(message:string)=>{
+      const payload=JSON.parse(message);
+      if(payload.type==='kakao-open')host.__AIADCAST_KAKAO_NATIVE__.pending=payload;
+    }};
+  });
+  await page.goto('/#login');
+  await page.getByRole('button',{name:'카카오로 계속하기'}).click();
+  await expect(page.getByRole('status')).toContainText('카카오 인증');
+  await page.evaluate(()=>{
+    (window as any).__AIADCAST_KAKAO_NATIVE__.pending.outcome='cancelled';
+    window.dispatchEvent(new Event('aiadcast-kakao-return'));
+  });
+  await expect(page.getByRole('status')).toContainText('취소');
+  expect(f.starts).toEqual(['login']);
+  expect(f.polls).toHaveLength(0);
+});
