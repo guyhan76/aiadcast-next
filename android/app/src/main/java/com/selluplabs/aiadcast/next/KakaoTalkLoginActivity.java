@@ -1,6 +1,7 @@
 package com.selluplabs.aiadcast.next;
 
-import android.app.Activity;
+import androidx.activity.ComponentActivity;
+import androidx.activity.OnBackPressedCallback;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -14,7 +15,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 /** Hosts the official SDK on the registered HTTPS origin, without the editor's native bridge. */
-public final class KakaoTalkLoginActivity extends Activity {
+public final class KakaoTalkLoginActivity extends ComponentActivity {
     private static final String TALK_PACKAGE = "com.kakao.talk";
     private static final String LOGIN_ACTION = "com.kakao.talk.intent.action.CAPRI_LOGGED_IN_ACTIVITY";
     static final int USE_BROWSER = RESULT_FIRST_USER;
@@ -35,10 +36,9 @@ public final class KakaoTalkLoginActivity extends Activity {
         long remaining = getIntent().getLongExtra("expires", 0) - System.currentTimeMillis();
         // An external callback can clear this activity before MainActivity receives its new intent.
         // Only an explicit back action should cancel the pending login in that case.
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> complete(RESULT_CANCELED));
-        }
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override public void handleOnBackPressed() { complete(RESULT_CANCELED); }
+        });
         if (saved != null || state == null || !state.matches("[A-Za-z0-9_-]{43}") ||
             origin == null || !origin.startsWith("https://") || remaining <= 0) {
             complete(FAILED);
@@ -149,9 +149,6 @@ public final class KakaoTalkLoginActivity extends Activity {
             complete(FAILED);
         }
     }
-
-    @SuppressWarnings("deprecation")
-    @Override public void onBackPressed() { complete(RESULT_CANCELED); }
 
     private Intent resultIntent() { return new Intent().putExtra("state", state); }
     private void complete(int result) {
