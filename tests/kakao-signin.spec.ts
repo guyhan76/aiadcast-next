@@ -28,6 +28,25 @@ async function api(page:Page,enabled:boolean,status:'verified'|'unknown'|'cancel
   });
   return {starts,polls};
 }
+test('Google and Kakao share button bounds and show their own brand symbols',async({page})=>{
+  await api(page,true);
+  await page.goto('/#login');
+  const boxes=[];
+  for (const [name,color] of [['Google로 계속하기','rgb(255, 255, 255)'],['카카오로 계속하기','rgb(254, 229, 0)']]) {
+    const button=page.getByRole('button',{name,exact:true});
+    await expect(button).toBeVisible();
+    await expect(button).toHaveCSS('height','52px');
+    await expect(button).toHaveCSS('border-radius','12px');
+    await expect(button).toHaveCSS('background-color',color);
+    const icon=button.locator('img[alt=""]');
+    await expect(icon).toBeVisible();
+    await expect.poll(()=>icon.evaluate(image=>(image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    boxes.push(await button.boundingBox());
+  }
+  expect(boxes[0]?.width).toBe(boxes[1]?.width);
+  expect(boxes[0]?.x).toBe(boxes[1]?.x);
+});
+
 test('Kakao web callback restores the initiating member and clears the browser receipt',async({page})=>{
   const f=await api(page,true);
   await page.goto('/#login');

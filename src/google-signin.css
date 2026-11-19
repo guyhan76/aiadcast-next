@@ -6,3 +6,32 @@
 .signin-options{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px 22px;margin-top:20px}
 .signin-options>a,.signin-options .ui-language-switch{display:inline-flex;align-items:center;min-height:44px;font-size:14px;color:#545454}
 .signin-options>a{text-decoration:underline;text-underline-offset:3px}
+
+/* The two sign-in providers share one label center and one leading icon column. */
+.social-login-button {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 20px;
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  height: 52px;
+  min-height: 52px;
+  padding: 0 16px;
+  border-radius: 12px;
+  text-align: center;
+  font: 600 16px/1.4 system-ui, sans-serif;
+}
+.kakao-continue.social-login-button {
+  border: 1px solid transparent;
+  color: rgb(0 0 0 / 85%);
+}
+.social-login-button img {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+.social-login-button:focus-visible {
+  outline: 3px solid #202124;
+  outline-offset: 3px;
+}

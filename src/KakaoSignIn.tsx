@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState,type ReactNode} from 'react';
+import kakaoSymbol from './assets/kakao-signin-symbol.svg?inline';
 import {BrandLogo} from './BrandLogo';
 import {betaSession} from './beta-session';
 import {prepareGoogleConnection} from './google-readiness';
@@ -28,7 +29,7 @@ export function KakaoButton({intent,disabled=false}:{intent:KakaoIntent;disabled
   }
   if(!available)return null;
   const label=intent==='link'?t('이 계정에 카카오 연결','Link Kakao to this account'):intent==='signup'?t('카카오로 새 계정 만들기','Create an account with Kakao'):t('카카오로 계속하기','Continue with Kakao');
-  return <><button className="kakao-continue" type="button" onClick={()=>void open()} disabled={disabled||busy}>{label}</button>{failed&&<p role="alert">{t('카카오 로그인을 열지 못했습니다. 다시 시도해 주세요.','Could not open Kakao. Please try again.')}</p>}</>;
+  return <><button className={intent==='login'?'kakao-continue social-login-button':'kakao-continue'} type="button" onClick={()=>void open()} disabled={disabled||busy}>{intent==='login'&&<img src={kakaoSymbol} alt="" width="20" height="20"/>}{label}</button>{failed&&<p role="alert">{t('카카오 로그인을 열지 못했습니다. 다시 시도해 주세요.','Could not open Kakao. Please try again.')}</p>}</>;
 }
 
 function KakaoReturn() {
