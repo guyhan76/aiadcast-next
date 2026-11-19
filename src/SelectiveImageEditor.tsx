@@ -154,7 +154,7 @@ export function SelectiveImageEditor({source,project,quote,onClose,uploaded}:{so
   </>}
   {working&&<div role="status"><p>{job?jobStatus[job.state]:t('수정 요청 확인 중…','Checking your edit…')}</p>{manualCheck&&<button disabled={busy} onClick={()=>void recover()}>{t('결과 확인','Check result')}</button>}</div>}
   {result&&<div className="edit-decisions">
-   <button className="primary-action" disabled={busy||!preservation?.changedSelectedPixels} onClick={()=>void save()}>{saved?t('이미지 다시 저장','Download again'):t('수정본 사용 · 저장','Accept and save edit')}</button>
+   <button className="primary-action" disabled={busy||!preservation?.changedSelectedPixels} onClick={()=>void save()}>{saved?t('다시 저장','Save again'):t('수정본 저장','Save edit')}</button>
    {job?.state==='ready'&&<button disabled={busy} onClick={()=>void reject()}>{t('원본 유지','Keep original')}</button>}
    {!preservation?.changedSelectedPixels&&<p role="alert">{t('수정 결과를 확인하지 못했습니다.','Could not verify the edit.')} <button onClick={()=>void recover()}>{t('다시 확인','Retry')}</button></p>}
   </div>}

@@ -15,7 +15,17 @@ for(const language of ['ko','en'] as const)test(`accepted ad hides text editor a
  p.generated.marketingPlan=marketingPlanForProject(p);
  const layer={id:'saved-layer',text:'Preserved edit',x:0,y:0,width:1,height:1,size:.05,color:'#ffffff',cover:'#ff0000',bold:true,align:'left' as const};p.textEdit={source:structuredClone(p.product!),layers:[layer],saved:[{...layer,text:'Last saved copy'}]};
  await restoreOwnedWorkspace(page,p,owner);const accepted=page.locator('.accepted-ad');await expect(accepted).toBeVisible();await expect(page.locator('.dimension-guide')).toHaveCount(0);await expect(page.locator('.text-layer-section')).toHaveCount(0);await expect(page.getByText('글씨 편집',{exact:true})).toHaveCount(0);await expect(page.getByText(/글씨 편집 내용이 보관/)).toHaveCount(0);
- await expect(page.locator('.marketing-analysis,.marketing-keywords,.ai-recommendation')).toHaveCount(0);await expect(page.getByText(/API 예약|API reservation|계정 추천 월 한도|Monthly recommendation limit/)).toHaveCount(0);expect(recommendationRequests).toBe(0);for(const width of [320,390,768]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);}await page.setViewportSize({width:test.info().project.name==='mobile'?390:1440,height:900});await page.screenshot({path:`/tmp/simple-result-${language}-${test.info().project.name}.png`,fullPage:true});
+ await expect(page.locator('.marketing-analysis,.marketing-keywords,.ai-recommendation')).toHaveCount(0);await expect(page.getByText(/API 예약|API reservation|계정 추천 월 한도|Monthly recommendation limit/)).toHaveCount(0);expect(recommendationRequests).toBe(0);for(const width of [320,360,390,768]){
+  await page.setViewportSize({width,height:900});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  const action=accepted.locator('.result-actions .primary-action');
+  await expect(action).toHaveText(language==='ko'?'저장 · 공유':'Save / share');
+  expect(await action.evaluate(button=>{
+   const range=document.createRange();range.selectNodeContents(button.lastChild!);
+   return range.getClientRects().length===1&&button.scrollWidth<=button.clientWidth;
+  })).toBe(true);
+ }
+ await page.setViewportSize({width:test.info().project.name==='mobile'?390:1440,height:900});await page.screenshot({path:`/tmp/simple-result-${language}-${test.info().project.name}.png`,fullPage:true});
  const variant=page.getByRole('button',{name:language==='ko'?'같은 상품으로 다른 시안 만들기':'Create another design for this product',exact:true});await expect(variant).toHaveCount(1);await expect(variant).toBeVisible();await expect(page.locator('.generate-button')).toHaveCount(0);expect(writes).toBe(0);
  await expect(accepted).toBeVisible();
  const button=accepted.getByRole('button',{name:language==='ko'?'이미지 저장 · 공유':'Save / share image',exact:true});await expect(button).toBeEnabled();
@@ -29,7 +39,7 @@ for(const language of ['ko','en'] as const)test(`accepted ad hides text editor a
  const native=await page.evaluate(()=>(window as any).nativeExports.find((m:any)=>m.type==='export'));
  expect(native.owner).toContain(owner);expect(native.mime).toBe('image/png');
  expect(await sharp(Buffer.from(native.base64,'base64')).raw().toBuffer()).toEqual(pixels.data);
- await button.click();expect(await page.evaluate(()=>(window as any).nativeExports.filter((m:any)=>m.type==='export').length)).toBe(1);
+ await button.click();await expect(button).toBeEnabled();expect(await page.evaluate(()=>(window as any).nativeExports.filter((m:any)=>m.type==='export').length)).toBe(1);
  await page.evaluate(id=>window.dispatchEvent(new CustomEvent('aiadcast-native-export',{detail:{status:'cancelled',requestId:id}})),native.requestId);
  await expect(page.getByText(language==='ko'?'저장을 취소했습니다.':'Save canceled.',{exact:true})).toBeVisible();
  await button.click();await expect.poll(()=>page.evaluate(()=>(window as any).nativeExports.filter((m:any)=>m.type==='export').length)).toBe(2);

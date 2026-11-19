@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {apiRequest} from './generation-client';
-import {betaSession,setBetaSession,type BetaSession} from './beta-session';
+import {installVerifiedLogin} from './verified-login';
+import {betaSession,type BetaSession} from './beta-session';
 import {apiIdentity} from './api-origin';
 import {signInBoundary} from './sign-in-boundary';
 import {consumeLoginDestination} from './login-navigation';
@@ -19,7 +20,7 @@ export function GoogleAccountRecovery({flow,onCancel}:{flow:GoogleLinkFlow;onCan
  useEffect(()=>{active.current=true;const guard=signInBoundary();let checking=false;
   const check=async()=>{if(checking||document.visibilityState!=='visible')return;checking=true;
    try{guard();if(flow.expires<=Date.now())throw Error('EXPIRED');const s=await apiRequest<Status>('/api/auth/google/link/status',flow);guard();if(!active.current)return;setStatus(s);
-    if(s.state==='waiting'){const r=await apiRequest<{state:'pending'|'verified';session?:BetaSession}>('/api/auth/google/link/complete',flow);guard();if(!active.current)return;if(r.state==='verified'&&r.session){clearGoogleLink(flow);setBetaSession(r.session,consumeLoginDestination());}}
+    if(s.state==='waiting'){const r=await apiRequest<{state:'pending'|'verified';session?:BetaSession}>('/api/auth/google/link/complete',flow);guard();if(!active.current)return;if(r.state==='verified'&&r.session){clearGoogleLink(flow);installVerifiedLogin(r.session,consumeLoginDestination(),'google');}}
    }catch{if(active.current)setError(true);}finally{checking=false;}
   };
   const invalidate=()=>{active.current=false;if(!betaSession())onCancel();};window.addEventListener('aiadcast-session-change',invalidate);

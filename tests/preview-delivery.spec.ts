@@ -190,7 +190,7 @@ test('inspect a rejected pose without charging or accepting it, and keep the ins
  page.once('dialog',d=>d.accept());await dialog.getByRole('button',{name:'수정하기 · 10 크레딧'}).click();
  await expect(dialog.getByLabel('원본과 수정본 비교')).toBeVisible();await expect(dialog.getByText(/이전 자세의 흔적/)).toBeVisible();
  await expect(dialog.getByText(/두 번째 커리어.*누락/)).toBeVisible();await expect(dialog.getByText(/드론.*원본 2.*시안 1/)).toBeVisible();
- await expect(dialog.getByRole('button',{name:'수정본 사용 · 저장'})).toHaveCount(0);
+ await expect(dialog.getByRole('button',{name:'수정본 저장'})).toHaveCount(0);
  await expect(dialog.getByRole('button',{name:'영역 직접 선택'})).toHaveCount(0);
  await expect(dialog.getByLabel('원본과 수정본 비교')).toBeVisible();
  await expect(dialog.getByRole('textbox')).toHaveValue('인물 포즈 변경');expect(posts).toBe(1);
@@ -223,8 +223,18 @@ test('save a verified device edit and reopen its project without another generat
  page.once('dialog',d=>{expect(d.message()).toContain('이용권 1장');return d.accept();});
  await dialog.getByRole('button',{name:'수정하기 · 이용권 1장'}).click();
  await expect(dialog.getByLabel('원본과 수정본 비교')).toBeVisible();
+ for(const width of [320,360,390]){
+  await page.setViewportSize({width,height:760});
+  const actions=dialog.locator('.edit-decisions>button');
+  const bounds=await actions.evaluateAll(buttons=>buttons.map(b=>{
+   const range=document.createRange();range.selectNodeContents(b);
+   return {y:b.getBoundingClientRect().top,lines:range.getClientRects().length,fits:b.scrollWidth<=b.clientWidth};
+  }));
+  expect(bounds).toHaveLength(2);
+  expect(bounds.every(b=>b.lines===1&&b.fits&&b.y===bounds[0].y)).toBe(true);
+ }
  const download=page.waitForEvent('download');
- await dialog.getByRole('button',{name:'수정본 사용 · 저장'}).click();
+ await dialog.getByRole('button',{name:'수정본 저장'}).click();
  expect((await download).suggestedFilename()).toMatch(/^aiadcast-[0-9a-f]{8}-01\.png$/);
  await dialog.getByRole('button',{name:'닫기',exact:true}).click();
  await page.locator('.project-tile').filter({hasText:'Harbor · 수정 사본'}).click();

@@ -391,7 +391,7 @@ for(const native of [false,true])test('instruction editing, credit consent and i
  await expect(retry).toBeVisible();await expect(retry).toBeEnabled();
  // The timeout stops background checks. A manual check only reads the same job.
  manualReady=true;await retry.click();
- await expect(edit.getByRole('img',{name:'수정 결과'})).toBeVisible();await expect(edit.getByRole('button',{name:'수정본 사용 · 저장'})).toBeEnabled();
+ await expect(edit.getByRole('img',{name:'수정 결과'})).toBeVisible();await expect(edit.getByRole('button',{name:'수정본 저장'})).toBeEnabled();
  expect(edits).toBe(1);await expect(edit.getByText('슬라이드를 움직여 보세요')).toBeVisible();
  const slider=edit.getByRole('slider',{name:'원본과 수정본 비교'});
  const previewImage=edit.locator('.selective-wipe');

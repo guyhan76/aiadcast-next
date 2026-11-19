@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS member_events (
  receipt uuid NOT NULL, kind text NOT NULL CHECK(kind IN ('joined','requested','retry','completed')),
  happened_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(receipt,kind)
 );
+-- Historical receipt UUIDs remain valid for accounts that already received them.
+ALTER TABLE member_events ADD COLUMN IF NOT EXISTS receipt_no text;
+CREATE UNIQUE INDEX IF NOT EXISTS withdrawal_receipt_number ON member_events(receipt_no) WHERE kind='requested';
 CREATE TABLE IF NOT EXISTS deletion_requests (
  user_id text PRIMARY KEY REFERENCES users(id), receipt uuid NOT NULL UNIQUE,
  requested_at timestamptz NOT NULL DEFAULT now()

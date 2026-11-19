@@ -52,10 +52,20 @@ CREATE TABLE IF NOT EXISTS complaint_daily_numbers (
  last_number integer NOT NULL CHECK(last_number>0)
 );
 ALTER TABLE complaint_daily_numbers ENABLE ROW LEVEL SECURITY;
+-- One transactional sequence covers service receipts issued on the same Seoul day.
+CREATE OR REPLACE FUNCTION next_service_receipt(issued_at timestamptz, separator text) RETURNS text
+LANGUAGE plpgsql SET search_path=pg_catalog,aiadcast_accounts AS $receipt$
+DECLARE business_date date := (issued_at AT TIME ZONE 'Asia/Seoul')::date; ordinal integer;
+BEGIN
+ INSERT INTO complaint_daily_numbers(business_day,last_number) VALUES(business_date,1)
+ ON CONFLICT(business_day) DO UPDATE SET last_number=complaint_daily_numbers.last_number+1
+ RETURNING last_number INTO ordinal;
+ RETURN to_char(business_date,'YYYYMMDD')||separator||lpad(ordinal::text,greatest(4,length(ordinal::text)),'0');
+END $receipt$;
+REVOKE ALL ON FUNCTION next_service_receipt(timestamptz,text) FROM PUBLIC;
 ALTER TABLE protected_complaints ADD COLUMN IF NOT EXISTS receipt_no text;
 CREATE OR REPLACE FUNCTION assign_complaint_number() RETURNS trigger
 LANGUAGE plpgsql SET search_path=pg_catalog,aiadcast_accounts AS $number$
-DECLARE business_date date; ordinal integer;
 BEGIN
  IF TG_OP='UPDATE' THEN
   IF OLD.receipt_no IS NOT NULL THEN NEW.receipt_no:=OLD.receipt_no; RETURN NEW; END IF;
@@ -63,11 +73,7 @@ BEGIN
   SELECT receipt_no INTO NEW.receipt_no FROM protected_complaints WHERE case_id=NEW.case_id;
   IF NEW.receipt_no IS NOT NULL THEN RETURN NEW; END IF;
  END IF;
- business_date:=(NEW.received_at AT TIME ZONE 'Asia/Seoul')::date;
- INSERT INTO complaint_daily_numbers(business_day,last_number) VALUES(business_date,1)
- ON CONFLICT(business_day) DO UPDATE SET last_number=complaint_daily_numbers.last_number+1
- RETURNING last_number INTO ordinal;
- NEW.receipt_no:=to_char(business_date,'YYYYMMDD')||'-'||lpad(ordinal::text,greatest(4,length(ordinal::text)),'0');
+ NEW.receipt_no:=next_service_receipt(NEW.received_at,'-');
  RETURN NEW;
 END $number$;
 REVOKE ALL ON FUNCTION assign_complaint_number() FROM PUBLIC;
