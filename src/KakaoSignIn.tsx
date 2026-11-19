@@ -45,7 +45,9 @@ function KakaoReturn() {
       if(!live||active||document.visibilityState==='hidden')return;
       if(!flow||pendingKakao()?.state!==flow.state||Date.now()>=flow.expires){stop('failed');return;}
       clearTimeout(timer);
-      if(!pendingKakao()?.receipt){
+      const current=pendingKakao();
+      if(current?.outcome){clearKakao(flow);stop(current.outcome);return;}
+      if(!current?.receipt){
         timer=setTimeout(()=>void check(),Math.max(1,flow.expires-Date.now()));return;
       }
       active=true;

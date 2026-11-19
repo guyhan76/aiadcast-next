@@ -42,12 +42,17 @@ export class KakaoAuth {
             return { state, proof, expires, url: new URL('/api/auth/kakao/authorize?state=' + state, this.provider.redirectUri).href };
         return { state, proof, expires, javascriptKey: this.provider.javascriptKey, redirectUri: this.provider.redirectUri };
     }
-    async kakaoLaunch(state) {
+    async kakaoLaunch(state, throughTalk = false) {
         if (!this.provider || !valid(state))
             fail('KAKAO_FLOW_INVALID', 401);
-        const row = await this.db.prepare("SELECT 1 FROM kakao_requests r JOIN kakao_handoffs h ON h.state_hash=r.state_hash WHERE r.state_hash=? AND r.expires>? AND h.phase='pending'").get(digest(state), this.now());
+        const row = await this.db.prepare("SELECT h.destination FROM kakao_requests r JOIN kakao_handoffs h ON h.state_hash=r.state_hash WHERE r.state_hash=? AND r.expires>? AND h.phase='pending'").get(digest(state), this.now());
         if (!row)
             fail('KAKAO_FLOW_INVALID', 401);
+        if (throughTalk) {
+            if (row.destination === 'web')
+                fail('KAKAO_DESTINATION_INVALID', 400);
+            return { state, javascriptKey: this.provider.javascriptKey, callbackUri: this.provider.callbackUri };
+        }
         return this.provider.authorizationUrl(state);
     }
     async receiveKakao(state, code, error) {

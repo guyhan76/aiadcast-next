@@ -6,7 +6,7 @@ import {offlineDemo} from './demo-mode';
 
 export type KakaoIntent = 'login'|'link'|'signup';
 type Start = {state:string;proof:string;expires:number;url:string};
-export type PendingKakao = Omit<Start,'url'> & {receipt?:string;intent:KakaoIntent;owner:string;origin:string;destination:string};
+export type PendingKakao = Omit<Start,'url'> & {receipt?:string;outcome?:'cancelled'|'failed';intent:KakaoIntent;owner:string;origin:string;destination:string};
 type Result = {state:'pending'|'cancelled'|'failed'|'unknown'|'conflict'} | {state:'verified';session:BetaSession};
 type Host = Window & {AiadcastNative?:{postMessage:(message:string)=>void};__AIADCAST_KAKAO_NATIVE__?:{packageId:string;pending?:PendingKakao}};
 const host = window as Host;
@@ -25,7 +25,8 @@ function stored():PendingKakao|undefined {
   try {
     const local=JSON.parse(sessionStorage.getItem(key) ?? 'null') as PendingKakao|null;
     const native=host.__AIADCAST_KAKAO_NATIVE__?.pending;
-    return local && native?.state===local.state && native.receipt ? {...local,receipt:native.receipt} : local ?? native;
+    if (local && native?.state === local.state) return {...local, receipt:native.receipt ?? local.receipt, outcome:native.outcome};
+    return local ?? native;
   }
   catch { return; }
 }

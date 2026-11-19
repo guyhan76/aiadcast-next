@@ -75,6 +75,7 @@ s=s.replace("import {recommendationPolicyFromEnv} from './recommendations/policy
 s=s.replace("from './readiness-observation.mjs'","from '../readiness-observation.mjs'");
 s=s.replace("from './submission-observation.mjs'","from '../submission-observation.mjs'");
 s=s.replace("from './build-info.mjs'","from '../build-info.mjs'");
+s=s.replace("from './kakao-talk-page.mjs'","from '../kakao-talk-page.mjs'");
 s=s.replaceAll("from './google-return-page.mjs'","from '../google-return-page.mjs'");
 s=s.replace("from './play-billing.mjs'","from '../play-billing.mjs'");
 s=s.replace("from './demo-support.mjs'","from '../demo-support.mjs'");

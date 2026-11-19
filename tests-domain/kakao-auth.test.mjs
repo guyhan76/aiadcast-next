@@ -138,6 +138,18 @@ test('HTTP discovery, signup and authenticated session use the public app entry 
       client_id:'fixture-rest', redirect_uri:origin+'/api/auth/kakao/callback',
       response_type:'code', prompt:'login', state:flow.state
     });
+    const talk = await fetch(base + startUrl.pathname + startUrl.search + '&talk=1');
+    if (destination === 'web') {
+      assert.equal(talk.status,400);
+    } else {
+      assert.equal(talk.status,200);
+      const page = await talk.text();
+      assert.match(page,/Kakao.Auth.authorize\(\{throughTalk:true/);
+      assert.ok(page.includes('data-state="'+flow.state+'"'));
+      assert.ok(page.includes('data-callback="'+origin+'/api/auth/kakao/callback"'));
+      assert.ok(!page.includes(flow.proof));
+      assert.ok(!page.includes('fixture-secret'));
+    }
     const finish = await fetch(base+'/api/auth/kakao/callback?state='+flow.state+'&code=fixture',{redirect:'manual'});
     const target = destination==='web' ? finish.headers.get('location') : await finish.text();
     const pattern = destination==='web' ? /^\/#kakao-return\// : /com\.selluplabs\.aiadcast\.next\.preview:\/\/kakao\/return#/;
