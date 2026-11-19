@@ -156,6 +156,19 @@ test('HTTP discovery, signup and authenticated session use the public app entry 
     assert.match(target,pattern);
     assert.ok(!target.includes(flow.proof));
     const receipt = target.split(flow.state+'.')[1].slice(0,43);
+    if (destination !== 'web') {
+      const cookie = finish.headers.get('set-cookie').split(';')[0];
+      assert.match(finish.headers.get('set-cookie'), /Secure; HttpOnly; SameSite=Lax/);
+      const resumed = await fetch(base + startUrl.pathname + startUrl.search, {
+        redirect:'manual',headers:{Cookie:cookie,'User-Agent':'Android WebView AiadcastKakaoReturn/1'}});
+      assert.equal(resumed.status,303);
+      assert.equal(resumed.headers.get('location'),'/api/auth/kakao/app-return#'+flow.state+'.'+receipt);
+      const duplicate = await fetch(base+'/api/auth/kakao/callback?state='+flow.state+'&code=fixture',{
+        redirect:'manual',headers:{'User-Agent':'Android WebView AiadcastKakaoReturn/1'}});
+      assert.equal(duplicate.headers.get('location'),resumed.headers.get('location'));
+      const otherBrowser = await fetch(base + startUrl.pathname + startUrl.search,{redirect:'manual'});
+      assert.equal(new URL(otherBrowser.headers.get('location')).origin,'https://kauth.kakao.com');
+    }
     assert.deepEqual(await (await post('poll',flow)).json(),{state:'pending'});
     const result = await (await post('poll',{...flow,receipt})).json();
     assert.equal(result.session.user.id,session.user.id);
@@ -189,4 +202,29 @@ test('Kakao cancellation and unknown accounts return once without creating a use
     assert.throws(()=>f.auth.pollKakao({...flow,receipt:reply.receipt}),/KAKAO_FLOW_INVALID/);
   }
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM users').get().n,0);
+});
+
+
+test('overlapping Android callbacks exchange once and only the linked member can resume in a second browser',async t=>{
+  const f=fixture(t);
+  const member=await f.complete('signup');
+  const flow=f.auth.startKakao('login',undefined,'com.selluplabs.aiadcast.next.preview');
+  let release, exchanges=0;
+  f.provider.subjectForCode=()=>{exchanges++;return new Promise(resolve=>{release=resolve;});};
+  const first=f.auth.receiveKakao(flow.state,'approved');
+  const duplicate=f.auth.receiveKakao(flow.state,'approved');
+  release('10001');
+  const [one,two]=await Promise.all([first,duplicate]);
+  assert.equal(exchanges,1);
+  assert.deepEqual(two,one);
+  assert.equal((await f.auth.receiveKakao(flow.state,'approved')).receipt,one.receipt);
+  assert.equal(exchanges,1);
+  f.provider.subjectForCode=async()=> '20002';
+  assert.equal((await f.auth.receiveKakao(flow.state,'second-browser')).receipt,undefined);
+  f.provider.subjectForCode=async()=> '10001';
+  assert.equal((await f.auth.receiveKakao(flow.state,'new-approval')).receipt,one.receipt);
+  assert.equal(f.auth.pollKakao(flow).state,'pending');
+  assert.equal(f.auth.pollKakao({...flow,receipt:one.receipt}).session.user.id,member.user.id);
+  assert.throws(()=>f.auth.pollKakao({...flow,receipt:two.receipt}),/KAKAO_FLOW_INVALID/);
+  assert.equal(f.auth.kakaoLaunch(flow.state),null);
 });

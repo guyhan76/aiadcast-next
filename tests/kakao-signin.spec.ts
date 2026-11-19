@@ -85,7 +85,10 @@ test('Android starts in its app, resumes from the native return and signs in onc
   await expect(page).toHaveURL(/#kakao-return$/);
   await expect(page.getByRole('status')).toContainText('카카오 인증');
   await page.evaluate(value=>{
-    (window as any).__AIADCAST_KAKAO_NATIVE__.pending.receipt=value;
+    const pending=(window as any).__AIADCAST_KAKAO_NATIVE__.pending;
+    pending.receipt=value;
+    pending.outcome='cancelled'; // A stale activity result can accompany a valid external return.
+    window.dispatchEvent(new Event('aiadcast-kakao-return'));
     window.dispatchEvent(new Event('aiadcast-kakao-return'));
   },receipt);
   await expect(page).toHaveURL(/#home$/,{timeout:14000});

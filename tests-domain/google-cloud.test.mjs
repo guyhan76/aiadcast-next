@@ -41,7 +41,9 @@ test('PostgreSQL Google identity transactions retain one account and original cr
    assert.equal(Number((await store.authenticate('Bearer '+session.token)).credits),19);
   }
   const app=await kakao.startKakao('login',undefined,'com.selluplabs.aiadcast.next.preview');
-  const reply=await kakao.receiveKakao(app.state,'fixture');
+  const [reply,duplicate]=await Promise.all([kakao.receiveKakao(app.state,'fixture'),kakao.receiveKakao(app.state,'fixture')]);
+  assert.equal(duplicate.receipt,reply.receipt);
+  assert.equal((await kakao.receiveKakao(app.state,'fixture')).receipt,reply.receipt);
   assert.deepEqual(await kakao.pollKakao(app),{state:'pending'});
   const signed=await kakao.pollKakao({...app,receipt:reply.receipt});
   assert.equal(signed.session.user.id,legacy.userId);

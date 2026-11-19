@@ -12,7 +12,7 @@ on:
       - '!scripts/check-live-web-release.mjs'
       - '!.github/workflows/**'
       - '.github/workflows/unified-preview.yml'
-    branches: [feat/patent-product-generation-20261011, feat/member-storage-20261115, feat/sport-industry-options-20261115, feat/dancesport-disciplines-20261115, feat/clean-projects-20261115, fix/campaign-type-examples-20261115, fix/restore-description-20261115, fix/original-downloads-20261115, feat/instruction-edit-projects-20261115, feat/download-selection-edit-comparison, feat/grounded-edit-result-gallery, feat/project-edit-file-entry, fix/character-precision-location, fix/pose-composite-review, fix/separate-person-and-sky, fix/production-pose-review, fix/precision-review-recovery, fix/precision-foreground-preservation, fix/download-original-20261117, feat/unified-project-cards-20261117, fix/project-original-share-20261117]
+    branches: [feat/patent-product-generation-20261011, feat/member-storage-20261115, feat/sport-industry-options-20261115, feat/dancesport-disciplines-20261115, feat/clean-projects-20261115, fix/campaign-type-examples-20261115, fix/restore-description-20261115, fix/original-downloads-20261115, feat/instruction-edit-projects-20261115, feat/download-selection-edit-comparison, feat/grounded-edit-result-gallery, feat/project-edit-file-entry, fix/character-precision-location, fix/pose-composite-review, fix/separate-person-and-sky, fix/production-pose-review, fix/precision-review-recovery, fix/precision-foreground-preservation, fix/download-original-20261118, feat/unified-project-cards-20261118, fix/project-original-share-20261118]
   workflow_dispatch:
 
 permissions:
@@ -73,7 +73,7 @@ jobs:
           ./gradlew --no-daemon testPreviewUnitTest lintPreview assemblePreview assemblePreviewAndroidTest \
             -PAIADCAST_SIGNED_PREVIEW=true \
             -PAIADCAST_API_ORIGIN=https://aiadcast-next.onrender.com \
-            -PAIADCAST_BUILD_VERSION_CODE=117 -PAIADCAST_BUILD_VERSION_NAME=0.2.115
+            -PAIADCAST_BUILD_VERSION_CODE=118 -PAIADCAST_BUILD_VERSION_NAME=0.2.116
       - name: Verify packaged version, certificate, alignment and source
         run: |
           set -euo pipefail
@@ -83,7 +83,7 @@ jobs:
           grep -Fx 'Signer #1 certificate SHA-256 digest: 7dc020bc774784d3df553c58c672f4210d232e2543004fd52ac9084943488b4e' "$RUNNER_TEMP/certificate.txt"
           "$build_tools/zipalign" -c -P 16 4 "$apk"
           "$build_tools/aapt" dump badging "$apk" > "$RUNNER_TEMP/package.txt"
-          grep -F "name='com.selluplabs.aiadcast.next.preview' versionCode='117' versionName='0.2.115-preview'" "$RUNNER_TEMP/package.txt"
+          grep -F "name='com.selluplabs.aiadcast.next.preview' versionCode='118' versionName='0.2.116-preview'" "$RUNNER_TEMP/package.txt"
           unzip -p "$apk" assets/native-build.json | jq -e --arg sha "$GITHUB_SHA" '.webBuild.commit == $sha and .webBuild.dirty == false'
           python3 - "$apk" <<'PY'
           import hashlib, json, sys, zipfile
@@ -99,10 +99,10 @@ jobs:
           grep -Fx "application-label:'aiadcast'" "$RUNNER_TEMP/package.txt"
           grep -q "^application-icon-" "$RUNNER_TEMP/package.txt"
           mkdir -p release
-          cp "$apk" release/aiadcast-0.2.115.apk
+          cp "$apk" release/aiadcast-0.2.116.apk
           cd release
-          zip -q -0 aiadcast-0.2.115.zip aiadcast-0.2.115.apk
-          sha256sum aiadcast-0.2.115.{apk,zip} > SHA256SUMS.txt
+          zip -q -0 aiadcast-0.2.116.zip aiadcast-0.2.116.apk
+          sha256sum aiadcast-0.2.116.{apk,zip} > SHA256SUMS.txt
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -180,6 +180,6 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/check-live-web-release.mjs "$GITHUB_SHA"
-          tag="preview-0.2.115-code117-${GITHUB_SHA:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          gh release create "$tag" release/aiadcast-0.2.115.apk release/aiadcast-0.2.115.zip release/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-            --title 'aiadcast 0.2.115 Preview (117)' --notes "Android Preview for testing. Verified source: $GITHUB_SHA. Certificate and APK checks passed."
+          tag="preview-0.2.116-code118-${GITHUB_SHA:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          gh release create "$tag" release/aiadcast-0.2.116.apk release/aiadcast-0.2.116.zip release/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title 'aiadcast 0.2.116 Preview (118)' --notes "Android Preview for testing. Verified source: $GITHUB_SHA. Certificate and APK checks passed."

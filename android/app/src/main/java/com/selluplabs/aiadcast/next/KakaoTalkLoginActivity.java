@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
+import android.webkit.CookieManager;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -18,7 +19,7 @@ public final class KakaoTalkLoginActivity extends Activity {
     private static final String LOGIN_ACTION = "com.kakao.talk.intent.action.CAPRI_LOGGED_IN_ACTIVITY";
     static final int USE_BROWSER = RESULT_FIRST_USER;
     static final int FAILED = RESULT_FIRST_USER + 1;
-    private String state, browserUrl, launchUrl, callbackUrl;
+    private String state, browserUrl, launchUrl, callbackUrl, returnUrl;
     private WebView authView;
     private boolean openedTalk;
     private final Runnable expire = () -> complete(FAILED);
@@ -32,7 +33,12 @@ public final class KakaoTalkLoginActivity extends Activity {
         state = getIntent().getStringExtra("state");
         String origin = getIntent().getStringExtra("origin");
         long remaining = getIntent().getLongExtra("expires", 0) - System.currentTimeMillis();
-        setResult(RESULT_CANCELED, resultIntent());
+        // An external callback can clear this activity before MainActivity receives its new intent.
+        // Only an explicit back action should cancel the pending login in that case.
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> complete(RESULT_CANCELED));
+        }
         if (saved != null || state == null || !state.matches("[A-Za-z0-9_-]{43}") ||
             origin == null || !origin.startsWith("https://") || remaining <= 0) {
             complete(FAILED);
@@ -41,7 +47,9 @@ public final class KakaoTalkLoginActivity extends Activity {
         browserUrl = origin + "/api/auth/kakao/authorize?state=" + state;
         launchUrl = browserUrl + "&talk=1";
         callbackUrl = origin + "/api/auth/kakao/callback";
+        returnUrl = origin + "/api/auth/kakao/app-return#";
         authView = new WebView(this);
+        authView.getSettings().setUserAgentString(authView.getSettings().getUserAgentString() + " AiadcastKakaoReturn/1");
         authView.getSettings().setJavaScriptEnabled(true);
         authView.getSettings().setAllowFileAccess(false);
         authView.getSettings().setAllowContentAccess(false);
@@ -56,30 +64,68 @@ public final class KakaoTalkLoginActivity extends Activity {
                 }
                 // Older servers redirect every launch to the account form. Open that flow in the default browser.
                 if (browserUrl.equals(url) || url.startsWith("https://kauth.kakao.com/oauth/authorize?")) {
-                    complete(USE_BROWSER);
+                    if (!acceptCallbackCookie()) complete(USE_BROWSER);
                     return true;
                 }
                 if (url.startsWith(callbackUrl + "?") && state.equals(uri.getQueryParameter("state"))) return false;
-                String prefix = BuildConfig.APPLICATION_ID + "://kakao/return#" + state + ".";
-                if (url.startsWith(prefix) && url.substring(prefix.length()).matches("[A-Za-z0-9_-]{43}")) {
-                    setResult(RESULT_OK, resultIntent().setAction(Intent.ACTION_VIEW).setData(uri));
-                    finish();
-                    return true;
-                }
+                if (acceptReturn(url)) return true;
                 complete(FAILED);
                 return true;
             }
+            @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) {
+                acceptReturn(url);
+            }
+            @Override public void onPageFinished(WebView view, String url) {
+                if (url.startsWith(callbackUrl + "?") || url.startsWith(returnUrl)) {
+                    if (!acceptReturn(url)) acceptCallbackCookie();
+                }
+            }
             @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (request.isForMainFrame()) complete(FAILED);
+                if (request.isForMainFrame() && !acceptCallbackCookie()) complete(FAILED);
             }
             @Override public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
-                if (request.isForMainFrame()) complete(FAILED);
+                if (request.isForMainFrame() && !acceptCallbackCookie()) complete(FAILED);
             }
         });
         authView.setFitsSystemWindows(true);
         setContentView(authView);
         authView.postDelayed(expire, remaining);
         authView.loadUrl(launchUrl);
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (callbackUrl != null) acceptCallbackCookie();
+    }
+
+    private boolean acceptCallbackCookie() {
+        String cookies = CookieManager.getInstance().getCookie(callbackUrl);
+        if (cookies == null) return false;
+        String name = "__Host-aiadcast-kakao-return=";
+        for (String cookie : cookies.split(";")) {
+            String item = cookie.trim();
+            if (item.startsWith(name) && acceptReturn(returnUrl + item.substring(name.length()))) return true;
+        }
+        return false;
+    }
+
+    private boolean acceptReturn(String url) {
+        String appLink = BuildConfig.APPLICATION_ID + "://kakao/return#";
+        String fragment = matchingReturn(url, returnUrl, appLink, state);
+        if (fragment == null) return false;
+        if (!isFinishing() && !isDestroyed()) {
+            setResult(RESULT_OK, resultIntent().setAction(Intent.ACTION_VIEW).setData(Uri.parse(appLink + fragment)));
+            finish();
+        }
+        return true;
+    }
+
+    static String matchingReturn(String url, String httpsPrefix, String appPrefix, String state) {
+        if (url == null) return null;
+        String prefix = url.startsWith(httpsPrefix) ? httpsPrefix : appPrefix;
+        if (!url.startsWith(prefix + state + ".")) return null;
+        String fragment = url.substring(prefix.length());
+        return fragment.substring(state.length() + 1).matches("[A-Za-z0-9_-]{43}") ? fragment : null;
     }
 
     private void launchTalk(String url) {
@@ -103,6 +149,9 @@ public final class KakaoTalkLoginActivity extends Activity {
             complete(FAILED);
         }
     }
+
+    @SuppressWarnings("deprecation")
+    @Override public void onBackPressed() { complete(RESULT_CANCELED); }
 
     private Intent resultIntent() { return new Intent().putExtra("state", state); }
     private void complete(int result) {

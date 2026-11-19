@@ -396,6 +396,7 @@ public final class MainActivity extends ComponentActivity {
             String state = flow.getString("state");
             if (!state.equals(data.getStringExtra("state"))) return;
             if (result == RESULT_OK && recordKakaoReturn(data)) { kakaoResume(); return; }
+            if (flow.has("receipt")) { kakaoResume(); return; }
             if (result == KakaoTalkLoginActivity.USE_BROWSER) {
                 try { openKakaoBrowser(state); return; }
                 catch (android.content.ActivityNotFoundException unavailable) { /* Report in the app. */ }
@@ -422,6 +423,7 @@ public final class MainActivity extends ComponentActivity {
         try {
             JSONObject flow=new JSONObject(pendingFlow("kakao-flow"));
             if (!receipt.substring(0,43).equals(flow.optString("state"))) return false;
+            flow.remove("outcome");
             flow.put("receipt",receipt.substring(44));
             if (!getPreferences(MODE_PRIVATE).edit().putString("kakao-flow",flow.toString()).commit()) return false;
             publishKakaoFlow(flow);

@@ -1,13 +1,19 @@
-import {createHash, randomBytes, randomUUID} from 'node:crypto';
+import {createHash, createHmac, randomBytes, randomUUID} from 'node:crypto';
 import {ApiFailure} from './generation-service.mjs';
 const digest = s => createHash('sha256').update(s).digest('hex');
 const secret = () => randomBytes(32).toString('base64url');
 const valid = s => typeof s === 'string' && /^[A-Za-z0-9_-]{43}$/.test(s);
 const fail = (code, status) => { throw new ApiFailure(code, status); };
 
+// Recover the same return receipt only after the original callback, or fresh verification of the same Kakao member.
+const nativeReceipt = (proofHash, state, codeHash) => createHmac('sha256', proofHash)
+  .update('kakao-return:' + state + ':' + codeHash).digest('base64url');
+const receiptMatches = (stored, receipt) => valid(receipt) && stored?.split('.')[0] === digest(receipt);
+
 export class KakaoAuth {
   constructor(store, {provider, now = () => Date.now()} = {}) {
     this.store = store;
+    this.callbacks = new Map();
     this.db = store.db;
     this.provider = provider;
     this.now = now;
@@ -36,10 +42,17 @@ export class KakaoAuth {
     if (destination) return {state,proof,expires,url:new URL('/api/auth/kakao/authorize?state='+state,this.provider.redirectUri).href};
     return {state, proof, expires, javascriptKey:this.provider.javascriptKey, redirectUri:this.provider.redirectUri};
   }
-  kakaoLaunch(state, throughTalk = false) {
-    if (!this.provider || !valid(state)) fail('KAKAO_FLOW_INVALID',401);
-    const row = this.db.prepare("SELECT h.destination FROM kakao_requests r JOIN kakao_handoffs h ON h.state_hash=r.state_hash WHERE r.state_hash=? AND r.expires>? AND h.phase='pending'").get(digest(state),this.now());
-    if (!row) fail('KAKAO_FLOW_INVALID',401);
+  kakaoLaunch(state, throughTalk = false, browserReceipt) {
+    if (!this.provider || !valid(state)) return null;
+    const row = this.db.prepare('SELECT h.destination,h.phase,h.receipt_hash,r.intent FROM kakao_requests r JOIN kakao_handoffs h ON h.state_hash=r.state_hash WHERE r.state_hash=? AND r.expires>?').get(digest(state),this.now());
+    if (!row) return null;
+    if (row.phase !== 'pending') {
+      if (row.destination !== 'web' && receiptMatches(row.receipt_hash,browserReceipt))
+        return {destination:row.destination,receipt:browserReceipt};
+      if (!throughTalk && row.phase === 'verified' && row.destination !== 'web' && row.intent === 'login' && row.receipt_hash?.includes('.'))
+        return this.provider.authorizationUrl(state);
+      return null;
+    }
     if (throughTalk) {
       if (row.destination === 'web') fail('KAKAO_DESTINATION_INVALID',400);
       return {state, javascriptKey:this.provider.javascriptKey, callbackUri:this.provider.callbackUri};
@@ -48,19 +61,43 @@ export class KakaoAuth {
   }
   async receiveKakao(state, code, error) {
     if (!this.provider || !valid(state)) return null;
+    const codeHash = !error && typeof code === 'string' && code.length > 0 && code.length <= 4096 ? digest(code) : null;
+    // Both KakaoTalk and its SDK can return before the provider exchange finishes.
+    if (!codeHash) return this.processKakaoCallback(state, code, error, null);
+    const key = state + '.' + codeHash;
+    if (this.callbacks.has(key)) return this.callbacks.get(key);
+    const pending = this.processKakaoCallback(state, code, error, codeHash);
+    this.callbacks.set(key,pending);
+    try { return await pending; }
+    finally { this.callbacks.delete(key); }
+  }
+  async processKakaoCallback(state, code, error, codeHash) {
     const hash = digest(state);
-    const row = this.db.prepare("SELECT h.destination,h.phase FROM kakao_handoffs h JOIN kakao_requests r ON h.state_hash=r.state_hash WHERE h.state_hash=? AND r.expires>?").get(hash,this.now());
+    const row = this.db.prepare('SELECT h.destination,h.phase,h.receipt_hash,h.subject,r.intent,r.proof_hash FROM kakao_handoffs h JOIN kakao_requests r ON h.state_hash=r.state_hash WHERE h.state_hash=? AND r.expires>?').get(hash,this.now());
     if (!row) return null;
-    if (row.phase !== 'pending') return {destination:row.destination};
+    if (row.phase !== 'pending') {
+      const originalCodeHash = row.receipt_hash?.split('.')[1];
+      if (row.phase === 'verified' && row.destination !== 'web' && originalCodeHash && codeHash) {
+        let approved = codeHash === originalCodeHash;
+        if (!approved && row.intent === 'login') {
+          try { approved = await this.provider.subjectForCode(code,true) === row.subject; }
+          catch { /* A changed or invalid account cannot claim the first approval. */ }
+        }
+        if (approved) return {destination:row.destination,receipt:nativeReceipt(row.proof_hash,state,originalCodeHash)};
+      }
+      return {destination:row.destination};
+    }
     const claim = this.db.prepare("UPDATE kakao_handoffs SET phase='checking' WHERE state_hash=? AND phase='pending' RETURNING state_hash").get(hash);
     if (!claim) return {destination:row.destination};
     let subject = null, phase = error === 'access_denied' ? 'cancelled' : 'failed';
-    if (!error && typeof code === 'string' && code.length && code.length <= 4096) {
+    if (codeHash) {
       try { subject = await this.provider.subjectForCode(code,true); phase = 'verified'; }
       catch { /* A new flow is required after a failed or uncertain exchange. */ }
     }
-    const receipt = secret();
-    this.db.prepare("UPDATE kakao_handoffs SET phase=?,subject=?,receipt_hash=? WHERE state_hash=? AND phase='checking'").run(phase,subject,digest(receipt),hash);
+    const recoverable = phase === 'verified' && row.destination !== 'web';
+    const receipt = recoverable ? nativeReceipt(row.proof_hash,state,codeHash) : secret();
+    const receiptHash = recoverable ? digest(receipt) + '.' + codeHash : digest(receipt);
+    this.db.prepare("UPDATE kakao_handoffs SET phase=?,subject=?,receipt_hash=? WHERE state_hash=? AND phase='checking'").run(phase,subject,receiptHash,hash);
     return {destination:row.destination,receipt};
   }
   pollKakao(body, authorization) {
@@ -72,7 +109,7 @@ export class KakaoAuth {
       if (!row) fail('KAKAO_FLOW_INVALID',401);
       const owner = authorization ? this.store.authenticate(authorization) : undefined;
       // The initiating device must also receive the callback on that same device.
-      if (!valid(body.receipt) || row.receipt_hash !== digest(body.receipt)) return {state:'pending'};
+      if (!receiptMatches(row.receipt_hash,body.receipt)) return {state:'pending'};
       this.db.prepare('DELETE FROM kakao_requests WHERE state_hash=?').run(hash);
       if (row.phase !== 'verified') return {state:row.phase};
       try { return {state:'verified',session:this.kakaoSession(row,owner,row.subject)}; }

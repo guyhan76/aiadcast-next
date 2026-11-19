@@ -46,7 +46,7 @@ function KakaoReturn() {
       if(!flow||pendingKakao()?.state!==flow.state||Date.now()>=flow.expires){stop('failed');return;}
       clearTimeout(timer);
       const current=pendingKakao();
-      if(current?.outcome){clearKakao(flow);stop(current.outcome);return;}
+      if(current?.outcome&&!current.receipt){clearKakao(flow);stop(current.outcome);return;}
       if(!current?.receipt){
         timer=setTimeout(()=>void check(),Math.max(1,flow.expires-Date.now()));return;
       }

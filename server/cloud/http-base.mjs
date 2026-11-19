@@ -10,8 +10,7 @@ import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ApiFailure } from '../generation-service.mjs';
 import { ProviderFailure } from '../openai-image-adapter.mjs';
-import { kakaoReturnPage } from '../google-return-page.mjs';
-import { kakaoTalkPage, kakaoTalkCsp } from '../kakao-talk-page.mjs';
+import { kakaoTalkPage, kakaoTalkCsp, kakaoBrowserReceipt, sendKakaoReturn, sendKakaoRestart } from '../kakao-talk-page.mjs';
 import { KakaoAuth } from './kakao-auth-base.mjs';
 import { GoogleAuth } from './google-auth-base.mjs';
 import { googleReturnPage, googleUiLanguage, googleReturnCsp } from '../google-return-page.mjs';
@@ -93,32 +92,38 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
         try {
             const url = new URL(req.url, origin);
             if (req.method === 'GET' && url.pathname === '/api/auth/kakao/authorize') {
-                if (url.searchParams.get('talk') === '1') {
-                    const launch = await kakao.kakaoLaunch(url.searchParams.get('state'), true);
+                const state = url.searchParams.get('state');
+                const throughTalk = url.searchParams.get('talk') === '1';
+                const launch = await kakao.kakaoLaunch(state, throughTalk, kakaoBrowserReceipt(req, state));
+                if (!launch) {
+                    sendKakaoRestart(res);
+                    return;
+                }
+                if (launch.destination) {
+                    sendKakaoReturn(req, res, state, launch);
+                    return;
+                }
+                if (throughTalk) {
                     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': kakaoTalkCsp, 'X-Content-Type-Options': 'nosniff' });
                     res.end(kakaoTalkPage(launch));
                     return;
                 }
-                const location = await kakao.kakaoLaunch(url.searchParams.get('state'));
-                res.writeHead(303, { Location: location, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+                res.writeHead(303, { Location: launch, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
                 res.end();
                 return;
             }
             if (req.method === 'GET' && url.pathname === '/api/auth/kakao/callback') {
-                const target = await kakao.receiveKakao(url.searchParams.get('state'), url.searchParams.get('code'), url.searchParams.get('error'));
-                const state = url.searchParams.get('state'), receipt = target?.receipt ? '/' + state + '.' + target.receipt : '';
-                if (target?.destination === 'web') {
-                    res.writeHead(303, { Location: '/#kakao-return' + receipt, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
-                    res.end();
+                const state = url.searchParams.get('state');
+                const target = await kakao.receiveKakao(state, url.searchParams.get('code'), url.searchParams.get('error'));
+                if (!target || !target.receipt) {
+                    sendKakaoRestart(res);
                     return;
                 }
-                if (target) {
-                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': googleReturnCsp });
-                    res.end(kakaoReturnPage(target.destination + '://kakao/return' + (receipt ? '#' + receipt.slice(1) : '')));
-                    return;
-                }
-                res.writeHead(303, { Location: '/#kakao-return', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
-                res.end();
+                sendKakaoReturn(req, res, state, target);
+                return;
+            }
+            if (req.method === 'GET' && url.pathname === '/api/auth/kakao/app-return') {
+                sendKakaoRestart(res);
                 return;
             }
             if (req.method === 'GET' && !url.pathname.startsWith('/api/')) {
