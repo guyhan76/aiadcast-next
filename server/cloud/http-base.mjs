@@ -10,7 +10,6 @@ import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ApiFailure } from '../generation-service.mjs';
 import { ProviderFailure } from '../openai-image-adapter.mjs';
-import { kakaoLaunchPage, kakaoPagePolicy } from '../kakao-launch-page.mjs';
 import { kakaoReturnPage } from '../google-return-page.mjs';
 import { KakaoAuth } from './kakao-auth-base.mjs';
 import { GoogleAuth } from './google-auth-base.mjs';
@@ -93,9 +92,9 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
         try {
             const url = new URL(req.url, origin);
             if (req.method === 'GET' && url.pathname === '/api/auth/kakao/authorize') {
-                const launch = await kakao.kakaoLaunch(url.searchParams.get('state'));
-                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': kakaoPagePolicy, 'X-Content-Type-Options': 'nosniff' });
-                res.end(kakaoLaunchPage(launch));
+                const location = await kakao.kakaoLaunch(url.searchParams.get('state'));
+                res.writeHead(303, { Location: location, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+                res.end();
                 return;
             }
             if (req.method === 'GET' && url.pathname === '/api/auth/kakao/callback') {
