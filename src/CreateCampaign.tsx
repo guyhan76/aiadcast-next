@@ -122,7 +122,7 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{
  }
  const companyFields:[FooterField,string,string][]=[['company',t('회사명','Company'),'셀업랩스'],['contact',t('연락처','Phone'),'010-0000-0000'],['email',t('이메일 주소','Email'),'hello@brand.com'],['website',t('홈페이지','Website'),'https://www.brand.com']];
  return <div className="create-page consumer-create">
-  <div className="create-heading"><h1>{t('광고 만들기','Create an ad')}</h1><p>{t('사진과 정보로 만드는 광고','Create ads with photos and details')}</p></div>
+  <div className="create-heading"><h1>{t('광고 이미지 만들기','Create an ad image')}</h1><p>{t('사진과 정보로 만드는 광고','Create ads with photos and details')}</p></div>
   <form aria-busy={busy} onSubmit={e=>{e.preventDefault();void submit();}}>
    <fieldset disabled={submittingBusy} style={{border:0,padding:0,margin:0,minWidth:0}}>
    <section className="creation-section" data-order="1"><h2><span>1</span>{t('광고할 분야','Your industry')}</h2>
@@ -159,7 +159,7 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{
    </fieldset>
    {error&&<p className={'wizard-error'+(photoImportIssue&&error===photoImportIssue?' photo-upload-error':'')} role="alert">{error}</p>}
    {!regulatoryOk&&<p className="help">{t('1번 광고할 분야의 법규 안내를 확인하면 광고를 만들 수 있습니다.','Confirm the industry notice in step 1 to generate the ad.')}</p>}
-   <div className="wizard-actions"><button className="primary-action" type="submit" disabled={busy||!active||!regulatoryOk}><Sparkles size={18}/>{photosBusy?t('사진 불러오는 중…','Loading photos…'):submittingBusy?t('준비 중…','Preparing…'):project.dimensionControl?t('기하 검증 이미지 만들기','Create geometry proof'):t('광고 생성','Generate ad')}</button></div>{!project.dimensionControl&&creditStatus?.wallet.unlimited&&<p className="help submit-help">{t('관리자 테스트 · 차감 없음','Administrator test · no charge')}</p>}
+   <div className="wizard-actions"><button className="primary-action" type="submit" disabled={busy||!active||!regulatoryOk}><Sparkles size={18}/>{photosBusy?t('사진 불러오는 중…','Loading photos…'):submittingBusy?t('준비 중…','Preparing…'):project.dimensionControl?t('기하 검증 이미지 만들기','Create geometry proof'):t('광고 생성','Generate ad')}</button></div>{!project.dimensionControl&&creditStatus?.wallet?.unlimited&&<p className="help submit-help">{t('관리자 테스트 · 차감 없음','Administrator test · no charge')}</p>}
   </form>
   {confirmation&&active&&<BatchConfirmation price={confirmation.price} busy={busy} onConfirm={()=>void confirm()} onClose={()=>setConfirmation(undefined)}/>}
  </div>;

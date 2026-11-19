@@ -54,6 +54,7 @@ test('Kakao web callback restores the initiating member and clears the browser r
   expect(page.url()).not.toContain(proof);
   await page.getByRole('link',{name:'Test provider return'}).click();
   await expect(page).toHaveURL(/#home$/);
+  await expect(page.getByRole('heading',{name:'광고 이미지 만들기',exact:true})).toBeVisible();
   expect(f.starts).toEqual(['login']);
   expect(f.polls).toEqual([{state,proof,receipt}]);
   expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.kakao-flow'))).toBeNull();
@@ -112,6 +113,7 @@ test('Android starts in its app, resumes from the native return and signs in onc
   },receipt);
   await expect(page).toHaveURL(/#home$/,{timeout:14000});
   expect(f.starts).toEqual(['login']);
+  await expect(page.getByRole('heading',{name:'광고 이미지 만들기',exact:true})).toBeVisible();
   expect(f.polls.filter(body=>body.receipt===receipt)).toHaveLength(1);
 });
 
