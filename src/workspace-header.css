@@ -3,7 +3,17 @@
 @media(max-width:350px){.compact-workspace-header .brand-lockup{width:112px}}
 
 .workspace-menu-policy{border-top:1px solid var(--brand-line);margin-top:12px;padding-top:8px;display:grid}
-.workspace-menu-policy>a,.workspace-menu-policy .membership-withdraw>button{min-height:44px;display:flex;align-items:center;text-align:left;font:inherit;font-size:15px;color:var(--brand-black);padding:8px 0;border:0;background:transparent}
-.workspace-menu-policy .membership-withdraw p{margin:8px 0;line-height:1.6}
-.workspace-menu-policy .membership-withdraw>div{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-.workspace-menu-policy .membership-withdraw>div button{min-height:44px;padding:8px 12px}
+.workspace-menu-policy>a,.workspace-menu-policy>.withdrawal-trigger{min-height:44px;display:flex;align-items:center;text-align:left;font:inherit;font-size:15px;color:var(--brand-black);padding:8px 0;border:0;background:transparent}
+
+.membership-withdraw { font-size: 15px; line-height: 1.55; }
+.membership-withdraw p { margin: 8px 0; word-break: keep-all; overflow-wrap: anywhere; }
+.membership-withdraw .withdrawal-warning { font-weight: 650; }
+.withdrawal-refund { display: flex; align-items: center; gap: 9px; min-height: 48px; margin: 12px 0 0; }
+.withdrawal-refund input { width: 18px; height: 18px; flex: none; margin: 0; accent-color: #262626; }
+.membership-withdraw details { border-top: 1px solid #dedede; font-size: 14px; }
+.membership-withdraw summary { padding: 12px 0; cursor: pointer; }
+.membership-withdraw details a { color: inherit; text-decoration: underline; }
+.withdrawal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+.withdrawal-actions button { min-height: 46px; border: 1px solid #c9c9c9; border-radius: 10px; background: white; color: #222; font: inherit; font-weight: 600; cursor: pointer; }
+.withdrawal-actions button:last-child { color: white; background: #aa2929; border-color: #aa2929; }
+.withdrawal-actions button:disabled { opacity: .55; cursor: default; }

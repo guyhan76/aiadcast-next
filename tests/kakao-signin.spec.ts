@@ -31,6 +31,7 @@ async function api(page:Page,enabled:boolean,status:'verified'|'unknown'|'cancel
 test('Google and Kakao share button bounds and show their own brand symbols',async({page})=>{
   await api(page,true);
   await page.goto('/#login');
+  await expect(page.getByText('최근 로그인')).toHaveCount(0);
   const boxes=[];
   for (const [name,color] of [['Google로 계속하기','rgb(255, 255, 255)'],['카카오로 계속하기','rgb(254, 229, 0)']]) {
     const button=page.getByRole('button',{name,exact:true});
@@ -58,6 +59,13 @@ test('Kakao web callback restores the initiating member and clears the browser r
   expect(f.starts).toEqual(['login']);
   expect(f.polls).toEqual([{state,proof,receipt}]);
   expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.kakao-flow'))).toBeNull();
+  await page.getByRole('button',{name:'메뉴 열기'}).click();
+  page.once('dialog',d=>d.accept());
+  await page.getByRole('button',{name:'로그아웃',exact:true}).click();
+  await expect(page.getByRole('button',{name:'카카오로 계속하기',exact:true})).toHaveAccessibleDescription('최근 로그인');
+  await page.reload();
+  await expect(page.getByRole('button',{name:'카카오로 계속하기',exact:true})).toHaveAccessibleDescription('최근 로그인');
+  await expect(page.getByRole('button',{name:'Google로 계속하기'})).toHaveAccessibleDescription('');
 });
 test('unknown Kakao login offers existing account recovery and explicit signup',async({page})=>{
   const f=await api(page,true,'unknown');
@@ -70,13 +78,15 @@ test('unknown Kakao login offers existing account recovery and explicit signup',
   expect(f.starts).toEqual(['login','signup']);
 });
 test('Kakao cancellation lets the user return to Google sign-in',async({page})=>{
+  await page.addInitScript(()=>localStorage.setItem('aiadcast.last-login.'+location.origin,'google'));
   await api(page,true,'cancelled');
   await page.goto('/#login');
   await page.getByRole('button',{name:'카카오로 계속하기'}).click();
   await page.getByRole('link',{name:'Test provider return'}).click();
   await expect(page.getByRole('status')).toContainText('취소');
   await page.getByRole('button',{name:'로그인 화면으로'}).click();
-  await expect(page.getByRole('button',{name:'Google로 계속하기'})).toBeEnabled();
+  await expect(page.getByRole('button',{name:'Google로 계속하기'})).toHaveAccessibleDescription('최근 로그인');
+  await expect(page.getByRole('button',{name:'카카오로 계속하기'})).toHaveAccessibleDescription('');
 });
 test('Kakao is hidden when disabled and a foreign callback cannot install a session',async({page})=>{
   const f=await api(page,false);

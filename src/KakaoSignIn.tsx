@@ -6,7 +6,7 @@ import {prepareGoogleConnection} from './google-readiness';
 import {ApiRequestFailure} from './generation-client';
 import {consumeLoginDestination} from './login-navigation';
 import {signInBoundary} from './sign-in-boundary';
-import {installVerifiedLogin} from './verified-login';
+import {installVerifiedLogin,lastLoginProvider} from './verified-login';
 import {useUiLanguage} from './ui-language';
 import {captureKakaoReturn,clearKakao,kakaoDestination,pendingKakao,pollKakao,startKakao,type KakaoIntent} from './kakao-client';
 
@@ -28,8 +28,9 @@ export function KakaoButton({intent,disabled=false}:{intent:KakaoIntent;disabled
     finally {locked.current=false;if(mounted.current)setBusy(false);}
   }
   if(!available)return null;
+  const recent=intent==='login'&&lastLoginProvider()==='kakao';
   const label=intent==='link'?t('이 계정에 카카오 연결','Link Kakao to this account'):intent==='signup'?t('카카오로 새 계정 만들기','Create an account with Kakao'):t('카카오로 계속하기','Continue with Kakao');
-  return <><button className={intent==='login'?'kakao-continue social-login-button':'kakao-continue'} type="button" onClick={()=>void open()} disabled={disabled||busy}>{intent==='login'&&<img src={kakaoSymbol} alt="" width="20" height="20"/>}{label}</button>{failed&&<p role="alert">{t('카카오 로그인을 열지 못했습니다. 다시 시도해 주세요.','Could not open Kakao. Please try again.')}</p>}</>;
+  return <><button className={intent==='login'?'kakao-continue social-login-button':'kakao-continue'} type="button" aria-describedby={recent?'recent-kakao':undefined} onClick={()=>void open()} disabled={disabled||busy}>{intent==='login'&&<img src={kakaoSymbol} alt="" width="20" height="20"/>}{label}{recent&&<span id="recent-kakao" className="last-login-badge" aria-hidden="true">{t('최근 로그인','Last used')}</span>}</button>{failed&&<p role="alert">{t('카카오 로그인을 열지 못했습니다. 다시 시도해 주세요.','Could not open Kakao. Please try again.')}</p>}</>;
 }
 
 function KakaoReturn() {
@@ -57,7 +58,7 @@ function KakaoReturn() {
         if(!live||pendingKakao()?.state!==flow.state)return;
         if(result.state==='verified'){
           if(flow.intent==='link'&&result.session.user.id!==flow.owner)throw Error('SESSION_CHANGED');
-          clearKakao(flow);installVerifiedLogin(result.session,flow.intent==='link'?'credits':consumeLoginDestination());return;
+          clearKakao(flow);installVerifiedLogin(result.session,flow.intent==='link'?'credits':consumeLoginDestination(),flow.intent==='link'?undefined:'kakao');return;
         }
         if(result.state!=='pending'){clearKakao(flow);stop(result.state);return;}
         timer=setTimeout(()=>void check(),4000);

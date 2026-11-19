@@ -35,3 +35,15 @@
   outline: 3px solid #202124;
   outline-offset: 3px;
 }
+
+.social-login-button { position: relative; }
+.last-login-badge {
+  position: absolute;
+  inset: -9px 12px auto auto;
+  padding: 1px 7px;
+  border-radius: 8px;
+  background: #292929;
+  color: white;
+  font: 600 11px/16px system-ui, sans-serif;
+  white-space: nowrap;
+}

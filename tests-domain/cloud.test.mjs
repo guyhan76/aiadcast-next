@@ -966,11 +966,20 @@ test('membership rejects server saves for both plans, isolates withdrawal and re
  const withdraw=await s.call('/api/membership/withdraw',{token:member.token,body:{confirm:'delete-my-account'}});
  assert.equal(withdraw.status,200,JSON.stringify(withdraw.data));assert.equal((await listed()).status,401);
  await s.app.store.membership.run();
+ const day=(await s.app.store.db.prepare("SELECT to_char(now() AT TIME ZONE 'Asia/Seoul','YYYYMMDD') AS today").get()).today;
+ assert.equal(withdraw.data.receipt,day+'0001');
  const events=async()=> (await s.call('/api/membership/admin',{token:admin.token})).data.events.filter(e=>e.receipt===withdraw.data.receipt).map(e=>e.kind);
  assert.ok((await events()).includes('retry'));assert.ok(!(await events()).includes('completed'));
  storage.remove=orig;await s.app.store.membership.run();
  assert.ok((await events()).includes('completed'));assert.ok(![...s.bucket.objects.keys()].some(p=>p.startsWith(member.user.id+'/')));
  assert.equal((await s.call('/api/membership',{token:other.token})).status,200);
+});
+test('receipt ordinals share the Seoul date boundary across deletion and support requests',async t=>{
+ const s=await setup(t),db=s.app.store.db;
+ const number=async(instant,separator)=>(await db.prepare('SELECT next_service_receipt(?::timestamptz,?) AS number').get(instant,separator)).number;
+ assert.equal(await number('2032-05-08T14:59:59Z',''),'203205080001');
+ assert.equal(await number('2032-05-08T15:00:00Z','-'),'20320509-0001');
+ assert.equal(await number('2032-05-08T15:00:01Z',''),'203205090002');
 });
 test('expiration removes temporary bytes and self-contained snapshots without extending revisions or touching another owner',async t=>{
  const s=await setup(t),a=await s.member('Retention'),other=await s.member('Unrelated');

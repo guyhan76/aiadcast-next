@@ -4,6 +4,7 @@ for(const plan of ['free','standard'])test('24-hour downloads and confirmed with
  const member=mockSession('membership-browser');
  await protectedScreen(page,member);
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
+ const refund=plan==='standard', receipt='202611190001', refundReceipt='20261119-0002';
  let withdrawals=0, downloadRequests=0;
  await page.route('**/api/membership',r=>r.fulfill({json:{plan,storage:'device',downloadWindowHours:24}}));
  await page.route('**/api/membership/downloads',r=>{
@@ -13,8 +14,8 @@ for(const plan of ['free','standard'])test('24-hour downloads and confirmed with
  await page.route('**/api/projects',r=>r.fulfill({json:{projects:[{id:'member-project-fixture',name:'보관함 검증',revision:1,expiresAt:'2026-12-15T00:00:00Z'}]}}));
  await page.route('**/api/membership/withdraw',r=>{
   expect(r.request().headers().authorization).toBe('Bearer '+member.token);
-  expect(r.request().postDataJSON()).toEqual({confirm:'delete-my-account'});
-  withdrawals++;return r.fulfill({json:{receipt:'fixture-receipt',state:'requested'}});
+  expect(r.request().postDataJSON()).toEqual({confirm:'delete-my-account',...(refund?{requestRefund:true}:{})});
+  withdrawals++;return r.fulfill({json:{receipt,state:'requested',cases:refund?[refundReceipt]:[]}});
  });
  await page.goto('/#projects');
  const library=page.locator('.projects-page');
@@ -35,10 +36,22 @@ for(const plan of ['free','standard'])test('24-hour downloads and confirmed with
  await expect(page.getByRole('link',{name:'개인정보처리방침',exact:true})).toHaveAttribute('href','https://www.selluplabs.com/privacy/');
  await expect(page.getByRole('link',{name:'자료 보관 안내',exact:true})).toHaveAttribute('href','/account-deletion.html');
  await page.getByRole('button',{name:/^회원탈퇴$|^Delete account$/}).click();
- await page.getByRole('button',{name:/^취소$|^Cancel$/}).click();
+ const dialog=page.getByRole('dialog',{name:'회원 탈퇴'});
+ await expect(dialog.getByRole('link',{name:'개인정보처리방침'})).toHaveCount(0);
+ await expect(dialog.getByRole('link',{name:'삭제 범위와 보관 기간'})).toBeHidden();
+ await dialog.getByText('탈퇴 전 확인사항',{exact:true}).click();
+ await expect(dialog.getByRole('link',{name:'삭제 범위와 보관 기간'})).toBeVisible();
+ await dialog.getByRole('checkbox').check();
+ await dialog.getByRole('button',{name:'취소'}).click();
  expect(withdrawals).toBe(0);
  await page.getByRole('button',{name:/^회원탈퇴$|^Delete account$/}).click();
- await page.getByRole('button',{name:/모든 프로젝트 삭제 및 탈퇴|Delete all projects and my account/}).click();
+ await expect(dialog.getByRole('checkbox')).not.toBeChecked();
+ if(refund)await dialog.getByRole('checkbox').check();
+ const alert=page.waitForEvent('dialog');
+ const submit=dialog.getByRole('button',{name:'탈퇴하기'}).click();
+ const notice=await alert;
+ expect(notice.message()).toBe('탈퇴 요청을 접수했습니다.\n삭제 처리번호 '+receipt+(refund?'\n환불 접수번호 '+refundReceipt:''));
+ await notice.accept();await submit;
  await expect.poll(()=>withdrawals).toBe(1);
  await expect.poll(()=>page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();
 });

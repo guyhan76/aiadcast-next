@@ -71,7 +71,7 @@ export class Membership {
   }
   if(path==='/api/membership/admin'&&method==='GET'){
    if(user.role!=='admin')fail('ADMIN_REQUIRED',403);
-   return {events:await this.db.prepare('SELECT receipt,kind,happened_at FROM member_events ORDER BY happened_at DESC LIMIT 200').all(),members:await this.db.prepare('SELECT id,joined_at,storage_plan,role FROM users WHERE disabled=0').all()};
+   return {events:await this.db.prepare('SELECT coalesce(receipt_no,receipt::text) AS receipt,kind,happened_at FROM member_events ORDER BY happened_at DESC LIMIT 200').all(),members:await this.db.prepare('SELECT id,joined_at,storage_plan,role FROM users WHERE disabled=0').all()};
   }
   if(path==='/api/membership/plan'&&method==='POST'){
    if(user.role!=='admin')fail('ADMIN_REQUIRED',403);
@@ -135,7 +135,7 @@ export class Membership {
  }
  async withdraw(user,requestRefund=false){
   const receipt=randomUUID(),cases=[];
-  await this.store.transaction(async()=>{
+  const number=await this.store.transaction(async()=>{
    const old=await this.db.prepare('SELECT receipt FROM deletion_requests WHERE user_id=?').get(user.id);
    if(old)fail('DELETION_ALREADY_REQUESTED',409);
    if(requestRefund){
@@ -150,12 +150,14 @@ export class Membership {
     }
    }
    await this.db.prepare('INSERT INTO deletion_requests(user_id,receipt) VALUES(?,?)').run(user.id,receipt);
-   await this.db.prepare("INSERT INTO member_events(receipt,kind) VALUES(?,'requested')").run(receipt);
+   const {receipt_no}=await this.db.prepare(`INSERT INTO member_events(receipt,kind,receipt_no)
+    VALUES(?,'requested',next_service_receipt(now(),'')) RETURNING receipt_no`).get(receipt);
    await this.db.prepare('UPDATE users SET disabled=1 WHERE id=?').run(user.id);
    await this.db.prepare('DELETE FROM sessions WHERE user_id=?').run(user.id);
    await this.db.prepare('DELETE FROM invites WHERE user_id=?').run(user.id);
+   return receipt_no;
   });
-  this.kick();return {receipt,state:'requested',cases};
+  this.kick();return {receipt:number,state:'requested',cases};
  }
  kick(){if(!this.stopped&&!this.kickTimer){this.kickTimer=setTimeout(()=>{this.kickTimer=null;void this.run();},100);this.kickTimer.unref();}}
  start(){this.timer=setInterval(()=>void this.run(),30000);this.timer.unref();this.kick();}
@@ -171,7 +173,7 @@ export class Membership {
    this.cleaning.add(id);
    try{
     const request=await this.db.prepare('SELECT receipt FROM deletion_requests WHERE user_id=?').get(id);
-    if(request){try{await this.erase(id,request.receipt);}catch{await this.db.prepare("INSERT INTO member_events(receipt,kind) VALUES(?,'retry') ON CONFLICT DO NOTHING").run(request.receipt);}}
+    if(request){try{await this.erase(id,request.receipt);}catch{await this.recordDeletionEvent(request.receipt,'retry');}}
     else await this.expire(id);
    }catch{console.error('Member cleanup deferred');}finally{this.cleaning.delete(id);}
   }
@@ -215,6 +217,11 @@ export class Membership {
   });
  }
  async exists(schema,table){return (await this.db.prepare('SELECT to_regclass(?) IS NOT NULL AS ok').get(schema+'.'+table)).ok;}
+ async recordDeletionEvent(receipt,kind){
+  await this.db.prepare(`INSERT INTO member_events(receipt,kind,receipt_no)
+   VALUES(?,?,(SELECT receipt_no FROM member_events WHERE receipt=? AND kind='requested'))
+   ON CONFLICT(receipt,kind) DO NOTHING`).run(receipt,kind,receipt);
+ }
  async erase(id,receipt){
   const tenant=cloudSchema(id);
   // Enumerate the actual private prefix as well as upload reservations. Only an
@@ -260,7 +267,7 @@ export class Membership {
    await this.db.exec('DROP SCHEMA IF EXISTS "'+tenant+'" CASCADE');
    await this.db.prepare('DELETE FROM deletion_requests WHERE user_id=? AND receipt=?').run(id,receipt);
    await this.db.prepare('DELETE FROM users WHERE id=?').run(id);
-   await this.db.prepare("INSERT INTO member_events(receipt,kind) VALUES(?,'completed')").run(receipt);
+   await this.recordDeletionEvent(receipt,'completed');
   });
   this.jobs.delete(id);this.forgetService?.(id);
  }

@@ -2,7 +2,7 @@ import type {Delivery,CloudProject} from './library-cards';
 import {useEffect,useState} from 'react';
 import {apiRequest} from './generation-client';
 import {betaSession,setBetaSession,storageNamespace} from './beta-session';
-import {offlineDemo} from './demo-mode';
+import {forgetLoginProvider} from './verified-login';
 import {importProject,type Project} from './model';
 import {useUiLanguage} from './ui-language';
 
@@ -50,26 +50,37 @@ export async function readCloudProject(id:string,signal:AbortSignal){
  const data=await apiRequest<{project:Project}>('/api/projects/'+encodeURIComponent(id),undefined,signal);
  return {...await importProject(data.project),id};
 }
-export function Withdrawal(){
+export function Withdrawal({onCancel}:{onCancel:()=>void}){
  const [requestRefund,setRequestRefund]=useState(false);
- const {t}=useUiLanguage(),[confirm,setConfirm]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
- if(offlineDemo()||!betaSession())return null;
+ const {t}=useUiLanguage(),[busy,setBusy]=useState(false),[error,setError]=useState('');
+
  async function withdraw(){
   setBusy(true);const scope=storageNamespace();
   try{const r=await apiRequest<{receipt:string;cases?:string[]}>('/api/membership/withdraw',{confirm:'delete-my-account',...(requestRefund?{requestRefund:true}:{})});
    if(storageNamespace()!==scope)return;
-   setBetaSession(null,'login');window.alert(t('탈퇴 요청을 접수했습니다. 모든 기기의 계정 접근이 해제되었습니다. 삭제 처리번호 ','Deletion requested. Access is revoked on all devices. Receipt ')+r.receipt+(r.cases?.length?'\n환불 접수번호 '+r.cases.join(', '):''));
+   forgetLoginProvider();
+   setBetaSession(null,'login');
+   const lines=[t('탈퇴 요청을 접수했습니다.','Account deletion requested.'),t('삭제 처리번호','Deletion receipt')+' '+r.receipt];
+   if(r.cases?.length)lines.push(t('환불 접수번호','Refund receipt')+' '+r.cases.join(', '));
+   window.alert(lines.join('\n'));
   }catch{setError(t('접수 상태를 확인하지 못했습니다. 다시 로그인하거나 삭제 안내 페이지에서 문의해주세요.','Could not confirm the request. Sign in again or contact support on the deletion page.'));}
   finally{setBusy(false);}
  }
- return <div className="membership-withdraw">{!confirm?<button onClick={()=>setConfirm(true)}>{t('회원탈퇴','Delete account')}</button>:<>
-  <strong>{t('탈퇴하면 내 프로젝트를 복구할 수 없습니다.','Your server projects cannot be recovered after withdrawal.')}</strong>
-  <p>{t('서버의 프로젝트, 첨부 원본, 생성 이미지와 영상이 삭제됩니다. 필요한 파일은 먼저 내려받으세요. 기기에 저장하거나 공유한 파일은 유지됩니다.','Server projects, originals, generated images and videos will be deleted. Download anything you want to keep. Device and shared copies remain.')}</p>
-  <p>탈퇴하면 남은 광고 이용권은 재가입 계정으로 이전되지 않습니다. 결제 내역과 접수번호는 탈퇴 전에 저장해 주세요.</p>
-  <label><input type="checkbox" checked={requestRefund} onChange={e=>setRequestRefund(e.target.checked)}/> 미사용 유료 광고의 환불 검토를 함께 요청합니다</label>
-  {requestRefund&&<p>단순 변심 신청 기한이 지난 구매는 제외됩니다. 결제 오류·생성 실패·법정 해지 등의 사유가 있으면 탈퇴 전 <a href="#credits">내 이용권의 고객 문의</a>에서 접수해 주세요.</p>}
-  <a href="/account-deletion.html" target="_blank" rel="noreferrer">{t('삭제 범위와 보관 기간','Deletion and retention details')}</a>
-  <div><button disabled={busy} onClick={()=>setConfirm(false)}>{t('취소','Cancel')}</button><button disabled={busy} onClick={()=>void withdraw()}>{t('모든 프로젝트 삭제 및 탈퇴','Delete all projects and my account')}</button></div></>}{error&&<p role="alert">{error}</p>}</div>;
+ return <section className="membership-withdraw" aria-labelledby="workspace-menu-title">
+  <p className="withdrawal-warning">{t('서버의 프로젝트와 첨부 원본, 생성한 광고가 영구 삭제됩니다.','Your server projects, uploads and generated ads will be permanently deleted.')}</p>
+  <p>{t('남은 이용권은 재가입해도 이전되지 않습니다.','Unused credits will not transfer if you sign up again.')}</p>
+  <label className="withdrawal-refund"><input type="checkbox" disabled={busy} checked={requestRefund} onChange={e=>setRequestRefund(e.target.checked)}/>{t('미사용 유료 이용권 환불 검토 요청','Request a refund review for unused paid credits')}</label>
+  <details><summary>{t('탈퇴 전 확인사항','Before you leave')}</summary>
+   <p>{t('필요한 파일과 결제 내역, 접수번호를 먼저 저장하세요. 기기에 저장하거나 공유한 파일은 유지됩니다.','Save any files, payment records and receipt numbers you need. Downloaded and shared copies remain available.')}</p>
+   <p>{t('단순 변심 환불은 신청 기한 내 구매만 검토합니다. 결제 오류·생성 실패·법정 해지는 탈퇴 전 내 이용권에서 문의해 주세요.','Change-of-mind refunds are reviewed for purchases within the request period. For payment errors, failed generations or statutory cancellations, contact support in My Credits before leaving.')} <a href="#credits">{t('내 이용권','My Credits')}</a></p>
+   <a href="/account-deletion.html" target="_blank" rel="noreferrer">{t('삭제 범위와 보관 기간','Deletion and retention details')}</a>
+  </details>
+  {error&&<p role="alert">{error}</p>}
+  <div className="withdrawal-actions">
+   <button type="button" disabled={busy} onClick={onCancel}>{t('취소','Cancel')}</button>
+   <button type="button" disabled={busy} onClick={()=>void withdraw()}>{busy?t('접수 중…','Submitting…'):t('탈퇴하기','Delete account')}</button>
+  </div>
+ </section>;
 }
 type Audit={events:{receipt:string;kind:'joined'|'requested'|'completed'|'retry';happened_at:string}[];members:{id:string;joined_at:string|null;role:string;storage_plan:'free'|'standard'}[]};
 export function MemberHistory({labels}:{labels:{id:string;label:string}[]}){
