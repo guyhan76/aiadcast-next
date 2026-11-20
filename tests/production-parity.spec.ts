@@ -53,7 +53,11 @@ for (const native of [false,true]) test('buy missing generation credits and retu
     await page.route('**/api/checkout/orders/previous-pack',r=>r.fulfill({json:previousOrder}));
   }
   let balance=10;
-  await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,batchVersion:1},wallet:{available:0,credits:{available:balance}}}}));
+  await page.route('**/api/status',r=>r.fulfill({json:{
+    generation:{enabled:true,batchVersion:1,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},
+    wallet:{available:0,reserved:0,credits:{available:balance,reserved:0}},
+    budget:{limitMicros:8000000}
+  }}));
   let writes=0;
   page.on('request',request=>{if(request.method()==='POST'&&/\/api\/(checkout\/orders|generations)$/.test(new URL(request.url()).pathname))writes++;});
   await page.goto(origin+'/#create');
