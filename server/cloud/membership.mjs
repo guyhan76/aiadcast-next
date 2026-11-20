@@ -1,0 +1,282 @@
+import sharp from 'sharp';
+import {randomUUID,createHash} from 'node:crypto';
+import {readFileSync} from 'node:fs';
+import {CommerceRecords} from './commerce-records.mjs';
+import {cloudSchema} from './postgres.mjs';
+import {ApiFailure} from '../generation-service.mjs';
+
+const fail=(code,status)=>{throw new ApiFailure(code,status);};
+const projectId = id=>typeof id==='string' && /^[A-Za-z0-9_-]{8,100}$/.test(id);
+export class Membership {
+ constructor(store,storage){this.store=store;this.db=store.db;this.storage=storage;this.active=new Map();this.jobs=new Map();this.cleaning=new Set();}
+ async initialize(){
+  await this.db.transaction(()=>this.db.exec(readFileSync(new URL('./membership.sql',import.meta.url),'utf8')));
+  await this.db.transaction(()=>this.db.exec(readFileSync(new URL('./commerce-records.sql',import.meta.url),'utf8')));
+  this.records=new CommerceRecords(this.db);
+  const {started_at}=await this.db.prepare('SELECT started_at FROM retention_settings WHERE id=1').get();
+  this.cutover=new Date(started_at).getTime();
+ }
+ // Authentication and lease acquisition are separated by an await. Reject a lease
+ // while cleanup holds the owner, and recheck access after taking it.
+ async enter(user){
+  if(this.cleaning.has(user.id))await this.running;
+  if(this.cleaning.has(user.id))fail('ACCOUNT_MAINTENANCE',503);
+  this.active.set(user.id,(this.active.get(user.id)??0)+1);
+  const leave=()=>{const n=this.active.get(user.id)-1;if(n)this.active.set(user.id,n);else this.active.delete(user.id);};
+  try{if(!await this.db.prepare('SELECT id FROM users WHERE id=? AND disabled=0').get(user.id))fail('AUTH_REQUIRED',401);}catch(e){leave();throw e;}
+  return leave;
+ }
+ async policy(user){
+  const member=await this.db.prepare('SELECT role,storage_plan FROM users WHERE id=? AND disabled=0').get(user.id);
+  if(!member)fail('AUTH_REQUIRED',401);
+  const standard=member.role==='admin'||member.storage_plan==='standard';
+  return {plan:standard?'standard':'free',storage:'device',downloadWindowHours:24,limitBytes:0,usedBytes:0};
+ }
+ async route(user,method,path,body,serviceFor){
+  if(path.startsWith("/api/membership/records/"))return this.records.route(user,method,path,body);
+  const file=/^\/api\/membership\/downloads\/([A-Za-z0-9_-]{8,100})\/(preview|original)$/.exec(path);
+  if(file&&method==='GET')return this.downloadFile(user.id,file[1],file[2]);
+  if(path==='/api/membership/remove-downloads'&&method==='POST'){
+   if(!Array.isArray(body?.ids)||!body.ids.length||body.ids.length>15||!body.ids.every(projectId))fail('INVALID_PROJECT',400);
+   return this.removeDownloads(user.id,[...new Set(body.ids)],await serviceFor(user));
+  }
+  if(path==='/api/membership'&&method==='GET')return this.policy(user);
+  if(path==='/api/membership/downloads' && method==='GET'){
+   const tenant=cloudSchema(user.id);
+   if(!await this.exists(tenant,'generation_records'))return {downloads:[]};
+   // Read metadata only. Image bytes are fetched only when a member opens or saves a delivery.
+   const rows=await this.db.prepare(`SELECT g.id,g.project_id,g.created_at AS created,
+    g.request_json::json->>'productName' AS name,j.status,
+    j.expires_at AS deadline,p.captured,COALESCE(p.unit,'legacy-ticket') AS unit,
+    a.job_id IS NOT NULL AS exempt FROM "${tenant}".generation_records g
+    JOIN "${tenant}".jobs j ON j.id=g.id
+    LEFT JOIN "${tenant}".job_policies p ON p.job_id=j.id
+    LEFT JOIN "${tenant}".admin_test_jobs a ON a.job_id=j.id
+    WHERE j.status IN ('ready','accepted') AND g.artifact_hash IS NOT NULL AND g.error_code IS NULL
+    AND (CASE WHEN g.created_at<? THEN ? ELSE j.expires_at END)>extract(epoch FROM now())*1000
+    ORDER BY g.created_at DESC,g.id DESC`).all(this.cutover,this.cutover+30*86400000);
+   return {downloads:rows.map(r=>({id:r.id,projectId:r.project_id,createdAt:new Date(Number(r.created)).toISOString(),name:r.name,expiresAt:new Date(r.created<this.cutover?this.cutover+30*86400000:r.deadline).toISOString(),
+    reviewRequired:r.status==='ready'&&!r.captured&&!r.exempt}))};
+  }
+  if(path==='/api/membership/withdraw'&&method==='POST'){
+   if(body?.confirm!=='delete-my-account')fail('CONFIRM_DELETION',400);
+   return this.withdraw(user,body.requestRefund===true);
+  }
+  if(path==='/api/membership/remove-project'&&method==='POST'){
+   if(!projectId(body?.id))fail('INVALID_PROJECT',400);
+   await this.store.transaction(async()=>{
+    const project=await this.db.prepare('DELETE FROM projects WHERE user_id=? AND id=? RETURNING json').get(user.id,body.id);
+    if(project){const {storagePath}=JSON.parse(project.json);await this.db.prepare('UPDATE storage_objects SET expires_at=now() WHERE user_id=? AND path=?').run(user.id,storagePath);}
+   });this.kick();return {removed:true};
+  }
+  if(path==='/api/membership/admin'&&method==='GET'){
+   if(user.role!=='admin')fail('ADMIN_REQUIRED',403);
+   return {events:await this.db.prepare('SELECT coalesce(receipt_no,receipt::text) AS receipt,kind,happened_at FROM member_events ORDER BY happened_at DESC LIMIT 200').all(),members:await this.db.prepare('SELECT id,joined_at,storage_plan,role FROM users WHERE disabled=0').all()};
+  }
+  if(path==='/api/membership/plan'&&method==='POST'){
+   if(user.role!=='admin')fail('ADMIN_REQUIRED',403);
+   if(!['standard','free'].includes(body?.plan))fail('INVALID_STORAGE_PLAN',400);
+   const result=await this.db.prepare("UPDATE users SET storage_plan=? WHERE id=? AND role='member' AND disabled=0").run(body.plan,body.userId);
+   if(!result.changes)fail('USER_NOT_FOUND',404);
+   return {updated:true};
+  }
+  fail('NOT_FOUND',404);
+ }
+ async downloadFile(owner,id,kind){
+  const tenant=cloudSchema(owner),schema='"'+tenant+'".';
+  const preview=kind==='preview',missing=preview?'PREVIEW_UNAVAILABLE':'ORIGINAL_MISSING';
+  if(!await this.exists(tenant,'generation_records'))fail(missing,404);
+  const row=await this.db.prepare(`SELECT g.project_id,g.artifact_hash AS hash,a.mime,a.width,a.height,
+   g.request_json::json->'dimensionDisplay' AS display,g.metadata_json::json->'dimensionReview' AS review,
+   (j.status='ready' AND coalesce(p.captured,0)=0 AND adm.job_id IS NULL) AS review_required,
+   (CASE WHEN g.created_at<? THEN ? ELSE j.expires_at END)<=extract(epoch FROM now())*1000 AS expired
+   FROM ${schema}generation_records g JOIN ${schema}jobs j ON j.id=g.id
+   LEFT JOIN ${schema}generation_assets a ON a.hash=g.artifact_hash
+   LEFT JOIN ${schema}job_policies p ON p.job_id=j.id LEFT JOIN ${schema}admin_test_jobs adm ON adm.job_id=j.id
+   WHERE g.id=? AND j.status IN ('ready','accepted') AND g.error_code IS NULL`).get(this.cutover,this.cutover+30*86400000,id);
+  if(!row||!row.hash||!/^[a-f0-9]{64}$/.test(row.hash))fail(missing,404);
+  if(row.expired)fail(preview?missing:'PROJECT_EXPIRED',preview?404:410);
+  const delivery={id,projectId:row.project_id,artifactId:row.hash,reviewRequired:row.review_required,
+   dimensionDisplay:row.display,dimensionReview:row.review};
+  const ext={'image/png':'png','image/jpeg':'jpeg','image/webp':'webp'}[row.mime];
+  // Only offer device recovery after the server has verified this owner's live delivery.
+  if(!ext){if(!preview&&!row.mime)return {...delivery,artifact:null};fail(missing,404);}
+  let bytes;
+  try{bytes=await this.storage.get(owner,owner+'/'+row.hash+'.'+ext);}
+  catch(error){
+   if(!preview&&error.code==='STORAGE_NOT_FOUND')return {...delivery,artifact:null};
+   throw error;
+  }
+  if(!preview)return {...delivery,artifact:{id:row.hash,sha256:row.hash,width:row.width,height:row.height,
+   dataUrl:'data:'+row.mime+';base64,'+bytes.toString('base64')}};
+  const small=await sharp(bytes,{limitInputPixels:30000000}).resize({width:480,height:640,fit:'inside',withoutEnlargement:true}).webp({quality:78}).toBuffer();
+  return {preview:'data:image/webp;base64,'+small.toString('base64')};
+ }
+ async removeDownloads(owner,ids,service){
+  const q='"'+cloudSchema(owner)+'".';
+  await this.store.transaction(async()=>{
+   const marks=ids.map(()=>'?').join(',');
+   const rows=await this.db.prepare(`SELECT g.id,g.artifact_hash AS hash,j.status FROM ${q}generation_records g JOIN ${q}jobs j ON j.id=g.id
+    WHERE g.id IN (${marks}) AND g.error_code IS NULL AND g.artifact_hash IS NOT NULL AND j.status IN ('ready','accepted') FOR UPDATE OF g,j`).all(...ids);
+   for(const row of rows){
+    if(row.status==='ready')await service.ledger.releaseInside(await service.ledger.job(row.id),'customer_rejected');
+    await this.db.prepare(`UPDATE ${q}generation_records SET error_code='DOWNLOAD_REMOVED',fingerprint=? WHERE id=?`).run(createHash('sha256').update('removed:'+row.id).digest('hex'),row.id);
+   }
+   for(const hash of new Set(rows.map(r=>r.hash))){
+    // Shared content can also be source evidence in another job or an open defect report.
+    await this.db.prepare(`UPDATE storage_objects SET expires_at=least(expires_at,now()) WHERE user_id=? AND split_part(split_part(path,'/',2),'.',1)=?
+     AND NOT EXISTS (SELECT 1 FROM ${q}generation_records g WHERE
+      (g.error_code IS DISTINCT FROM 'DOWNLOAD_REMOVED' OR EXISTS(SELECT 1 FROM ${q}defect_reports d WHERE d.job_id=g.id))
+      AND (g.artifact_hash=? OR g.source_hash=? OR position(? in g.request_json)>0 OR position(? in coalesce(g.metadata_json,''))>0))`).run(owner,hash,hash,hash,hash,hash);
+   }
+  });
+  this.kick();
+  return {removed:ids};
+ }
+ async withdraw(user,requestRefund=false){
+  const receipt=randomUUID(),cases=[];
+  const number=await this.store.transaction(async()=>{
+   const old=await this.db.prepare('SELECT receipt FROM deletion_requests WHERE user_id=?').get(user.id);
+   if(old)fail('DELETION_ALREADY_REQUESTED',409);
+   if(requestRefund){
+    const orders=await this.db.prepare('SELECT order_no FROM commerce_order_links WHERE account_id=?').all(user.id);
+    for(const {order_no} of orders){
+     const order=await this.records.order(order_no);
+     if(!order || order.remaining===0 || order.estimated==='0')continue;
+     const pending=await this.db.prepare("SELECT receipt_no FROM protected_complaints c WHERE (c.order_no=? OR EXISTS(SELECT 1 FROM commerce_withdrawals w WHERE w.case_id=c.case_id AND w.order_no=?)) AND category='refund' AND resolution IS NULL AND erase_at>now() ORDER BY received_at LIMIT 1").get(order_no,order_no);
+     if(!pending&&order.refund_deadline&&this.records.now()>Date.parse(order.refund_deadline))continue;
+     const result=pending?{caseId:pending.receipt_no}:await this.records.route(user,'POST','/api/membership/records/cases',{orderNo:order_no,category:'refund',refundReason:'change',description:'회원탈퇴 시 미사용 유료 광고 환불 검토 요청',requestId:randomUUID()});
+     if(!cases.includes(result.caseId))cases.push(result.caseId);
+    }
+   }
+   await this.db.prepare('INSERT INTO deletion_requests(user_id,receipt) VALUES(?,?)').run(user.id,receipt);
+   const {receipt_no}=await this.db.prepare(`INSERT INTO member_events(receipt,kind,receipt_no)
+    VALUES(?,'requested',next_service_receipt(now(),'')) RETURNING receipt_no`).get(receipt);
+   await this.db.prepare('UPDATE users SET disabled=1 WHERE id=?').run(user.id);
+   await this.db.prepare('DELETE FROM sessions WHERE user_id=?').run(user.id);
+   await this.db.prepare('DELETE FROM invites WHERE user_id=?').run(user.id);
+   return receipt_no;
+  });
+  this.kick();return {receipt:number,state:'requested',cases};
+ }
+ kick(){if(!this.stopped&&!this.kickTimer){this.kickTimer=setTimeout(()=>{this.kickTimer=null;void this.run();},100);this.kickTimer.unref();}}
+ start(){this.timer=setInterval(()=>void this.run(),30000);this.timer.unref();this.kick();}
+ async stop(){this.stopped=true;clearTimeout(this.kickTimer);clearInterval(this.timer);await this.running;}
+ run(){if(this.stopped||this.running)return this.running;
+  this.running=this.sweep().catch(()=>{console.error('Membership cleanup will retry');}).finally(()=>{this.running=null;});return this.running;
+ }
+ async sweep(){
+  const rows=await this.db.prepare('SELECT id FROM users ORDER BY id').all();
+  for(const {id} of rows){
+   const service=this.jobs.get(id);
+   if(this.active.has(id)||service?.tasks?.size||this.cleaning.has(id))continue;
+   this.cleaning.add(id);
+   try{
+    const request=await this.db.prepare('SELECT receipt FROM deletion_requests WHERE user_id=?').get(id);
+    if(request){try{await this.erase(id,request.receipt);}catch{await this.recordDeletionEvent(request.receipt,'retry');}}
+    else await this.expire(id);
+   }catch{console.error('Member cleanup deferred');}finally{this.cleaning.delete(id);}
+  }
+  await this.db.prepare('DELETE FROM commerce_orders WHERE erase_at<=now()').run();
+  await this.db.prepare('DELETE FROM retired_generation_keys WHERE expires_at<=now()').run();
+  await this.db.prepare('DELETE FROM protected_complaints WHERE erase_at<=now()').run();
+  await this.db.prepare("DELETE FROM member_events e WHERE happened_at < now()-interval '30 days' AND NOT EXISTS(SELECT 1 FROM deletion_requests r WHERE r.receipt=e.receipt)").run();
+  await this.records.reconcileDue();
+ }
+ async expire(id){
+  const tenant=cloudSchema(id), q='"'+tenant+'".';
+  const deadlines=await this.db.prepare("SELECT (SELECT started_at+interval '30 days' FROM retention_settings WHERE id=1) AS grace,(SELECT started_at FROM retention_settings WHERE id=1) AS cutover").get();
+  // Saved project snapshots are self-contained. Originals used only for generation
+  // have their own short delivery lease. Expiring one snapshot cannot destroy another.
+  await this.db.prepare('DELETE FROM projects WHERE user_id=? AND expires_at<=now()').run(id);
+  const objects=await this.db.prepare('SELECT path FROM storage_objects WHERE user_id=? AND expires_at<=now() LIMIT 200').all(id);
+  for(const {path} of objects)await this.storage.remove(id,path);
+  if(!await this.exists(tenant,'generation_records'))return;
+  await this.store.transaction(async()=>{
+   const expired=`SELECT g.id FROM ${q}generation_records g JOIN ${q}jobs j ON j.id=g.id WHERE
+    CASE WHEN to_timestamp(g.created_at/1000.0) < ?::timestamptz THEN ?::timestamptz
+         ELSE to_timestamp(j.expires_at/1000.0) END<=now()`;
+   const args=[deadlines.cutover,deadlines.grace];
+   if(await this.exists(tenant,'recommendation_jobs')){
+    const subset='SELECT id FROM '+q+'recommendation_jobs WHERE generation_id IN ('+expired+')';
+    await this.db.prepare('DELETE FROM '+q+'recommendation_requests WHERE job_id IN ('+subset+')').run(...args);
+    await this.db.prepare('DELETE FROM '+q+'recommendation_jobs WHERE generation_id IN ('+expired+')').run(...args);
+   }
+   await this.db.prepare("INSERT INTO protected_complaints(case_id,received_at,description,resolution,resolved_at,erase_at) SELECT id,to_timestamp(created_at/1000.0),description,resolution,to_timestamp(reviewed_at/1000.0),to_timestamp(coalesce(reviewed_at,created_at)/1000.0)+interval '3 years' FROM "+q+"defect_reports WHERE job_id IN ("+expired+") AND to_timestamp(coalesce(reviewed_at,created_at)/1000.0)+interval '3 years'>now() ON CONFLICT DO NOTHING").run(...args);
+   await this.db.prepare('DELETE FROM '+q+'defect_reports WHERE job_id IN ('+expired+')').run(...args);
+   await this.db.prepare("INSERT INTO retired_generation_keys(digest,expires_at) SELECT encode(sha256(convert_to(?||':'||request_id,'UTF8')),'hex'),now()+interval '30 days' FROM "+q+"generation_keys WHERE job_id IN ("+expired+") ON CONFLICT DO NOTHING").run(id,...args);
+   await this.db.prepare('DELETE FROM '+q+'generation_keys WHERE job_id IN ('+expired+')').run(...args);
+   await this.db.prepare('DELETE FROM '+q+'generation_records WHERE id IN ('+expired+')').run(...args);
+   if(await this.exists(tenant,'ad_batches')){
+    // Partial expiration must not break access to the later images of a batch.
+    await this.db.prepare("UPDATE "+q+"ad_batches b SET job_ids=(SELECT json_agg(j.value ORDER BY j.ordinality)::text FROM json_array_elements_text(b.job_ids::json) WITH ORDINALITY j(value,ordinality) JOIN "+q+"generation_records g ON g.id=j.value) WHERE EXISTS (SELECT 1 FROM json_array_elements_text(b.job_ids::json) j LEFT JOIN "+q+"generation_records g ON g.id=j.value WHERE g.id IS NULL) AND EXISTS (SELECT 1 FROM json_array_elements_text(b.job_ids::json) j JOIN "+q+"generation_records g ON g.id=j.value)").run();
+    await this.db.prepare("DELETE FROM "+q+"ad_batches b WHERE NOT EXISTS (SELECT 1 FROM json_array_elements_text(b.job_ids::json) j JOIN "+q+"generation_records g ON g.id=j.value)").run();
+   }
+   await this.db.prepare('DELETE FROM '+q+'generation_assets a WHERE NOT EXISTS (SELECT 1 FROM storage_objects o WHERE o.user_id=? AND split_part(split_part(o.path,\'/\',2),\'.\',1)=a.hash)').run(id);
+   await this.db.prepare("UPDATE "+q+"assistant_requests SET response_json=NULL WHERE response_json IS NOT NULL AND created_at<extract(epoch FROM now()-interval '24 hours')*1000 AND (created_at>=extract(epoch FROM ?::timestamptz)*1000 OR now()>=?::timestamptz)").run(...args);
+  });
+ }
+ async exists(schema,table){return (await this.db.prepare('SELECT to_regclass(?) IS NOT NULL AS ok').get(schema+'.'+table)).ok;}
+ async recordDeletionEvent(receipt,kind){
+  await this.db.prepare(`INSERT INTO member_events(receipt,kind,receipt_no)
+   VALUES(?,?,(SELECT receipt_no FROM member_events WHERE receipt=? AND kind='requested'))
+   ON CONFLICT(receipt,kind) DO NOTHING`).run(receipt,kind,receipt);
+ }
+ async erase(id,receipt){
+  const tenant=cloudSchema(id);
+  // Enumerate the actual private prefix as well as upload reservations. Only an
+  // empty physical listing after deletion permits removing the account.
+  const rows=await this.db.prepare('SELECT path FROM storage_objects WHERE user_id=?').all(id);
+  for(const row of rows)await this.storage.remove(id,row.path);
+  for(let page=0;page<20;page++){
+   const list=await this.storage.call('/storage/v1/object/list/'+this.storage.bucket,{method:'POST',body:{prefix:id+'/',limit:100,offset:0}});
+   if(!list.ok)throw Error('STORAGE_LIST_FAILED');
+   const objects=await list.json();if(!Array.isArray(objects))throw Error('INVALID_STORAGE_LIST');
+   if(!objects.length)break;
+   for(const item of objects){if(typeof item.name!=='string'||!item.name||item.name.includes('/'))throw Error('UNEXPECTED_STORAGE_OBJECT');await this.storage.remove(id,id+'/'+item.name);}
+   if(page===19)throw Error('STORAGE_DELETE_CONTINUES');
+  }
+  const identity=await this.db.prepare('SELECT email FROM email_identities WHERE user_id=?').get(id);
+  if(identity)await this.removeMailIdentity(identity.email);
+  await this.store.transaction(async()=>{
+   await this.db.prepare('DELETE FROM complaint_member_links WHERE account_id=?').run(id);
+   await this.db.prepare('DELETE FROM commerce_order_links WHERE account_id=?').run(id);
+   // Keep aggregate operating costs and verified sales after removing the account link.
+   await this.store.sharedGenerationBudget?.archive(id,receipt);
+   if(this.store.customerGeneration!==undefined){
+    await this.db.prepare('UPDATE customer_image_costs SET account_id=NULL WHERE account_id=?').run(id);
+    await this.db.prepare('UPDATE customer_image_sales SET account_id=NULL, purchase_id=gen_random_uuid()::text WHERE account_id=?').run(id);
+   }
+   if(await this.exists('aiadcast_accounts','dimension_analysis_calls'))await this.db.prepare('DELETE FROM dimension_analysis_calls WHERE actor_id=?').run(id);
+   const owner=await this.db.prepare('SELECT role FROM users WHERE id=?').get(id);
+   if(owner?.role==='admin')await this.db.prepare("INSERT INTO settings(key,value) VALUES('owner_withdrawn',1) ON CONFLICT(key) DO UPDATE SET value=1").run();
+   if(identity){
+    await this.db.prepare('DELETE FROM email_requests WHERE email=?').run(identity.email);
+    await this.db.prepare('DELETE FROM test_auth_attempts WHERE email_hash=?').run(createHash('sha256').update(identity.email).digest('hex'));
+   }
+   await this.db.prepare('DELETE FROM google_requests WHERE state_hash IN (SELECT state_hash FROM google_link_requests WHERE user_id=?) OR state_hash IN (SELECT state_hash FROM google_native_requests WHERE claims IS NOT NULL AND (claims::json->>\'email\'=? OR claims::json->>\'subject\' IN (SELECT subject FROM google_identities WHERE user_id=?)))').run(id,identity?.email??'',id);
+   for(const name of ['projects','google_link_requests','email_identities','google_identities','test_passwords','test_orders','invites','sessions','welcome_ad_eligibility'])await this.db.prepare('DELETE FROM '+name+' WHERE user_id=?').run(id);
+   await this.db.prepare('DELETE FROM admin_grants WHERE user_id=? OR actor_id=?').run(id,id);
+   await this.db.prepare('DELETE FROM admin_audit WHERE target_id=? OR actor_id=?').run(id,id);
+   await this.db.prepare('DELETE FROM monthly_demo_support WHERE owner_id=? OR user_id=? OR period IN (SELECT period FROM monthly_budget_approvals WHERE user_id=?)').run(id,id,id);
+   await this.db.prepare('DELETE FROM monthly_budget_approvals WHERE user_id=?').run(id);
+   // Tenant name is generated exclusively from the authenticated account's UUID.
+   if(await this.exists(tenant,'defect_reports')){
+    await this.db.prepare('INSERT INTO protected_complaints(case_id,received_at,description,resolution,resolved_at,erase_at) SELECT id,to_timestamp(created_at/1000.0),description,resolution,to_timestamp(reviewed_at/1000.0),to_timestamp(coalesce(reviewed_at,created_at)/1000.0)+interval \'3 years\' FROM "'+tenant+'".defect_reports WHERE to_timestamp(coalesce(reviewed_at,created_at)/1000.0)+interval \'3 years\'>now() ON CONFLICT DO NOTHING').run();
+   }
+   await this.db.exec('DROP SCHEMA IF EXISTS "'+tenant+'" CASCADE');
+   await this.db.prepare('DELETE FROM deletion_requests WHERE user_id=? AND receipt=?').run(id,receipt);
+   await this.db.prepare('DELETE FROM users WHERE id=?').run(id);
+   await this.recordDeletionEvent(receipt,'completed');
+  });
+  this.jobs.delete(id);this.forgetService?.(id);
+ }
+ async removeMailIdentity(email){
+  if(!await this.exists('auth','users'))return;
+  const matches=await this.db.prepare('SELECT id FROM auth.users WHERE lower(email)=lower(?)').all(email);
+  for(const row of matches){
+   const response=await this.storage.call('/auth/v1/admin/users/'+encodeURIComponent(row.id),{method:'DELETE'});
+   if(!response.ok&&response.status!==404)throw Error('AUTH_DELETE_FAILED');
+  }
+ }
+}

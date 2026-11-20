@@ -3,12 +3,12 @@
 export type PricingLanguage = 'ko' | 'en';
 export type PricingCurrency = 'KRW' | 'USD';
 export const pricingCatalog = {
-  version: 'approved-2026-10-10', status: 'approved', purchasesEnabled: false,
-  standardCredits: 1,
+  version: 'korea-launch-2026-11-17', status: 'approved', purchasesEnabled: false,
+  welcomeCredits: 10,
+  standardCredits: 10,
   packs: [
-    {id:'trial', credits:3, prices:{KRW:6900, USD:499}},
-    {id:'basic', credits:10, prices:{KRW:19900, USD:1499}},
-    {id:'bundle', credits:30, prices:{KRW:49900, USD:3999}},
+    {id:'credits-v2-30', credits:30, creditsPerGeneration:10, prices:{KRW:3300, USD:null}},
+    {id:'credits-v2-100', credits:100, creditsPerGeneration:10, prices:{KRW:9900, USD:null}},
   ],
 } as const;
 // Compatibility export for integrations written before the prices were approved.
@@ -17,7 +17,8 @@ export const pricingProposal = pricingCatalog;
 export function pricingCurrency(savedCurrency:unknown):PricingCurrency {
   return savedCurrency==='USD'?'USD':'KRW';
 }
-export function formatPrice(amountMinor:number, currency:PricingCurrency, language:PricingLanguage) {
+export function formatPrice(amountMinor:number|null, currency:PricingCurrency, language:PricingLanguage) {
+  if(amountMinor===null)return language==='ko'?'가격 미정':'Not priced';
   if(!Number.isFinite(amountMinor)||amountMinor<0)throw Error('Invalid display amount');
   return new Intl.NumberFormat(language==='en'?'en-US':'ko-KR', {
     style:'currency',currency,minimumFractionDigits:currency==='USD'?2:0,

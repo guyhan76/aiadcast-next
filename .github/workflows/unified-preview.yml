@@ -1,0 +1,187 @@
+name: Unified web and Android Preview
+
+on:
+  push:
+    paths:
+      - '**'
+      - '!tests/**'
+      - 'tests/production-parity.spec.ts'
+      - '!docs/**'
+      - '!AGENTS.md'
+      - '!playwright.config.ts'
+      - '!scripts/check-live-web-release.mjs'
+      - '!.github/workflows/**'
+      - '.github/workflows/unified-preview.yml'
+    branches: [feat/patent-product-generation-20261011, feat/member-storage-20261115, feat/sport-industry-options-20261115, feat/dancesport-disciplines-20261115, feat/clean-projects-20261115, fix/campaign-type-examples-20261115, fix/restore-description-20261115, fix/original-downloads-20261115, feat/instruction-edit-projects-20261115, feat/download-selection-edit-comparison, feat/grounded-edit-result-gallery, feat/project-edit-file-entry, fix/character-precision-location, fix/pose-composite-review, fix/separate-person-and-sky, fix/production-pose-review, fix/precision-review-recovery, fix/precision-foreground-preservation, fix/download-original-20261118, feat/unified-project-cards-20261118, fix/project-original-share-20261118]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify advertising workflows and build the web assets
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check:cloud
+          npm run test:domain
+          npm run build
+          node scripts/check-web-build.mjs --require-commit
+          node native/prepare-android.mjs
+          node -e "if(require('./android/app/src/main/assets/native-build.json').webBuild.commit!==process.env.GITHUB_SHA)process.exit(1)"
+      - name: Test Android file downloads
+        run: |
+          export CHROMIUM_PATH="$(command -v google-chrome)"
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$CHROMIUM_PATH"
+          node native/test-android-bridge.mjs
+          npx playwright test tests/web-payment-continue.spec.ts -g "Preview checkout keeps" --project=mobile
+          npx playwright test tests/kakao-signin.spec.ts tests/membership.spec.ts tests/preview-delivery.spec.ts tests/input-example-guides.spec.ts --project=desktop --project=mobile
+          npx playwright test tests/production-parity.spec.ts --project=desktop
+
+      - name: Verify the Preview signing identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.AIADCAST_DEMO_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.AIADCAST_DEMO_STORE_PASSWORD }}
+          AIADCAST_SIGNING_PROFILE: preview
+        run: |
+          umask 077
+          export AIADCAST_DEMO_KEYSTORE="$RUNNER_TEMP/preview.p12"
+          python3 native/decode-signing-secret.py
+          python3 native/check-android-signing.py
+          echo "AIADCAST_DEMO_KEYSTORE=$AIADCAST_DEMO_KEYSTORE" >> "$GITHUB_ENV"
+      - name: Run Android tests and assemble the signed APK
+        env:
+          AIADCAST_DEMO_STORE_PASSWORD: ${{ secrets.AIADCAST_DEMO_STORE_PASSWORD }}
+        working-directory: android
+        run: |
+          ./gradlew --no-daemon testPreviewUnitTest lintPreview assemblePreview assemblePreviewAndroidTest \
+            -PAIADCAST_SIGNED_PREVIEW=true \
+            -PAIADCAST_API_ORIGIN=https://aiadcast-next.onrender.com \
+            -PAIADCAST_BUILD_VERSION_CODE=124 -PAIADCAST_BUILD_VERSION_NAME=0.2.122
+      - name: Verify packaged version, certificate, alignment and source
+        run: |
+          set -euo pipefail
+          apk=android/app/build/outputs/apk/preview/app-preview.apk
+          build_tools="$ANDROID_HOME/build-tools/36.0.0"
+          "$build_tools/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/certificate.txt"
+          grep -Fx 'Signer #1 certificate SHA-256 digest: 7dc020bc774784d3df553c58c672f4210d232e2543004fd52ac9084943488b4e' "$RUNNER_TEMP/certificate.txt"
+          "$build_tools/zipalign" -c -P 16 4 "$apk"
+          "$build_tools/aapt" dump badging "$apk" > "$RUNNER_TEMP/package.txt"
+          grep -F "name='com.selluplabs.aiadcast.next.preview' versionCode='124' versionName='0.2.122-preview'" "$RUNNER_TEMP/package.txt"
+          unzip -p "$apk" assets/native-build.json | jq -e --arg sha "$GITHUB_SHA" '.webBuild.commit == $sha and .webBuild.dirty == false'
+          python3 - "$apk" <<'PY'
+          import hashlib, json, sys, zipfile
+          from pathlib import Path
+          with zipfile.ZipFile(sys.argv[1]) as archive:
+              manifest = Path('dist/web-release.json').read_bytes()
+              assert archive.read('assets/web-release.json') == manifest
+              for name, info in json.loads(manifest)['files'].items():
+                  data = archive.read('assets/' + name)
+                  assert len(data) == info['size'] and hashlib.sha256(data).hexdigest() == info['sha256'], name
+          PY
+          cmp public/aiadcast-app-icon.png <(unzip -p "$apk" assets/aiadcast-app-icon.png)
+          grep -Fx "application-label:'aiadcast'" "$RUNNER_TEMP/package.txt"
+          grep -q "^application-icon-" "$RUNNER_TEMP/package.txt"
+          mkdir -p release
+          cp "$apk" release/aiadcast-0.2.122.apk
+          cd release
+          zip -q -0 aiadcast-0.2.122.zip aiadcast-0.2.122.apk
+          sha256sum aiadcast-0.2.122.{apk,zip} > SHA256SUMS.txt
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Reopen originals saved by the installed Android Preview
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: |
+            adb install -r android/app/build/outputs/apk/preview/app-preview.apk
+            adb shell cmd package resolve-activity --brief -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d com.selluplabs.aiadcast.next.preview://checkout/return | grep -F 'com.selluplabs.aiadcast.next.preview/com.selluplabs.aiadcast.next.MainActivity'
+            adb install -r android/app/build/outputs/apk/androidTest/preview/app-preview-androidTest.apk
+            adb shell am instrument -w com.selluplabs.aiadcast.next.preview.test/com.selluplabs.aiadcast.next.DownloadInstrumentation | tee "$RUNNER_TEMP/original-downloads.txt"
+            grep -F 'files=3 originals reopened from Pictures/aiadcast' "$RUNNER_TEMP/original-downloads.txt"
+            grep -F 'share=single JPEG and 12 mixed originals reopened from chooser' "$RUNNER_TEMP/original-downloads.txt"
+            grep -F 'picker=photos and JSON in one document picker' "$RUNNER_TEMP/original-downloads.txt"
+      - name: Keep the signed candidate for publication after the web deploy
+        if: github.ref_name == 'feat/patent-product-generation-20261011'
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-preview-${{ github.sha }}
+          path: release/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Remove temporary signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/preview.p12"
+
+  publish:
+    if: github.ref_name == 'feat/patent-product-generation-20261011'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-preview-${{ github.sha }}
+          path: release
+      # After deploying this revision to Render, retry this job to publish the same signed bytes.
+      - name: Match production to the candidate and compare the actual browser and packaged form
+        env:
+          AIADCAST_PARITY_WEB_ORIGIN: https://aiadcast-next.onrender.com
+        run: |
+          set -euo pipefail
+          (cd release && sha256sum -c SHA256SUMS.txt)
+          apk=(release/*.apk)
+          test "${#apk[@]}" -eq 1
+          unzip -p "${apk[0]}" assets/web-release.json | jq -e --arg sha "$GITHUB_SHA" '.commit == $sha'
+          node scripts/check-live-web-release.mjs "$GITHUB_SHA"
+          unzip -qo "${apk[0]}" 'assets/*' -d android/app/src/main
+          npm ci --no-audit --no-fund
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(command -v google-chrome)"
+          npx playwright test tests/production-parity.spec.ts --project=desktop
+      - name: Save the restored product and service screens
+        uses: actions/upload-artifact@v4
+        with:
+          name: restored-section-5-web-and-android
+          path: test-results/**/*-restored-section-5.png
+          if-no-files-found: error
+      - name: Publish the verified Preview build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node scripts/check-live-web-release.mjs "$GITHUB_SHA"
+          tag="preview-0.2.122-code124-${GITHUB_SHA:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          gh release create "$tag" release/aiadcast-0.2.122.apk release/aiadcast-0.2.122.zip release/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title 'aiadcast 0.2.122 Preview (124)' --notes "Android Preview for testing. Verified source: $GITHUB_SHA. Certificate and APK checks passed."

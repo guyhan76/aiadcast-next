@@ -17,6 +17,41 @@ function attempt(ledger, jobId = 'job', attemptId = 'attempt', limitMicros = 200
   return ledger.beginAttempt({ jobId, attemptId, period: '2026-10-test', maximumMicros: 100_000, limitMicros });
 }
 
+test('administrator tests reserve and accept without inventing credits or purchases while retaining actual provider cost',t=>{
+ const ledger=new BillingLedger(':memory:',()=>1000);t.after(()=>ledger.close());
+ const input={jobId:'admin-test',userId:'admin',credits:1,creditExempt:true,requestHash:'hash',modelRevision:'revision',expiresAt:2000};
+ assert.equal(ledger.reserve(input).creditExempt,true);ledger.reserve(input);
+ assert.deepEqual(ledger.wallet('admin'),{available:0,reserved:0});
+ assert.throws(()=>ledger.reserve({...input,creditExempt:false}),/replay mismatch/);
+ attempt(ledger,'admin-test','admin-attempt');ledger.settleAttempt('admin-attempt',1234,'completed');ledger.markReady('admin-test','artifact');
+ ledger.accept('admin-test','admin','artifact');ledger.accept('admin-test','admin','artifact');
+ assert.deepEqual(ledger.wallet('admin'),{available:0,reserved:0});assert.equal(ledger.budget('2026-10-test').spent_micros,1234);
+ assert.equal(ledger.db.prepare('SELECT COUNT(*) n FROM purchases').get().n,0);
+ assert.equal(ledger.db.prepare("SELECT COUNT(*) n FROM credit_events WHERE kind='capture'").get().n,0);
+ assert.equal(ledger.db.prepare("SELECT COUNT(*) n FROM credit_events WHERE kind='admin-test-accept'").get().n,1);
+});
+test('administrator rejection, expiry, uncertain settlement and confirmed-defect refund never add credit balances',t=>{
+ let now=1000;const ledger=new BillingLedger(':memory:',()=>now);t.after(()=>ledger.close());
+ const reserve=id=>ledger.reserve({jobId:id,userId:'admin',credits:1,creditExempt:true,requestHash:id,modelRevision:'revision',expiresAt:2000});
+ reserve('rejected');ledger.markReady('rejected','a');ledger.release('rejected','admin','customer_rejected');
+ reserve('refunded');ledger.markReady('refunded','b');ledger.accept('refunded','admin','b');ledger.refundConfirmedDefect('refunded','incident');
+ reserve('uncertain');attempt(ledger,'uncertain','uncertain-attempt');ledger.markAttemptUncertain('uncertain-attempt');ledger.release('uncertain','admin','system_error');
+ assert.equal(ledger.budget('2026-10-test').held_micros,100000);ledger.settleAttempt('uncertain-attempt',111,'completed');
+ reserve('expired');now=2001;ledger.expire();assert.equal(ledger.job('expired').status,'released');
+ assert.deepEqual(ledger.wallet('admin'),{available:0,reserved:0});assert.equal(ledger.budget('2026-10-test').spent_micros,111);
+});
+test('credit exemption is persisted per job and does not alter an earlier metered reservation after restart',t=>{
+ const folder=mkdtempSync(join(tmpdir(),'admin-credit-policy-')),path=join(folder,'ledger.sqlite');let ledger=new BillingLedger(path,()=>1000);
+ t.after(()=>{ledger.close();rmSync(folder,{recursive:true,force:true});});
+ ledger.recordVerifiedPurchase({purchaseId:'previous-test',userId:'owner',credits:1});
+ const input={userId:'owner',credits:1,requestHash:'h',modelRevision:'r',expiresAt:2000};
+ ledger.reserve({...input,jobId:'metered'});ledger.markReady('metered','m');ledger.reserve({...input,jobId:'exempt',creditExempt:true});ledger.markReady('exempt','e');
+ ledger.close();ledger=new BillingLedger(path,()=>1000);
+ assert.equal(ledger.job('metered').creditExempt,false);assert.equal(ledger.job('exempt').creditExempt,true);
+ ledger.accept('exempt','owner','e');assert.deepEqual(ledger.wallet('owner'),{available:0,reserved:1});
+ ledger.accept('metered','owner','m');assert.deepEqual(ledger.wallet('owner'),{available:0,reserved:0});
+});
+
 test('purchase notifications and job retries cannot grant or reserve twice', t => {
   const { ledger, reserve } = setup(t);
   ledger.recordVerifiedPurchase({ purchaseId: 'TEST-RECEIPT-1', userId: 'user', credits: 3 });
@@ -116,4 +151,14 @@ test('independent connections and restart retain balances and prevent spending t
   const c = new BillingLedger(join(path, 'ledger.sqlite'), () => 1000);
   assert.deepEqual(c.wallet('user'), { available: 0, reserved: 1 });
   c.release('one', 'user', 'system_error'); c.close();
+});
+
+
+test('released customer reservation does not free uncertain supplier hold for another job',t=>{
+ const {ledger,reserve}=setup(t);reserve('first');
+ ledger.beginAttempt({jobId:'first',attemptId:'first-attempt',period:'2026-10',maximumMicros:500000,limitMicros:500000});
+ ledger.markAttemptUncertain('first-attempt');ledger.release('first','user','system_error');
+ assert.equal(ledger.job('first').status,'released');assert.equal(ledger.budget('2026-10').held_micros,500000);
+ reserve('second');assert.throws(()=>ledger.beginAttempt({jobId:'second',attemptId:'second-attempt',period:'2026-10',maximumMicros:500000,limitMicros:500000}),/budget unavailable/);
+ assert.equal(ledger.budget('2026-10').held_micros,500000);
 });

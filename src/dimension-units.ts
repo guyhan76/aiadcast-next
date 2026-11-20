@@ -6,7 +6,13 @@ function decimal(integer:bigint,places:number) {
  const s=integer.toString().padStart(places+1,'0');
  return places?(s.slice(0,-places)+'.'+s.slice(-places)).replace(/\.?0+$/,''):s;
 }
+// Only trim outer whitespace and spaces immediately beside a decimal point.
+// Never concatenate separated digits, interpret commas or strip a unit suffix.
+export function normalizeDimensionDecimal(value:string):string {
+ return value.trim().replace(/([0-9])(?:[ \t\u00a0\u202f]+)\./g,'$1.').replace(/\.(?:[ \t\u00a0\u202f]+)(?=[0-9])/g,'.');
+}
 export function toMillimeters(value:string,unit:DimensionUnit):string {
+ value=normalizeDimensionDecimal(value);
  if(!/^\d*(\.\d{0,10})?$/.test(value)||!/[0-9]/.test(value))return '';
  const [whole,fraction='']=value.split('.');
  const coefficient=BigInt((whole||'0')+fraction);

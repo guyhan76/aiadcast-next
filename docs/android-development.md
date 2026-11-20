@@ -6,6 +6,7 @@
 |---|---|
 | 정식 등록용 applicationId | `com.selluplabs.aiadcast.next` |
 | 개발 APK applicationId | `com.selluplabs.aiadcast.next.dev` |
+| 별도 설치 Preview applicationId | `com.selluplabs.aiadcast.next.preview` |
 | 최소 Android | Android 10 / API 29 |
 | compile / target SDK | API 36 |
 | Android Gradle Plugin / Gradle | 8.13.2 / 8.13 |
@@ -26,6 +27,10 @@ cd android
 ```
 
 한 번에 실행하려면 JDK와 SDK 환경 변수를 설정한 뒤 `bash native/android-build.sh`를 사용한다. Gradle wrapper는 공식 배포 ZIP의 SHA-256을 검증한다. APK 출력은 `android/app/build/outputs/apk/debug/app-debug.apk`다. 웹 코드가 바뀔 때마다 웹 빌드·prepare·Android 빌드를 다시 실행해야 APK에 반영된다.
+
+기존 Dev APK 설치 실패를 분리해 확인하려면 `bash native/android-build.sh preview`를 사용한다. `android/app/build/outputs/apk/preview/app-preview.apk`에 **aiadcast Preview**가 생성된다. 개발 서명키를 사용하지만 디버깅을 끄고 별도 applicationId와 provider authority를 사용한다. 정식/Dev 앱을 덮어쓰거나 데이터를 지우지 않으며, 기존 프로젝트는 자동 이전되지 않는다. 필요하면 기존 앱에서 JSON을 백업해 Preview에 가져온다. Preview도 운영 배포판은 아니며 기존 앱 삭제나 기기의 보안 기능 해제를 해결책으로 전제하지 않는다.
+
+서로 다른 환경의 개발 서명키로 동일 applicationId를 빌드하면 기존 설치본 업데이트가 거부될 수 있다. 같은 Preview 앱의 다음 업데이트에는 동일한 서명키와 더 높은 versionCode를 유지해야 한다. 이번 설치 실패의 정확한 코드와 기존 설치본 서명은 확인되지 않았으므로, 별도 설치판 생성 자체를 원인 확정이나 실기기 설치 성공으로 기록하지 않는다.
 
 Codex 클라우드의 읽기 전용 사용자 홈 환경에서는 다음 준비 경로를 사용할 수 있다. 공식 다운로드의 고정 SHA-256을 검증하며 `/tmp/aiadcast-android-tools`에만 도구를 설치한다. 시스템 TLS 검증과 기존 프록시를 유지한다.
 
@@ -76,3 +81,4 @@ Android 뒤로가기 버튼·제스처는 취소 가능한 `aiadcast-native-back
 6. 실제 생성 서버 연결 시 인증·과금 예약/확정/복원, 네트워크 단절 및 중복 요청.
 
 현재 Google Play Billing, 회원 서버 동기화, AAB 운영 서명, Play Console 심사 제출, 영상 생성은 이 네이티브 껍데기만으로 완료되지 않는다. 실기기 검증과 이 출시 조건을 통과하기 전에는 상용 앱 완성이나 결제 가능으로 표시하지 않는다.
+

@@ -1,0 +1,31 @@
+import test from 'node:test';import assert from 'node:assert/strict';import pg from 'pg';import {readFileSync} from 'node:fs';
+const socket=process.env.AIADCAST_LOCAL_PG_SOCKET,sql=n=>readFileSync(new URL('../server/'+n,import.meta.url),'utf8');
+test('real PostgreSQL cutover install/remove: lock race, atomic failure, signup/schema exclusion, replay and ledger preservation',{skip:!socket},async t=>{
+ assert.equal(socket,'/tmp/aiadcast-rec-pg-socket');const config={host:socket,user:'postgres',database:'postgres'},admin=new pg.Client(config);await admin.connect();
+ const name='cutover_'+process.pid;await admin.query(`CREATE DATABASE ${name}`);const a=new pg.Client({...config,database:name}),b=new pg.Client({...config,database:name});await a.connect();await b.connect();
+ t.after(async()=>{await a.end();await b.end();await admin.query(`DROP DATABASE ${name}`);await admin.end();});
+ const owner='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',schema='aiadcast_user_'+owner.replaceAll('-','');
+ await a.query(`DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon;END IF;IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated;END IF;END $$;
+ CREATE SCHEMA aiadcast_accounts;CREATE TABLE aiadcast_accounts.users(id TEXT PRIMARY KEY);INSERT INTO aiadcast_accounts.users VALUES('${owner}');CREATE SCHEMA ${schema};CREATE TABLE ${schema}.budgets(period TEXT PRIMARY KEY,held_micros BIGINT,spent_micros BIGINT);CREATE TABLE ${schema}.jobs(id TEXT PRIMARY KEY);INSERT INTO ${schema}.budgets VALUES('old',1500000,5747051);`);
+ const install=sql('cumulative-budget-cutover-install.sql'),remove=sql('cumulative-budget-cutover-remove.sql');
+ await assert.rejects(a.query(install),/VERIFIED_UNUSED_BOOTSTRAP_REQUIRED/);await a.query('ROLLBACK');
+ assert.equal((await a.query("SELECT to_regnamespace('aiadcast_budget_cutover') AS n")).rows[0].n,null);
+ const body=text=>text.replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');
+ const combined="BEGIN;SET LOCAL lock_timeout='1000ms';SELECT pg_advisory_xact_lock(hashtext('aiadcast-next-budget-transactions-v1'));LOCK TABLE aiadcast_accounts.users IN SHARE ROW EXCLUSIVE MODE;"+body(sql('cumulative-budget-unused-analysis-bootstrap.sql'))+body(install)+'COMMIT;';
+ await b.query("BEGIN;SELECT pg_advisory_xact_lock(hashtext('aiadcast-next-budget-transactions-v1'))");
+ await assert.rejects(a.query(install),/lock timeout/);await a.query('ROLLBACK');await b.query('COMMIT');
+ await a.query(combined);await assert.rejects(a.query(install),/already exists/);await a.query('ROLLBACK');
+ await assert.rejects(b.query(`UPDATE ${schema}.budgets SET held_micros=held_micros+1`),/AIADCAST_TEMPORARY_MAINTENANCE/);
+ await assert.rejects(b.query(`INSERT INTO ${schema}.jobs VALUES('new')`),/AIADCAST_TEMPORARY_MAINTENANCE/);
+ await assert.rejects(b.query("INSERT INTO aiadcast_accounts.dimension_analysis_calls(id,approval,target,hash,state,hold,actor_id) VALUES('new','a','t','h','reserved',30000,'"+owner+"')"),/AIADCAST_TEMPORARY_MAINTENANCE/);
+ await assert.rejects(b.query("BEGIN;INSERT INTO aiadcast_accounts.users VALUES('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');CREATE SCHEMA aiadcast_user_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;COMMIT"),/AIADCAST_TEMPORARY_MAINTENANCE/);await b.query('ROLLBACK');
+ assert.equal((await a.query("SELECT to_regnamespace('aiadcast_user_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb') AS n")).rows[0].n,null);
+ // No-op updates and reads do not erase historic uncertain holds.
+ await a.query(`UPDATE ${schema}.budgets SET held_micros=held_micros`);
+ assert.deepEqual((await a.query(`SELECT held_micros::int AS held,spent_micros::int AS spent FROM ${schema}.budgets`)).rows[0],{held:1500000,spent:5747051});
+ await a.query(remove);await assert.rejects(a.query(remove),/does not exist/);await a.query('ROLLBACK');
+ await b.query(`INSERT INTO ${schema}.jobs VALUES('after');UPDATE ${schema}.budgets SET held_micros=held_micros+1`);
+ await b.query("INSERT INTO aiadcast_accounts.users VALUES('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')");
+ assert.equal((await a.query("SELECT to_regnamespace('aiadcast_budget_cutover') AS n")).rows[0].n,null);
+ assert.equal((await a.query(`SELECT spent_micros::int AS spent FROM ${schema}.budgets`)).rows[0].spent,5747051);
+});

@@ -1,0 +1,1 @@
+export function createWebBuild(options?: {env?: Record<string,string|undefined>;runGit?: (args:string[])=>string;now?:()=>Date;version?:string}): {schemaVersion:1;version:string;commit:string|null;commitSource:'git'|'render'|'unavailable';dirty:boolean|null;builtAt:string};

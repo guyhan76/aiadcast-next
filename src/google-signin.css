@@ -1,0 +1,49 @@
+.google-signin{min-height:100dvh;display:grid;place-items:center;padding:24px;background:#faf8f5;color:#202124}.google-signin-card{width:min(100%,380px);text-align:center}.google-signin h1{display:flex;justify-content:center;font-size:clamp(28px,10vw,40px);margin:0 0 12px}.google-signin p{font-size:16px;line-height:1.6}.google-continue{width:100%;min-height:52px;margin-top:28px;border:1px solid #747775;border-radius:28px;background:#fff;color:#1f1f1f;font-size:17px;font-weight:600;cursor:pointer}.google-continue:disabled{opacity:.55;cursor:default}.google-signin [role=alert]{color:#a32121}.google-recovery{max-width:520px;margin:auto;padding:24px}
+
+.kakao-continue{display:block;width:100%;min-height:48px;margin:10px 0;border:0;border-radius:12px;background:#fee500;color:#191919;font:600 16px/1.4 system-ui,sans-serif;cursor:pointer}.kakao-continue:disabled{opacity:.55}.kakao-continue:focus-visible{outline:3px solid #202124;outline-offset:3px}
+.auth-language{display:flex;justify-content:center;margin:24px 0 0}
+
+.signin-options{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px 22px;margin-top:20px}
+.signin-options>a,.signin-options .ui-language-switch{display:inline-flex;align-items:center;min-height:44px;font-size:14px;color:#545454}
+.signin-options>a{text-decoration:underline;text-underline-offset:3px}
+
+/* The two sign-in providers share one label center and one leading icon column. */
+.social-login-button {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 20px;
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  height: 52px;
+  min-height: 52px;
+  padding: 0 16px;
+  border-radius: 12px;
+  text-align: center;
+  font: 600 16px/1.4 system-ui, sans-serif;
+}
+.kakao-continue.social-login-button {
+  border: 1px solid transparent;
+  color: rgb(0 0 0 / 85%);
+}
+.social-login-button img {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+.social-login-button:focus-visible {
+  outline: 3px solid #202124;
+  outline-offset: 3px;
+}
+
+.social-login-button { position: relative; }
+.last-login-badge {
+  position: absolute;
+  inset: -9px 12px auto auto;
+  padding: 1px 7px;
+  border-radius: 8px;
+  background: #292929;
+  color: white;
+  font: 600 11px/16px system-ui, sans-serif;
+  white-space: nowrap;
+}

@@ -16,6 +16,9 @@ try {
   await page.goto('https://appassets.androidplatform.net/index.html');
   await page.addScriptTag({ content: script });
   await page.addScriptTag({ content: script }); // Initialization is idempotent.
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('aiadcast-export-context', {detail:{owner:'fixture-owner'}})));
+  assert.equal((await page.evaluate(() => window.messages))[0].type, 'export-context');
+  await page.evaluate(() => { window.messages = []; });
   await page.evaluate(() => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(['{"project":"카페"}'], { type: 'application/json' }));
@@ -27,6 +30,9 @@ try {
   assert.equal(messages[0].filename, '프로젝트.json');
   assert.equal(messages[0].mime, 'application/json');
   assert.equal(Buffer.from(messages[0].base64, 'base64').toString(), '{"project":"카페"}');
+  assert.equal(messages[0].owner, 'fixture-owner');
+  assert.match(messages[0].requestId, /^[0-9a-f-]{36}$/);
+  await page.evaluate(requestId => window.dispatchEvent(new CustomEvent('aiadcast-native-export', {detail:{status:'saved',requestId}})), messages[0].requestId);
 
   await page.evaluate(async () => {
     const canvas = document.createElement('canvas'); canvas.width = 10; canvas.height = 10;
@@ -40,6 +46,7 @@ try {
   messages = await page.evaluate(() => window.messages);
   assert.equal(messages[1].mime, 'image/png');
   assert.deepEqual([...Buffer.from(messages[1].base64, 'base64').subarray(0, 8)], [137,80,78,71,13,10,26,10]);
+  await page.evaluate(requestId => window.dispatchEvent(new CustomEvent('aiadcast-native-export', {detail:{status:'saved',requestId}})), messages[1].requestId);
 
   await page.evaluate(() => {
     const a = document.createElement('a');

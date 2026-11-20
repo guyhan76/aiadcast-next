@@ -8,7 +8,7 @@ export type UiLanguage='ko'|'en';
 export const uiLanguageStorageKey='aiadcast.ui-language';
 export function initialUiLanguage():UiLanguage {
  try {const saved=localStorage.getItem(uiLanguageStorageKey);if(saved==='ko'||saved==='en')return saved;} catch {/* Browsers may block storage. */}
- return typeof navigator!=='undefined'&&navigator.language.toLowerCase().startsWith('ko')?'ko':'en';
+ return 'en';
 }
 type UiContext={language:UiLanguage;setLanguage:(language:UiLanguage)=>void;t:(ko:string,en:string)=>string;text:(ko:string)=>string};
 const UiLanguageContext=createContext<UiContext|null>(null);

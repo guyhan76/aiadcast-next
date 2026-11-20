@@ -1,4 +1,7 @@
 import {test,expect,type Page} from '@playwright/test';
+import {protectedScreen,mockSession} from './helpers/authenticated-session';
+// This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
+test.beforeEach(async({page})=>{await protectedScreen(page,mockSession('protected-box-projection'));});
 import {createHash} from 'node:crypto';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import sharp from 'sharp';
@@ -15,7 +18,7 @@ async function png(page:Page){const event=page.waitForEvent('download');await pa
 test('source faces, dimensions and confirmation survive edit/save/import without paid calls',async({page},testInfo)=>{
  test.setTimeout(60000);page.on('dialog',d=>d.accept());
  const paid:string[]=[];page.on('request',r=>{if(r.method()==='POST'&&/\/api\/(generations|assistant)/.test(r.url()))paid.push(r.url());});
- await page.goto('/#studio');await page.locator('.editor-details > summary').click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles(file);
+ await page.goto('/#editor');await page.locator('.editor-details > summary').click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles(file);
  await expect(page.getByRole('status').filter({hasText:'원본 사진을 추가'})).toBeVisible();
  await page.getByLabel('프로젝트 이름').fill('면 투영 시험');
  await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();
@@ -85,7 +88,7 @@ test('source faces, dimensions and confirmation survive edit/save/import without
 });
 
 test('zoomed scrolled photo places the selected source corner accurately and retains selection',async({page})=>{
- await page.goto('/#studio');await page.locator('.editor-details > summary').click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles(file);
+ await page.goto('/#editor');await page.locator('.editor-details > summary').click();await page.locator('.editor-container').getByLabel('참조사진 추가').setInputFiles(file);
  await expect(page.getByRole('status').filter({hasText:'원본 사진을 추가'})).toBeVisible();
  await page.locator('.editor-tabs').getByRole('button',{name:/규격/}).click();
  await page.getByLabel('규격 박스 구성 사용',{exact:true}).check();

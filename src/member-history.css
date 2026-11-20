@@ -1,0 +1,26 @@
+.admin-card.member-history summary { margin-top:0; }
+.member-history-toolbar { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:8px 0 10px; }
+.member-history-views { display:flex; flex-wrap:wrap; gap:2px; background:var(--brand-light); border-radius:10px; padding:3px; }
+.member-history-views button { font-size:14px; padding:7px 12px; border:0; background:transparent; }
+.member-history-views button[aria-pressed="true"] { background:var(--brand-white); color:var(--brand-black); font-weight:700; box-shadow:0 1px 3px #0002; }
+.member-history-toolbar .member-history-refresh { width:44px; flex:none; padding:0; display:grid; place-items:center; }
+.member-history-list { list-style:none; padding:0; margin:0; }
+.member-history-list > li { border-top:1px solid var(--brand-line); }
+.member-history-list strong { font-weight:600; font-size:15px; }
+.member-history-list small,.member-history-heading time { display:block; font-size:13px; color:var(--brand-muted); overflow-wrap:anywhere; }
+.member-history .member-history-case > summary,.member-history-entry { padding:12px 0; }
+.member-history .member-history-case > summary { display:flex; align-items:center; justify-content:space-between; gap:8px; list-style:none; font-weight:400; }
+.member-history-case > summary::-webkit-details-marker { display:none; }
+.member-history-case > summary > span { flex:1; min-width:0; }
+.member-history-case > summary svg { flex:none; }
+.member-history-case[open] > summary svg { transform:rotate(180deg); }
+.member-history-heading,.member-history-steps > div { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; column-gap:10px; }
+.member-history-entry { padding-right:24px; }
+.member-history-case small { margin-top:3px; }
+.member-history-steps { margin-bottom:12px; padding:8px 12px; border-radius:8px; background:var(--brand-light); font-size:13px; }
+.member-history-steps > div { padding:3px 0; }
+.member-history .member-history-more { display:block; margin:10px auto 0; font-size:14px; }
+.member-plan-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:10px 0; overflow-wrap:anywhere; }
+.member-plan-row strong { display:block; }
+.member-history .member-plan-row select { width:auto; max-width:100%; min-height:44px; padding:5px 8px; font-size:14px; }
+.member-plan-admin { justify-self:end; font-size:14px; color:var(--brand-muted); }

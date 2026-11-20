@@ -1,0 +1,55 @@
+{
+  "format": "Portrait 9:16 premium advertising lookbook photograph, original unbranded designs. Photorealistic hero plus two integrated detail views; clear upper area for app-composed text; no embedded typography, logos, watermark, invented claims or decorative text. Natural product proportions, detailed materials, editorial light and motion appropriate to each category.",
+  "items": [
+    {
+      "key": "beauty",
+      "prompt": "Cosmetics: a striking transparent pearl-white glass serum bottle with brushed platinum pump and open sculptural cream jar, large diagonal glass gel wave refracting light around hero, blue-white luminous studio, photorealistic micro droplets and rich cream texture. At bottom a sophisticated seamlessly integrated macro inset of serum bubbles and a second detail of cream swirling.",
+      "source_image": "exec-986c2583-13f9-45dd-8b80-937c15f1d774.png"
+    },
+    {
+      "key": "luxury",
+      "prompt": "Luxury women’s handbag: original burgundy structured leather trapezoid top-handle bag with brushed brass clasp, realistic balanced body and handle size, three-quarter low viewpoint on polished walnut, sunlit contemporary luxury interior, a hand lifting the handle slightly creates motion; bottom editorial panels show leather stitching macro and same bag side profile. No recognizable designer shape or logo.",
+      "source_image": "exec-c9ee757b-d002-49d8-90fe-9e69a4f78d3e.png"
+    },
+    {
+      "key": "jewelry",
+      "prompt": "Fine jewelry: original oval-cut clear gemstone ring and matching earrings with white-metal prongs on folded translucent glass with sparkling caustics; powerful oversized macro ring hero diagonally framed, at bottom complementary extreme facet detail and ear wearing matching stud in a tasteful close crop. Accurate natural proportions, elegance without exaggerated glitter.",
+      "source_image": "exec-b5df09ca-2520-458c-88f9-ea169bfabec9.png"
+    },
+    {
+      "key": "fashion",
+      "prompt": "Women’s fashion: adult woman in exceptional cream tailored trouser suit with satin blouse stepping through modern luminous architectural gallery, coat cloth in gentle motion, commanding full-height fashion campaign portrait; integrated bottom panels of tailoring fabric close detail and a beautiful walking side silhouette. Original clothing without logos, natural anatomy and editorial pose.",
+      "source_image": "exec-fa085f10-031c-4277-924e-7d88eb585bf5.png"
+    },
+    {
+      "key": "appliance",
+      "prompt": "Small home appliance: original sculptural brushed stainless espresso machine with cream side panels on honed stone kitchen island; dramatic large three-quarter product portrait, thin rising steam, warm cup of espresso, modern oak and morning window, realistic controls; integrated bottom macro panel of espresso pouring and one of brushed metal dial craftsmanship. No invented visible text.",
+      "source_image": "exec-409f0948-2851-4f9b-8313-c922411b0e4e.png"
+    },
+    {
+      "key": "travel",
+      "prompt": "Luxury travel: cinematic panoramic Italian-inspired Mediterranean coast terrace and private sailboat on vibrant turquoise water seen from sophisticated elevated balcony; atmospheric foreground flowers, golden sunlight, dramatic curved coast depth; integrated bottom editorial scenes of secluded seaside dining and sailboat deck at sunset. A vivid composed luxury holiday campaign with no specific real destination promise.",
+      "source_image": "exec-9de03e02-3445-49c0-bb20-87848cfaad0b.png"
+    },
+    {
+      "key": "hotel",
+      "prompt": "Luxury hotel: exquisite light-filled contemporary suite with sculptural cream bed, sheer curtains flowing, panoramic emerald garden and reflecting pool, limestone and warm walnut; visually layered architectural hero with superb depth; integrated bottom inset images of tranquil spa pool and beautifully set private dining terrace. Aspirational fictional hospitality property.",
+      "source_image": "exec-981f5553-2bdc-45ee-94f7-f10efe44cd79.png"
+    },
+    {
+      "key": "insurance",
+      "prompt": "Insurance: premium editorial narrative of adult parents and child enjoying sunlit contemporary residence garden, restrained natural interaction and elegant architecture foreground framed by glass, vivid but calm dimensional photography; integrated bottom complementary scenes of independent adult relaxing at home and family walking safely together. Premium trust and reassurance through human warmth, no coins or shields or fabricated benefits.",
+      "source_image": "exec-d6d3a767-2671-4c80-bd58-12543c74aa56.png"
+    },
+    {
+      "key": "hospital",
+      "prompt": "Hospital: premium modern private healthcare consultation suite, kind adult clinician in white coat listening to adult patient with calm eye contact, immaculate wood glass and white architectural depth, daylight and realistic anatomy; integrated bottom complementary detail of clinician’s hand explaining tablet with unreadable abstract diagram, and bright serene waiting area. No treatment promise, before-after or credentials.",
+      "source_image": "exec-e2b2f1b7-3370-427e-b6fb-b17810866545.png"
+    },
+    {
+      "key": "mobility",
+      "prompt": "Car lease and rental: original unbranded premium silver electric crossover in dynamic front three-quarter view outside elegant contemporary business hotel, dawn light reflections, crisp car body while distant road softly blurred, realistic wheels and perspective; integrated bottom complementary car cabin stitched leather craftsmanship and vehicle side profile parked by ocean. No logos plates or invented price.",
+      "source_image": "exec-3cfb6297-948a-4cd4-a91b-c6ca64ae97f8.png"
+    }
+  ]
+}

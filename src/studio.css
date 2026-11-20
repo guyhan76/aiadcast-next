@@ -14,3 +14,5 @@
 /* A clear promise, with editing and reuse available from the first screen. */
 .hero-copy>.hero-promise{font-size:11px;line-height:1.9;color:var(--brand-muted);max-width:420px;word-break:keep-all;margin:0 0 10px}.hero-copy>.hero-preview-note{font-size:10px;line-height:1.8;color:var(--brand-muted);margin:0}.project-reuse-note{background:var(--brand-white);border:1px solid var(--brand-light);border-radius:6px;padding:20px 22px;margin:0 0 17px;max-width:900px}.project-reuse-note strong{font-size:13px;font-weight:600}.project-reuse-note p{font-size:12px;line-height:1.9;color:var(--brand-muted);max-width:740px;margin:7px 0 12px;word-break:keep-all}.project-reuse-note a{display:inline-flex;align-items:center;gap:9px;font-size:12px;color:var(--brand-black)}.projects-heading p{max-width:440px;word-break:keep-all}.work-features p{word-break:keep-all}
 @media(max-width:760px){.hero-copy>.hero-promise{font-size:10px;margin:2px 0 9px}.hero-copy>.hero-preview-note{font-size:10px}.project-reuse-note{padding:17px}.project-reuse-note p{font-size:12px}.projects-heading p{max-width:240px}}
+
+.workspace-save-state{margin:12px 24px 0;font-size:12px;color:#64748b;}

@@ -1,0 +1,19 @@
+import {useEffect,useState} from 'react';
+import {useAdminRead} from './use-admin-read';
+import {useUiLanguage} from './ui-language';
+type Job={id:string;userId?:string;userLabel:string;state:string;createdAt:string;model:string|null;outputFormat:string;errorCode:string|null;costMicros:number|null};
+type Page={jobs:Job[];nextCursor:string|null};
+const states:Record<string,[string,string]>={accepted:['사용 확정','Accepted'],ready:['결과 준비됨','Result ready'],running:['생성 중','Generating'],reserved:['접수됨','Reserved'],uncertain:['결과 미확인','Uncertain'],failed:['실패','Failed'],rejected:['사용 안 함','Rejected'],expired:['만료','Expired']};
+export function AdminGenerationHistory(){
+ const {t,language}=useUiLanguage(),[page,setPage]=useState<Page|null>(null),[state,setState]=useState(''),[days,setDays]=useState('all'),[cursors,setCursors]=useState<string[]>(['']);
+ const read=useAdminRead<Page>(setPage,v=>!!v&&Array.isArray(v.jobs)&&v.jobs.length<=10&&v.jobs.every(j=>typeof j.id==='string'&&typeof j.userLabel==='string'&&typeof j.state==='string'&&Number.isFinite(Date.parse(j.createdAt))&&(j.costMicros===null||(Number.isSafeInteger(j.costMicros)&&j.costMicros>=0)))&&(v.nextCursor===null||typeof v.nextCursor==='string'));
+ const cursor=cursors.at(-1)??'';
+ useEffect(()=>{setPage(null);void read.read('/api/admin/generations?'+new URLSearchParams({state,days,cursor}));},[state,days,cursor]);
+ function refresh(){void read.read('/api/admin/generations?'+new URLSearchParams({state,days,cursor}));}
+ return <details open className="admin-card admin-history"><summary>{t('최근 이미지 생성','Recent image generations')}</summary>
+  <div className="admin-history-filters"><label>{t('기간','Period')}<select value={days} disabled={read.pending} onChange={e=>{setDays(e.target.value);setCursors(['']);}}>{[['all','전체','All time'],['7','최근 7일','Last 7 days'],['30','최근 30일','Last 30 days'],['90','최근 90일','Last 90 days']].map(([value,ko,en])=><option value={value} key={value}>{t(ko,en)}</option>)}</select></label><label>{t('상태','Status')}<select value={state} disabled={read.pending} onChange={e=>{setState(e.target.value);setCursors(['']);}}><option value="">{t('전체','All')}</option>{Object.entries(states).map(([value,label])=><option key={value} value={value}>{t(...label)}</option>)}</select></label><button disabled={read.pending} onClick={refresh}>{t('다시 조회','Refresh list')}</button></div>
+  {read.pending&&<p role="status">{t('생성 내역을 불러오고 있어요.','Loading generation history.')}</p>}{read.error&&<p role="alert">{t('생성 내역을 확인하지 못했습니다. 다시 조회해주세요.','Could not load generation history. Refresh the list.')}</p>}
+  {page&&!read.pending&&<>{page.jobs.length===0?<p>{t('조건에 맞는 생성 기록이 없습니다.','No generations match these filters.')}</p>:<div className="admin-history-list">{page.jobs.map(j=><details key={(j.userId??j.userLabel)+':'+j.id} className="admin-history-row"><summary><span className="admin-history-member">{j.userLabel}</span><time dateTime={j.createdAt}>{new Date(j.createdAt).toLocaleString(language==='ko'?'ko-KR':'en-US')}</time><span>{states[j.state]?t(...states[j.state]):j.state}</span></summary><dl><div><dt>{t('모델','Model')}</dt><dd>{j.model??'—'}</dd></div><div><dt>{t('규격','Format')}</dt><dd>{j.outputFormat??'—'}</dd></div><div><dt>{t('추정 비용','Estimated cost')}</dt><dd>{j.costMicros===null?t('미확인','Unknown'):'$'+(j.costMicros/1e6).toFixed(4)}</dd></div><div><dt>{t('오류','Error')}</dt><dd>{j.errorCode??t('기록 없음','None recorded')}</dd></div></dl></details>)}</div>}
+  <nav className="admin-history-pagination" aria-label={t('생성 내역 페이지','Generation history pages')}><button disabled={read.pending||cursors.length===1} onClick={()=>setCursors(v=>v.slice(0,-1))}>{t('이전','Previous')}</button><span>{cursors.length}{t('페이지',' / page')}</span><button disabled={read.pending||!page.nextCursor} onClick={()=>{if(page.nextCursor)setCursors(v=>[...v,page.nextCursor!]);}}>{t('다음','Next')}</button></nav></>}
+ </details>;
+}
