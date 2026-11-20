@@ -66,7 +66,8 @@ for (const native of [false,true]) test('buy missing generation credits and retu
   await form.getByLabel('분야',{exact:true}).selectOption('logistics');
   await form.getByLabel('세부 업종',{exact:true}).selectOption('parcel');
   await form.getByLabel('서비스명',{exact:true}).fill('당일 택배');
-  await form.getByLabel('상세설명',{exact:true}).fill('지역 당일 배송 서비스');
+  const description=form.getByRole('textbox',{name:'상세설명',exact:true});
+  await description.fill('지역 당일 배송 서비스');
   await form.getByRole('button',{name:'4',exact:true}).click();
   const generate=form.getByRole('button',{name:'광고 생성',exact:true});
   await generate.click();
@@ -84,7 +85,7 @@ for (const native of [false,true]) test('buy missing generation credits and retu
   balance=40;
   await page.getByRole('link',{name:'돌아가기',exact:true}).click();
   await expect(form.getByLabel('서비스명',{exact:true})).toHaveValue('당일 택배');
-  await expect(form.getByLabel('상세설명',{exact:true})).toHaveValue('지역 당일 배송 서비스');
+  await expect(description).toHaveValue('지역 당일 배송 서비스');
   await expect(form.getByRole('button',{name:'4',exact:true})).toHaveAttribute('aria-pressed','true');
   await generate.click();
   await expect(confirm).toBeEnabled();
