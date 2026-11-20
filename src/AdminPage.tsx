@@ -1,4 +1,4 @@
-import {MemberHistory} from './Membership';
+import {MemberHistory} from './MemberHistory';
 import {AppVersionInfo} from './AppVersionInfo';
 import {DefectReviews} from './DefectReviews';
 import {AdminDemoSupport} from './AdminDemoSupport';

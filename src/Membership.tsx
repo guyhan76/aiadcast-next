@@ -82,13 +82,3 @@ export function Withdrawal({onCancel}:{onCancel:()=>void}){
   </div>
  </section>;
 }
-type Audit={events:{receipt:string;kind:'joined'|'requested'|'completed'|'retry';happened_at:string}[];members:{id:string;joined_at:string|null;role:string;storage_plan:'free'|'standard'}[]};
-export function MemberHistory({labels}:{labels:{id:string;label:string}[]}){
- const {t}=useUiLanguage(),[data,setData]=useState<Audit|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- const names={joined:t('가입 완료','Joined'),requested:t('탈퇴 접수','Withdrawal requested'),completed:t('삭제 완료','Deleted'),retry:t('삭제 재시도 중','Retrying deletion')};
- async function refresh(){try{setData(await apiRequest<Audit>('/api/membership/admin'));setError('');}catch{setError(t('이력을 불러오지 못했습니다.','Could not load membership history.'));}}
- async function plan(id:string,value:string){setBusy(true);try{await apiRequest('/api/membership/plan',{userId:id,plan:value});await refresh();}catch{setError(t('등급을 변경하지 못했습니다.','Could not update membership.'));}finally{setBusy(false);}}
- return <details className="admin-card" onToggle={e=>{if(e.currentTarget.open)void refresh();}}><summary>{t('가입·탈퇴 이력 및 회원 등급','Membership history and plans')}</summary>
- {data?.members.map(m=><div key={m.id} className="membership-row"><span>{labels.find(l=>l.id===m.id)?.label} · {m.joined_at?new Date(m.joined_at).toLocaleString():t('기존 회원 · 가입일 미기록','Existing member · join date unavailable')}</span>{m.role==='admin'?t('관리자','Admin'):<select aria-label={t('회원 등급','Membership plan')} value={m.storage_plan} disabled={busy} onChange={e=>void plan(m.id,e.target.value)}><option value="free">{t('무료회원','Free')}</option><option value="standard">{t('일반회원','Standard')}</option></select>}</div>)}
- <button onClick={()=>void refresh()}>{t('새로고침','Refresh')}</button><ul>{data?.events.map(e=><li key={e.receipt+e.kind}>{new Date(e.happened_at).toLocaleString()} · {names[e.kind]} · {e.receipt}</li>)}</ul>{error&&<p role="alert">{error}</p>}</details>;
-}

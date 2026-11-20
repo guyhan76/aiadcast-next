@@ -16,7 +16,7 @@ function parityOrigin(native:boolean) {
   return native ? 'https://appassets.androidplatform.net' : (process.env.AIADCAST_PARITY_WEB_ORIGIN || 'http://127.0.0.1:4180');
 }
 
-async function prepareParityPage(page:Page,native:boolean) {
+async function prepareParityPage(page:Page,native:boolean,role:'member'|'admin'='member') {
   const origin = parityOrigin(native);
   if (native) {
     // Mirror the Android asset loader under its real origin, using the assets from the Android package.
@@ -34,11 +34,59 @@ async function prepareParityPage(page:Page,native:boolean) {
       AiadcastNative:{postMessage:()=>{}}
     }));
   }
-  const session={...mockSession('parity-member'),...(native?{origin:'https://aiadcast-next.onrender.com'}:{})};
+  const session={...mockSession('parity-member',role),...(native?{origin:'https://aiadcast-next.onrender.com'}:{})};
   await protectedScreen(page,session);
   await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
   return origin;
 }
+
+for(const native of [false,true]) test('member management groups withdrawals and edits individual plans on '+(native?'Android':'web'),async({page})=>{
+  const origin=await prepareParityPage(page,native,'admin');
+  await page.setViewportSize({width:native?360:1280,height:850});
+  const budget={limitMicros:1000000,allocatedMicros:0,spentMicros:0,heldMicros:0};
+  const label='qa-member-with-long-name@example.test';
+  const users=[{id:'parity-member',role:'admin',label:'테스트 관리자'},{id:'qa-member',role:'member',label}].map(user=>({
+    ...user,disabled:false,wallet:{available:0,reserved:0},budget,generation:{enabled:false,reason:'GENERATION_DISABLED'}
+  }));
+  const events=[
+    {kind:'completed',receipt:'202611200006',happened_at:'2026-11-20T09:26:41Z'},
+    {kind:'requested',receipt:'202611200006',happened_at:'2026-11-20T09:26:31Z'},
+    ...Array.from({length:5},(_,i)=>({kind:'joined',receipt:'private-join-id-'+i,happened_at:'2026-11-20T09:25:00Z'}))
+  ];
+  let plan='standard',writes=0;
+  await page.route('**/api/admin/overview*',route=>route.fulfill({json:{readiness:{},budget,users,jobs:[],orders:[],audit:[]}}));
+  await page.route('**/api/membership/admin',route=>route.fulfill({json:{
+    members:users.map(u=>({id:u.id,role:u.role,joined_at:null,storage_plan:plan})),events
+  }}));
+  await page.route('**/api/membership/plan',route=>{
+    expect(route.request().postDataJSON()).toEqual({userId:'qa-member',plan:'free'});
+    writes++;plan='free';return route.fulfill({json:{updated:true}});
+  });
+  await page.goto(origin+'/#admin');
+  const area=page.locator('details.member-history');
+  await area.locator(':scope > summary').click();
+  await expect(area.getByRole('listitem')).toHaveCount(5);
+  await expect(area).not.toContainText('private-join-id');
+  const receipt=area.locator('.member-history-case');
+  await expect(receipt).toHaveCount(1);
+  await expect(receipt.locator('summary')).toContainText('삭제 완료');
+  await expect(receipt.locator('summary')).toContainText('202611200006');
+  await expect(receipt.getByText('탈퇴 접수',{exact:true})).toBeHidden();
+  await receipt.locator('summary').click();
+  await expect(receipt.getByText('탈퇴 접수',{exact:true})).toBeVisible();
+  await expect(receipt.locator('.member-history-steps time').first()).toContainText('18:26:31');
+  await area.getByRole('button',{name:'이력 더 보기'}).click();
+  await expect(area.getByRole('listitem')).toHaveCount(6);
+  await area.getByRole('button',{name:'회원 등급',exact:true}).click();
+  await expect(area.getByRole('listitem')).toHaveCount(2);
+  await expect(area).not.toContainText('가입일 미기록');
+  const select=area.getByRole('combobox',{name:label+' 회원 등급'});
+  await expect(select).toHaveValue('standard');
+  expect(await area.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+  await select.selectOption('free');
+  await expect(select).toHaveValue('free');
+  expect(writes).toBe(1);
+});
 
 for (const native of [false,true]) test('buy missing generation credits and return to the draft on '+(native?'Android':'web'),async({page})=>{
   const origin=await prepareParityPage(page,native);
