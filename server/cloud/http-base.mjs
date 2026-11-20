@@ -115,7 +115,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
             if (req.method === 'GET' && url.pathname === '/api/auth/kakao/callback') {
                 const state = url.searchParams.get('state');
                 const target = await kakao.receiveKakao(state, url.searchParams.get('code'), url.searchParams.get('error'));
-                if (!target || !target.receipt) {
+                if (!target || !(target.receipt || target.completed)) {
                     sendKakaoRestart(res);
                     return;
                 }

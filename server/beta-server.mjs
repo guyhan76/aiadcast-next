@@ -50,7 +50,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
    if(req.method==='GET'&&url.pathname==='/api/auth/kakao/authorize'){
     const state=url.searchParams.get('state');
     const throughTalk=url.searchParams.get('talk')==='1';
-    const launch=kakao.kakaoLaunch(state,throughTalk,kakaoBrowserReceipt(req,state));
+    const launch=await kakao.kakaoLaunch(state,throughTalk,kakaoBrowserReceipt(req,state));
     if(!launch){sendKakaoRestart(res);return;}
     if(launch.destination){sendKakaoReturn(req,res,state,launch);return;}
     if(throughTalk){
@@ -63,7 +63,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
    if(req.method==='GET'&&url.pathname==='/api/auth/kakao/callback'){
     const state=url.searchParams.get('state');
     const target=await kakao.receiveKakao(state,url.searchParams.get('code'),url.searchParams.get('error'));
-    if(!target || !target.receipt){sendKakaoRestart(res);return;}
+    if(!target || !(target.receipt || target.completed)){sendKakaoRestart(res);return;}
     sendKakaoReturn(req,res,state,target);return;
    }
    if(req.method==='GET'&&url.pathname==='/api/auth/kakao/app-return'){sendKakaoRestart(res);return;}

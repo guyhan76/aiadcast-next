@@ -48,6 +48,11 @@ test('PostgreSQL Google identity transactions retain one account and original cr
   const signed=await kakao.pollKakao({...app,receipt:reply.receipt});
   assert.equal(signed.session.user.id,legacy.userId);
   await assert.rejects(kakao.pollKakao({...app,receipt:reply.receipt}),/KAKAO_FLOW_INVALID/);
+  const restarted=await new KakaoAuth().initialize(store,{provider});
+  const completed={destination:'com.selluplabs.aiadcast.next.preview',completed:true};
+  assert.deepEqual(await restarted.kakaoLaunch(app.state),completed);
+  assert.deepEqual(await restarted.receiveKakao(app.state,'fixture'),completed);
+  await assert.rejects(restarted.pollKakao({...app,receipt:reply.receipt}),/KAKAO_FLOW_INVALID/);
   assert.equal((await db.prepare('SELECT subject FROM kakao_identities WHERE user_id=?').get(legacy.userId)).subject, '9223372036854775806');
  });
 });

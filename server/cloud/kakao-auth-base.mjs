@@ -21,7 +21,9 @@ export class KakaoAuth {
       CREATE TABLE IF NOT EXISTS kakao_requests (state_hash TEXT PRIMARY KEY, proof_hash TEXT NOT NULL,
       session_hash TEXT NOT NULL, intent TEXT NOT NULL, expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS kakao_handoffs (state_hash TEXT PRIMARY KEY REFERENCES kakao_requests(state_hash) ON DELETE CASCADE,
-      destination TEXT NOT NULL, phase TEXT NOT NULL, subject TEXT, receipt_hash TEXT);`);
+      destination TEXT NOT NULL, phase TEXT NOT NULL, subject TEXT, receipt_hash TEXT);
+      CREATE TABLE IF NOT EXISTS kakao_completed_returns (
+      state_hash TEXT PRIMARY KEY, destination TEXT NOT NULL, expires INTEGER NOT NULL);`);
         return this;
     }
     async startKakao(intent, authorization, destination) {
@@ -37,6 +39,7 @@ export class KakaoAuth {
         const state = secret(), proof = secret(), expires = this.now() + 600000;
         await this.store.transaction(async () => {
             await this.db.prepare('DELETE FROM kakao_requests WHERE expires<=?').run(this.now());
+            await this.db.prepare('DELETE FROM kakao_completed_returns WHERE expires<=?').run(this.now());
             if ((await this.db.prepare('SELECT COUNT(*) n FROM kakao_requests').get()).n >= 1000)
                 fail('RATE_LIMITED', 429);
             await this.db.prepare('INSERT INTO kakao_requests VALUES(?,?,?,?,?)').run(digest(state), digest(proof), authorization ? digest(authorization) : '', intent, expires);
@@ -47,12 +50,20 @@ export class KakaoAuth {
             return { state, proof, expires, url: new URL('/api/auth/kakao/authorize?state=' + state, this.provider.redirectUri).href };
         return { state, proof, expires, javascriptKey: this.provider.javascriptKey, redirectUri: this.provider.redirectUri };
     }
+    async completedKakaoReturn(hash) {
+        const row = await this.db.prepare('SELECT destination FROM kakao_completed_returns WHERE state_hash=? AND expires>?').get(hash, this.now());
+        return row ? { destination: row.destination, completed: true } : null;
+    }
     async kakaoLaunch(state, throughTalk = false, browserReceipt) {
         if (!this.provider || !valid(state))
             return null;
-        const row = await this.db.prepare('SELECT h.destination,h.phase,h.receipt_hash,r.intent FROM kakao_requests r JOIN kakao_handoffs h ON h.state_hash=r.state_hash WHERE r.state_hash=? AND r.expires>?').get(digest(state), this.now());
+        const checking = this.callbacks.get(state);
+        if (checking)
+            await checking.result;
+        const hash = digest(state);
+        const row = await this.db.prepare('SELECT h.destination,h.phase,h.receipt_hash,r.intent FROM kakao_requests r JOIN kakao_handoffs h ON h.state_hash=r.state_hash WHERE r.state_hash=? AND r.expires>?').get(hash, this.now());
         if (!row)
-            return null;
+            return this.completedKakaoReturn(hash);
         if (row.phase !== 'pending') {
             if (row.destination !== 'web' && receiptMatches(row.receipt_hash, browserReceipt))
                 return { destination: row.destination, receipt: browserReceipt };
@@ -72,25 +83,26 @@ export class KakaoAuth {
             return null;
         const codeHash = !error && typeof code === 'string' && code.length > 0 && code.length <= 4096 ? digest(code) : null;
         // Both KakaoTalk and its SDK can return before the provider exchange finishes.
-        if (!codeHash)
-            return this.processKakaoCallback(state, code, error, null);
-        const key = state + '.' + codeHash;
-        if (this.callbacks.has(key))
-            return this.callbacks.get(key);
-        const pending = this.processKakaoCallback(state, code, error, codeHash);
-        this.callbacks.set(key, pending);
+        let checking;
+        while ((checking = this.callbacks.get(state))) {
+            if (codeHash && codeHash === checking.codeHash)
+                return checking.result;
+            await checking.result;
+        }
+        const result = this.processKakaoCallback(state, code, error, codeHash);
+        this.callbacks.set(state, { codeHash, result });
         try {
-            return await pending;
+            return await result;
         }
         finally {
-            this.callbacks.delete(key);
+            this.callbacks.delete(state);
         }
     }
     async processKakaoCallback(state, code, error, codeHash) {
         const hash = digest(state);
         const row = await this.db.prepare('SELECT h.destination,h.phase,h.receipt_hash,h.subject,r.intent,r.proof_hash FROM kakao_handoffs h JOIN kakao_requests r ON h.state_hash=r.state_hash WHERE h.state_hash=? AND r.expires>?').get(hash, this.now());
         if (!row)
-            return null;
+            return this.completedKakaoReturn(hash);
         if (row.phase !== 'pending') {
             const originalCodeHash = row.receipt_hash?.split('.')[1];
             if (row.phase === 'verified' && row.destination !== 'web' && originalCodeHash && codeHash) {
@@ -128,7 +140,7 @@ export class KakaoAuth {
             fail('KAKAO_FLOW_INVALID', 401);
         return await this.store.transaction(async () => {
             const hash = digest(body.state);
-            const row = await this.db.prepare('SELECT h.phase,h.subject,h.receipt_hash,r.intent,r.expires FROM kakao_handoffs h JOIN kakao_requests r ON h.state_hash=r.state_hash WHERE r.state_hash=? AND r.proof_hash=? AND r.session_hash=? AND r.expires>?')
+            const row = await this.db.prepare('SELECT h.phase,h.subject,h.receipt_hash,h.destination,r.intent,r.expires FROM kakao_handoffs h JOIN kakao_requests r ON h.state_hash=r.state_hash WHERE r.state_hash=? AND r.proof_hash=? AND r.session_hash=? AND r.expires>?')
                 .get(hash, digest(body.proof), authorization ? digest(authorization) : '', this.now());
             if (!row)
                 fail('KAKAO_FLOW_INVALID', 401);
@@ -140,7 +152,11 @@ export class KakaoAuth {
             if (row.phase !== 'verified')
                 return { state: row.phase };
             try {
-                return { state: 'verified', session: await this.kakaoSession(row, owner, row.subject) };
+                const session = await this.kakaoSession(row, owner, row.subject);
+                // A late browser can reopen the app, without retaining a proof, receipt or member ID.
+                if (row.destination !== 'web')
+                    await this.db.prepare('INSERT INTO kakao_completed_returns(state_hash,destination,expires) VALUES(?,?,?)').run(hash, row.destination, row.expires);
+                return { state: 'verified', session };
             }
             catch (error) {
                 if (error.code === 'KAKAO_ACCOUNT_UNKNOWN')
