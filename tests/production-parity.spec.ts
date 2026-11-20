@@ -40,6 +40,55 @@ async function prepareParityPage(page:Page,native:boolean) {
   return origin;
 }
 
+for (const native of [false,true]) test('buy missing generation credits and return to the draft on '+(native?'Android':'web'),async({page})=>{
+  const origin=await prepareParityPage(page,native);
+  await page.setViewportSize({width:native?360:1280,height:850});
+  const previousOrder={id:'previous-pack',pack:'credits-v2-100',state:'paid',unit:'credit-v2',credits:100,amount:9900,currency:'KRW',test:true};
+  if(native){
+    await page.addInitScript(order=>{
+      Object.assign(window,{__AIADCAST_NATIVE_VERSION__:{versionName:'0.2.121-preview',versionCode:123,packageName:'com.selluplabs.aiadcast.next.preview'}});
+      const scope='parity-member@'+encodeURIComponent('https://aiadcast-next.onrender.com');
+      sessionStorage.setItem('aiadcast.checkout-order:'+scope,JSON.stringify(order));
+    },previousOrder);
+    await page.route('**/api/checkout/orders/previous-pack',r=>r.fulfill({json:previousOrder}));
+  }
+  let balance=10;
+  await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,batchVersion:1},wallet:{available:0,credits:{available:balance}}}}));
+  let writes=0;
+  page.on('request',request=>{if(request.method()==='POST'&&/\/api\/(checkout\/orders|generations)$/.test(new URL(request.url()).pathname))writes++;});
+  await page.goto(origin+'/#create');
+  const form=page.locator('.consumer-create');
+  await form.getByRole('button',{name:'서비스',exact:true}).click();
+  await form.getByLabel('분야',{exact:true}).selectOption('logistics');
+  await form.getByLabel('세부 업종',{exact:true}).selectOption('parcel');
+  await form.getByLabel('서비스명',{exact:true}).fill('당일 택배');
+  await form.getByLabel('상세설명',{exact:true}).fill('지역 당일 배송 서비스');
+  await form.getByRole('button',{name:'4',exact:true}).click();
+  const generate=form.getByRole('button',{name:'광고 생성',exact:true});
+  await generate.click();
+  const dialog=page.getByRole('dialog');
+  const buy=dialog.getByRole('button',{name:'크레딧 구매하기'});
+  await expect(dialog).toContainText('30크레딧이 부족');
+  const confirm=dialog.getByRole('button',{name:'확인',exact:true});
+  await expect(confirm).toBeDisabled();
+  await expect(buy).toBeEnabled();
+  expect((await buy.boundingBox())!.y).toBe((await confirm.boundingBox())!.y);
+  await buy.click();
+  await expect(page.getByRole('heading',{name:'이용권 선택'})).toBeVisible();
+  await expect(page.locator('.checkout-packs')).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+  balance=40;
+  await page.getByRole('link',{name:'돌아가기',exact:true}).click();
+  await expect(form.getByLabel('서비스명',{exact:true})).toHaveValue('당일 택배');
+  await expect(form.getByLabel('상세설명',{exact:true})).toHaveValue('지역 당일 배송 서비스');
+  await expect(form.getByRole('button',{name:'4',exact:true})).toHaveAttribute('aria-pressed','true');
+  await generate.click();
+  await expect(confirm).toBeEnabled();
+  await expect(buy).toHaveCount(0);
+  await expect(dialog.locator('dd')).toHaveText(['40','40','0']);
+  expect(writes).toBe(0);
+});
+
 for(const imageCount of [1,2,10])test('web and native clients submit identical briefs and display '+imageCount+' delivered images', async ({browser}) => {
   const source = await sharp({create:{width:864,height:1536,channels:4,background:'#246790'}}).png().toBuffer();
   const sha = createHash('sha256').update(source).digest('hex');

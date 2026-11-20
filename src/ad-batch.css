@@ -8,6 +8,8 @@
 .batch-actions { display:flex; flex-wrap:wrap; gap:8px; margin:16px 0 4px; }
 .batch-actions button,.batch-results button { min-height:44px; padding:8px 14px; border:1px solid #aaa; border-radius:8px; color:#151515; background:white; font:inherit; }
 .batch-actions button:last-child { background:#171717; color:white; }
+.batch-confirm .batch-actions button { white-space:nowrap; }
+@media (max-width:360px) { .batch-confirm .batch-actions button { padding-inline:8px; } }
 .batch-actions button:disabled { opacity:.52; }
 .batch-results { width:100%; max-width:680px; margin:auto; padding:16px 0; }
 .gallery-heading,.gallery-heading label,.gallery-options { display:flex; align-items:center; gap:8px; }
