@@ -47,3 +47,5 @@
   font: 600 11px/16px system-ui, sans-serif;
   white-space: nowrap;
 }
+
+.member-signin-link { display: inline-block; margin-top: 12px; padding: 8px; color: inherit; font-size: 0.9rem; }

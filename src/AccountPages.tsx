@@ -42,13 +42,15 @@ function useCapabilities(autoRetry=false){
  function retry(){setValue(null);setFailed(false);setReconnecting(false);setAttempt(n=>n+1);}
  return {value,failed,retry,reconnecting};
 }
-function PasswordAccountPage({mode,preserve,returnPage,cap}:Context&{mode:'signup'|'login';cap:NonNullable<Capabilities['password']>}){
+export function PasswordAccountPage({mode,preserve,returnPage,cap}:Omit<Context,'returnPage'>&{returnPage:Context['returnPage']|'login';mode:'signup'|'login'|'member';cap?:NonNullable<Capabilities['password']>}){
  const {t,language}=useUiLanguage(),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[confirm,setConfirm]=useState(''),[name,setName]=useState(''),[admin,setAdmin]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
- const signup=mode==='signup'&&!admin,locked=useRef(false);
+ const signup=mode==='signup'&&!admin,locked=useRef(false),mounted=useRef(true);
+ useEffect(()=>{mounted.current=true;return ()=>{mounted.current=false;};},[]);
  async function submit(){
   if(locked.current)return;
   if(signup&&password!==confirm){setMessage(t('비밀번호가 일치하지 않습니다.','Passwords do not match.'));return;}
-  locked.current=true;setBusy(true);setMessage('');const assertCurrent=signInBoundary();
+  locked.current=true;setBusy(true);setMessage('');const sessionCurrent=signInBoundary(),route=location.hash;
+  const assertCurrent=()=>{sessionCurrent();if(!mounted.current||location.hash!==route)throw Error('SESSION_CHANGED');};
   try{
    await preserve();assertCurrent();
    const session=await apiRequest<BetaSession>(signup?'/api/auth/test/signup':'/api/auth/test/login',{email,password,...(signup?{name}:{})});
@@ -56,7 +58,7 @@ function PasswordAccountPage({mode,preserve,returnPage,cap}:Context&{mode:'signu
    setBetaSession(session,consumeLoginDestination());
   }catch(e){setMessage(accountError(e,language==='ko'));}finally{locked.current=false;setBusy(false);}
  }
- function selectAdmin(value:boolean){setAdmin(value);setEmail(value?cap.adminEmail:'');setPassword('');setConfirm('');setMessage('');}
+ function selectAdmin(value:boolean){setAdmin(value);setEmail(value&&cap?cap.adminEmail:'');setPassword('');setConfirm('');setMessage('');}
  return <section className="account-page"><a className="page-back" href={'#'+returnPage}><ArrowLeft size={18}/>{t('돌아가기','Back')}</a>
   <h1>{admin?t('관리자 로그인','Administrator sign-in'):signup?t('테스트 회원가입','Test signup'):t('로그인','Sign in')}</h1>
   <p className="page-intro">{admin?t('초대코드 없이 관리자 계정으로 로그인하세요.','Sign in to your administrator account without an invitation.'):signup?t('이메일과 비밀번호로 바로 시작하세요.','Start with your email and password.'):t('가입한 계정으로 광고를 이어서 만드세요.','Continue your ad with your account.')}</p>
@@ -65,11 +67,11 @@ function PasswordAccountPage({mode,preserve,returnPage,cap}:Context&{mode:'signu
    <label className="field">{t('이메일','Email')}<input type="email" autoComplete="username" inputMode="email" required maxLength={254} value={email} readOnly={admin} onChange={e=>setEmail(e.target.value)}/></label>
    <label className="field">{t('비밀번호','Password')}<input type="password" autoComplete={signup?'new-password':'current-password'} required minLength={8} maxLength={128} value={password} onChange={e=>setPassword(e.target.value)}/></label>
    {signup&&<label className="field">{t('비밀번호 확인','Confirm password')}<input type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={confirm} onChange={e=>setConfirm(e.target.value)}/></label>}
-   {admin&&!cap.adminReady&&<p role="status" className="connection-notice">{t('관리자 비밀번호를 서버에 한 번 설정해야 합니다. 설정 후 바로 로그인할 수 있습니다.','Set the administrator password on the server once, then sign in directly.')}</p>}
-   <button className="primary-action" disabled={busy||Boolean(admin&&!cap.adminReady)}>{busy?t('처리 중…','Working…'):signup?t('가입하고 시작하기','Sign up and start'):t('로그인하고 계속','Sign in and continue')}</button>
+   {admin&&!cap?.adminReady&&<p role="status" className="connection-notice">{t('관리자 비밀번호를 서버에 한 번 설정해야 합니다. 설정 후 바로 로그인할 수 있습니다.','Set the administrator password on the server once, then sign in directly.')}</p>}
+   <button className="primary-action" disabled={busy||Boolean(admin&&!cap?.adminReady)}>{busy?t('처리 중…','Working…'):signup?t('가입하고 시작하기','Sign up and start'):t('로그인하고 계속','Sign in and continue')}</button>
   </form>
-  {!admin&&<p className="account-switch">{signup?t('이미 가입하셨나요?','Already have an account?'):t('처음 이용하시나요?','New here?')} <a href={signup?'#login':'#signup'}>{signup?t('로그인','Sign in'):t('회원가입','Sign up')}</a></p>}
-  <button className="guest-link" onClick={()=>selectAdmin(!admin)}>{admin?t('일반 회원으로 이용하기','Use a member account'):t('관리자 로그인','Administrator sign-in')}</button>
+  {mode!=='member'&&!admin&&<p className="account-switch">{signup?t('이미 가입하셨나요?','Already have an account?'):t('처음 이용하시나요?','New here?')} <a href={signup?'#login':'#signup'}>{signup?t('로그인','Sign in'):t('회원가입','Sign up')}</a></p>}
+  {mode!=='member'&&cap&&<button className="guest-link" onClick={()=>selectAdmin(!admin)}>{admin?t('일반 회원으로 이용하기','Use a member account'):t('관리자 로그인','Administrator sign-in')}</button>}
   {message&&<p role="alert">{message}</p>}
  </section>;
 }

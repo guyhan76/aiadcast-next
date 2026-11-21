@@ -10,6 +10,7 @@ import {prepareGoogleConnection} from './google-readiness';
 // Never replay authentication, generation or save. Focus/online share this budget.
 export function useStartupConnection(){
  const [checked,setChecked]=useState(()=>!betaSession()||hasVerifiedLogin()),[available,setAvailable]=useState<boolean|undefined>();
+ const [passwordAvailable,setPasswordAvailable]=useState(false);
  const [checking,setChecking]=useState(true),[error,setError]=useState<'timeout'|'failed'|null>(null);
  const reconnect=useRef<()=>void>(()=>{});
  useEffect(()=>{
@@ -29,7 +30,7 @@ export function useStartupConnection(){
    try{
     const reads:Promise<void>[]=[];
     // The button stays usable immediately; its action joins this safe GET warm-up.
-    if(!session)reads.push(prepareGoogleConnection().then(r=>{if(current())setAvailable(r.google?.enabled===true);}));
+    if(!session)reads.push(prepareGoogleConnection().then(r=>{if(current()){setAvailable(r.google?.enabled===true);setPasswordAvailable(r.password?.enabled===true);}}));
     if(session)reads.push(apiRequest<{user:{id:string}}>('/api/auth/session',undefined,controller.signal).then(r=>{if(!current())return;if(r.user?.id!==session.user.id)throw Error('SESSION_CHANGED');setChecked(true);if(!location.hash||['#login','#signup'].includes(location.hash))location.hash='home';}));
     await Promise.race([Promise.all(reads),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Error('STARTUP_TIMEOUT'));},Math.min(30000,Math.max(1,deadline-Date.now())));})]);
    }catch(e){
@@ -53,5 +54,5 @@ export function useStartupConnection(){
   window.addEventListener('online',resume);window.addEventListener('focus',resume);document.addEventListener('visibilitychange',resume);void run();
   return()=>{alive=false;cancelWait();active?.abort();active=null;reconnect.current=()=>{};window.removeEventListener('online',resume);window.removeEventListener('focus',resume);document.removeEventListener('visibilitychange',resume);};
  },[]);
- return {checked,available,checking,error,reconnect:()=>reconnect.current()};
+ return {checked,available,passwordAvailable,checking,error,reconnect:()=>reconnect.current()};
 }

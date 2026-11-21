@@ -18,3 +18,15 @@ test('existing-account collision explains ownership recovery in English without 
  const state='s'.repeat(43);await page.addInitScript(state=>sessionStorage.setItem('aiadcast.google-flow',JSON.stringify({state,proof:'p'.repeat(43),expires:Date.now()+600000})),state);
  await page.route('**/api/auth/google/finish',r=>r.fulfill({status:409,json:{error:{code:'GOOGLE_ACCOUNT_LINK_REQUIRED'}}}));await page.goto('/?google=1&state='+state+'&code=mock');await expect(page.getByRole('alert')).toHaveText('Verify your existing account to connect Google.');await expect(page.getByRole('link',{name:'Verify existing account'})).toBeVisible();expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();await page.screenshot({path:info.outputPath('english-recovery.png')});
 });
+
+test('a reviewer can open password sign-in from a fresh launch and return to login', async ({page}) => {
+ await page.goto('/');
+ await page.getByRole('link', {name: 'Sign in with password'}).click();
+ await expect(page.getByLabel('Email', {exact: true})).toBeVisible();
+ await expect(page.getByLabel('Password', {exact: true})).toBeVisible();
+ await expect(page.getByRole('button', {name: 'Sign in and continue'})).toBeVisible();
+ await expect(page.getByRole('button', {name: 'Administrator sign-in'})).toHaveCount(0);
+ await expect(page.getByRole('link', {name: 'Sign up'})).toHaveCount(0);
+ await page.getByRole('link', {name: 'Back', exact: true}).click();
+ await expect(page.getByRole('button', {name: 'Continue with Google'})).toBeVisible();
+});
