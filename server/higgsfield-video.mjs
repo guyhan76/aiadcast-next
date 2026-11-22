@@ -19,7 +19,7 @@ function mediaUrl(value) {
 // Only call this helper with API paths selected on the server. Storage PUTs have their own headers.
 async function request(key, path, body, headers = {}) {
   const response = await fetch(api + '/' + path, {
-    method: body === undefined ? 'GET' : 'POST', redirect: 'error', signal: AbortSignal.timeout(25000),
+    method: body === undefined ? 'GET' : 'POST', redirect: 'manual', signal: AbortSignal.timeout(25000),
     headers: {Authorization: 'Key ' + key, 'Content-Type': 'application/json', ...headers},
     ...(body === undefined ? {} : {body: JSON.stringify(body)})
   });
@@ -28,7 +28,13 @@ async function request(key, path, body, headers = {}) {
     error.providerStatus = response.status;
     throw error;
   }
-  return response.json();
+  try {
+    return await response.json();
+  } catch {
+    const error = new Error('INVALID_PROVIDER_JSON');
+    error.providerStatus = response.status;
+    throw error;
+  }
 }
 
 async function upload(key, data) {
@@ -60,9 +66,16 @@ export function higgsfieldInput(plan, urls) {
 
 export async function estimateHiggsfield(key, {endpoint, body}) {
   const result = await request(key, 'estimate/' + endpoint, body);
-  if (!/^\d+(\.\d+)?$/.test(String(result.usd))) throw Error('INVALID_VIDEO_ESTIMATE');
-  const micros = Math.ceil(Number(result.usd) * 1_000_000);
-  if (!Number.isSafeInteger(micros) || micros < 1 || micros > 100_000_000) throw Error('INVALID_VIDEO_ESTIMATE');
+  const value = String(result?.usd ?? '').trim();
+  if (!/^\d+(\.\d+)?$/.test(value)) {
+    const error = new Error('ESTIMATE_USD_MISSING');
+    // Whitelist schema fields to diagnose pricing API changes without retaining the response.
+    error.priceFields = ['credits', 'usd', 'price', 'cost', 'total', 'discount', 'data', 'estimate', 'amount', 'currency', 'price_usd', 'cost_usd']
+      .filter(field => Object.hasOwn(result ?? {}, field));
+    throw error;
+  }
+  const micros = Math.ceil(Number(value) * 1_000_000);
+  if (!Number.isSafeInteger(micros) || micros < 1 || micros > 100_000_000) throw Error('ESTIMATE_USD_OUT_OF_RANGE');
   return micros;
 }
 
@@ -81,7 +94,13 @@ export async function higgsfieldConnection(env = process.env) {
     const micros = await estimateHiggsfield(key, input);
     return {state: 'estimate_verified', usd: micros / 1_000_000};
   } catch (error) {
-    return {state: 'estimate_unavailable', httpStatus: error?.providerStatus ?? null};
+    // Only classify known reasons. Raw vendor responses, URLs and arbitrary error strings stay private.
+    const reasons = ['ESTIMATE_USD_MISSING', 'ESTIMATE_USD_OUT_OF_RANGE', 'INVALID_PROVIDER_JSON'];
+    if (reasons.includes(error.message)) return {state: 'estimate_unavailable', reason: error.message, httpStatus: error.providerStatus ?? 200, ...(error.priceFields ? {fields: error.priceFields} : {})};
+    if (error.providerStatus) return {state: 'estimate_unavailable', httpStatus: error.providerStatus};
+    const code = error.cause?.code;
+    const networkReason = typeof code === 'string' && /^[A-Z0-9_]{2,60}$/.test(code) ? code : 'NETWORK_ERROR';
+    return {state: 'estimate_unavailable', reason: error.name === 'TimeoutError' ? 'TIMEOUT' : networkReason};
   }
 }
 

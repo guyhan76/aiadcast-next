@@ -113,3 +113,22 @@ test('startup check accepts opaque and paired credentials and calls only the quo
   assert.deepEqual(await higgsfieldConnection({HF_CREDENTIALS:'id:secret'}),{state:'estimate_unavailable',httpStatus:401});
   assert.equal(calls,3);
 });
+
+test('the private estimate check distinguishes protocol, quote, and network failures without logging secrets',async t=>{
+  let mode='price';
+  t.mock.method(globalThis,'fetch',async()=>{
+    if(mode==='price')return Response.json({usd:null});
+    if(mode==='json')return new Response('untrusted non-JSON');
+    if(mode==='redirect')return new Response(null,{status:307,headers:{Location:'https://example.com/secret'}});
+    const failure=new TypeError('sensitive network details',{cause:{code:'ECONNRESET'}});
+    throw failure;
+  });
+  const env={HF_CREDENTIALS:'example'};
+  assert.deepEqual(await higgsfieldConnection(env),{state:'estimate_unavailable',reason:'ESTIMATE_USD_MISSING',httpStatus:200,fields:['usd']});
+  mode='json';
+  assert.deepEqual(await higgsfieldConnection(env),{state:'estimate_unavailable',reason:'INVALID_PROVIDER_JSON',httpStatus:200});
+  mode='redirect';
+  assert.deepEqual(await higgsfieldConnection(env),{state:'estimate_unavailable',httpStatus:307});
+  mode='network';
+  assert.deepEqual(await higgsfieldConnection(env),{state:'estimate_unavailable',reason:'ECONNRESET'});
+});
