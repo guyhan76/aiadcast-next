@@ -1,3 +1,4 @@
+import {readProductImport} from './product-import.mjs';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
@@ -74,6 +75,7 @@ export function createGenerationHttpServer({ service, allowedOrigins = DEFAULT_O
         if (route?.[2] === 'accept') { sendJson(res, 200, service.accept(route[1], body?.artifactId, body?.dimensionReview), origin); return; }
         if (route?.[2] === 'report') { sendJson(res, 200, service.reportDefect(route[1], body), origin); return; }
         if (route?.[2] === 'reject') { sendJson(res, 200, service.reject(route[1]), origin); return; }
+        if (url.pathname === '/api/product-import') { sendJson(res,200,await readProductImport(body),origin); return; }
         if (url.pathname === '/api/assistant' && typeof service.assist === 'function') { sendJson(res, 200, await service.assist(body), origin); return; }
       }
       throw new ApiFailure('NOT_FOUND', 404);

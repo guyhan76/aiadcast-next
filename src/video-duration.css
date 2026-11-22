@@ -123,3 +123,11 @@
 .vd-prompt-modes input {width:16px;height:16px;margin:0;accent-color:#333;}
 .vd-prompt-modes label:has(:checked) {background:#25272a;border-color:#25272a;color:white;}
 .vd-prompt-modes label:has(:focus-visible) {outline:2px solid #ad4919;outline-offset:2px;}
+
+.vd-import {margin:4px 0 12px}
+.vd-import-toggle {display:inline-flex;align-items:center;gap:7px;padding:8px 0;background:transparent;border:0;color:inherit;font:inherit;font-weight:650;cursor:pointer}
+.vd-import-panel {padding:12px;border:1px solid #d9d9d9;border-radius:10px}
+.vd-import-actions,.vd-import-photo {display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.vd-import-actions .vd-library,.vd-import-photo .vd-library {width:auto;margin:0}
+.vd-import-photo img {width:94px;height:104px;object-fit:contain}
+.vd-import-panel p {margin:0}

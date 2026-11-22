@@ -5,6 +5,7 @@ import {findAdField,formatIndustryDetail} from './ad-fields';
 import {industryLabel} from './industry';
 import {VideoCostDialog} from './VideoCostDialog';
 import {videoStyles,styleForBrief,sceneStops,type VideoStyle} from './video-style';
+import {VideoProductImport,type ProductImport} from './VideoProductImport';
 import {VideoBriefFields} from './VideoBriefFields';
 import {captionAt,emptyVideoBrief,videoPlan,type VideoBrief} from './video-brief';
 import {useEffect, useId, useMemo, useRef, useState, type CSSProperties} from 'react';
@@ -18,7 +19,7 @@ import {defaultVideoSound,usesSound,type VideoSound} from './video-sound';
 import {VideoSoundControls} from './VideoSoundControls';
 import './video-duration.css';
 
-export type VideoDraft = {sources:VideoSource[]; ratio:VideoRatio; manual:VideoDuration|null; brief:VideoBrief; caption:string; voiceText:string; musicStyle:string; voiceStyle:string; aiMusic:boolean; aiVoice:boolean; sound:VideoSound; file?:File; promptMode:VideoPromptMode; manualPrompt:string; review?:VideoReview};
+export type VideoDraft = {productUrl?:string; sources:VideoSource[]; ratio:VideoRatio; manual:VideoDuration|null; brief:VideoBrief; caption:string; voiceText:string; musicStyle:string; voiceStyle:string; aiMusic:boolean; aiVoice:boolean; sound:VideoSound; file?:File; promptMode:VideoPromptMode; manualPrompt:string; review?:VideoReview};
 export function videoDraft(sources:VideoSource[]=[],brief:VideoBrief=emptyVideoBrief):VideoDraft {return {sources,promptMode:'auto',manualPrompt:'',ratio:defaultVideoRatio,manual:null,brief,caption:brief.savedCaption??'',voiceText:'',musicStyle:'',voiceStyle:'',aiMusic:true,aiVoice:true,sound:{...defaultVideoSound,music:'built-in'}};}
 type Props = {
   draft:VideoDraft; change:(draft:VideoDraft)=>void;
@@ -99,6 +100,13 @@ export function VideoDurationEditor({draft,change,aiPrices,higgsfield,generateAi
       setSelected(Math.max(0,index));
     }
     setSaved(false);setMessage('');setPromptError('');setTime(0);change({...draft,file:undefined,...fields});
+  }
+  function applyProduct(product:ProductImport,url:string) {
+    const remaining=sources.filter(source=>!source.importedProduct);
+    const next=[...remaining];
+    if(product.image&&next.length<10)next.push({kind:'image',name:product.title,media:product.image,importedProduct:true});
+    edit({productUrl:url,caption:'',voiceText:'',brief:{...brief,savedCaption:undefined,title:product.title.trim(),description:[product.option,product.description].filter(Boolean).join('\n'),
+      emphasis:[product.price,product.shipping].filter(Boolean).join(' · ')},sources:next});
   }
   function move(index:number, offset:number) {
     const next=[...sources], target=index+offset;
@@ -188,6 +196,8 @@ export function VideoDurationEditor({draft,change,aiPrices,higgsfield,generateAi
         onItem={(item,custom)=>edit({brief:{...brief,category:item.category,industryDetail:formatIndustryDetail(item,custom)}})}/>
     </fieldset>
     <div className="vd-brief-block"><h2>{service?t('서비스 정보','Service details'):t('상품 정보','Product details')}</h2>
+      {!service&&<VideoProductImport initialUrl={draft.productUrl??''} disabled={!!run} hasInfo={!!(brief.title||brief.description||brief.emphasis||caption||draft.voiceText)}
+        photoRoom={sources.filter(source=>!source.importedProduct).length<10} onApply={applyProduct}/>}
       <VideoBriefFields value={brief} disabled={!!run} change={brief=>edit({brief})}/></div>
     <fieldset className="vd-style" disabled={!!run}><legend>{t('영상 형식','Video style')}</legend>
       <div>{styles.map(key=>{

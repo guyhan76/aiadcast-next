@@ -1,7 +1,7 @@
 import type {VideoBrief} from './video-brief';
 export const videoDurations = [10, 15, 20, 30] as const;
 export type VideoDuration = typeof videoDurations[number];
-export type VideoSource = {name: string; media: Blob | string; kind: 'image' | 'video'; brief?:VideoBrief};
+export type VideoSource = {name: string; media: Blob | string; kind: 'image' | 'video'; importedProduct?:boolean; brief?:VideoBrief};
 
 export function recommendDuration(images: number, clips: number, brief: string): VideoDuration {
   const comparison = /비교|전후|전\s*[·/과후-]\s*후|단계별|과정 전체|before.{0,12}after|compar(?:e|ison)|step.by.step/i.test(brief);

@@ -1,6 +1,7 @@
 import {recommendationPolicyFromEnv} from './recommendations/policy-config.mjs';
 import {observeSubmission,submissionStage,submissionError} from './submission-observation.mjs';
 import {observeReadiness,readinessMeasure} from './readiness-observation.mjs';
+import {readProductImport} from './product-import.mjs';
 import {serverBuild} from './build-info.mjs';
 import {singleBoxService} from './vision-evaluation/single-box-service.mjs';
 import {dimensionAnalysisService} from './vision-evaluation/service.mjs';
@@ -27,6 +28,7 @@ export const ANDROID_ORIGIN='https://appassets.androidplatform.net';
 export function providerGate(max=2){let active=0;return async task=>{if(active>=max)throw new ProviderFailure('PROVIDER_BUSY',{uncertain:false});active++;try{return await task();}finally{active--;}};}
 export function publicOrigin(value){const u=new URL(value);if(u.protocol!=='https:'||!u.hostname||u.username||u.password||u.search||u.hash||u.pathname!=='/')throw Error('HTTPS_ORIGIN_REQUIRED');return u.origin;}
 export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,generationHistoryReader,recommendations,now=()=>Date.now(),extraOrigins=[],staticDirectory,accounts={},dimensionAnalysis=dimensionAnalysisService(),singleBox=singleBoxService()}) {
+ const activeProductImports=new Set();
  const assets=new Map();
  if(staticDirectory){const scan=(folder,prefix='')=>{for(const item of readdirSync(folder,{withFileTypes:true})){const name=prefix+item.name;if(item.isDirectory())scan(join(folder,item.name),name+'/');else assets.set('/'+name,readFileSync(join(folder,item.name)));}};scan(staticDirectory);}
  const origin=publicOrigin(publicUrl),allowed=new Set([origin,ANDROID_ORIGIN,...extraOrigins.map(publicOrigin)]),services=new Map();
@@ -110,6 +112,15 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
      const body=req.method==='POST'?await read(req,url.pathname.startsWith('/api/membership/records/')?8192:2048):undefined;
      send(res,200,await store.membership.route(user,req.method,url.pathname,body,service),cors);return;
     }
+   }
+   if(req.method==='POST'&&url.pathname==='/api/product-import'){
+    if(activeProductImports.has(user.id)||activeProductImports.size>=2)throw new ApiFailure('PRODUCT_IMPORT_BUSY',429);
+    activeProductImports.add(user.id);
+    try{
+     const body=await read(req,7_001_000);
+     send(res,200,await readProductImport(body),cors);
+    }finally{activeProductImports.delete(user.id);}
+    return;
    }
    if(req.method==='POST'&&url.pathname==='/api/videos'){
     if(user.role!=='admin')throw new ApiFailure('VIDEO_TRIAL_UNAVAILABLE',403);
