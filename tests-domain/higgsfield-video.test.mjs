@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {higgsfieldConnection} from '../server/higgsfield-video.mjs';
+import {estimateHiggsfield,higgsfieldConnection} from '../server/higgsfield-video.mjs';
 import {GenerationService} from '../server/generation-service.mjs';
 import {CloudGenerationService} from '../server/cloud/beta.mjs';
 import {PostgresDatabase} from '../server/cloud/postgres.mjs';
@@ -124,11 +124,30 @@ test('the private estimate check distinguishes protocol, quote, and network fail
     throw failure;
   });
   const env={HF_CREDENTIALS:'example'};
-  assert.deepEqual(await higgsfieldConnection(env),{state:'estimate_unavailable',reason:'ESTIMATE_USD_MISSING',httpStatus:200,schema:{usd:'null'}});
+  assert.deepEqual(await higgsfieldConnection(env),{state:'estimate_unavailable',reason:'ESTIMATE_USD_MISSING',httpStatus:200});
   mode='json';
   assert.deepEqual(await higgsfieldConnection(env),{state:'estimate_unavailable',reason:'INVALID_PROVIDER_JSON',httpStatus:200});
   mode='redirect';
   assert.deepEqual(await higgsfieldConnection(env),{state:'estimate_unavailable',httpStatus:307});
   mode='network';
   assert.deepEqual(await higgsfieldConnection(env),{state:'estimate_unavailable',reason:'ECONNRESET'});
+});
+
+test('price descriptions quote output seconds and distinguish photo references from video inputs',async t=>{
+  const base='Standard self-serve rates in USD per second of generated video. ';
+  const photoRates='480p: $0.1177; 720p: $0.2647; 1080p: $0.6518.';
+  const videoRates='480p: $0.1387; 720p: $0.3264; 1080p: $0.7858.';
+  const units=' Total price = selected rate × output duration in seconds.';
+  let description='Standard self-serve rates in USD per video second: '+photoRates+units;
+  t.mock.method(globalThis,'fetch',async()=>Response.json({type:'dynamic',pricing_description:description}));
+  const body={duration:10,resolution:'720p',aspect_ratio:'9:16'};
+  const run=(op,options=body)=>estimateHiggsfield('example',{endpoint:'bytedance/seedance-2.5/'+op,body:options});
+  assert.equal(await run('text-to-video'),2647000);
+  description=base+'- Without video input: '+photoRates+' - With video input: '+videoRates+units;
+  assert.equal(await run('reference-to-video',{...body,duration:15,image_urls:['https://example.org/supplied-image.jpg']}),3970500);
+  await assert.rejects(run('reference-to-video',{...body,video_urls:['https://example.org/video.mp4']}),/ESTIMATE_USD_MISSING/);
+  description=base+'With video input: '+videoRates+units;
+  await assert.rejects(run('reference-to-video'),/ESTIMATE_USD_MISSING/);
+  description=base+'720p: $0.2647 per 1000 tokens.'+units;
+  await assert.rejects(run('text-to-video'),/ESTIMATE_USD_MISSING/);
 });

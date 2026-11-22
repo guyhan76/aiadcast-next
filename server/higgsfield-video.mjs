@@ -64,25 +64,41 @@ export function higgsfieldInput(plan, urls) {
   return {endpoint: higgsfieldModel + '/' + operation, body};
 }
 
-// Only the structure of a pricing response is diagnostic. Never copy arbitrary response values.
-function priceSchema(value, depth = 0) {
-  if (value === null) return 'null';
-  if (typeof value !== 'object') return typeof value;
-  if (depth >= 3) return Array.isArray(value) ? 'array' : 'object';
-  if (Array.isArray(value)) return value.length ? [priceSchema(value[0], depth + 1)] : [];
-  return Object.fromEntries(Object.entries(value).filter(([name]) => /^[a-z][a-z_]{0,35}$/i.test(name))
-    .slice(0,20).map(([name, field]) => [name, priceSchema(field, depth + 1)]));
+// The two Seedance operations can return a per-second rate card instead of a flat USD quote.
+function seedanceRateQuote(description, endpoint, body) {
+  if (typeof description !== 'string' || body.resolution !== '720p' || ![10,15,20,30].includes(body.duration) ||
+      body.video_urls?.length || body.draft || !['text-to-video','reference-to-video'].some(op => endpoint === higgsfieldModel + '/' + op)) return null;
+  const terms = description.replace(/[*_`]/g, '').toLowerCase();
+  // Read only the no-video tier for product photos. Other billing units need a separate calculation.
+  if (!/(?:per (?:video |output |generated )?second|usd\s*\/\s*s(?:ec(?:ond)?)?\b)/.test(terms) ||
+      /per.{0,18}tokens?/.test(terms) || !/output duration|generated video|output seconds/.test(terms)) return null;
+  const hasVideoTiers = /(?:with|without) video input/.test(terms);
+  const tier = hasVideoTiers ? terms.match(/without video input\s*:?([\s\S]*?)(?=\bwith video input\b|$)/)?.[1] : terms;
+  if (!tier) return null;
+  const matches = [...tier.matchAll(/\b720p\s*[:=\-]?\s*\$\s*(\d+(?:\.\d{1,6})?)(?![\d.])/g)];
+  if (matches.length !== 1) return null;
+  const [dollars, fraction = ''] = matches[0][1].split('.');
+  return (Number(dollars) * 1_000_000 + Number(fraction.padEnd(6,'0'))) * body.duration;
 }
 
 export async function estimateHiggsfield(key, {endpoint, body}) {
   const result = await request(key, 'estimate/' + endpoint, body);
-  const value = String(result?.usd ?? '').trim();
-  if (!/^\d+(\.\d+)?$/.test(value)) {
-    const error = new Error('ESTIMATE_USD_MISSING');
-    error.priceSchema = priceSchema(result);
-    throw error;
+  let micros;
+  if (result?.usd !== undefined && result.usd !== null) {
+    const amount = String(result.usd).trim();
+    if (!/^\d+(\.\d+)?$/.test(amount)) throw Error('ESTIMATE_USD_MISSING');
+    micros = Math.ceil(Number(amount) * 1_000_000);
+  } else {
+    micros = seedanceRateQuote(result?.pricing_description, endpoint, body);
+    if (micros === null) {
+      const error = new Error('ESTIMATE_USD_MISSING');
+      if (typeof result?.pricing_description === 'string') {
+        // Retain only price literals and units. Arbitrary provider text never reaches logs.
+        error.rateTerms = result.pricing_description.toLowerCase().match(/\$\s*\d+(?:\.\d+)?|(?:480|720|1080)p|(?:without|with) video input|tokens?|per second|output duration/g)?.slice(0,40);
+      }
+      throw error;
+    }
   }
-  const micros = Math.ceil(Number(value) * 1_000_000);
   if (!Number.isSafeInteger(micros) || micros < 1 || micros > 100_000_000) throw Error('ESTIMATE_USD_OUT_OF_RANGE');
   return micros;
 }
@@ -104,7 +120,7 @@ export async function higgsfieldConnection(env = process.env) {
   } catch (error) {
     // Only classify known reasons. Raw vendor responses, URLs and arbitrary error strings stay private.
     const reasons = ['ESTIMATE_USD_MISSING', 'ESTIMATE_USD_OUT_OF_RANGE', 'INVALID_PROVIDER_JSON'];
-    if (reasons.includes(error.message)) return {state: 'estimate_unavailable', reason: error.message, httpStatus: error.providerStatus ?? 200, ...(error.priceSchema ? {schema: error.priceSchema} : {})};
+    if (reasons.includes(error.message)) return {state: 'estimate_unavailable', reason: error.message, httpStatus: error.providerStatus ?? 200, ...(error.rateTerms ? {rateTerms: error.rateTerms} : {})};
     if (error.providerStatus) return {state: 'estimate_unavailable', httpStatus: error.providerStatus};
     const code = error.cause?.code;
     const networkReason = typeof code === 'string' && /^[A-Z0-9_]{2,60}$/.test(code) ? code : 'NETWORK_ERROR';
