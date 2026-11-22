@@ -3,7 +3,7 @@ export const higgsfieldModel = 'bytedance/seedance-2.5';
 
 export function higgsfieldKey(env = process.env) {
   const key = env.HF_CREDENTIALS?.trim();
-  return key && /^[^\s:]+:[^\s:]+$/.test(key) ? key : null;
+  return key && /^[\x21-\x7e]+$/.test(key) ? key : null;
 }
 
 export function activeVideoProvider(env = process.env) {
@@ -64,6 +64,25 @@ export async function estimateHiggsfield(key, {endpoint, body}) {
   const micros = Math.ceil(Number(result.usd) * 1_000_000);
   if (!Number.isSafeInteger(micros) || micros < 1 || micros > 100_000_000) throw Error('INVALID_VIDEO_ESTIMATE');
   return micros;
+}
+
+// Verifies the selected account using a price estimate only. No media or customer input is sent.
+export async function higgsfieldConnection(env = process.env) {
+  if (activeVideoProvider(env) !== 'higgsfield') {
+    return {state: env.HF_CREDENTIALS ? 'other_provider_selected' : 'key_missing'};
+  }
+  const key = higgsfieldKey(env);
+  if (!key) return {state: env.HF_CREDENTIALS?.trim() ? 'key_format_invalid' : 'key_missing'};
+  const input = higgsfieldInput({
+    content: [{type: 'text', text: 'A single product on a studio table.'}],
+    ratio: '9:16', duration: 10, resolution: '720p', generate_audio: false
+  }, []);
+  try {
+    const micros = await estimateHiggsfield(key, input);
+    return {state: 'estimate_verified', usd: micros / 1_000_000};
+  } catch (error) {
+    return {state: 'estimate_unavailable', httpStatus: error?.providerStatus ?? null};
+  }
 }
 
 export async function submitHiggsfield(key, {endpoint, body}, replayKey) {

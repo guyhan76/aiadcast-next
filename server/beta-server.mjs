@@ -234,6 +234,8 @@ async function main(){
   const {startCloudServer}=await import('./cloud/runtime.mjs');
   const app=await startCloudServer(c);
   console.log('Supabase-backed beta server started; real payments disabled.');
+  const {higgsfieldConnection}=await import('./higgsfield-video.mjs');
+  void higgsfieldConnection().then(result=>console.info('Higgsfield connection:',JSON.stringify(result)));
   let closing=false;const stop=async()=>{if(closing)return;closing=true;await app.close();};process.once('SIGTERM',()=>void stop());process.once('SIGINT',()=>void stop());return;
  }
  const c=betaConfig(),store=new BetaStore(c.directory,c),gate=providerGate(2);

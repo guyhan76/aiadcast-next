@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {higgsfieldConnection} from '../server/higgsfield-video.mjs';
 import {GenerationService} from '../server/generation-service.mjs';
 import {CloudGenerationService} from '../server/cloud/beta.mjs';
 import {PostgresDatabase} from '../server/cloud/postgres.mjs';
@@ -90,4 +91,25 @@ test('missing credentials, refused quotes and insufficient local budget never su
   await assert.rejects(service.startVideo(input),/VIDEO_PROVIDER_AUTH/);denied=false;
   await assert.rejects(service.startVideo(input),/budget unavailable|BUDGET_UNAVAILABLE/);
   assert.equal(count,2);assert.equal(service.db.prepare('SELECT COUNT(*) AS n FROM higgsfield_video_jobs').get().n,0);
+});
+
+test('startup check accepts opaque and paired credentials and calls only the quote endpoint',async t=>{
+  let status=200;let calls=0;
+  t.mock.method(globalThis,'fetch',async(url,options)=>{
+    calls++;
+    assert.equal(url,'https://api.higgsfield.ai/estimate/bytedance/seedance-2.5/text-to-video');
+    const body=JSON.parse(options.body);
+    assert.deepEqual([body.duration,body.aspect_ratio,body.resolution,body.generate_audio],[10,'9:16','720p',false]);
+    assert.ok(['Key opaque-example','Key id:secret'].includes(options.headers.Authorization));
+    return status===200?Response.json({usd:'2.25'}):new Response('untrusted error body',{status});
+  });
+  assert.deepEqual(await higgsfieldConnection({}),{state:'key_missing'});
+  assert.deepEqual(await higgsfieldConnection({HF_CREDENTIALS:'a b'}),{state:'key_format_invalid'});
+  assert.deepEqual(await higgsfieldConnection({HF_CREDENTIALS:'id:secret',AIADCAST_VIDEO_PROVIDER:'byteplus'}),{state:'other_provider_selected'});
+  for(const credential of ['opaque-example','id:secret']){
+    assert.deepEqual(await higgsfieldConnection({HF_CREDENTIALS:credential}),{state:'estimate_verified',usd:2.25});
+  }
+  status=401;
+  assert.deepEqual(await higgsfieldConnection({HF_CREDENTIALS:'id:secret'}),{state:'estimate_unavailable',httpStatus:401});
+  assert.equal(calls,3);
 });
