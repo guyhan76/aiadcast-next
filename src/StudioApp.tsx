@@ -2,6 +2,8 @@ import {VideoAdPage} from './VideoAdPage';
 import {videoDraft} from './VideoDurationEditor';
 import {OpenVideoDraft} from './VideoDraftAction';
 import './creation-home.css';
+import homeImageCover from './assets/showcase-beauty.webp';
+import homeVideoCover from './assets/showcase-travel.webp';
 import type {BatchPrice} from './batch-price';
 import {submitAdBatch} from './submit-ad-batch';
 import {createResultSet} from './result-set';
@@ -33,7 +35,7 @@ import {WorkspaceHeader} from './WorkspaceHeader';
 import {TestConnection} from './TestConnection';
 import {useUiLanguage} from './ui-language';
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
-import {BookOpen,ChevronRight,Clapperboard,FolderOpen,House,Image as MediaImage,ShieldCheck} from 'lucide-react';
+import {BookOpen,Clapperboard,FolderOpen,House,Image as MediaImage,ShieldCheck} from 'lucide-react';
 import Editor from './App';
 import {SimpleAdResult} from './SimpleAdResult';
 import {CreateCampaign} from './CreateCampaign';
@@ -190,17 +192,23 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
 
    {page==='portfolio'&&<div className="app-page"><PortfolioPage/></div>}
    {page==='home'&&<main className="app-page home-page creation-home" aria-labelledby="creation-home-heading">
-    <h1 id="creation-home-heading">{text('광고 만들기')}</h1>
+    <h1 id="creation-home-heading">{t('어떤 광고를 만들까요?', 'What would you like to create?')}</h1>
     <nav className="creation-choices" aria-labelledby="creation-home-heading">
-     <a href="#create" onClick={openImageForm}>
-      <span className="creation-choice-icon"><MediaImage aria-hidden="true"/></span>
-      <span>{t('광고 이미지 만들기','Create an ad image')}</span>
-      <ChevronRight className="creation-choice-arrow" aria-hidden="true"/>
+     <a href="#create" onClick={openImageForm} aria-labelledby="home-image-title" aria-describedby="home-image-detail">
+      <div className="creation-choice-copy">
+       <MediaImage className="creation-choice-icon" size={22} aria-hidden="true"/>
+       <strong id="home-image-title">{t('광고 이미지 만들기','Create an ad image')}</strong>
+       <span id="home-image-detail">{t('상품과 서비스를 한 장에','Showcase a product or service')}</span>
+      </div>
+      <div className="creation-choice-cover"><img src={homeImageCover} alt=""/></div>
      </a>
-     <a href="#video">
-      <span className="creation-choice-icon"><Clapperboard aria-hidden="true"/></span>
-      <span>{t('광고 영상 만들기','Create an ad video')}</span>
-      <ChevronRight className="creation-choice-arrow" aria-hidden="true"/>
+     <a href="#video" aria-labelledby="home-video-title" aria-describedby="home-video-detail">
+      <div className="creation-choice-copy">
+       <Clapperboard className="creation-choice-icon" size={22} aria-hidden="true"/>
+       <strong id="home-video-title">{t('광고 영상 만들기','Create an ad video')}</strong>
+       <span id="home-video-detail">{t('릴스·쇼츠에 맞는 짧은 영상','Short videos for Reels and Shorts')}</span>
+      </div>
+      <div className="creation-choice-cover"><img src={homeVideoCover} alt=""/></div>
      </a>
     </nav>
    </main>}

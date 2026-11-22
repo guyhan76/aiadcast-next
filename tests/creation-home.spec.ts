@@ -8,12 +8,17 @@ for(const language of ['ko','en'] as const){
   await protectedScreen(page,mockSession('home-locale-'+language));
   await page.addInitScript(l=>localStorage.setItem('aiadcast.ui-language',l),language);
   await page.goto('/');
-  const heading=page.getByRole('heading',{level:1,name:language==='ko'?'광고 만들기':'Create an ad',exact:true});
+  const heading=page.getByRole('heading',{level:1,name:language==='ko'?'어떤 광고를 만들까요?':'What would you like to create?',exact:true});
   const nav=page.locator('.mobile-app-nav');
   await expect(heading).toBeVisible();
   const choices=page.locator('.creation-choices');
   const labels=language==='ko'?['광고 이미지 만들기','광고 영상 만들기']:['Create an ad image','Create an ad video'];
-  await expect(choices.getByRole('link')).toHaveText(labels);
+  await expect(choices.getByRole('link')).toHaveCount(2);
+  for (const link of await choices.getByRole('link').all()) {
+   await expect(link).toHaveAccessibleDescription(/.+/);
+   await expect(link.locator('img')).toHaveJSProperty('complete', true);
+   expect(await link.locator('img').evaluate(img => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  }
   await expect(nav.getByRole('link')).toHaveText(language==='ko'?['홈','내 프로젝트','사용 안내']:['Home','My projects','How it works']);
   await expect(nav.locator('[aria-current=page]')).toHaveAttribute('href','#home');
   for(const label of labels){

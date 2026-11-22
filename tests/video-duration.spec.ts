@@ -3,6 +3,26 @@ import {createHash} from 'node:crypto';
 import sharp from 'sharp';
 import {mockSession, protectedScreen} from './helpers/authenticated-session';
 
+test('video examples follow the selected offer and leave the brief empty', async ({page}) => {
+  await protectedScreen(page, mockSession('video-examples'));
+  await page.addInitScript(() => localStorage.setItem('aiadcast.ui-language', 'ko'));
+  await page.goto('/#video');
+  const editor = page.getByRole('region', {name:'광고 영상 편집'});
+  const description = editor.getByLabel('상세설명', {exact:true});
+  const highlight = editor.getByLabel('강조할 점 (선택)', {exact:true});
+  const guide = editor.locator('.vd-brief details');
+  await expect(description).toHaveAttribute('placeholder', /롱패딩/);
+  await expect(highlight).toHaveAttribute('placeholder', /무료배송/);
+  await guide.getByText('더 좋은 결과를 위한 예시 가이드').click();
+  await expect(guide.getByText('겨울 롱패딩 예시')).toBeVisible();
+  await editor.getByRole('button', {name:'서비스',exact:true}).click();
+  await expect(guide.getByText('댄스 입문반 예시')).toBeVisible();
+  await expect(description).toHaveAttribute('placeholder', /댄스/);
+  await expect(highlight).toHaveAttribute('placeholder', /입문반 예약/);
+  await expect(description).toHaveValue('');
+  await expect(highlight).toHaveValue('');
+});
+
 test('a saved ad opens with a free length preview and honors the chosen duration', async ({page, isMobile}) => {
   const bytes = await sharp({create:{width:64,height:64,channels:3,background:'#cc9d68'}}).png().toBuffer();
   const hash = createHash('sha256').update(bytes).digest('hex');
