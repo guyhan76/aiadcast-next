@@ -1,3 +1,4 @@
+import {VideoDraftAction} from './VideoDraftAction';
 import {Check, Download, Share2} from 'lucide-react';
 import {saveProjectSet} from './storage';
 import {PrecisionEditAction} from './PrecisionEditAction';
@@ -74,8 +75,11 @@ export function BatchResults({project,batch,onEdit,renderDetail}:{project:Projec
  const eligible=jobs.filter(j=>images[j.id]&&['accepted','ready'].includes(j.state)&&images[j.id].artifact===j.artifactId);
  const chosen=eligible.filter(j=>selected.includes(j.id));
  const displayed=eligible.find(j=>j.id===(reviewItem??zoom));
- const reviewedForEdit=displayed&&(!displayed.dimensionDisplay||validAiDimensionReview(confirmed.current.get(displayed.id)?.dimensionReview??displayed.dimensionReview,displayed.dimensionDisplay,displayed.artifactId!));
- const canEditPreview=reviewedForEdit&&(displayed.creditUnit!=='legacy-ticket'||!displayed.creditCost||displayed.state==='accepted'||confirmed.current.has(displayed.id));
+ function canReuse(j:GenerationJob) {
+  return (!j.dimensionDisplay||validAiDimensionReview(confirmed.current.get(j.id)?.dimensionReview??j.dimensionReview,j.dimensionDisplay,j.artifactId!))
+   &&(j.creditUnit!=='legacy-ticket'||!j.creditCost||j.state==='accepted'||confirmed.current.has(j.id));
+ }
+ const canEditPreview=displayed&&canReuse(displayed);
  async function deliver(mode:'save'|'share'){
   if(lock.current||!chosen.length)return;
   const unchecked=chosen.find(j=>j.dimensionDisplay&&!validAiDimensionReview(reviews[j.id]??j.dimensionReview,j.dimensionDisplay,j.artifactId!));
@@ -119,6 +123,7 @@ export function BatchResults({project,batch,onEdit,renderDetail}:{project:Projec
   </li>})}</ol>
   {error&&<p role="alert">{error} <button onClick={()=>{setError('');setRetry(n=>n+1);}}>{t('다시 확인','Retry')}</button></p>}{notice&&<p role="status">{notice}</p>}
   {jobs.length>0&&!count&&!jobs.some(j=>['running','ready','accepted'].includes(j.state))&&<button onClick={onEdit}>{t('입력 내용 수정','Edit details')}</button>}
+  {!!chosen.length&&chosen.every(canReuse)&&<VideoDraftAction disabled={busy} project={project} getSources={()=>chosen.map(j=>({name:images[j.id].item.name,media:images[j.id].file,kind:'image'}))}/>}
   {!!count&&<div className="batch-actions gallery-actions"><span aria-live="polite">{t(`${chosen.length}장 선택`,`${chosen.length} selected`)}</span><button disabled={busy||!chosen.length} aria-label={t(`선택 저장 (${chosen.length})`,`Save selected (${chosen.length})`)} onClick={()=>void deliver('save')}><Download size={17}/>{t('저장','Save')}</button><button disabled={busy||!chosen.length} aria-label={t(`선택 공유 (${chosen.length})`,`Share selected (${chosen.length})`)} onClick={()=>void deliver('share')}><Share2 size={17}/>{t('공유','Share')}</button></div>}
   {displayed&&<dialog className="gallery-preview" ref={zoomDialog} onClose={()=>{setZoom(undefined);setReviewItem(undefined);}} aria-label={reviewItem?t('규격 확인','Check dimensions'):t('광고 미리보기','Ad preview')}>
    <button className="gallery-close" autoFocus onClick={()=>zoomDialog.current?.close()}>{t('닫기','Close')}</button>

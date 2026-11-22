@@ -79,20 +79,26 @@ type PreviewProps={
  deleteDisabled:boolean;
  feedback:string;
 };
-export function DownloadPreview({item,onSave,onDelete,onShare,saveLabel,saveDisabled,deleteDisabled,feedback}:PreviewProps){
- const {t}=useUiLanguage(),[image,setImage]=useState(''),[failed,setFailed]=useState(false),[attempt,setAttempt]=useState(0),dialog=useRef<HTMLDialogElement>(null),element=useRef<HTMLButtonElement>(null);
+function useDeliveryThumbnail(id:string){
+ const [image,setImage]=useState(''),[failed,setFailed]=useState(false),[attempt,setAttempt]=useState(0),element=useRef<HTMLButtonElement>(null);
  useEffect(()=>{
-  const ctrl=new AbortController();let started=false;setImage('');setFailed(false);
+  setImage('');setFailed(false);
+  const ctrl=new AbortController();let started=false;
   const fetchPreview=()=>{if(started)return;started=true;
-   void apiRequest<{preview:string}>('/api/membership/downloads/'+encodeURIComponent(item.id)+'/preview',undefined,ctrl.signal).then(r=>{
+   void apiRequest<{preview:string}>('/api/membership/downloads/'+encodeURIComponent(id)+'/preview',undefined,ctrl.signal).then(r=>{
     if(!ctrl.signal.aborted&&typeof r.preview==='string'&&r.preview.startsWith('data:image/webp;base64,'))setImage(r.preview);else if(!ctrl.signal.aborted)setFailed(true);
    }).catch(()=>{if(!ctrl.signal.aborted)setFailed(true);});
   };
   const observer=new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting)){observer.disconnect();fetchPreview();}},{rootMargin:'140px'});
   if(element.current)observer.observe(element.current);
   return ()=>{observer.disconnect();ctrl.abort();};
- },[item.id,attempt]);
- return <><button type="button" ref={element} className="delivery-preview" aria-label={item.name+' '+(failed?t('미리보기 다시 불러오기','Retry preview'):t('미리보기','Preview'))} onClick={()=>{if(image)dialog.current?.showModal();else setAttempt(v=>v+1);}}>
+ },[id,attempt]);
+ return {image,failed,element,retry:()=>setAttempt(v=>v+1)};
+}
+export function DownloadPreview({item,onSave,onDelete,onShare,saveLabel,saveDisabled,deleteDisabled,feedback}:PreviewProps){
+ const {t}=useUiLanguage(),dialog=useRef<HTMLDialogElement>(null);
+ const {image,failed,element,retry}=useDeliveryThumbnail(item.id);
+ return <><button type="button" ref={element} className="delivery-preview" aria-label={item.name+' '+(failed?t('미리보기 다시 불러오기','Retry preview'):t('미리보기','Preview'))} onClick={()=>{if(image)dialog.current?.showModal();else retry();}}>
   {image?<img alt="" src={image}/>:<ImageIcon size={24} aria-hidden="true"/>}</button>
   {image&&<dialog ref={dialog} className="delivery-lightbox" aria-label={item.name}>
    <button type="button" onClick={()=>dialog.current?.close()}>{t('닫기','Close')}</button>
@@ -105,7 +111,7 @@ export function DownloadPreview({item,onSave,onDelete,onShare,saveLabel,saveDisa
    {feedback&&<p role="status">{feedback}</p>}
   </dialog>}</>;
 }
-export async function cardOriginal(card:AdCard,signal:AbortSignal,consent:()=>boolean){
+export async function cardOriginalWithBrief(card:AdCard,signal:AbortSignal,consent:()=>boolean){
  signal.throwIfAborted();
  const project=card.project??(!card.delivery&&card.backups.length?await readCloudProject(card.backups[0].id,signal):undefined);
  if(project&&hasSavedAcceptedAd(project)&&!card.delivery?.reviewRequired){
@@ -119,15 +125,18 @@ export async function cardOriginal(card:AdCard,signal:AbortSignal,consent:()=>bo
     blob=await verifiedOriginalBlob({id:project.generated!.jobId,artifactId:a.sha256,
      artifact:{id:a.sha256,sha256:a.sha256,width:a.width,height:a.height,dataUrl:a.data}});
    }catch(error){
-    if(card.delivery)return original(card.delivery,signal,consent);
+    if(card.delivery)return {file:await original(card.delivery,signal,consent),project:project??card.reviewProject};
     throw error;
    }
   }
   signal.throwIfAborted();
-  return originalFile(blob,project.generated!.jobId);
+  return {file:originalFile(blob,project.generated!.jobId),project};
  }
- if(card.delivery)return original(card.delivery,signal,consent);
+ if(card.delivery)return {file:await original(card.delivery,signal,consent),project:project??card.reviewProject};
  throw Error(project?'NO_FINISHED_AD':'ORIGINAL_MISSING');
+}
+export async function cardOriginal(card:AdCard,signal:AbortSignal,consent:()=>boolean){
+ return (await cardOriginalWithBrief(card,signal,consent)).file;
 }
 export function useOriginalExport(items:AdCard[],getSignal:()=>AbortSignal){
  const {t}=useUiLanguage();

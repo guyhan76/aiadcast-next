@@ -7,17 +7,21 @@ import java.util.List;
 
 /** Handles photo/document pickers that return data, ClipData, or both. */
 final class SelectedDocuments {
-    enum FileKind { PHOTOS, BACKUP, PHOTOS_AND_BACKUP }
+    enum FileKind { PHOTOS, MEDIA, AUDIO, BACKUP, PHOTOS_AND_BACKUP }
     static FileKind fileKind(String[] acceptTypes) {
-        boolean images = false, json = false;
+        boolean images = false, videos = false, audio = false, json = false;
         for (String group : acceptTypes) {
             if (group == null) continue;
             for (String raw : group.split(",")) {
                 String type = raw.trim().toLowerCase(java.util.Locale.ROOT);
                 if (type.equals("application/json") || type.equals(".json")) json = true;
+                if (type.startsWith("audio/") || type.matches("\\.(mp3|m4a|wav|aac|ogg|flac)")) audio = true;
+                if (type.startsWith("video/")) videos = true;
                 if (type.startsWith("image/") || type.matches("\\.(png|jpe?g|webp)")) images = true;
             }
         }
+        if (audio && !images && !videos && !json) return FileKind.AUDIO;
+        if (videos && !json) return FileKind.MEDIA;
         if (!json) return FileKind.PHOTOS;
         return images ? FileKind.PHOTOS_AND_BACKUP : FileKind.BACKUP;
     }

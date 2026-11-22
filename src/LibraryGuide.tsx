@@ -1,6 +1,8 @@
+import {projectVideoBrief} from './video-brief';
+import {VideoDraftAction} from './VideoDraftAction';
 import {libraryBatch} from './library-batches';
 import {libraryCards,type AdCard} from './library-cards';
-import {cardOriginal,DownloadPreview,useOriginalExport} from './DownloadList';
+import {cardOriginalWithBrief,DownloadPreview,useOriginalExport} from './DownloadList';
 import {useLibraryBatch} from './use-library-batch';
 import {useLibrarySelection} from './LibrarySelection';
 import {readCloudProject,useCloudAds} from './Membership';
@@ -90,11 +92,15 @@ export function ProjectLibrary({items,error,onRemove,onNew,onOpen,onOpenServer,s
       </div>}
      {hasOriginalAction(card)&&!selection.editing&&<div className="ad-card-actions">
       <PrecisionEditAction disabled={disabled} getInput={async signal=>{
-       const file=await cardOriginal(card,signal,()=>window.confirm(t('이 광고를 사용 확정하고 편집할까요? 예약된 이용권이 사용됩니다.','Confirm this ad for editing? Its reserved ticket will be used.')));
+       const {file}=await cardOriginalWithBrief(card,signal,()=>window.confirm(t('이 광고를 사용 확정하고 편집할까요? 예약된 이용권이 사용됩니다.','Confirm this ad for editing? Its reserved ticket will be used.')));
        return file?{file,name:title}:undefined;
       }}/>
       <button type="button" className="save-original" disabled={disabled} onClick={save}>{saveLabel}</button>
       <button type="button" disabled={disabled} onClick={share}>{t('공유','Share')}</button>
+      {!delivery?.reviewRequired&&<VideoDraftAction disabled={disabled} project={detailsProject} getSources={async signal=>{
+       const {file,project:sourceProject}=await cardOriginalWithBrief(card,signal,()=>false);
+       return file?[{name:title,media:file,kind:'image',brief:projectVideoBrief(sourceProject,title)}]:[];
+      }}/>}
      </div>}
      {rows[id]&&<p role="status" className="download-feedback">{rows[id]}</p>}
     </li>;

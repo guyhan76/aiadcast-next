@@ -132,7 +132,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 if (!bytes)
                     throw new ApiFailure('NOT_FOUND', 404);
                 const ext = path.split('.').pop();
-                res.writeHead(200, { 'Content-Type': ({ html: 'text/html; charset=utf-8', json: 'application/json', js: 'text/javascript', css: 'text/css', woff2: 'font/woff2', png: 'image/png', webp: 'image/webp', svg: 'image/svg+xml' })[ext] ?? 'application/octet-stream', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': path.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-store', 'Content-Security-Policy': "default-src 'self'; script-src 'self' https://js.tosspayments.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' data: blob: https://*.tosspayments.com; frame-src https://*.tosspayments.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'", 'Referrer-Policy': 'no-referrer' });
+                res.writeHead(200, { 'Content-Type': ({ html: 'text/html; charset=utf-8', json: 'application/json', js: 'text/javascript', css: 'text/css', woff2: 'font/woff2', png: 'image/png', webp: 'image/webp', svg: 'image/svg+xml' })[ext] ?? 'application/octet-stream', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': path.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-store', 'Content-Security-Policy': "default-src 'self'; script-src 'self' https://js.tosspayments.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self' data: blob: https://*.tosspayments.com; frame-src https://*.tosspayments.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'", 'Referrer-Policy': 'no-referrer' });
                 res.end(bytes);
                 return;
             }
@@ -254,6 +254,23 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                     send(res, 200, await store.membership.route(user, req.method, url.pathname, body, service), cors);
                     return;
                 }
+            }
+            if (req.method === 'POST' && url.pathname === '/api/videos') {
+                if (user.role !== 'admin')
+                    throw new ApiFailure('VIDEO_TRIAL_UNAVAILABLE', 403);
+                send(res, 202, await (await service(user)).startVideo(await read(req, 14100000)), cors);
+                return;
+            }
+            const videoPath = /^\/api\/videos\/([a-zA-Z0-9_-]{8,100})(\/file)?$/.exec(url.pathname);
+            if (req.method === 'GET' && videoPath) {
+                const result = await (await service(user)).videoResult(videoPath[1], !!videoPath[2]);
+                if (Buffer.isBuffer(result)) {
+                    res.writeHead(200, { 'Content-Type': 'video/mp4', 'Cache-Control': 'no-store', 'Content-Length': result.length, ...(cors ? { 'Access-Control-Allow-Origin': cors, 'Vary': 'Origin' } : {}) });
+                    res.end(result);
+                }
+                else
+                    send(res, videoPath[2] ? 409 : 200, result, cors);
+                return;
             }
             if (req.method === 'GET' && url.pathname === '/api/auth/session') {
                 send(res, 200, { user: { id: user.id, label: user.label, role: user.role } }, cors);

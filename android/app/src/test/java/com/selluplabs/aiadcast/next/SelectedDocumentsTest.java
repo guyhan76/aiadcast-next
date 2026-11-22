@@ -12,6 +12,15 @@ public class SelectedDocumentsTest {
         assertEquals(SelectedDocuments.FileKind.BACKUP, SelectedDocuments.fileKind(new String[]{"application/json", ".json"}));
         assertEquals(SelectedDocuments.FileKind.PHOTOS, SelectedDocuments.fileKind(new String[]{"image/*"}));
     }
+    @Test public void videoDraftPickerAcceptsBothWebViewMimeEncodings() {
+        assertEquals(SelectedDocuments.FileKind.MEDIA, SelectedDocuments.fileKind(new String[]{"image/*", "video/*"}));
+        assertEquals(SelectedDocuments.FileKind.MEDIA, SelectedDocuments.fileKind(new String[]{"image/*,video/*"}));
+    }
+    @Test public void voiceAndMusicUseTheAudioDocumentPicker() {
+        assertEquals(SelectedDocuments.FileKind.AUDIO, SelectedDocuments.fileKind(new String[]{"audio/*,.m4a,.mp3,.wav"}));
+        assertEquals(SelectedDocuments.FileKind.AUDIO, SelectedDocuments.fileKind(new String[]{".m4a"}));
+        assertEquals(SelectedDocuments.FileKind.PHOTOS, SelectedDocuments.fileKind(new String[]{"image/png"}));
+    }
     @Test public void clipOnlyPhotoResultsAreReturnedInFull() {
         assertEquals(List.of("content://photos/1", "content://photos/2", "content://photos/3"),
             SelectedDocuments.collect(null, List.of("content://photos/1", "content://photos/2", "content://photos/3"), true));

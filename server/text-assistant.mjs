@@ -1,3 +1,4 @@
+import {normalizeVideoPromptRequest,videoPromptMessages,videoPromptSchema} from './video-prompt-assistant.mjs';
 import { ProviderFailure } from './openai-image-adapter.mjs';
 
 // Server-owned, pinned configuration; callers cannot choose a model or a price.
@@ -11,6 +12,7 @@ const locales = new Set(['ko', 'en']);
 
 export function normalizeAssistantRequest(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw Error('INVALID_ASSISTANT_REQUEST');
+  if(body.kind==='video-prompt')return normalizeVideoPromptRequest(body);
   const string = (value, maximum, optional = false) => {
     if (optional && value === undefined) return '';
     if (typeof value !== 'string' || value.length > maximum || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value)) throw Error('INVALID_ASSISTANT_REQUEST');
@@ -76,11 +78,12 @@ export async function assistCopy({ request: raw, fetchImpl = globalThis.fetch, a
   const request = normalizeAssistantRequest(raw);
   if (!apiKey) throw new ProviderFailure('PROVIDER_NOT_CONFIGURED', { uncertain: false });
   if (model !== TEXT_MODEL) throw new ProviderFailure('ASSISTANT_MODEL_NOT_APPROVED', { uncertain: false });
+  const video=request.kind==='video-prompt';
   const input = JSON.stringify({ kind: request.kind, sourceLocale: request.sourceLocale, targetLocale: request.targetLocale, productName: request.productName, description: request.description, copy: request.copy,cta:request.cta });
   const payload = {
-    model, store: false, n: 1, messages: [{ role: 'developer', content: instructions }, { role: 'user', content: input }],
+    model, store: false, n: 1, messages: video?videoPromptMessages(request):[{ role: 'developer', content: instructions }, { role: 'user', content: input }],
     max_completion_tokens: MAX_OUTPUT_TOKENS,
-    response_format: { type: 'json_schema', json_schema: { name: 'advertising_copy', strict: true, schema: { type: 'object', properties: { title: { type: 'string', maxLength: 180 }, description: { type: 'string', maxLength: 240 } }, required: ['title', 'description'], additionalProperties: false } } },
+    response_format: { type: 'json_schema', json_schema: video?videoPromptSchema:{ name: 'advertising_copy', strict: true, schema: { type: 'object', properties: { title: { type: 'string', maxLength: 180 }, description: { type: 'string', maxLength: 240 } }, required: ['title', 'description'], additionalProperties: false } } },
   };
   let response;
   try {
@@ -101,6 +104,11 @@ export async function assistCopy({ request: raw, fetchImpl = globalThis.fetch, a
   const usage = result.usage ? { input_tokens: result.usage.prompt_tokens, output_tokens: result.usage.completion_tokens, output_tokens_details: result.usage.completion_tokens_details } : null;
   let proposal;
   try { proposal = JSON.parse(choice.message.content); } catch { throw new ProviderFailure('PROVIDER_INVALID_RESPONSE'); }
+  if(video){
+    const shots=['opening','detail','closing'].map(key=>proposal?.[key]);
+    if(!proposal||Object.keys(proposal).length!==3||shots.some(s=>typeof s!=='string'||!s.trim()||s.length>900))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
+    return {requestId:request.requestId,kind:request.kind,targetLocale:request.targetLocale,shots,usage,cost:textUsageCost(usage),model};
+  }
   if (!proposal || typeof proposal !== 'object' || Array.isArray(proposal) || Object.keys(proposal).sort().join(',') !== 'description,title' || typeof proposal.title !== 'string' || typeof proposal.description !== 'string' || proposal.title.length > 180 || proposal.description.length > 240 || !proposal.title.trim()) throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
   return { requestId: request.requestId, kind: request.kind, targetLocale: request.targetLocale, proposal, review: { required: true, numericChanges: reviewNumericChanges(request, proposal) }, usage, cost: textUsageCost(usage), model, providerRequestId: response.headers.get('x-request-id')?.slice(0, 200) ?? null };
 }

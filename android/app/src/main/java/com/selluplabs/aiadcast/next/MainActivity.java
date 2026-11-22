@@ -222,11 +222,16 @@ public final class MainActivity extends ComponentActivity {
                 filePicker = result;
                 SelectedDocuments.FileKind kind = SelectedDocuments.fileKind(parameters.getAcceptTypes());
                 boolean photosOnly = kind == SelectedDocuments.FileKind.PHOTOS;
-                filePickerMultiple = photosOnly && parameters.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE;
+                boolean media = kind == SelectedDocuments.FileKind.MEDIA;
+                filePickerMultiple = (photosOnly || media) && parameters.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE;
                 Intent fallback = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
                     .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, filePickerMultiple);
                 if (photosOnly) {
                     fallback.setType("image/*").putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/jpeg", "image/png", "image/webp"});
+                } else if (media) {
+                    fallback.setType("*/*").putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*", "video/*"});
+                } else if (kind == SelectedDocuments.FileKind.AUDIO) {
+                    fallback.setType("audio/*");
                 } else if (kind == SelectedDocuments.FileKind.BACKUP) {
                     fallback.setType("application/json");
                 } else {
@@ -670,7 +675,7 @@ public final class MainActivity extends ComponentActivity {
                         if(req.getInt("index")!=batchFiles.size()||batchFiles.size()>=batchCount)throw new java.io.IOException();
                         String name=req.getString("name");
                         byte[] bytes=Base64.decode(req.getString("base64"),Base64.DEFAULT);
-                        if(!ExportPolicy.validBatchImage(name,bytes))throw new java.io.IOException();
+                        if(!ExportPolicy.validBatchMedia(name,bytes) || ExportPolicy.batchMime(name).startsWith("video/") && batchCount!=1)throw new java.io.IOException();
                         File f=new File(batchFolder,name);if(!f.createNewFile())throw new java.io.IOException();
                         try(OutputStream out=new FileOutputStream(f)){out.write(bytes);}batchFiles.add(f);
                     }else if("finish".equals(op)){
@@ -714,9 +719,10 @@ public final class MainActivity extends ComponentActivity {
                 if(!owner.equals(exportOwner)||isDestroyed())throw new java.io.IOException();
                 android.content.ContentValues row=new android.content.ContentValues();
                 row.put(MediaStore.MediaColumns.DISPLAY_NAME,file.getName());row.put(MediaStore.MediaColumns.MIME_TYPE,ExportPolicy.batchMime(file.getName()));
-                row.put(MediaStore.MediaColumns.RELATIVE_PATH,android.os.Environment.DIRECTORY_PICTURES+"/aiadcast");
+                boolean video = ExportPolicy.batchMime(file.getName()).startsWith("video/");
+                row.put(MediaStore.MediaColumns.RELATIVE_PATH,(video ? android.os.Environment.DIRECTORY_MOVIES : android.os.Environment.DIRECTORY_PICTURES)+"/aiadcast");
                 row.put(MediaStore.MediaColumns.IS_PENDING,1);
-                Uri uri=getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,row);
+                Uri uri=getContentResolver().insert(video ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI : MediaStore.Images.Media.EXTERNAL_CONTENT_URI,row);
                 if(uri==null)throw new java.io.IOException();pending.add(uri);
                 try(InputStream in=new FileInputStream(file);OutputStream out=getContentResolver().openOutputStream(uri)){
                     if(out==null)throw new java.io.IOException();copyStream(in,out);

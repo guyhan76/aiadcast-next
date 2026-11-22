@@ -67,7 +67,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
     sendKakaoReturn(req,res,state,target);return;
    }
    if(req.method==='GET'&&url.pathname==='/api/auth/kakao/app-return'){sendKakaoRestart(res);return;}
-   if(req.method==='GET'&&!url.pathname.startsWith('/api/')){const path=['/','/exact-text-trial'].includes(url.pathname)?'/index.html':url.pathname;const bytes=assets.get(path);if(!bytes)throw new ApiFailure('NOT_FOUND',404);const ext=path.split('.').pop();res.writeHead(200,{'Content-Type':({html:'text/html; charset=utf-8',json:'application/json',js:'text/javascript',css:'text/css',woff2:'font/woff2',png:'image/png',webp:'image/webp',svg:'image/svg+xml'})[ext]??'application/octet-stream','X-Content-Type-Options':'nosniff','Cache-Control':path.startsWith('/assets/')?'public, max-age=31536000, immutable':'no-store','Content-Security-Policy':"default-src 'self'; script-src 'self' https://js.tosspayments.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' data: blob: https://*.tosspayments.com; frame-src https://*.tosspayments.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",'Referrer-Policy':'no-referrer'});res.end(bytes);return;}
+   if(req.method==='GET'&&!url.pathname.startsWith('/api/')){const path=['/','/exact-text-trial'].includes(url.pathname)?'/index.html':url.pathname;const bytes=assets.get(path);if(!bytes)throw new ApiFailure('NOT_FOUND',404);const ext=path.split('.').pop();res.writeHead(200,{'Content-Type':({html:'text/html; charset=utf-8',json:'application/json',js:'text/javascript',css:'text/css',woff2:'font/woff2',png:'image/png',webp:'image/webp',svg:'image/svg+xml'})[ext]??'application/octet-stream','X-Content-Type-Options':'nosniff','Cache-Control':path.startsWith('/assets/')?'public, max-age=31536000, immutable':'no-store','Content-Security-Policy':"default-src 'self'; script-src 'self' https://js.tosspayments.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self' data: blob: https://*.tosspayments.com; frame-src https://*.tosspayments.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",'Referrer-Policy':'no-referrer'});res.end(bytes);return;}
    limit(['/api/auth/kakao/start','/api/auth/kakao/finish','/api/auth/google/start','/api/auth/google/finish','/api/auth/google/native-callback','/api/auth/google/link/request','/api/auth/login','/api/auth/test/signup','/api/auth/test/login','/api/auth/email/request','/api/auth/email/verify','/api/checkout/confirm','/api/checkout/launch'].includes(url.pathname));
    if(req.headers.origin&&!cors)throw new ApiFailure('ORIGIN_NOT_ALLOWED',403);
    if(req.method==='OPTIONS'){if(!cors)throw new ApiFailure('ORIGIN_NOT_ALLOWED',403);res.writeHead(204,{'Access-Control-Allow-Origin':cors,'Access-Control-Allow-Methods':'GET,POST,OPTIONS','Access-Control-Allow-Headers':'Authorization,Content-Type,X-Aiadcast-Client','Vary':'Origin'});res.end();return;}
@@ -110,6 +110,17 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
      const body=req.method==='POST'?await read(req,url.pathname.startsWith('/api/membership/records/')?8192:2048):undefined;
      send(res,200,await store.membership.route(user,req.method,url.pathname,body,service),cors);return;
     }
+   }
+   if(req.method==='POST'&&url.pathname==='/api/videos'){
+    if(user.role!=='admin')throw new ApiFailure('VIDEO_TRIAL_UNAVAILABLE',403);
+    send(res,202,await service(user).startVideo(await read(req,14_100_000)),cors);return;
+   }
+   const videoPath=/^\/api\/videos\/([a-zA-Z0-9_-]{8,100})(\/file)?$/.exec(url.pathname);
+   if(req.method==='GET'&&videoPath){
+    const result=await service(user).videoResult(videoPath[1],!!videoPath[2]);
+    if(Buffer.isBuffer(result)){res.writeHead(200,{'Content-Type':'video/mp4','Cache-Control':'no-store','Content-Length':result.length,...(cors?{'Access-Control-Allow-Origin':cors,'Vary':'Origin'}:{})});res.end(result);}
+    else send(res,videoPath[2]?409:200,result,cors);
+    return;
    }
    if(req.method==='GET'&&url.pathname==='/api/auth/session'){send(res,200,{user:{id:user.id,label:user.label,role:user.role}},cors);return;}
    if(/^\/api\/(?:generations\/[A-Za-z0-9_-]{1,100}\/recommendations|recommendations\/[A-Za-z0-9_-]{1,100})$/.test(url.pathname)){

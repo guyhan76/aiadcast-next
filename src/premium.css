@@ -46,7 +46,7 @@
 .brand-footer-settings .brand-footer-row>input{font-size:16px;line-height:1.5;padding:12px 13px;border-radius:10px}
 .brand-footer-settings>p{font-size:13px;line-height:1.6;word-break:keep-all}
 .reference-upload-zone{width:100%;margin:16px auto 0}
-.reference-upload-zone .reference-add{width:100%;min-height:190px;aspect-ratio:auto;display:flex;align-items:center;justify-content:center;gap:19px;border:1px dashed var(--brand-line);border-radius:16px;background:var(--brand-light);font-size:15px;color:var(--brand-muted)}
+.reference-upload-zone .reference-add{width:100%;min-height:190px;aspect-ratio:auto;display:flex;align-items:center;justify-content:center;gap:19px;border:1px dashed #a9adb0;border-radius:16px;background:#f3f4f5;font-size:15px;color:var(--brand-muted)}
 .reference-upload-zone .reference-add>span{display:flex;align-items:center;justify-content:center;min-width:152px;min-height:46px;padding:10px 16px;border-radius:10px;background:var(--brand-black);color:var(--brand-white);font-weight:600}
 .reference-file-info{text-align:center;font-size:13px;line-height:1.6;color:var(--brand-muted);margin:12px 0 24px}
 .reference-file-info p{margin:2px 0}

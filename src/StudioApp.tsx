@@ -1,3 +1,7 @@
+import {VideoAdPage} from './VideoAdPage';
+import {videoDraft} from './VideoDurationEditor';
+import {OpenVideoDraft} from './VideoDraftAction';
+import {Clapperboard,Image as MediaImage} from 'lucide-react';
 import type {BatchPrice} from './batch-price';
 import {submitAdBatch} from './submit-ad-batch';
 import {createResultSet} from './result-set';
@@ -39,9 +43,10 @@ import {deleteProjects,projects,saveProject,saveProjectSet} from './storage';
 import './studio.css';
 import './premium.css';
 import './campaign-cover.css';
-type Page='portfolio'|'home'|'create'|'projects'|'guide'|'studio'|'signup'|'login'|'credits'|'checkout'|'verify'|'pay'|'payment-return'|'checkout-return'|'admin'|'editor';
+type Page='video'|'portfolio'|'home'|'create'|'projects'|'guide'|'studio'|'signup'|'login'|'credits'|'checkout'|'verify'|'pay'|'payment-return'|'checkout-return'|'admin'|'editor';
 const navigation=[['create','광고 만들기',Plus],['projects','내 프로젝트',FolderOpen],['guide','사용 안내',BookOpen]] as const;
-function currentPage():Page {if(new URLSearchParams(location.search).get('checkout')==='return')return 'payment-return';const route=location.hash.slice(1).split('?')[0];return ['portfolio','home','create','projects','guide','studio','signup','login','credits','checkout','verify','pay','payment-return','checkout-return','admin','editor'].includes(route)?route as Page:'home';}
+function videoPreviewAvailable(){return offlineDemo()||betaSession()?.user.role==='admin';}
+function currentPage():Page {if(new URLSearchParams(location.search).get('checkout')==='return')return 'payment-return';const route=location.hash.slice(1).split('?')[0];if(route==='video'&&!videoPreviewAvailable())return 'home';return ['video','portfolio','home','create','projects','guide','studio','signup','login','credits','checkout','verify','pay','payment-return','checkout-return','admin','editor'].includes(route)?route as Page:'home';}
 export default function StudioApp(){
  useEffect(()=>{const publish=()=>window.dispatchEvent(new CustomEvent('aiadcast-export-context',{detail:{owner:storageNamespace()}}));window.addEventListener('aiadcast-session-change',publish);return()=>window.removeEventListener('aiadcast-session-change',publish);},[]);
  return <KakaoBoundary><GoogleGate><AuthenticatedStudioApp/></GoogleGate></KakaoBoundary>;
@@ -75,6 +80,13 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  const priorPage=useRef<Page>(currentPage()),creditsBack=useRef<Page>('home');
  const [page,setPage]=useState<Page>(currentPage),[seed,setSeed]=useState<Project>(()=>restored?.editor??({...newProject(),locale:language})),[current,setCurrent]=useState<Project>(seed),[editorKey,setEditorKey]=useState(0);
  const creating=page==='create'||page==='home';
+ const videoPreview=videoPreviewAvailable();
+ const [video,setVideo]=useState(()=>videoDraft());
+ useEffect(()=>{
+  const clear=()=>setVideo(videoDraft());
+  window.addEventListener('aiadcast-session-change',clear);
+  return()=>window.removeEventListener('aiadcast-session-change',clear);
+ },[]);
  const submittedWizard=useRef<string|undefined>(restored?.returnPage==='studio'?restored?.wizard?.project.id:undefined);
  const libraryRead=useRef(0);
  const [wizardKey,setWizardKey]=useState(0),[items,setItems]=useState<Project[]>([]),[libraryError,setLibraryError]=useState('');
@@ -162,8 +174,8 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
   (current.generated||!items.some(p=>p.id===current.id&&p.generated));
  const libraryItems=showWorkspace?[current,...items.filter(p=>p.id!==current.id)]:items;
 
- return <div className={`studio-shell ${(page==='editor'||page==='studio'&&!simpleStudio)?'editor-route':''}`}>
-  <aside className="app-sidebar"><a href="#home" onClick={createNavigation} className="app-brand" aria-label={text("aiadcast 홈")}><Brand/><small>{language==='ko'?'내 브랜드의 광고 제작 파트너':'YOUR CREATIVE PARTNER'}</small></a><nav aria-label={text("주 메뉴")}>{navigation.map(([id,label,Icon])=><a href={'#'+id} onClick={id==='create'?createNavigation:undefined} key={id} aria-current={(id==='create'?creating:page===id)?'page':undefined}><Icon size={19}/><span>{text(label)}</span>{id==='create'&&<span className="nav-plus">+</span>}</a>)}</nav><div className="sidebar-bottom"><div className="studio-mark"><ShieldCheck size={20}/><span>{text("당신의 상품.")}<br/><strong>{text("당신의 브랜드.")}</strong></span></div><span>aiadcast Studio<br/>by selluplabs</span></div></aside>
+ return <OpenVideoDraft.Provider value={videoPreview?(sources,brief)=>{setVideo(videoDraft(sources,brief));go('video');}:null}><div className={`studio-shell ${(page==='editor'||page==='studio'&&!simpleStudio)?'editor-route':''}`}>
+  <aside className="app-sidebar"><a href="#home" onClick={createNavigation} className="app-brand" aria-label={text("aiadcast 홈")}><Brand/><small>{language==='ko'?'내 브랜드의 광고 제작 파트너':'YOUR CREATIVE PARTNER'}</small></a><nav aria-label={text("주 메뉴")}>{navigation.map(([id,label,Icon])=><a href={'#'+id} onClick={id==='create'?createNavigation:undefined} key={id} aria-current={(id==='create'?creating||page==='video':page===id)?'page':undefined}><Icon size={19}/><span>{text(label)}</span>{id==='create'&&<span className="nav-plus">+</span>}</a>)}</nav><div className="sidebar-bottom"><div className="studio-mark"><ShieldCheck size={20}/><span>{text("당신의 상품.")}<br/><strong>{text("당신의 브랜드.")}</strong></span></div><span>aiadcast Studio<br/>by selluplabs</span></div></aside>
   <div className="app-content"><WorkspaceHeader onHome={createNavigation} preserve={async()=>{await preserve();await saveProject(current);}} history={screenHistory}/><DemoNotice/>{page==='guide'&&new URLSearchParams(location.search).get('support')==='1'&&<details className="account-drawer"><summary>{language==='ko'?'테스트 계정 · 서버 연결':'Test account & connection'}</summary><OfflineDemoControls preserve={preserve} beforeChange={async()=>{await preserve();await saveWorkspace(snapshot,'guest');}}/>{!offlineDemo()&&<TestConnection preserve={preserve} beforeChange={async()=>{await preserve();await saveWorkspace(snapshot,'guest');}}/>}{!offlineDemo()&&<BetaAccount current={current} onOpen={p=>open(p,true)}/>}</details>}
 
    {draftError&&<p className="wizard-error" role="alert">{text('입력 내용을 기기에 보관하지 못했습니다. 저장 공간을 확인해주세요.')}</p>}
@@ -172,6 +184,11 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
 
 
    {page==='portfolio'&&<div className="app-page"><PortfolioPage/></div>}
+   {videoPreview&&(creating||page==='video')&&<nav className="vd-modes" aria-label={language==='ko'?'광고 형식':'Ad format'}>
+    <a href="#create" aria-current={creating?'page':undefined}><MediaImage size={17}/>{language==='ko'?'이미지 광고':'Image ad'}</a>
+    <a href="#video" aria-current={page==='video'?'page':undefined} aria-label={language==='ko'?'광고 영상 만들기':'Create an ad video'}><Clapperboard size={17}/>{language==='ko'?'영상 광고':'Video ad'}</a>
+   </nav>}
+   {videoPreview&&page==='video'&&<div className="app-page vd-page"><VideoAdPage draft={video} change={setVideo}/></div>}
    <div hidden={!creating} className="app-page home-page"><CreateCampaign active={creating} key={wizardKey} onReady={ready} draft={wizardSeed} onDraft={setWizard}/></div>
    <div hidden={page!=='projects'} className="app-page projects-page">{page==='projects'&&<ProjectLibrary key={betaSession()?.token??workspaceScope} onRemove={removeSaved} items={libraryItems} error={libraryError} onNew={()=>void begin()} onOpen={p=>void open(p)} onOpenServer={p=>open(p,true)} showDownloads={!!betaSession()&&!offlineDemo()}/>}</div>
    <div hidden={page!=='guide'} className="app-page guide-page"><UsageGuide onNew={()=>void begin()}/></div>
@@ -183,7 +200,6 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
 
    {page==='portfolio'&&<AppFooter/>}
   </div>
-  <nav className="mobile-app-nav" aria-label={text("모바일 메뉴")}>{navigation.map(([id,label,Icon])=><a key={id} href={'#'+id} onClick={id==='create'?createNavigation:undefined} aria-current={(id==='create'?creating:page===id)?'page':undefined}><Icon size={20}/><span>{text(label)}</span></a>)}</nav>
- </div>;
+  <nav className="mobile-app-nav" aria-label={text("모바일 메뉴")}>{navigation.map(([id,label,Icon])=><a key={id} href={'#'+id} onClick={id==='create'?createNavigation:undefined} aria-current={(id==='create'?creating||page==='video':page===id)?'page':undefined}><Icon size={20}/><span>{text(label)}</span></a>)}</nav>
+ </div></OpenVideoDraft.Provider>;
 }
-

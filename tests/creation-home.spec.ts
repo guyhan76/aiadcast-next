@@ -11,7 +11,7 @@ for(const language of ['ko','en'] as const){
   const heading=page.getByRole('heading',{level:1,name:language==='ko'?'광고 이미지 만들기':'Create an ad image',exact:true});
   const nav=page.locator('.mobile-app-nav');
   await expect(heading).toBeVisible();
-  await expect(page.getByText(language==='ko'?'광고 영상 만들기':'Create an ad video',{exact:true})).toHaveCount(0);
+  await expect(page.getByRole('link',{name:language==='ko'?'광고 영상 만들기':'Create an ad video',exact:true})).toHaveCount(0);
   await expect(nav.getByRole('link')).toHaveText(language==='ko'?['광고 만들기','내 프로젝트','사용 안내']:['Create an ad','My projects','How it works']);
   await expect(nav.locator('[aria-current=page]')).toHaveAttribute('href','#create');
   for(const width of [320,390,768,1440]){
