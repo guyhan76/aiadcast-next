@@ -64,14 +64,22 @@ export function higgsfieldInput(plan, urls) {
   return {endpoint: higgsfieldModel + '/' + operation, body};
 }
 
+// Only the structure of a pricing response is diagnostic. Never copy arbitrary response values.
+function priceSchema(value, depth = 0) {
+  if (value === null) return 'null';
+  if (typeof value !== 'object') return typeof value;
+  if (depth >= 3) return Array.isArray(value) ? 'array' : 'object';
+  if (Array.isArray(value)) return value.length ? [priceSchema(value[0], depth + 1)] : [];
+  return Object.fromEntries(Object.entries(value).filter(([name]) => /^[a-z][a-z_]{0,35}$/i.test(name))
+    .slice(0,20).map(([name, field]) => [name, priceSchema(field, depth + 1)]));
+}
+
 export async function estimateHiggsfield(key, {endpoint, body}) {
   const result = await request(key, 'estimate/' + endpoint, body);
   const value = String(result?.usd ?? '').trim();
   if (!/^\d+(\.\d+)?$/.test(value)) {
     const error = new Error('ESTIMATE_USD_MISSING');
-    // Whitelist schema fields to diagnose pricing API changes without retaining the response.
-    error.priceFields = ['credits', 'usd', 'price', 'cost', 'total', 'discount', 'data', 'estimate', 'amount', 'currency', 'price_usd', 'cost_usd']
-      .filter(field => Object.hasOwn(result ?? {}, field));
+    error.priceSchema = priceSchema(result);
     throw error;
   }
   const micros = Math.ceil(Number(value) * 1_000_000);
@@ -96,7 +104,7 @@ export async function higgsfieldConnection(env = process.env) {
   } catch (error) {
     // Only classify known reasons. Raw vendor responses, URLs and arbitrary error strings stay private.
     const reasons = ['ESTIMATE_USD_MISSING', 'ESTIMATE_USD_OUT_OF_RANGE', 'INVALID_PROVIDER_JSON'];
-    if (reasons.includes(error.message)) return {state: 'estimate_unavailable', reason: error.message, httpStatus: error.providerStatus ?? 200, ...(error.priceFields ? {fields: error.priceFields} : {})};
+    if (reasons.includes(error.message)) return {state: 'estimate_unavailable', reason: error.message, httpStatus: error.providerStatus ?? 200, ...(error.priceSchema ? {schema: error.priceSchema} : {})};
     if (error.providerStatus) return {state: 'estimate_unavailable', httpStatus: error.providerStatus};
     const code = error.cause?.code;
     const networkReason = typeof code === 'string' && /^[A-Z0-9_]{2,60}$/.test(code) ? code : 'NETWORK_ERROR';

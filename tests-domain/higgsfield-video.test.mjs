@@ -124,7 +124,7 @@ test('the private estimate check distinguishes protocol, quote, and network fail
     throw failure;
   });
   const env={HF_CREDENTIALS:'example'};
-  assert.deepEqual(await higgsfieldConnection(env),{state:'estimate_unavailable',reason:'ESTIMATE_USD_MISSING',httpStatus:200,fields:['usd']});
+  assert.deepEqual(await higgsfieldConnection(env),{state:'estimate_unavailable',reason:'ESTIMATE_USD_MISSING',httpStatus:200,schema:{usd:'null'}});
   mode='json';
   assert.deepEqual(await higgsfieldConnection(env),{state:'estimate_unavailable',reason:'INVALID_PROVIDER_JSON',httpStatus:200});
   mode='redirect';
