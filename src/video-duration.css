@@ -1,6 +1,3 @@
-.vd-modes {display:flex;gap:4px;width:fit-content;padding:4px;margin:15px auto 0;background:#f1f0ec;border-radius:12px;}
-.vd-modes a {text-decoration:none;color:#51514a;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 17px;border-radius:9px;font-size:14px;font-weight:650;}
-.vd-modes a[aria-current=page] {background:white;color:#20201d;box-shadow:0 1px 4px #0002;}
 .vd-page {padding-top:14px;}
 .video-draft {box-sizing:border-box;width:100%;max-width:540px;margin:auto;display:grid;grid-template-columns:minmax(0,1fr);gap:12px;color:#22221f;text-align:left;font:inherit;}
 .video-draft *, .vd-picker * {box-sizing:border-box;}

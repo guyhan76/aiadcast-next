@@ -1,0 +1,48 @@
+.creation-home h1 {
+  margin: 0 0 24px;
+  font-size: clamp(26px, 5vw, 34px);
+  line-height: 1.25;
+  letter-spacing: -.04em;
+}
+.creation-choices {
+  display: grid;
+  gap: 12px;
+}
+.creation-choices a {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 84px;
+  padding: 16px 20px;
+  border: 1px solid #dedede;
+  border-radius: 16px;
+  background: #fff;
+  color: #191919;
+  text-decoration: none;
+  font-size: clamp(17px, 3vw, 20px);
+  font-weight: 700;
+  word-break: keep-all;
+}
+.creation-choices a:hover,
+.creation-choices a:focus-visible {
+  border-color: #dc651f;
+  background: #fffaf7;
+}
+.creation-choices a:focus-visible {
+  outline: 2px solid #9f4311;
+  outline-offset: 2px;
+}
+.creation-choice-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #fff0e5;
+  color: #98400c;
+}
+.creation-choice-arrow {
+  flex: 0 0 18px;
+  margin-inline-start: auto;
+  color: #666;
+}

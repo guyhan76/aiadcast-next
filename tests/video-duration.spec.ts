@@ -109,8 +109,8 @@ test('home to video to a finished free download',async({page},testInfo)=>{
   await confirm.getByRole('button',{name:'제작 시작'}).click();
   const save=editor.getByRole('button',{name:'영상 저장',exact:true});
   await expect(save).toBeVisible({timeout:18000});
-  await page.locator('.vd-modes a[href="#create"]').click();
-  await page.locator('.vd-modes a[href="#video"]').click();
+  await page.locator('.mobile-app-nav a[href="#home"]').click();
+  await page.locator('.creation-choices a[href="#video"]').click();
   await expect(save).toBeEnabled();
   await expect.poll(()=>editor.locator('.vd-stage video').evaluate((v:HTMLVideoElement)=>[v.videoWidth,v.videoHeight])).toEqual([1280,720]);
   const downloadEvent=page.waitForEvent('download');await save.click();const download=await downloadEvent;

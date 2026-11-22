@@ -26,11 +26,11 @@ async function seedCallback(page:Page,state='s'.repeat(43)){
  await page.addInitScript(({state})=>sessionStorage.setItem('aiadcast.google-flow',JSON.stringify({state,proof:'p'.repeat(43),expires:Date.now()+600000})),{state});
 }
 test('verified callback enters home; logout and a fresh Google sign-in return to the same account',async({page})=>{
- const state=await setup(page);await seedCallback(page);await page.goto('/?google=1&state='+ 's'.repeat(43)+'&code=mock-code');await expect(page.getByRole('heading',{name:'광고 이미지 만들기',exact:true})).toBeVisible();expect(state.finishes()).toBe(1);await expect(page).toHaveURL(/#home$/);
+ const state=await setup(page);await seedCallback(page);await page.goto('/?google=1&state='+ 's'.repeat(43)+'&code=mock-code');await expect(page.getByRole('link',{name:'광고 이미지 만들기',exact:true})).toBeVisible();expect(state.finishes()).toBe(1);await expect(page).toHaveURL(/#home$/);
  page.on('dialog',d=>d.accept());await openWorkspaceMenu(page);await page.getByRole('button',{name:'로그아웃',exact:true}).click();await expect(page.getByRole('button',{name:'Google로 계속하기',exact:true})).toBeVisible();expect(await page.evaluate(()=>sessionStorage.getItem('aiadcast.beta-session'))).toBeNull();
  await page.reload();
  await expect(page.getByRole('button',{name:'Google로 계속하기',exact:true})).toHaveAccessibleDescription('최근 로그인');
- await page.goto('/?google=1&state='+ 's'.repeat(43)+'&code=fresh-code');await expect(page.getByRole('heading',{name:'광고 이미지 만들기',exact:true})).toBeVisible();expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('aiadcast.beta-session')!).user.id)).toBe(account.user.id);
+ await page.goto('/?google=1&state='+ 's'.repeat(43)+'&code=fresh-code');await expect(page.getByRole('link',{name:'광고 이미지 만들기',exact:true})).toBeVisible();expect(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('aiadcast.beta-session')!).user.id)).toBe(account.user.id);
 });
 test('valid existing session opens home; mismatched callback never calls token exchange',async({page})=>{
  const state=await setup(page,{signed:true});await page.goto('/');await expect(page.locator('.home-page')).toBeVisible();expect(state.starts()).toBe(0);
