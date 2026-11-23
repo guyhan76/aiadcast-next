@@ -55,7 +55,7 @@ test('new packs count five credits per image without inventing a USD launch pric
 
 test('annual totals and monthly allowances are independent of billing frequency',()=>{
  const annual=checkoutOffers.filter(o=>o.period==='annual');
- assert.deepEqual(annual.map(o=>[o.credits,o.prices.KRW]),[[100,310800],[250,742800],[500,1438800]]);
+ assert.deepEqual(annual.map(o=>[o.credits,o.prices.KRW]),[[100,310800],[250,742800],[500,1402800]]);
  assert.deepEqual(checkoutOffers.filter(o=>o.period==='monthly').map(o=>o.prices.KRW),[33900,79900,149900]);
  assert.equal(new Set(checkoutOffers.map(o=>o.id)).size,10);
  const jan=Date.parse('2027-01-31T02:00:00+09:00');

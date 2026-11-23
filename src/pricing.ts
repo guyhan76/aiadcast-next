@@ -17,7 +17,7 @@ export const pricingCatalog = {
   plans: [
     {id:'plus', ko:'플러스', en:'Plus', credits:100, monthly:33900, annualMonthly:25900},
     {id:'business', ko:'비즈니스', en:'Business', credits:250, monthly:79900, annualMonthly:61900},
-    {id:'ultra', ko:'울트라', en:'Ultra', credits:500, monthly:149900, annualMonthly:119900},
+    {id:'ultra', ko:'울트라', en:'Ultra', credits:500, monthly:149900, annualMonthly:116900},
   ],
 } as const;
 export type BillingPeriod='monthly'|'annual'|'topup';
