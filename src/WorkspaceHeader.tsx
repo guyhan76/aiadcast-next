@@ -32,6 +32,10 @@ export function WorkspaceHeader({onHome,preserve,history}:Props){
    <AccountBar preserve={preserve}/>
    <div className="workspace-menu-options"><LanguageSwitcher/><PricingDialog/>{betaSession()?.user.role==='admin'&&<a href="#admin" onClick={close}>{t('관리자','Admin')}</a>}<a href={betaSession()?'#credits':'#login'} onClick={close}>{betaSession()?t('내 이용권','My Credits'):t('로그인','Sign in')}</a></div>
    <div className="workspace-menu-policy">
+    <details>
+     <summary>{t('사업자정보','Business information')}</summary>
+     <p>셀업랩스 주식회사<br/>{t('통신판매업 신고번호','Mail-order business registration number')} <span>제2026-서울마포-2946호</span></p>
+    </details>
     <a href="https://www.selluplabs.com/privacy/" target="_blank" rel="noreferrer">{t('개인정보처리방침','Privacy policy')}</a>
     <a href="/account-deletion.html" target="_blank" rel="noreferrer">{t('자료 보관 안내','Data retention')}</a>
     {open&&!offlineDemo()&&betaSession()&&<button className="withdrawal-trigger" type="button" ref={withdrawalTrigger} onClick={()=>setWithdrawal(true)}>{t('회원탈퇴','Delete account')}</button>}
