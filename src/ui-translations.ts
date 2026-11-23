@@ -14,6 +14,7 @@ export const uiEnglish:Record<string,string>={
  "광고 만들기": "Create an ad",
  "내 광고 만들기": "Create an ad",
  "내 프로젝트": "My projects",
+ "이용권 안내": "Plans",
  "사용 안내": "How it works",
  "이 기기의 저장된 작업을 읽지 못했습니다.": "We could not read the projects on this device.",
  "현재 편집 내용을 저장하지 못해 작업 전환을 멈췄습니다. 편집기로 돌아가 프로젝트 파일을 백업해주세요.": "Your current changes could not be saved. Return to the editor and back up your project before switching.",

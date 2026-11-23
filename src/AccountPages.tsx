@@ -127,7 +127,7 @@ function WebCheckoutPage({preserve,returnPage,preview}:Omit<Context,'returnPage'
  const preference=readSession<{selected:string;currency:PricingCurrency}>('aiadcast.checkout-choice');
  const [selected,setSelected]=useState(()=>checkoutOffers.some(p=>p.id===preference?.selected)?preference!.selected:'plan-plus-monthly'),[currency]=useState<PricingCurrency>('KRW');
  const orderKey='aiadcast.checkout-order:'+storageNamespace(),[order,setOrder]=useState<TestOrder|undefined>(()=>readSession(orderKey));
- const earlierTopUpOrder=useRef(location.hash==='#checkout?from=generation'?order?.id:undefined);
+ const previousOrderOnCatalogEntry=useRef((location.hash==='#checkout?from=generation'||location.hash==='#plans')?order?.id:undefined);
  const [agreed,setAgreed]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[balance,setBalance]=useState<number|null>(null),locked=useRef(false);
  const demo=offlineDemo(),refreshing=useRef(false),refreshAgain=useRef(false);const [checking,setChecking]=useState(false);
  async function simulate(action:'approve'|'decline'|'cancel'){if(!order||locked.current)return;locked.current=true;setBusy(true);try{const next=await apiRequest<TestOrder>(`/api/demo/checkout/orders/${order.id}/${action}`,{});keepOrder(next);const status=await apiRequest<{wallet:{available:number;credits?:{available:number}}}>('/api/status');setBalance(order?.unit==='legacy-ticket'||order&&!order.unit?status.wallet.available:status.wallet.credits?.available??0);setMessage(action==='cancel'?t('결제를 취소했습니다. 이용권은 추가되지 않았습니다.','Checkout canceled. No credits were added.'):'');}catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;setBusy(false);}}
@@ -175,9 +175,9 @@ function WebCheckoutPage({preserve,returnPage,preview}:Omit<Context,'returnPage'
   try{do{refreshAgain.current=false;try{
    if(order){
     const result=await apiRequest<TestOrder>('/api/checkout/orders/'+order.id);
-    if(result.id===earlierTopUpOrder.current&&(result.state==='paid'||result.state==='canceled'))clearOrder();
+    if(result.id===previousOrderOnCatalogEntry.current&&(result.state==='paid'||result.state==='canceled'))clearOrder();
     else keepOrder({...order,...result});
-    earlierTopUpOrder.current=undefined;
+    previousOrderOnCatalogEntry.current=undefined;
    }
    const status=await apiRequest<{wallet:{available:number;credits?:{available:number}}}>('/api/status');setBalance(order?.unit==='legacy-ticket'||order&&!order.unit?status.wallet.available:status.wallet.credits?.available??0);setMessage('');
   }catch(e){setMessage(accountError(e,ko));}}while(refreshAgain.current);
