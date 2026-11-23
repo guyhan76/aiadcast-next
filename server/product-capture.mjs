@@ -1,9 +1,9 @@
 import {spawn} from 'node:child_process';
 import sharp from 'sharp';
 
-function readWords(png){
+function readWords(png,layout){
   return new Promise((resolve,reject)=>{
-    const child=spawn('tesseract',['stdin','stdout','-l','kor+eng','--psm','11','tsv'],{
+    const child=spawn('tesseract',['stdin','stdout','-l','kor+eng','--psm',layout,'tsv'],{
       stdio:['pipe','pipe','ignore'],env:{...process.env,OMP_THREAD_LIMIT:'1'},timeout:16000,killSignal:'SIGKILL'
     });
     const chunks=[];let size=0;
@@ -22,26 +22,45 @@ function linesFromTsv(tsv){
     const key=cells.slice(1,5).join('-');
     const x=Number(cells[6]),y=Number(cells[7]),w=Number(cells[8]),h=Number(cells[9]),word=cells[11].trim();
     let line=groups.get(key);
-    if(!line){line={x,y,right:x,h,text:''};groups.set(key,line);}
+    if(!line){line={x,y,right:x,h,heights:[],text:''};groups.set(key,line);}
     if(line.text&&x-line.right>Math.max(2,h*.29))line.text+=' ';
-    line.text+=word;line.right=x+w;line.h=Math.max(line.h,h);
+    line.text+=word;line.right=x+w;line.heights.push(h);
+  }
+  for(const line of groups.values()){
+    line.heights.sort((a,b)=>a-b);
+    line.h=line.heights[Math.floor(line.heights.length/2)];
   }
   return [...groups.values()].sort((a,b)=>a.y-b.y||a.x-b.x);
 }
 export function extractCaptureFields(tsv,width,height){
   const lines=linesFromTsv(tsv);
-  const prices=lines.filter(l=>/^(?:₩\s*[\d,]+|[\d,]+\s*원)$/.test(l.text));
-  const price=prices.length===1?prices[0]:null;
-  if(!price)throw Error('CAPTURE_UNREADABLE');
-  const aligned=lines.filter(l=>Math.abs(l.x-price.x)<Math.max(width*.04,price.h*2));
-  const titles=aligned.filter(l=>l.y<price.y&&price.y-l.y<price.h*5.3&&l.h>=price.h*.42&&
-    l.text.length>=3&&!/상품평|리뷰|별점|평점|장바구니|배송|로그인|구매|할인/.test(l.text));
-  const maxHeight=Math.max(0,...titles.map(l=>l.h));
-  const first=titles.find(l=>l.h>=maxHeight*.94);
-  let title=first?.text??'';
+  // Sparse OCR can put the monthly installment label in a separate text block.
+  const amounts=lines.filter(l=>/^(?:₩\s*[\d,]+|[\d,]+\s*원)$/.test(l.text));
+  const prices=amounts.filter(amount=>!lines.some(label=>
+    Math.abs(label.y-amount.y)<amount.h*.5&&label.right<=amount.x&&amount.x-label.right<amount.h&&
+    /(?:월|매월|할부)\s*$/.test(label.text)));
+  if(prices.length>1)throw Error('CAPTURE_PRICE_AMBIGUOUS');
+  if(!prices.length)throw Error('CAPTURE_UNREADABLE');
+  const price=prices[0];
+  const aligned=lines.filter(l=>Math.abs(l.x-price.x)<Math.max(width*.04,price.h*.7));
+  const candidates=aligned.filter(l=>l.y<price.y&&price.y-l.y<price.h*8&&l.h>=price.h*.42&&
+    l.text.length>=2&&!/상품평|리뷰|별점|평점|장바구니|배송|로그인|구매|할인|모아보기/.test(l.text.replace(/\s/g,'')));
+  const maxHeight=Math.max(0,...candidates.map(l=>l.h));
+  const titles=candidates.filter(l=>l.h>=maxHeight*.88);
+  const last=titles.at(-1);
+  let start=titles.length-1;
+  while(start>0&&titles[start].y-titles[start-1].y<maxHeight*1.9)start--;
+  const first=titles[start];
+  const titleRows=first?lines.filter(l=>l.y>=first.y&&l.y<=last.y+maxHeight*.35&&l.x>=first.x-maxHeight&&
+    l.h>=maxHeight*.7):[];
+  let title=titleRows.map(l=>l.text).join(' ');
   const pieces=title.split(/\s+/);
   const repeat=pieces.findIndex((v,i)=>i>0&&v===pieces[i-1]);
-  if(repeat>0)title=pieces.slice(0,repeat).join(' ');
+  if(repeat>0){
+    const models=title.match(/\b(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*\d)[A-Z][A-Z0-9-]{4,19}\b/g)??[];
+    title=pieces.slice(0,repeat).join(' ');
+    for(const model of new Set(models))if(!title.includes(model))title+=' '+model;
+  }
   const below=aligned.filter(l=>l.y>price.y);
   const compact=s=>s.replace(/\s/g,'');
   function option(label) {
@@ -55,7 +74,7 @@ export function extractCaptureFields(tsv,width,height){
     }
     return '';
   }
-  const shipping=below.find(l=>l.y-price.y<price.h*10&&compact(l.text)==='무료배송')?'무료배송':'';
+  const shipping=below.find(l=>l.y-price.y<price.h*10&&/^(?:[^가-힣]{0,2})무료배송(?:$|[·•|]|CJ대한통운)/i.test(compact(l.text)))?'무료배송':'';
   const size=option(/^사\s*이\s*즈\s*[:：]?\s*(.*)$/);
   const color=option(/^색\s*상\s*[:：]?\s*(.*)$/);
   // In a wide two-column listing the hero sits to the left of the matching price column.
@@ -76,7 +95,16 @@ export async function importProductCapture(data){
   const scale=Math.min(1.5,2800/Math.max(meta.width,meta.height));
   const {data:scaled,info}=await source.rotate().resize({width:Math.max(1,Math.round((meta.autoOrient?.width||meta.width)*scale))}).flatten({background:'white'}).png().toBuffer({resolveWithObject:true});
   const ocr=await sharp(scaled).grayscale().sharpen().png().toBuffer();
-  const {crop,...fields}=extractCaptureFields(await readWords(ocr),info.width,info.height);
+  let parsed;
+  for(const layout of ['11','6']){
+    const tsv=await readWords(ocr,layout);
+    try{parsed=extractCaptureFields(tsv,info.width,info.height);}catch(error){
+      if(error.message!=='CAPTURE_UNREADABLE'||layout==='6')throw error;
+    }
+    if(parsed?.title)break;
+  }
+  if(!parsed?.title)throw Error('CAPTURE_UNREADABLE');
+  const {crop,...fields}=parsed;
   const image=crop?'data:image/jpeg;base64,'+(await sharp(scaled).extract(crop).resize({width:1000,withoutEnlargement:true}).jpeg({quality:90}).toBuffer()).toString('base64'):'';
   return {...fields,image};
 }

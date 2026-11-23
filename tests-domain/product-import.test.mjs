@@ -32,3 +32,18 @@ test('capture reads price and shipping from the item body, leaves ambiguous pric
   const other=['5',1,9,1,1,1,800,510,90,20,93,'259,000원'].join('\t');
   assert.throws(()=>extractCaptureFields([...rows,other].join('\n'),1500,900));
 });
+
+test('phone capture retains the first title line and model beside an installment offer',()=>{
+  const line=(id,x,y,h,value)=>['5',1,id,1,1,1,x,y,value.length*12,h,90,value].join('\t');
+  const rows=[
+    line(1,165,1125,44,'브랜드 >'),line(2,46,1317,38,'브랜드 롱패딩 롱패딩 남녀'),
+    line(3,46,1376,38,'롱패딩 여성 롱패딩'),line(4,46,1434,38,'가능'),
+    line(5,169,1434,38,'겨울 롱패딩 NC1DR70'),line(6,47,1515,32,'남성 롱다운 코트'),
+    line(7,540,1607,44,'월'),line(8,557,1608,44,'95,000원'),
+    line(9,47,1630,58,'285,000원'),line(10,44,1794,32,'8 무료배송')
+  ];
+  const fields=extractCaptureFields(rows.join('\n'),987,2304);
+  assert.equal(fields.title,'브랜드 롱패딩 NC1DR70');
+  assert.equal(fields.price,'285,000원');
+  assert.equal(fields.shipping,'무료배송');
+});
