@@ -1,3 +1,4 @@
+import {imageCredits} from '../src/pricing.ts';
 // Local server-domain reference. Never import into the browser or expose these
 // methods directly as HTTP handlers. Authentication, store receipt verification,
 // provider callbacks and artifact quality checks belong to trusted server adapters.
@@ -74,7 +75,7 @@ export class BillingLedger {
   }
   // credits, modelRevision and expiresAt must come from a server-signed quote.
   reserve({ jobId, userId, credits, requestHash, modelRevision, kind = 'image', expiresAt, creditExempt = false, unit='legacy-ticket', customerFunded=false }) {
-    if(!['legacy-ticket','credit-v2'].includes(unit)||unit==='credit-v2'&&credits!==10)throw Error('Invalid credit quote');
+    if(!['legacy-ticket','credit-v2'].includes(unit)||unit==='credit-v2'&&kind==='image'&&!creditExempt&&credits!==imageCredits)throw Error('Invalid credit quote');
     const table=unit==='credit-v2'?'credit_wallets':'wallets';
     [jobId, userId, requestHash, modelRevision].forEach(identifier); integer(credits);
     if (!['image','video'].includes(kind) || !Number.isSafeInteger(expiresAt) || typeof creditExempt !== 'boolean') throw Error('Invalid job');
@@ -94,7 +95,7 @@ export class BillingLedger {
       this.db.prepare('INSERT INTO jobs(id,user_id,credits,request_hash,model_revision,kind,status,expires_at) VALUES (?,?,?,?,?,?,?,?)').run(jobId, userId, credits, requestHash, modelRevision, kind, 'reserved', expiresAt);
       if(unit==='credit-v2')this.db.prepare('INSERT INTO job_policies(job_id,unit,policy) VALUES (?,?,?)').run(jobId,unit,'delivered-2026-10-18');
       if (customerFunded) {
-        if (!this.customerCosts || creditExempt || unit!=='credit-v2' || kind!=='image') throw Error('Invalid customer funding');
+        if (!this.customerCosts || creditExempt || unit!=='credit-v2') throw Error('Invalid customer funding');
         this.db.prepare('INSERT INTO customer_ad_jobs VALUES (?)').run(jobId);
       }
       if (creditExempt) this.db.prepare('INSERT INTO admin_test_jobs(job_id) VALUES (?)').run(jobId);
@@ -142,7 +143,7 @@ export class BillingLedger {
   releaseInside(job, reason) {
     if (job.status === 'released' || job.status === 'refunded') return job;
     if (job.status === 'accepted') throw Error('Accepted jobs require a confirmed-defect refund');
-    if (!job.creditExempt && !job.captured) this.db.prepare(`UPDATE ${job.unit==='credit-v2'?'credit_wallets':'wallets'} SET available=available+?, reserved=reserved-? WHERE user_id=?`).run(job.credits, job.credits, job.user_id);
+    if (!job.creditExempt && !job.captured) this.db.prepare(`UPDATE ${job.unit==='credit-v2'?'credit_wallets':'wallets'} SET available=available+?, reserved=reserved-? WHERE user_id=?`).run(this.db.prepare('SELECT job_id FROM previous_beta_jobs WHERE job_id=?').get(job.id)?0:job.credits, job.credits, job.user_id);
     this.db.prepare("UPDATE jobs SET status='released',reason=? WHERE id=?").run(reason, job.id);
     this.event(`release:${job.id}`, job.user_id, job.id, job.captured ? 'closed-no-refund' : job.creditExempt ? 'admin-test-release' : 'release', job.credits);
     return this.job(job.id);
@@ -162,7 +163,7 @@ export class BillingLedger {
       const job = this.job(jobId);
       if (job.status === 'refunded') return job;
       if (job.status !== 'accepted' && !job.captured) throw Error('Only captured credits can be refunded');
-      if (!job.creditExempt) this.db.prepare(`UPDATE ${job.unit==='credit-v2'?'credit_wallets':'wallets'} SET available=available+? WHERE user_id=?`).run(job.credits, job.user_id);
+      if (!job.creditExempt && !this.db.prepare('SELECT job_id FROM previous_beta_jobs WHERE job_id=?').get(job.id)) this.db.prepare(`UPDATE ${job.unit==='credit-v2'?'credit_wallets':'wallets'} SET available=available+? WHERE user_id=?`).run(job.credits, job.user_id);
       this.db.prepare("UPDATE jobs SET status='refunded',reason=? WHERE id=?").run(incidentId, jobId);
       if(this.restoreDelivery)this.restoreDelivery(jobId);
       this.event(`refund:${jobId}`, job.user_id, jobId, job.creditExempt ? 'admin-test-refund' : 'refund', job.credits);

@@ -102,7 +102,7 @@ for (const native of [false,true]) test('buy missing generation credits and retu
   }
   let balance=10;
   await page.route('**/api/status',r=>r.fulfill({json:{
-    generation:{enabled:true,batchVersion:1,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},
+    generation:{enabled:true,batchVersion:1,creditQuote:{unit:'credit-v2',amount:5,policy:'delivered-2026-10-18'}},
     wallet:{available:0,reserved:0,credits:{available:balance,reserved:0}},
     budget:{limitMicros:8000000}
   }}));
@@ -121,16 +121,16 @@ for (const native of [false,true]) test('buy missing generation credits and retu
   await generate.click();
   const dialog=page.getByRole('dialog');
   const buy=dialog.getByRole('button',{name:'크레딧 구매하기'});
-  await expect(dialog).toContainText('30크레딧이 부족');
+  await expect(dialog).toContainText('10크레딧이 부족');
   const confirm=dialog.getByRole('button',{name:'확인',exact:true});
   await expect(confirm).toBeDisabled();
   await expect(buy).toBeEnabled();
   expect((await buy.boundingBox())!.y).toBe((await confirm.boundingBox())!.y);
   await buy.click();
-  await expect(page.getByRole('heading',{name:'이용권 선택'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'요금제와 크레딧'})).toBeVisible();
   await expect(page.locator('.checkout-packs')).toBeVisible();
   await expect(dialog).toHaveCount(0);
-  balance=40;
+  balance=20;
   await page.getByRole('link',{name:'돌아가기',exact:true}).click();
   await expect(form.getByLabel('서비스명',{exact:true})).toHaveValue('당일 택배');
   await expect(description).toHaveValue('지역 당일 배송 서비스');
@@ -138,7 +138,7 @@ for (const native of [false,true]) test('buy missing generation credits and retu
   await generate.click();
   await expect(confirm).toBeEnabled();
   await expect(buy).toHaveCount(0);
-  await expect(dialog.locator('dd')).toHaveText(['40','40','0']);
+  await expect(dialog.locator('dd')).toHaveText(['20','20','0']);
   expect(writes).toBe(0);
 });
 
@@ -153,7 +153,7 @@ for(const imageCount of [1,2,10])test('web and native clients submit identical b
       const origin = await prepareParityPage(page,native);
       const jobs:any[]=[];
       let batchId='',count=0,submitted:any;
-      await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,batchVersion:1,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:160,reserved:0}},budget:{limitMicros:8000000}}}));
+      await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,batchVersion:1,creditQuote:{unit:'credit-v2',amount:5,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:160,reserved:0}},budget:{limitMicros:8000000}}}));
       await page.route('**/api/ad-batches/*',r=>r.fulfill({json:{id:batchId,jobs:jobs.map(j=>({...j,artifact:null}))}}));
       await page.route('**/api/generations/parity-*',r=>r.fulfill({json:{job:jobs.find(j=>r.request().url().endsWith(j.id))}}));
       await page.route('**/api/generations',async r=>{
@@ -443,7 +443,7 @@ for(const native of [false,true])test('instruction editing, credit consent and i
  const notes='가격을 599,000원으로, 하늘은 화창하게';
  const removed:string[]=[];let edits=0;
  const edited=await sharp({create:{width:32,height:48,channels:3,background:'#89c7e5'}}).png().toBuffer(),editedHash=createHash('sha256').update(edited).digest('hex');
- await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:20,reserved:0}},budget:{limitMicros:1000000}}}));
+ await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,creditQuote:{unit:'credit-v2',amount:5,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:20,reserved:0}},budget:{limitMicros:1000000}}}));
  await page.route('**/api/membership/downloads',r=>r.fulfill({json:{downloads:items.filter(item=>!removed.includes(item.id))}}));
  await page.route('**/api/membership/downloads/*/preview',r=>r.fulfill({json:{preview:thumb}}));
  await page.route('**/api/membership/remove-downloads',r=>{removed.push(...r.request().postDataJSON().ids);return r.fulfill({json:{removed}});});
@@ -475,7 +475,7 @@ for(const native of [false,true])test('instruction editing, credit consent and i
  const edit=page.getByRole('dialog',{name:'정밀 편집'});await expect(edit).toBeVisible();
  await expect(edit.locator('canvas')).toHaveCount(0);
  const angle=edit.getByRole('combobox',{name:'카메라 앵글'}),instructions=edit.getByRole('textbox');
- const submit=edit.getByRole('button',{name:/수정하기.*10 크레딧/});
+ const submit=edit.getByRole('button',{name:/수정하기.*5 크레딧/});
  await expect(submit).toBeDisabled();
  await angle.selectOption({label:'후면'});await expect(instructions).toHaveValue(rear);await expect(submit).toBeEnabled();
  await instructions.fill(rear+'\n'+notes);
@@ -573,7 +573,7 @@ for(const native of [false,true])test('delete selected saved projects and the ac
 
 for(const native of [false,true])test('open a finished ad from a local backup in the projects tab on '+(native?'Android':'web'),async({page})=>{
  const origin=await prepareParityPage(page,native);
- await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:30,reserved:0}},budget:{limitMicros:1000000}}}));
+ await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,creditQuote:{unit:'credit-v2',amount:5,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:30,reserved:0}},budget:{limitMicros:1000000}}}));
  await page.route('**/api/membership/downloads',r=>r.fulfill({json:{downloads:[]}}));
  let posts=0;await page.route('**/api/selective-edits/**',r=>{posts++;return r.abort();});
  const asset=async(color:string)=>{

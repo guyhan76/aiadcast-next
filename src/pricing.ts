@@ -1,16 +1,41 @@
-// Owner-approved launch catalog. This is display data, not an executable quote.
+// Beta top-up catalog. This is display data, not an executable quote.
 // Checkout must use verified store/server product prices and billing country.
 export type PricingLanguage = 'ko' | 'en';
 export type PricingCurrency = 'KRW' | 'USD';
+export const imageCredits = 5;
+export const videoCreditsPerSecond = 2;
 export const pricingCatalog = {
-  version: 'korea-launch-2026-11-17', status: 'approved', purchasesEnabled: false,
-  welcomeCredits: 10,
-  standardCredits: 10,
+  version: 'shared-beta-2026-11-23', status: 'beta', purchasesEnabled: false,
+  welcomeCredits: 0,
+  standardCredits: imageCredits,
   packs: [
-    {id:'credits-v2-30', credits:30, creditsPerGeneration:10, prices:{KRW:3300, USD:null}},
-    {id:'credits-v2-100', credits:100, creditsPerGeneration:10, prices:{KRW:9900, USD:null}},
+    {id:'credits-v3-50', credits:50, creditsPerGeneration:imageCredits, prices:{KRW:18000, USD:null}},
+    {id:'credits-v3-100', credits:100, creditsPerGeneration:imageCredits, prices:{KRW:33900, USD:null}},
+    {id:'credits-v3-250', credits:250, creditsPerGeneration:imageCredits, prices:{KRW:79900, USD:null}},
+    {id:'credits-v3-500', credits:500, creditsPerGeneration:imageCredits, prices:{KRW:159900, USD:null}},
+  ],
+  plans: [
+    {id:'plus', ko:'플러스', en:'Plus', credits:100, monthly:33900, annualMonthly:25900},
+    {id:'business', ko:'비즈니스', en:'Business', credits:250, monthly:79900, annualMonthly:61900},
+    {id:'ultra', ko:'울트라', en:'Ultra', credits:500, monthly:159900, annualMonthly:123900},
   ],
 } as const;
+export type BillingPeriod='monthly'|'annual'|'topup';
+export const checkoutOffers=[
+  ...pricingCatalog.plans.flatMap(plan=>(['monthly','annual'] as const).map(period=>({
+    id:'plan-'+plan.id+'-'+period, period, ko:plan.ko, en:plan.en, credits:plan.credits,
+    monthlyRate:period==='annual'?plan.annualMonthly:plan.monthly,
+    prices:{KRW:period==='annual'?plan.annualMonthly*12:plan.monthly,USD:null}
+  }))),
+  ...pricingCatalog.packs.map(pack=>({...pack,period:'topup' as const,ko:'크레딧 추가',en:'Top-up',monthlyRate:0}))
+];
+export function billingAnniversary(start:number,months:number){
+  const offset=9*3600_000, local=new Date(start+offset);
+  const last=new Date(Date.UTC(local.getUTCFullYear(),local.getUTCMonth()+months+1,0)).getUTCDate();
+  local.setUTCDate(Math.min(last,local.getUTCDate()));
+  local.setUTCMonth(local.getUTCMonth()+months);
+  return local.getTime()-offset;
+}
 // Compatibility export for integrations written before the prices were approved.
 export const pricingProposal = pricingCatalog;
 // KRW amounts are won; USD amounts are cents. Language is never a billing input.

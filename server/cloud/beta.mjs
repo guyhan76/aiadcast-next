@@ -185,10 +185,11 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
    ).get(user.id));
    await readinessMeasure('generation_initialize',()=>s.initialize({db,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:config.enabled,assistantEnabled:config.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter),adapter:guardedImageAdapter(adapter,()=>instance?.assert(),gate),assistantAdapter:options=>{instance?.assert();return gate(()=>assistCopy({...options,apiKey:config.key}));}}));
    s.ledger.recordDelivery=async(job,customer)=>{
+    if(await db.prepare('SELECT job_id FROM previous_beta_jobs WHERE job_id=?').get(job.id))return;
     const funds=customer?await db.prepare(customerBalanceSql('','?')).get(user.id):await s.ledger.wallet(job.user_id,'credit-v2');
-    await membership.records.capture(user.id,job.id,(Number(funds.available)+Number(funds.reserved))/10);
+    await membership.records.capture(user.id,job.id,Number(funds.available)+Number(funds.reserved),job.credits);
    };
-   s.ledger.restoreDelivery=id=>membership.records.restore(id);
+   s.ledger.restoreDelivery=id=>membership.records.restore(id,user.id);
    if(sharedBudget.active){
     await sharedBudget.protectTenant(db.schema);
     s.ledger.sharedBudget=period=>sharedBudget.view(user.id,period);

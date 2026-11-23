@@ -1,9 +1,10 @@
+import {imageCredits} from './pricing';
 import {betaSession} from './beta-session';
 import {imageFile,loadImage,type Asset} from './model';
-import {pricingCatalog} from './pricing';
+import {checkoutOffers,billingAnniversary} from './pricing';
 import type {GenerationJob} from './generation-client';
 type Order={unit?:'legacy-ticket'|'credit-v2';id:string;pack:string;credits:number;amount:number;currency:'KRW';state:'pending'|'paid'|'canceled';created:number;test:true};
-type Account={newCredits?:number;credits:number;orders:Record<string,Order>;orderRequests:Record<string,string>;jobs:Record<string,GenerationJob>};
+type Account={sharedBeta?:boolean;subscription?:{orderId:string;id:string;started:number;issued:number;months:number};newCredits?:number;credits:number;orders:Record<string,Order>;orderRequests:Record<string,string>;jobs:Record<string,GenerationJob>};
 type Store={version:1;sessions?:Record<string,{userId:string;expires:number}>;users:Record<string,Account>;emails:Record<string,string>;requests:Record<string,{email:string;token:string;expires:number;verified:boolean}>};
 const key='aiadcast.local-demo-data.v1';
 const fresh=():Store=>({version:1,users:{},emails:{},requests:{}});
@@ -16,8 +17,8 @@ export function demoRequest(path:string,body:any){const session=betaSession();co
 const token=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),x=>String.fromCharCode(x)).join('');
 const secret=()=>btoa(token()).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');
 const failure=(code:string,status=400)=>{throw Object.assign(Error(code),{code,status});};
-const wallet=(a:Account)=>{const old=Object.values(a.jobs).filter(j=>j.creditUnit!=='credit-v2'&&(j.state==='ready'||j.state==='running')).length;const reserved=Object.values(a.jobs).filter(j=>j.creditUnit==='credit-v2'&&j.state==='running').length*10;return {available:a.credits-old,reserved:old,credits:{available:(a.newCredits??0)-reserved,reserved},kind:'local-simulation'};};
-const quote=(a:Account)=>({unit:wallet(a).available>0?'legacy-ticket':'credit-v2',amount:wallet(a).available>0?1:10,policy:wallet(a).available>0?'legacy-accept-v1':'delivered-2026-10-18'} as const);
+const wallet=(a:Account)=>{const old=Object.values(a.jobs).filter(j=>j.creditUnit!=='credit-v2'&&(j.state==='ready'||j.state==='running')).length;const reserved=Object.values(a.jobs).filter(j=>j.creditUnit==='credit-v2'&&j.state==='running').length*imageCredits;return {available:a.credits-old,reserved:old,credits:{available:(a.newCredits??0)-reserved,reserved},kind:'local-simulation'};};
+const quote=(a:Account)=>({unit:wallet(a).available>0?'legacy-ticket':'credit-v2',amount:wallet(a).available>0?1:imageCredits,policy:wallet(a).available>0?'legacy-accept-v1':'delivered-2026-10-18'} as const);
 const files=import.meta.glob('./assets/showcase-*.webp',{eager:true,query:'?url',import:'default'}) as Record<string,string>;
 async function composition(source:Asset|null,category:string,preparedBackground:boolean):Promise<Asset>{
  const canvas=document.createElement('canvas');canvas.width=1080;canvas.height=1920;const c=canvas.getContext('2d')!;
@@ -32,6 +33,19 @@ async function composition(source:Asset|null,category:string,preparedBackground:
 async function handle(path:string,body:any,session:ReturnType<typeof betaSession>){
  const store=await read(),issued=session?store.sessions?.[session.token]:undefined;
  const user=session&&issued&&issued.expires>Date.now()&&session.expires>Date.now()&&issued.userId===session.user.id?issued.userId:undefined;const account=user?store.users[user]:undefined;
+ if(account&&!account.sharedBeta){
+  const snapshot=wallet(account);
+  account.credits=snapshot.reserved;account.newCredits=snapshot.credits.reserved;account.sharedBeta=true;
+  await save(store);
+ }
+ if(account?.subscription){
+  const term=account.subscription,plan=checkoutOffers.find(o=>o.id===term.id);
+  let changed=false;
+  while(plan&&term.issued<term.months&&billingAnniversary(term.started,term.issued)<=Date.now()){
+   account.newCredits=(account.newCredits??0)+plan.credits;term.issued++;changed=true;
+  }
+  if(changed)await save(store);
+ }
  if(path==='/api/account/capabilities')return {email:{enabled:true},checkout:{enabled:true,test:true,currency:'KRW'},demo:true};
  if(path==='/api/health')return {mode:'offline-demo',commercialReady:false};
  if(path==='/api/auth/email/request'){
@@ -52,18 +66,22 @@ async function handle(path:string,body:any,session:ReturnType<typeof betaSession
  if(!account)failure('AUTH_REQUIRED',401);
  if(path==='/api/account/credits')return {wallet:wallet(account!),orders:Object.values(account!.orders).sort((a,b)=>b.created-a.created).slice(0,30),grants:[]};
  if(path==='/api/checkout/orders'){
-  if(!body?.agreed)failure('CONSENT_REQUIRED');const pack=pricingCatalog.packs.find(p=>p.id===body?.pack);if(!pack||typeof body?.requestId!=='string')failure('INVALID_ORDER');
+  if(!body?.agreed)failure('CONSENT_REQUIRED');const pack=checkoutOffers.find(p=>p.id===body?.pack);if(!pack||typeof body?.requestId!=='string')failure('INVALID_ORDER');
   const prior=account!.orderRequests[body.requestId];if(prior)return account!.orders[prior];
+  if(pack!.period!=='topup'&&account!.subscription&&billingAnniversary(account!.subscription.started,account!.subscription.months)>Date.now())failure('SUBSCRIPTION_ALREADY_ACTIVE',409);
   const order:Order={id:crypto.randomUUID(),pack:pack!.id,unit:'credit-v2',credits:pack!.credits,amount:pack!.prices.KRW,currency:'KRW',state:'pending',created:Date.now(),test:true};account!.orders[order.id]=order;account!.orderRequests[body.requestId]=order.id;await save(store);return order;
  }
  const checkout=path.match(/^\/api\/(demo\/)?checkout\/orders\/([^/]+)(?:\/(approve|cancel|decline))?$/);
- if(checkout){const order=account!.orders[checkout[2]];if(!order)failure('ORDER_EXPIRED',404);const action=checkout[3];if(action==='decline')failure('DEMO_DECLINED');if(order.state==='pending'&&action){order.state=action==='approve'?'paid':'canceled';if(order.state==='paid'){if(order.unit==='credit-v2')account!.newCredits=(account!.newCredits??0)+order.credits;else account!.credits+=order.credits;}await save(store);}return order;}
+ if(checkout){const order=account!.orders[checkout[2]];if(!order)failure('ORDER_EXPIRED',404);const action=checkout[3];if(action==='decline')failure('DEMO_DECLINED');if(order.state==='pending'&&action){order.state=action==='approve'?'paid':'canceled';if(order.state==='paid'){const plan=checkoutOffers.find(o=>o.id===order.pack&&o.period!=='topup');
+   if(plan){const prior=account!.subscription;if(prior&&billingAnniversary(prior.started,prior.months)>Date.now())failure('SUBSCRIPTION_ALREADY_ACTIVE',409);
+    account!.subscription={orderId:order.id,id:plan.id,started:Date.now(),issued:1,months:plan.period==='annual'?12:1};}
+   if(order.unit==='credit-v2')account!.newCredits=(account!.newCredits??0)+order.credits;else account!.credits+=order.credits;}await save(store);}return order;}
  if(path==='/api/generations'&&body){
   const old=Object.values(account!.jobs).find(j=>j.requestId===body.requestId);if(old)return {job:old,wallet:wallet(account!)};
-  const q=quote(account!);if(q.unit==='credit-v2'){if(JSON.stringify(body.creditQuote)!==JSON.stringify(q))failure('CREDIT_QUOTE_CHANGED');if(wallet(account!).credits.available<10)failure('NO_TEST_CREDITS');}
+  const q=quote(account!);if(q.unit==='credit-v2'){if(JSON.stringify(body.creditQuote)!==JSON.stringify(q))failure('CREDIT_QUOTE_CHANGED');if(wallet(account!).credits.available<imageCredits)failure('NO_TEST_CREDITS');}
   const id=crypto.randomUUID(),request=body.request;if(request?.dimensionDisplay)failure('AI_DIMENSION_DISPLAY_UNAVAILABLE');if(!request||!['original','creative'].includes(request.mode))failure('INVALID_REQUEST');
   const job:GenerationJob={creditUnit:q.unit,creditPolicy:q.policy,creditCost:q.amount,id,projectId:body.projectId,requestId:body.requestId,state:'running',mode:request.mode,sourceHash:body.source?.sha256??null,createdAt:new Date().toISOString(),model:'local-demo.composition',artifactId:null,artifact:null,errorCode:null};account!.jobs[id]=job;await save(store);
-  try{const asset=await composition(request.mode==='original'?null:body.source??null,request.productProfile?.category??'',request.mode==='creative'&&!body.source);const latest=await read(),a=latest.users[user!],j=a.jobs[id];j.state='ready';if(j.creditUnit==='credit-v2'){a.newCredits=(a.newCredits??0)-10;j.creditCaptured=true;}j.artifactId=asset.sha256;j.artifact={id:asset.sha256,sha256:asset.sha256,dataUrl:asset.data,width:asset.width,height:asset.height,role:request.mode==='original'?'background':'creative'};await save(latest);return {job:j,wallet:wallet(a)};}
+  try{const asset=await composition(request.mode==='original'?null:body.source??null,request.productProfile?.category??'',request.mode==='creative'&&!body.source);const latest=await read(),a=latest.users[user!],j=a.jobs[id];j.state='ready';if(j.creditUnit==='credit-v2'){a.newCredits=(a.newCredits??0)-imageCredits;j.creditCaptured=true;}j.artifactId=asset.sha256;j.artifact={id:asset.sha256,sha256:asset.sha256,dataUrl:asset.data,width:asset.width,height:asset.height,role:request.mode==='original'?'background':'creative'};await save(latest);return {job:j,wallet:wallet(a)};}
   catch(e){const latest=await read();latest.users[user!].jobs[id].state='failed';await save(latest);throw e;}
  }
  const report=path.match(/^\/api\/generations\/([^/]+)\/report$/);

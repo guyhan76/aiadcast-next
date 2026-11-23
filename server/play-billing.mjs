@@ -1,3 +1,4 @@
+import {pricingCatalog} from '../src/pricing.ts';
 import {refundPolicyVersion} from '../src/refund-policy.ts';
 import {createHash, createPrivateKey, sign} from 'node:crypto';
 import {playOrderEvidence} from './play-order.mjs';
@@ -7,7 +8,10 @@ import {ApiFailure} from './generation-service.mjs';
 const packageName = 'com.selluplabs.aiadcast.next';
 const publisher = 'https://androidpublisher.googleapis.com/androidpublisher/v3/applications/' + packageName + '/';
 const oauth = 'https://oauth2.googleapis.com/token';
-const packs = new Map([['credits_30', 30], ['credits_100', 100], ['credits_180', 180]]);
+const packs = new Map(pricingCatalog.packs.map(pack=>['topup_'+pack.credits,pack.credits]));
+packs.set('credits_30',30);
+packs.set('credits_100',100);
+packs.set('credits_180',180); // Restore retired receipts.
 const digest = value => createHash('sha256').update(value).digest('hex');
 const unavailable = () => new ApiFailure('PLAY_VERIFICATION_UNAVAILABLE', 503);
 export const playAccountId = id => digest(packageName + '/' + id);

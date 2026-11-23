@@ -35,7 +35,7 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
  // Bounded in-memory limiter: all traffic shares a global ceiling, including behind a proxy.
  let windowStart=now(),requests=0,logins=0,bodies=0;
  const limit=isLogin=>{if(now()-windowStart>=60_000){windowStart=now();requests=0;logins=0;}if(++requests>600||(isLogin&&++logins>20))throw new ApiFailure('RATE_LIMITED',429);};
- const service=user=>{if(!services.has(user.id))services.set(user.id,serviceFactory(user));const instance=services.get(user.id);instance.adminTestUnlimited=user.role==='admin';if(user.role!=='admin'&&store.db.prepare('SELECT user_id FROM welcome_ad_eligibility WHERE user_id=?').get(user.id))instance.grantWelcomeAd();return instance;};
+ const service=user=>{if(!services.has(user.id))services.set(user.id,serviceFactory(user));const instance=services.get(user.id);instance.adminTestUnlimited=user.role==='admin';instance.initializeSharedWallet();instance.applySubscriptionCredits();return instance;};
  const email=new EmailAuth(store,{sendMail:accounts.sendMail,publicOrigin:origin,now});
  const kakao=new KakaoAuth(store,{provider:accounts.kakao,now});
  const google=new GoogleAuth(store,{provider:accounts.google,now});
@@ -127,7 +127,6 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
     send(res,200,await service(user).videoAdminSummary(),cors);return;
    }
    if(req.method==='POST'&&url.pathname==='/api/videos'){
-    if(user.role!=='admin')throw new ApiFailure('VIDEO_TRIAL_UNAVAILABLE',403);
     send(res,202,await service(user).startVideo(await read(req,14_100_000)),cors);return;
    }
    const videoPath=/^\/api\/videos\/([a-zA-Z0-9_-]{8,100})(\/file)?$/.exec(url.pathname);

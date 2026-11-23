@@ -1,3 +1,4 @@
+import {imageCredits} from '../../src/pricing.ts';
 import {refundPolicyVersion} from '../../src/refund-policy.ts';
 import {refundDeadline} from './refund-window.mjs';
 import {ApiFailure} from '../generation-service.mjs';
@@ -13,8 +14,8 @@ const selectOrders=`SELECT o.order_no,o.product,o.ads,o.purchased_at,o.erase_at,
  (SELECT coalesce(jsonb_agg(jsonb_build_object('method',w.refund_method,'amount',w.amount_krw,'at',w.processed_at,
  'recorded',w.recorded_at,'reference',w.refund_reference) ORDER BY w.recorded_at),'[]'::jsonb) FROM commerce_withdrawals w
  WHERE w.order_no=o.order_no AND w.refund_method IS NOT NULL) AS recorded_refunds,
- (SELECT coalesce(jsonb_agg(w.requested_at ORDER BY w.requested_at),'[]'::jsonb) FROM commerce_withdrawals w WHERE w.order_no=o.order_no) AS refund_requests, (SELECT count(*) FROM commerce_deliveries d WHERE d.order_no=o.order_no) AS delivered,
- (SELECT count(*) FROM commerce_deliveries d WHERE d.order_no=o.order_no AND d.credit_returned_at IS NOT NULL) AS returned
+ (SELECT coalesce(jsonb_agg(w.requested_at ORDER BY w.requested_at),'[]'::jsonb) FROM commerce_withdrawals w WHERE w.order_no=o.order_no) AS refund_requests, (SELECT coalesce(sum(d.credits),0) FROM commerce_deliveries d WHERE d.order_no=o.order_no) AS delivered,
+ (SELECT coalesce(sum(d.credits),0) FROM commerce_deliveries d WHERE d.order_no=o.order_no AND d.credit_returned_at IS NOT NULL) AS returned
  FROM commerce_orders o`;
 const caseColumns='c.receipt_no AS case_id,c.category,c.order_no,c.received_at,c.description,c.resolution,c.resolved_at,c.erase_at';
 const events=admin=>`(SELECT coalesce(jsonb_agg(jsonb_build_object('at',v.happened_at,'kind',v.kind,'detail',v.detail,
@@ -36,13 +37,13 @@ function payoutDetails(value){
 function sameBank(a,b){return a.bank===b.bank&&a.holder===b.holder&&a.number===b.number;}
 function summary(row) {
  if(!row)return null;
- const remaining=Math.max(0,row.ads-Number(row.delivered)+Number(row.returned));
+ const remaining=Math.max(0,row.ads*10-Number(row.delivered)+Number(row.returned));
  const refunded=row.refunds?.reduce((sum,e)=>sum+BigInt(e.nanos),0n);
  const bankRefunds=row.currency==='KRW'?row.recorded_refunds.filter(e=>e.method==='transfer').reduce((sum,e)=>sum+BigInt(e.amount)*1000000000n,0n):0n;
  const notedOriginal=row.currency==='KRW'?row.recorded_refunds.filter(e=>e.method==='original').reduce((sum,e)=>sum+BigInt(e.amount)*1000000000n,0n):0n;
  const knownOriginal=refunded===undefined?null:(refunded>notedOriginal?refunded:notedOriginal);
  const unused=row.paid!==null && !row.restored && knownOriginal!==null
-  ?BigInt(row.paid)*BigInt(remaining)/BigInt(row.ads)-knownOriginal-bankRefunds:null;
+  ?BigInt(row.paid)*BigInt(remaining)/BigInt(row.ads*10)-knownOriginal-bankRefunds:null;
  const fullyRefunded=row.refunds?.length>0 && row.paid!==null && refunded===BigInt(row.paid);
  const deadline=row.refund_policy===refundPolicyVersion&&row.refund_notice_received_at
   ?refundDeadline(Math.max(new Date(row.purchased_at).getTime(),new Date(row.refund_notice_received_at).getTime())):null;
@@ -110,7 +111,7 @@ export class CommerceRecords {
    .run(e.currency,e.paid,JSON.stringify(e.refunds),e.lastEvent,e.purchasedAt,e.fullyRefunded,e.lastEvent,orderNo,e.lastEvent);
   if(e.fullyRefunded){
    await this.db.prepare(`UPDATE customer_image_sales s SET revoked_credits=greatest(s.revoked_credits,
-     s.credits-10*(SELECT count(*) FROM commerce_deliveries WHERE order_no=l.order_no AND credit_returned_at IS NULL))
+     s.credits-(SELECT coalesce(sum(credits),0) FROM commerce_deliveries WHERE order_no=l.order_no AND credit_returned_at IS NULL))
      FROM commerce_order_links l WHERE s.purchase_id=l.purchase_key AND l.order_no=?`).run(orderNo);
   }
  }
@@ -128,28 +129,31 @@ export class CommerceRecords {
    if(receipt.evidence)await this.saveEvidence(number,receipt.evidence);
   });
  }
- async capture(accountId,jobId,remainingBeforeDelivery) {
-  // Consume the welcome/legacy allowance before paid orders, then the oldest paid order.
+ async capture(accountId,jobId,remainingCredits,charge=imageCredits) {
   const orders=await this.db.prepare(`SELECT o.order_no,
-   greatest(0,o.ads-coalesce(s.revoked_credits,0)/10-(SELECT count(*) FROM commerce_deliveries d WHERE d.order_no=o.order_no
-    AND d.credit_returned_at IS NULL)) AS left_ads
+   greatest(0,o.ads*10-coalesce(s.revoked_credits,0)-(SELECT coalesce(sum(d.credits),0) FROM commerce_deliveries d
+   WHERE d.order_no=o.order_no AND d.credit_returned_at IS NULL)) AS available
    FROM commerce_orders o JOIN commerce_order_links l USING(order_no) LEFT JOIN customer_image_sales s ON s.purchase_id=l.purchase_key
    WHERE l.account_id=? AND o.erase_at>now() ORDER BY o.purchased_at,o.order_no`).all(accountId);
-  if(remainingBeforeDelivery>orders.reduce((n,r)=>n+Number(r.left_ads),0))return;
-  const order=orders.find(r=>r.left_ads>0);
-  if(order){
-   await this.db.prepare('INSERT INTO commerce_deliveries(job_key,order_no) VALUES(?,?) ON CONFLICT DO NOTHING').run(jobId,order.order_no);
+  let needed=charge-Math.max(0,remainingCredits-orders.reduce((n,r)=>n+Number(r.available),0));
+  for(const order of orders){
+   const used=Math.min(needed,Number(order.available));
+   if(used<=0)continue;
+   await this.db.prepare('INSERT INTO commerce_deliveries(job_key,source_job,order_no,credits) VALUES(?,?,?,?) ON CONFLICT DO NOTHING')
+    .run(jobId+':'+order.order_no,jobId,order.order_no,used);
    await this.db.prepare("UPDATE commerce_orders SET erase_at=greatest(erase_at,now()+interval '5 years') WHERE order_no=?").run(order.order_no);
+   needed-=used;
+   if(!needed)break;
   }
  }
- async restore(jobId) {
-  const row=await this.db.prepare('UPDATE commerce_deliveries SET credit_returned_at=now() WHERE job_key=? AND credit_returned_at IS NULL RETURNING order_no').get(jobId);
-  if(row){
+ async restore(jobId,accountId) {
+  const rows=await this.db.prepare('UPDATE commerce_deliveries SET credit_returned_at=now() WHERE (job_key=? OR source_job=?) AND credit_returned_at IS NULL AND order_no IN (SELECT order_no FROM commerce_order_links WHERE account_id=?) RETURNING order_no,credits').all(jobId,jobId,accountId);
+  for(const row of rows){
    await this.db.prepare("UPDATE commerce_orders SET erase_at=greatest(erase_at,now()+interval '5 years') WHERE order_no=?").run(row.order_no);
-   await this.db.prepare(`UPDATE customer_image_sales s SET revoked_credits=least(credits,revoked_credits+10)
+   await this.db.prepare(`UPDATE customer_image_sales s SET revoked_credits=least(s.credits,s.revoked_credits+?)
     FROM commerce_order_links l JOIN commerce_orders o USING(order_no) WHERE s.purchase_id=l.purchase_key AND l.order_no=?
     AND o.refunds IS NOT NULL AND jsonb_array_length(o.refunds)>0 AND
-    (SELECT sum((value->>'nanos')::numeric) FROM jsonb_array_elements(o.refunds))=o.paid_nanos`).run(row.order_no);
+    (SELECT sum((value->>'nanos')::numeric) FROM jsonb_array_elements(o.refunds))=o.paid_nanos`).run(row.credits,row.order_no);
   }
  }
  async reconcileDue(){

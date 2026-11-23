@@ -1,3 +1,4 @@
+import {validVideoDuration} from '../src/video-duration.ts';
 import {validManualPrompt,validVideoShots,timedShots} from '../src/video-prompt.ts';
 import {getVideoFormat} from '../src/video-formats.ts';
 import {adFields,findAdField} from '../src/ad-fields.ts';
@@ -25,7 +26,7 @@ function videoIndustry(brief){
 }
 export function seedancePayload(input,model){
   const {brief,seconds,music,voice,musicStyle,voiceStyle,narration,references}=input??{};
-  if(![10,15,20,30].includes(seconds)||!brief||!['product','service'].includes(brief.kind)||
+  if(!validVideoDuration(seconds)||!brief||!['product','service'].includes(brief.kind)||
     typeof music!=='boolean'||typeof voice!=='boolean'||!Array.isArray(references)||references.length>10)throw Error('INVALID_VIDEO');
   for(const [value,max] of [[brief.title,100],[brief.description,2000],[brief.emphasis,600],[narration,3000],[musicStyle,140],[voiceStyle,140],[input.suggestedVoice??'',3000]])
     if(typeof value!=='string'||value.length>max)throw Error('INVALID_VIDEO');

@@ -1,3 +1,4 @@
+import {imageCredits} from './pricing.ts';
 export const batchCounts = [1, 2, 4, 6, 8, 10] as const;
 export type BatchWallet = {available:number; credits?:{available:number}; unlimited?:boolean};
 export function batchPrice(wallet:BatchWallet, count:number) {
@@ -6,7 +7,7 @@ export function batchPrice(wallet:BatchWallet, count:number) {
  if (!Number.isSafeInteger(tickets)||tickets<0||credits===undefined||!Number.isSafeInteger(credits)||credits<0) throw Error('INVALID_WALLET');
  const admin=wallet.unlimited===true;
  const ticketsUsed=admin?0:Math.min(count,tickets);
- const creditsUsed=admin?0:(count-ticketsUsed)*10;
+ const creditsUsed=admin?0:(count-ticketsUsed)*imageCredits;
  return {version:1,count,admin,tickets,credits,ticketsUsed,creditsUsed,ticketsAfter:tickets-ticketsUsed,creditsAfter:credits-creditsUsed};
 }
 export type BatchPrice=ReturnType<typeof batchPrice>;

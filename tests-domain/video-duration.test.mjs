@@ -11,8 +11,8 @@ test('recommendations use the available material as well as the brief', () => {
   assert.equal(recommendDuration(2, 0, '사용 전후 비교'), 30);
   assert.equal(recommendDuration(1, 0, '전후 비교'), 10);
 });
-test('quotes use configured total prices only for supported durations', () => {
-  assert.deepEqual(videoDurationPrices(''), {});
+test('quotes use the fixed per-second price only for supported durations', () => {
+  assert.deepEqual([12,17,28].map(s=>videoDurationPrices('')[s]),[24,34,56]);
   assert.deepEqual(videoDurationPrices('bad'), {});
-  assert.deepEqual(videoDurationPrices('{"10":0,"15":19,"20":"42","30":-1,"60":40}'), {10:0,15:19});
+  assert.deepEqual(videoDurationPrices('{"10":0,"15":19,"20":"42","30":-1,"60":40}'), {15:30});
 });

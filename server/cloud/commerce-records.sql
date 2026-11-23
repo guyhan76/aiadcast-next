@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS commerce_deliveries (
  job_key text PRIMARY KEY, order_no text NOT NULL REFERENCES commerce_orders ON DELETE CASCADE,
  delivered_at timestamptz NOT NULL DEFAULT now(), credit_returned_at timestamptz
 );
+ALTER TABLE commerce_deliveries ADD COLUMN IF NOT EXISTS credits integer NOT NULL DEFAULT 10 CHECK (credits>0);
+ALTER TABLE commerce_deliveries ADD COLUMN IF NOT EXISTS source_job text;
+CREATE INDEX IF NOT EXISTS commerce_delivery_source ON commerce_deliveries(source_job);
 CREATE INDEX IF NOT EXISTS commerce_delivery_order ON commerce_deliveries(order_no);
 CREATE TABLE IF NOT EXISTS commerce_withdrawals (
  case_id text PRIMARY KEY, order_no text NOT NULL REFERENCES commerce_orders ON DELETE CASCADE,

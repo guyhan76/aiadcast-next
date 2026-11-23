@@ -20,12 +20,12 @@ function money(nanos:string|null,currency:string|null){
 }
 function OrderDetail({o,admin}:{o:Order;admin:boolean}){
  const [opened,setOpened]=useState(false);
- return <article className="commerce-order"><h3>{admin?'주문 '+o.order_no:'광고 '+o.ads+'장'}</h3>
- <p>{date(o.purchased_at)}{admin&&' · 광고 '+o.ads+'장'}</p>
+ return <article className="commerce-order"><h3>{admin?'주문 '+o.order_no:o.ads*10+'크레딧'}</h3>
+ <p>{date(o.purchased_at)}{admin&&' · '+o.ads*10+'크레딧'}</p>
  <details open={admin||opened} onToggle={e=>{if(!admin&&e.target===e.currentTarget)setOpened(e.currentTarget.open);}}><summary>결제 상세 보기</summary>{!admin&&<p>셀업랩스 · Google Play<br/>주문번호 {o.order_no}</p>}
  <dl><dt>실결제액</dt><dd>{money(o.paid,o.currency)}</dd>
- <dt>제공 완료</dt><dd>{o.delivered}장{o.remaining===null?' (기록 시작 이후)':''}{o.returned>0&&' · 품질 보상으로 돌려준 이용권 '+o.returned+'장'}</dd>
- <dt>미사용 유료 광고</dt><dd>{o.remaining===null?'이전 사용 이력 확인 필요':o.remaining+'장'}</dd>
+ <dt>제공 완료</dt><dd>{o.delivered}크레딧{o.remaining===null?' (기록 시작 이후)':''}{o.returned>0&&' · 복원 '+o.returned+'크레딧'}</dd>
+ <dt>미사용 유료 크레딧</dt><dd>{o.remaining===null?'이전 사용 이력 확인 필요':o.remaining+'크레딧'}</dd>
  <dt>미사용분 금액</dt><dd>{money(o.estimated,o.currency)}</dd>
  <dt>결제처 확인 환불액</dt><dd>{money(o.refunded,o.currency)}{o.checked_at&&' · '+date(o.checked_at)}</dd></dl>
  {o.refund_policy&&(admin?(o.refund_deadline?<p>단순 변심 환불 신청 마감 {date(o.refund_deadline)} (한국시간)</p>:<p>단순 변심 기한 확인 필요</p>):opened&&o.paid!==null&&<PurchaseRefundReceipt orderNo={o.order_no} deadline={o.refund_deadline}/>)}
@@ -39,7 +39,7 @@ const won=(value:number)=>value.toLocaleString('ko-KR')+'원';
 const outcomes:Record<string,string>={reply:'답변 완료',original:'결제 취소로 환불',transfer:'계좌 환불',declined:'환불 대상 아님'};
 function PurchaseChoice({orders}:{orders:Order[]}){
  if(!orders.length)return null;
- return <label>관련 구매 내역<select name="orderNo"><option value="">선택 안 함</option>{orders.map(o=><option key={o.order_no} value={o.order_no}>{date(o.purchased_at)} · 광고 {o.ads}장 · {money(o.paid,o.currency)}</option>)}</select></label>;
+ return <label>관련 구매 내역<select name="orderNo"><option value="">선택 안 함</option>{orders.map(o=><option key={o.order_no} value={o.order_no}>{date(o.purchased_at)} · {o.ads*10}크레딧 · {money(o.paid,o.currency)}</option>)}</select></label>;
 }
 function BalanceAmount({balance}:{balance:Balance}){
  if(balance.reason==='exception')return <strong>사유 확인 후 안내</strong>;
@@ -105,7 +105,7 @@ function CaseCard({c,orders,admin,refresh}:{c:Case;orders:Order[];admin:boolean;
  {refund&&quote&&<><dt>{c.refund_quote?'접수 당시 예상 환불액':'현재 예상 환불액'}</dt><dd><BalanceAmount balance={quote}/><div><BalanceReason balance={quote}/></div></dd></>}
  {refund&&!quote&&<><dt>예상 환불액</dt><dd>{order?money(order.estimated,order.currency):'접수 당시 산정 기록 없음'}</dd></>}
  {!c.refund_quote&&c.requested_krw!=null&&<><dt>접수 당시 요청 금액</dt><dd>{won(c.requested_krw)}</dd></>}
- {order&&<><dt>구매 내역</dt><dd>광고 {order.ads}장 · {money(order.paid,order.currency)}</dd></>}
+ {order&&<><dt>구매 내역</dt><dd>{order.ads*10}크레딧 · {money(order.paid,order.currency)}</dd></>}
  {admin&&order&&<><dt>주문번호</dt><dd>{order.order_no}</dd></>}
  {quote&&quote.items.length>1&&<><dt>환불 검토 구매</dt><dd>{quote.items.length}건{admin&&quote.items.map(i=><div key={i.orderNo}>{i.orderNo} · {i.amountKrw===null?'금액 확인 필요':won(i.amountKrw)}</div>)}</dd></>}
  {admin&&refund&&c.member_id&&<><dt>회원 구매 내역</dt><dd>실결제 {c.member_orders??0}건 · 테스트 결제 {c.test_purchases??0}건</dd></>}

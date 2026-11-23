@@ -29,7 +29,7 @@ function referenceJpeg(visual:LoadedVideoScene['visual'],maxEdge:number){
   return canvas.toDataURL('image/jpeg',.82);
 }
 
-export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,signal:AbortSignal,onState:(s:'queue'|'download')=>void,scenes:LoadedVideoScene[]){
+export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,signal:AbortSignal,onState:(s:'queue'|'download')=>void,scenes:LoadedVideoScene[],expectedCredits?:number){
   const session=betaSession();
   const references:string[]=[];let bytes=0;
   for(const [index,source] of draft.sources.entries()){
@@ -70,7 +70,7 @@ export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,sign
   // Preserve the request key for vertical jobs already submitted by older clients.
   const id=await requestId(JSON.stringify(ratio===defaultVideoRatio?payload:{...payload,ratio}));
   signal.throwIfAborted();
-  const submitted=await apiRequest<{id:string}>('/api/videos',{...payload,ratio,promptMode,requestId:id},signal);
+  const submitted=await apiRequest<{id:string}>('/api/videos',{...payload,ratio,promptMode,requestId:id,expectedCredits},signal);
   if(submitted.id!==id)throw Error('VIDEO_TASK_MISMATCH');
   const path='/api/videos/'+encodeURIComponent(id);
   onState('queue');

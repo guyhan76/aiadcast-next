@@ -5,6 +5,7 @@ import {ApiRequestFailure,apiRequest} from './generation-client';
 import {betaSession} from './beta-session';
 import {rememberLoginDestination} from './login-navigation';
 import {useUiLanguage} from './ui-language';
+import {CreditOffers} from './CreditOffers';
 import {pricingCatalog} from './pricing';
 
 export const playPackage = 'com.selluplabs.aiadcast.next';
@@ -106,7 +107,10 @@ export function PlayCheckoutPage({preserve,returnPage}:{preserve:()=>Promise<voi
   const [check,setCheck]=useState<{owner:string;id:string}>();
   const requestId=check && check.owner===session?.token?check.id:undefined;
   const [agreed,setAgreed]=useState(false),[policyReceipt,setPolicyReceipt]=useState<PurchaseTerms>();
-  const [choice,choose]=useState('credits_100'),[busy,setBusy]=useState(false),[status,setStatus]=useState<Status>(),[balance,setBalance]=useState<number>();
+  const [offer,setOffer]=useState('plan-plus-monthly');
+  const topup=pricingCatalog.packs.find(p=>p.id===offer);
+  const choice=topup?'topup_'+topup.credits:'';
+  const [busy,setBusy]=useState(false),[status,setStatus]=useState<Status>(),[balance,setBalance]=useState<number>();
   useEffect(()=>{
     let active=true,awaiting=Boolean(requestId);
     const hasCatalog=Boolean(requestId&&account?.enabled&&products?.length);
@@ -124,7 +128,7 @@ export function PlayCheckoutPage({preserve,returnPage}:{preserve:()=>Promise<voi
       if(!current())return;
       const detail=(event as CustomEvent<NativeEvent>).detail;
       if(detail?.type==='restore-result'&&detail.requestId===requestId)finishCheck(detail.ok?'empty':'lookupFailed');
-      if(detail?.type==='catalog'){const available=detail.products.filter(p=>pricingCatalog.packs.some(pack=>'credits_'+pack.credits===p.id));setProducts(available);choose(old=>available.some(p=>p.id===old)?old:available[0]?.id??'');}
+      if(detail?.type==='catalog'){const available=detail.products.filter(p=>pricingCatalog.packs.some(pack=>'topup_'+pack.credits===p.id));setProducts(available);}
       if(!awaiting&&(detail?.type==='cancelled'||detail?.type==='error')){setBusy(false);setStatus(detail.type);}
     }
     function update(event:Event){
@@ -144,11 +148,11 @@ export function PlayCheckoutPage({preserve,returnPage}:{preserve:()=>Promise<voi
   },[session?.token,requestId]);
   async function buy(){
     if(!session){await preserve();rememberLoginDestination('checkout');location.hash='login';return;}
-    if(busy||!agreed||!account?.policyAccountId||!account.enabled||!products?.some(p=>p.id===choice))return;
+    if(busy||!agreed||!account?.policyAccountId||!account.enabled||!topup||!products?.some(p=>p.id===choice))return;
     setAgreed(false);setBusy(true);setStatus(undefined);
     if(!native('play-buy',{product:choice,account:account.policyAccountId})){setStatus('error');setBusy(false);}
   }
-  const product=products?.find(p=>p.id===choice);
+  const product=topup?products?.find(p=>p.id==='topup_'+topup.credits):undefined;
   const messages:Record<Status,string>={
     checking:t('Google Play 구매 내역을 확인하고 있습니다.','Checking your Google Play purchases.'),
     empty:t('새로 복원할 구매가 없습니다.','There are no new purchases to restore.'),
@@ -161,24 +165,23 @@ export function PlayCheckoutPage({preserve,returnPage}:{preserve:()=>Promise<voi
   };
   if(status==='paid'&&policyReceipt)return <section className="account-page checkout-page">
     <h1>{t('결제 완료','Payment complete')}</h1><p role="status">{messages.paid} {balance!==undefined&&t('잔액 '+balance+' 크레딧','Balance: '+balance+' credits')}</p>
-    <section className="checkout-summary"><h2>{t('구매 영수증','Purchase receipt')}</h2><p>{t('판매자 셀업랩스 · 결제처 Google Play','Sellup Labs · Google Play')}</p><p>{t('주문번호','Order number')} {policyReceipt.orderNo}</p><p>{new Date(policyReceipt.purchasedAt).toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul'})} · {policyReceipt.ads}{t('장',' ads')} · {new Intl.NumberFormat(undefined,{style:'currency',currency:policyReceipt.currency}).format(Number(policyReceipt.paid)/1e9)}</p><PurchaseRefundReceipt key={policyReceipt.orderNo} orderNo={policyReceipt.orderNo}/></section>
-    <a className="primary-action" href="#credits">{t('내 이용권 보기','View my credits')}</a>
+    <section className="checkout-summary"><h2>{t('구매 영수증','Purchase receipt')}</h2><p>{t('판매자 셀업랩스 · 결제처 Google Play','Sellup Labs · Google Play')}</p><p>{t('주문번호','Order number')} {policyReceipt.orderNo}</p><p>{new Date(policyReceipt.purchasedAt).toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul'})} · {policyReceipt.ads*10}{t('크레딧',' credits')} · {new Intl.NumberFormat(undefined,{style:'currency',currency:policyReceipt.currency}).format(Number(policyReceipt.paid)/1e9)}</p><PurchaseRefundReceipt key={policyReceipt.orderNo} orderNo={policyReceipt.orderNo}/></section>
+    <a className="primary-action" href={returnPage==='video'?'#video':'#credits'}>{returnPage==='video'?t('영상 만들기 계속','Continue making video'):t('내 이용권 보기','View my credits')}</a>
     <button className="wallet-button wallet-secondary" onClick={()=>{setStatus(undefined);setPolicyReceipt(undefined);setAgreed(false);}}>{t('다른 이용권 구매','Make another purchase')}</button>
   </section>;
-  return <section className="account-page checkout-page"><a className="page-back" href={'#'+returnPage}>{t('돌아가기','Back')}</a><h1>{t('이용권 선택','Choose credits')}</h1>
-    <p className="account-help">{t('광고 영상은 관리자 테스트 중입니다. 일반 회원의 영상 요금은 출시 전에 안내합니다.','Video generation is in admin testing. Member pricing will be announced before launch.')}</p><p className="page-intro">{t('신규 가입 첫 광고 이미지 1장 무료 · 계정당 1회','One free ad per newly registered account')}</p>
+  return <section className="account-page checkout-page"><a className="page-back" href={'#'+returnPage}>{t('돌아가기','Back')}</a><h1>{t('크레딧 충전','Top up credits')}</h1>
+    <p className="page-intro">{t('한 번 충전해 광고 이미지와 영상에 함께 사용하세요.','Use your balance for both ad images and videos.')}</p>
     {session&&<>{!account?.enabled && !status && <p>{account?t('Google Play 결제 준비 중입니다.','Google Play billing is not available yet.'):t('결제 연결 확인 중…','Checking billing…')}</p>}
-    {account?.enabled&&<fieldset className="checkout-packs"><legend>{t('광고 이미지 이용권','Ad image credits')}</legend>
-      {pricingCatalog.packs.map(pack=>{const item=products?.find(p=>p.id==='credits_'+pack.credits);return item&&<label key={item.id} className={choice===item.id?'selected':''}>
-        <input type="radio" name="play-credit-pack" checked={choice===item.id} disabled={busy} onChange={()=>{choose(item.id);setAgreed(false);}}/>
-        <span>{pack.credits/pack.creditsPerGeneration}{t('장',' ads')}</span><b>{item.price}</b></label>;})}
-      {!products?.length && <p>{products?t('구매 가능한 원화 상품이 없습니다.','No KRW credit packs are available.'):t('상품 가격을 불러오는 중…','Loading store prices…')}</p>}
-    </fieldset>}</>}
+    </>}
+    <CreditOffers value={offer} change={id=>{setOffer(id);setAgreed(false);}}/>
+    {topup&&account?.enabled&&<p>{products?.find(p=>p.id==='topup_'+topup.credits)?.price??t('스토어 상품 준비 중','Store product unavailable')}</p>}
+    {!topup&&<p>{t('Google Play 정기결제 연결 준비 중입니다.','Google Play subscription billing is being prepared.')}</p>}
+
     <RefundNotice/>
-    {session&&account?.enabled&&<label className="checkout-consent"><input type="checkbox" checked={agreed} disabled={busy} onChange={e=>setAgreed(e.target.checked)}/>{t('이용권 수량, 금액과 환불 조건을 확인했습니다','I have checked the credits, price and refund conditions.')}</label>}
-    {(!session||account?.enabled)&&<button className="primary-action" disabled={Boolean(session)&&(!product||!agreed||!account?.policyAccountId||busy||status==='retry')} onClick={()=>void buy()}>
+    {topup&&session&&account?.enabled&&<label className="checkout-consent"><input type="checkbox" checked={agreed} disabled={busy} onChange={e=>setAgreed(e.target.checked)}/>{t('이용권 수량, 금액과 환불 조건을 확인했습니다','I have checked the credits, price and refund conditions.')}</label>}
+    {topup&&(!session||account?.enabled)&&<button className="primary-action" disabled={Boolean(session)&&(!product||!agreed||!account?.policyAccountId||busy||status==='retry')} onClick={()=>void buy()}>
       {!session?t('로그인하고 계속','Sign in to continue'):product?product.price+' · '+t('Google Play 결제','Pay with Google Play'):t('Google Play 결제','Pay with Google Play')}</button>}
-    {status&&<p role="status">{messages[status]} {status==='paid'&&balance!==undefined&&t('잔액 '+balance+' 크레딧 · 광고 '+Math.floor(balance/10)+'장','Balance: '+balance+' credits')}</p>}
+    {status&&<p role="status">{messages[status]} {status==='paid'&&balance!==undefined&&t('잔액 '+balance+' 크레딧','Balance: '+balance+' credits')}</p>}
     {(status==='empty'||status==='lookupFailed')&&<a className="guest-link" href="#credits">{t('내 이용권 보기','View my credits')}</a>}
     {session&&<button className="guest-link" disabled={busy} onClick={()=>setCheck({owner:session.token,id:crypto.randomUUID()})}>{t('구매 내역 다시 확인','Check purchases again')}</button>}
   </section>;

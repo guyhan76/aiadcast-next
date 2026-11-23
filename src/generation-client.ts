@@ -1,3 +1,4 @@
+import {imageCredits} from './pricing';
 import type {SelectivePreservation} from './selective-preservation';
 import type {AiDimensionDisplay,AiDimensionReview} from './ai-dimension-display';
 import type {DimensionPlan} from './dimension-generation';
@@ -29,7 +30,7 @@ export async function apiRequest<T>(path:string,body?:unknown,signal?:AbortSigna
  if(!response.headers.get('content-type')?.includes('application/json'))throw Error('API_UNAVAILABLE');
  const data=await response.json();if(apiUrl(path)!==url||(betaSession()?.token??null)!==(session?.token??null))throw Error('SESSION_CHANGED');if(response.status===401&&data?.error?.code==='AUTH_REQUIRED'&&session)setBetaSession(null,'login');if(!response.ok)throw new ApiRequestFailure(data?.error?.code??'API_UNAVAILABLE',response.status);
  if(path==='/api/status'&&(typeof data?.generation?.enabled!=='boolean'||!Number.isFinite(data?.wallet?.available)||!Number.isFinite(data?.wallet?.reserved)||!Number.isFinite(data?.budget?.limitMicros)))throw Error('API_UNAVAILABLE');
- if(path==='/api/status'&&data.generation.creditQuote){const q=data.generation.creditQuote,c=data.wallet.credits;if(!['legacy-ticket','credit-v2'].includes(q.unit)||!c||![c.available,c.reserved].every(v=>Number.isSafeInteger(v)&&v>=0)||q.unit==='credit-v2'&&(q.amount!==10||q.policy!=='delivered-2026-10-18'))throw Error('API_UNAVAILABLE');}
+ if(path==='/api/status'&&data.generation.creditQuote){const q=data.generation.creditQuote,c=data.wallet.credits;if(!['legacy-ticket','credit-v2'].includes(q.unit)||!c||![c.available,c.reserved].every(v=>Number.isSafeInteger(v)&&v>=0)||q.unit==='credit-v2'&&(q.amount!==(data.wallet.unlimited?0:imageCredits)||q.policy!=='delivered-2026-10-18'))throw Error('API_UNAVAILABLE');}
  return data as T;
 }
 type ImageArtifact=NonNullable<GenerationJob['artifact']>;

@@ -1,10 +1,10 @@
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {ApiFailure} from './generation-service.mjs';
-import {pricingCatalog} from '../src/pricing.ts';
+import {checkoutOffers,billingAnniversary} from '../src/pricing.ts';
 // Server-owned quote. Never accept a client price, currency, user ID or credit amount.
-const packs=Object.fromEntries(pricingCatalog.packs.map(pack=>[pack.id,{credits:pack.credits,amount:pack.prices.KRW}]));
-const retiredPacks=new Set(['credits-v2-180','trial','basic','bundle']);
-const orderUnit=row=>row.pack.startsWith('credits-v2-')?'credit-v2':'legacy-ticket';
+const packs=Object.fromEntries(checkoutOffers.map(pack=>[pack.id,{credits:pack.credits,amount:pack.prices.KRW}]));
+const retiredPacks=new Set(['credits-v2-30','credits-v2-100','credits-v2-180','trial','basic','bundle']);
+const orderUnit=row=>(row.pack.startsWith('credits-v')||row.pack.startsWith('plan-'))?'credit-v2':'legacy-ticket';
 const digest=s=>createHash('sha256').update(s).digest('hex');
 const fail=(code,status=400)=>{throw new ApiFailure(code,status);};
 const checkoutWindow=30*60_000;
@@ -28,7 +28,12 @@ export class TestCheckout {
    let row=this.db.prepare('SELECT * FROM test_orders WHERE user_id=? AND request_id=?').get(user.id,requestId);
    if(row&&row.pack!==pack)fail('ORDER_CONFLICT',409);
    if(row&&row.state!=='pending')return row;
-   if(!row){if(retiredPacks.has(pack))fail('SKU_RETIRED',409);if(this.db.prepare('SELECT COUNT(*) n FROM test_orders WHERE user_id=? AND created>?').get(user.id,this.now()-3600_000).n>=10)fail('ORDER_RATE_LIMIT',429);
+   if(!row){
+    if(pack.startsWith('plan-')){
+     const previous=this.db.prepare("SELECT pack,state,created FROM test_orders WHERE user_id=? AND pack LIKE 'plan-%' AND state IN ('pending','verified','paid') ORDER BY created DESC").all(user.id);
+     if(previous.some(o=>o.state==='pending'?o.created+checkoutWindow>this.now():billingAnniversary(o.created,o.pack.endsWith('-annual')?12:1)>this.now()))fail('SUBSCRIPTION_ALREADY_ACTIVE',409);
+    }
+    if(retiredPacks.has(pack))fail('SKU_RETIRED',409);if(this.db.prepare('SELECT COUNT(*) n FROM test_orders WHERE user_id=? AND created>?').get(user.id,this.now()-3600_000).n>=10)fail('ORDER_RATE_LIMIT',429);
     const id='ad_'+randomUUID();this.db.prepare('INSERT INTO test_orders(id,user_id,request_id,pack,credits,amount,created,ticket_hash) VALUES(?,?,?,?,?,?,?,?)').run(id,user.id,requestId,pack,packs[pack].credits,packs[pack].amount,this.now(),digest(ticket));row=this.db.prepare('SELECT * FROM test_orders WHERE id=?').get(id);
    }else this.db.prepare('UPDATE test_orders SET ticket_hash=? WHERE id=?').run(digest(ticket),row.id);
    return row;
@@ -46,7 +51,7 @@ export class TestCheckout {
   if(!this.available())fail('CHECKOUT_UNAVAILABLE',503);
   const row=this.byTicket(orderId,ticket);
   if(row.state!=='pending'||this.now()-row.created>30*60_000)fail('ORDER_EXPIRED',409);
-  return {...this.view(row),clientKey:this.clientKey,customerKey:row.user_id,orderName:`aiadcast ${row.credits}${orderUnit(row)==='credit-v2'?' 크레딧':'개 광고 이용권'} · 테스트`,successUrl:this.origin+'/?checkout=return',failUrl:this.origin+'/?checkout=return'};
+  return {...this.view(row),clientKey:this.clientKey,customerKey:row.user_id,orderName:row.pack.startsWith('plan-')?`aiadcast ${checkoutOffers.find(x=>x.id===row.pack)?.ko} ${row.pack.endsWith('-annual')?'연간':'월간'} 구독 · 테스트`:`aiadcast ${row.credits}${orderUnit(row)==='credit-v2'?' 크레딧':'개 광고 이용권'} · 테스트`,successUrl:this.origin+'/?checkout=return',failUrl:this.origin+'/?checkout=return'};
  }
  async paidView(row){
   if(row.state!=='paid'||!this.readPurchase)return this.view(row);
@@ -68,7 +73,7 @@ export class TestCheckout {
   if(row.payment_key&&row.payment_key!==payment.paymentKey)fail('PAYMENT_MISMATCH',409);
   this.db.prepare("UPDATE test_orders SET state='verified',payment_key=?,provider_status='DONE',checked_at=? WHERE id=?").run(payment.paymentKey,this.now(),row.id);
   // The ledger is in another SQLite file. Its purchase ID makes replay after a crash safe.
-  await this.creditPurchase(row.user_id,{purchaseId:'toss-test:'+row.id,credits:row.credits,unit:orderUnit(row)});
+  await this.creditPurchase(row.user_id,{purchaseId:'toss-test:'+row.id,credits:row.credits,unit:orderUnit(row),...(row.pack.startsWith('plan-')?{plan:row.pack,startedAt:row.created}:{})});
   this.db.prepare("UPDATE test_orders SET state='paid' WHERE id=?").run(row.id);
   return this.paidView({...row,state:'paid',provider_status:'DONE'});
  }

@@ -23,11 +23,12 @@ type Props = {
   draft:VideoDraft; change:(draft:VideoDraft)=>void;
   generateAi?:(draft:VideoDraft,seconds:VideoDuration,signal:AbortSignal,onState:(s:'queue'|'download')=>void,scenes:LoadedVideoScene[])=>Promise<Blob>;
   draftPrompt?:(brief:PromptBrief,scenes:LoadedVideoScene[],language:'ko'|'en',signal:AbortSignal)=>Promise<VideoPlanIdea>;
+  admin:boolean; availableCredits:number;
   checkingAccess:boolean;
   provider?:string;
   aiPrices?:Partial<Record<VideoDuration,number>>;
 };
-export function VideoDurationEditor({draft,change,aiPrices,provider,generateAi,draftPrompt,checkingAccess}:Props) {
+export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredits,provider,generateAi,draftPrompt,checkingAccess}:Props) {
   const {t,text,language}=useUiLanguage(), {sources,manual,brief,caption,file:result}=draft;
   const {ratio,width,height}=getVideoFormat(draft.ratio);
   const input=useRef<HTMLInputElement>(null),canvas=useRef<HTMLCanvasElement>(null);
@@ -51,6 +52,8 @@ export function VideoDurationEditor({draft,change,aiPrices,provider,generateAi,d
   const fallbackCaptions=useMemo(()=>sceneCaptions(brief,caption),[brief,caption]);
   const textOnly=service && !sources.length && !!brief.title.trim() && !!brief.description.trim();
   const recommended=recommendDuration(sources.length-clips,clips,[style==='unboxing'?'언박싱':'',brief.title,brief.description,brief.emphasis,caption].join(' ')), seconds=manual??recommended;
+  const charge=admin?0:aiPrices?.[seconds];
+  const shortfall=charge!==undefined&&availableCredits!==undefined&&charge>availableCredits;
   const shotBrief=promptBrief(draft,seconds);
   const briefKey=JSON.stringify(shotBrief);
   const stale=!!draft.review&&(draft.review.briefKey!==briefKey||draft.review.sources!==sources);
@@ -178,7 +181,9 @@ export function VideoDurationEditor({draft,change,aiPrices,provider,generateAi,d
     }catch(e){
       if(!controller.signal.aborted){
         const code=e instanceof Error?e.message:'';
-        setMessage(code==='VIDEO_REFERENCE_SIZE'?t('참조 이미지 용량을 합계 10MB 이내로 줄여 주세요.','Keep reference images under 10 MB in total.'):
+        setMessage(code==='NO_TEST_CREDITS'?t('크레딧이 부족합니다. 충전 후 다시 시도해 주세요.','Top up your credits and try again.'):
+          code==='VIDEO_PRICE_CHANGED'?t('영상 요금이 변경되었습니다. 화면을 다시 열어 확인해 주세요.','Reopen the video page to review the updated price.'):
+          code==='VIDEO_REFERENCE_SIZE'?t('참조 이미지 용량을 합계 10MB 이내로 줄여 주세요.','Keep reference images under 10 MB in total.'):
           code==='VIDEO_REFERENCE_FORMAT'?t('AI 영상에는 JPG, PNG, WebP 사진을 넣어 주세요.','Use JPG, PNG or WebP for AI video.'):
           code==='VIDEO_SUBMISSION_UNCERTAIN'?t('요청 접수 여부를 확인 중이에요. 같은 내용으로 다시 열면 기존 요청을 확인합니다.','Submission is pending reconciliation. Retry with the same brief to check it.'):
           code==='VIDEO_PROVIDER_INPUT'?t('영상 공급사가 입력을 거절했습니다. 프롬프트와 참조 파일 형식을 확인해 주세요.','The provider rejected the input. Check your prompt and reference files.'):
@@ -255,6 +260,9 @@ export function VideoDurationEditor({draft,change,aiPrices,provider,generateAi,d
     <fieldset className="vd-duration" disabled={!!run}><legend>{t('영상 길이','Video length')}</legend>
       <div>{videoDurations.map(value=><button key={value} type="button" aria-pressed={seconds===value}
         onClick={()=>edit({manual:value})}>{value}{t('초','s')}</button>)}</div>
+      <label>{t('길이 조절','Adjust length')} · {durationText}
+        <input type="range" min={10} max={30} step={1} value={seconds} onChange={e=>edit({manual:Number(e.target.value)})}/>
+      </label>
       <button type="button" className="vd-recommend" aria-pressed={manual===null}
         onClick={()=>edit({manual:null})}>{manual===null&&<Check size={14}/>} {t('자동 추천','Recommended')} · {recommended}{t('초','s')}</button>
     </fieldset>
@@ -263,16 +271,17 @@ export function VideoDurationEditor({draft,change,aiPrices,provider,generateAi,d
       review={review} ready={ready} busy={!!run} planning={run==='prompt'}
       stale={stale} onBuild={()=>void buildPrompt()} error={promptError}
       onChange={patch=>{if(review)edit({review:{...review,...patch}});}}/>
-    {!generateAi&&!checkingAccess&&<p className="vd-format-note">{t('이 계정에서는 구성안까지 작성할 수 있어요. AI 영상 생성은 현재 관리자 테스트 중입니다.','You can prepare a plan. AI video generation is currently in admin testing.')}</p>}
-    {generateAi&&typeof aiPrices?.[seconds]==='number'&&<small className="vd-ai-price">{t('AI 생성 예상','AI generation estimate')} · {durationText} · {aiPrices[seconds]}{t('크레딧',' credits')}</small>}
+    {!generateAi&&!checkingAccess&&<p className="vd-format-note">{t('이 계정에서는 구성안까지 작성할 수 있어요. 현재 AI 영상 생성 연결을 사용할 수 없습니다.','You can prepare a plan. AI video generation is currently unavailable.')}</p>}
+    {generateAi&&charge!==undefined&&<small className="vd-ai-price">{t('AI 생성 예상','AI generation estimate')} · {durationText} · {charge}{t('크레딧',' credits')}</small>}
+      {shortfall&&<a className="vd-library" href="#checkout">{t('크레딧 충전','Top up credits')} · {t('현재 잔액','Balance')} {availableCredits}</a>}
     {message&&<p role="status">{message}</p>}
     {generateAi&&currentReview?.showCaptions&&!format&&ready&&<p role="status">{t('파일 제작은 최신 Chrome에서 열어주세요.','Open in a current Chrome browser to export.')}</p>}
     {result?<button type="button" className="vd-primary" disabled={!!run} onClick={()=>void saveVideo()}><Download size={18}/>{t('영상 저장','Save video')}</button>
-      :<button type="button" className="vd-primary" disabled={!!run||!canGenerateAi||(captions.some(line=>line.trim())&&!format)} onClick={()=>setConfirm(true)}>
+      :<button type="button" className="vd-primary" disabled={!!run||shortfall||charge===undefined||!canGenerateAi||(captions.some(line=>line.trim())&&!format)} onClick={()=>setConfirm(true)}>
         <Clapperboard size={18}/>{run==='ai'?(aiStage==='queue'?t('AI 영상 생성 중…','Generating AI video…'):aiStage==='download'?t('영상 받는 중…','Downloading video…'):t('자막 입히는 중…','Adding captions…')):t('AI 영상 생성','Generate AI video')}</button>}
     {run==='ai'&&<button className="vd-cancel" type="button" onClick={()=>task.current?.abort()}>{t('대기 닫기','Stop waiting')}</button>}
     {saved&&<p role="status">{t('저장 요청을 완료했어요.','Video sent to your downloads.')}</p>}
-    {confirm&&<VideoCostDialog provider={provider} style={style} promptMode={promptMode} ratio={ratio} seconds={seconds} onCancel={()=>setConfirm(false)} onConfirm={()=>{
+    {confirm&&<VideoCostDialog credits={charge??0} admin={admin} provider={provider} style={style} promptMode={promptMode} ratio={ratio} seconds={seconds} onCancel={()=>setConfirm(false)} onConfirm={()=>{
       setConfirm(false);
       void makeAiVideo();
     }}/>}

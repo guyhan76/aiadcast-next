@@ -150,7 +150,7 @@ test('a reference clip stays in AI creation and a captioned provider result can 
 test('service brief, grey reference upload and exact caption settings feed AI generation',async({page})=>{
  await protectedScreen(page,mockSession('video-brief','admin'));
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
- await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}}));
+ await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,generation:{enabled:false},wallet:{unlimited:true,available:0,reserved:0},budget:{limitMicros:0}}}));
  let input:Record<string,any>|undefined;
  await page.route('**/api/videos',r=>{input=r.request().postDataJSON();return r.fulfill({json:{id:input!.requestId}});});
  await page.route('**/api/videos/*',r=>r.fulfill({json:{state:'failed'}}));
@@ -230,7 +230,7 @@ test('unboxing uses two photos and shows the selected story and total before cre
 test('a product photo and brief make a reviewable AI prompt before the video is submitted',async({page})=>{
  await protectedScreen(page,mockSession('photo-prompt','admin'));
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
- await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,assistant:{available:true},generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}}));
+ await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,assistant:{available:true},generation:{enabled:false},wallet:{unlimited:true,available:0,reserved:0},budget:{limitMicros:0}}}));
  let drafts=0,videoRequests=0;
  await page.route('**/api/assistant',async r=>{
    const body=r.request().postDataJSON();drafts++;
@@ -289,7 +289,7 @@ test('a product photo and brief make a reviewable AI prompt before the video is 
 test('manual prompts retain pasted directions, skip the drafting call, and submit only after confirmation',async({page})=>{
  await protectedScreen(page,mockSession('manual-prompt','admin'));
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
- await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,assistant:{available:true},generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}}));
+ await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,assistant:{available:true},generation:{enabled:false},wallet:{unlimited:true,available:0,reserved:0},budget:{limitMicros:0}}}));
  const submitted:Record<string,unknown>[]=[];let assistantCalls=0;
  await page.route('**/api/assistant',r=>{assistantCalls++;return r.fulfill({status:503});});
  await page.route('**/api/videos',r=>{const body=r.request().postDataJSON();submitted.push(body);return r.fulfill({json:{id:body.requestId}});});

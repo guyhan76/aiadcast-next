@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {estimateHiggsfield,higgsfieldConnection} from '../server/higgsfield-video.mjs';
 import {GenerationService} from '../server/generation-service.mjs';
-import {CloudGenerationService} from '../server/cloud/beta.mjs';
+import {GenerationService as CloudGenerationService} from '../server/cloud/generation-base.mjs';
 import {PostgresDatabase} from '../server/cloud/postgres.mjs';
 import {pgPool} from './helpers/recommendation-pg-pool.mjs';
 
@@ -150,4 +150,30 @@ test('price descriptions quote output seconds and distinguish photo references f
   await assert.rejects(run('reference-to-video'),/ESTIMATE_USD_MISSING/);
   description=base+'720p: $0.2647 per 1000 tokens.'+units;
   await assert.rejects(run('text-to-video'),/ESTIMATE_USD_MISSING/);
+});
+
+for(const database of ['sqlite','pg'])test(database+' spends one wallet across an image and a 17-second video',async t=>{
+ const service=await fixture(t,database);
+ service.enabled=true;
+ await service.initializeSharedWallet();
+ const request={...input,seconds:17,expectedCredits:34};
+ await assert.rejects(service.startVideo(request),/NO_TEST_CREDITS/);
+ await service.recordVerifiedPurchase({purchaseId:'beta-pack',credits:100,unit:'credit-v2'});
+ const owner='aiadcast-next-local-developer';
+ await service.ledger.reserve({jobId:'image-for-ad',kind:'image',userId:owner,credits:5,unit:'credit-v2',requestHash:'fixture',modelRevision:'fixture',expiresAt:Date.now()+60000});
+ await service.ledger.markReady('image-for-ad','image-file');
+ await assert.rejects(service.startVideo({...request,expectedCredits:1}),/VIDEO_PRICE_CHANGED/);
+ let submissions=0;
+ t.mock.method(globalThis,'fetch',async(url,options)=>{
+  url=String(url);
+  if(url.includes('/estimate/'))return Response.json({usd:'0.50'});
+  if(options.method==='POST'){submissions++;return Response.json({request_id:'shared-beta-video'});}
+  if(url==='https://media.example/video.mp4')return new Response(Buffer.from([0,0,0,12,102,116,121,112,105,115,111,109]));
+  return Response.json({request_id:'shared-beta-video',status:'completed',video:{url:'https://media.example/video.mp4'}});
+ });
+ await service.startVideo(request);await service.startVideo(request);
+ assert.deepEqual((await service.wallet()).credits,{available:61,reserved:34});
+ await service.videoResult(input.requestId);await service.videoResult(input.requestId,true);await service.videoResult(input.requestId,true);
+ assert.deepEqual((await service.wallet()).credits,{available:61,reserved:0});
+ assert.equal(submissions,1);
 });

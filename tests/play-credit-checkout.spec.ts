@@ -19,8 +19,8 @@ test('store build shows Play KRW prices, restores interrupted payments, and neve
       AiadcastNative:{postMessage:(message:string)=>{
         const req=JSON.parse(message);
         const emit=(detail:object)=>window.dispatchEvent(new CustomEvent('aiadcast-play',{detail}));
-        if(req.type==='play-catalog')emit({type:'catalog',products:[{id:'credits_100',price:'₩9,900'}]});
-        if(req.type==='play-buy'){if(req.account!==id||req.product!=='credits_100')throw Error('Unexpected purchase');
+        if(req.type==='play-catalog')emit({type:'catalog',products:[{id:'topup_100',price:'₩33,900'}]});
+        if(req.type==='play-buy'){if(req.account!==id||req.product!=='topup_100')throw Error('Unexpected purchase');
           sessionStorage.setItem('pending-play','yes');emit({type:'pending',account:id});}
         if(req.type==='play-restore'&&sessionStorage.getItem('ready-play')){
           emit({type:'purchase',account:id,token:'play-test-token'});
@@ -28,7 +28,9 @@ test('store build shows Play KRW prices, restores interrupted payments, and neve
       }}});
   },policyAccount);
   await page.goto('/#checkout');
-  const pay=page.getByRole('button',{name:'₩9,900 · Google Play 결제'});
+  await page.getByRole('button',{name:'크레딧 추가',exact:true}).click();
+  await page.locator('input[value="credits-v3-100"]').check();
+  const pay=page.getByRole('button',{name:'₩33,900 · Google Play 결제'});
   await expect(pay).toBeDisabled();
   await page.getByLabel('이용권 수량, 금액과 환불 조건을 확인했습니다').check();
   await pay.click();
@@ -84,9 +86,9 @@ test('an open wallet replaces an older read when Play restores a paid purchase',
       emit({type:'purchase',account:id,token:'retired-pack-receipt'});
     },account);
     const balance=page.locator('.credit-summary dd');
-    await expect(balance).toHaveText('광고 19장');
+    await expect(balance).toHaveText('190 크레딧');
     finishOldRead();
-    await expect(balance).toHaveText('광고 19장');
+    await expect(balance).toHaveText('190 크레딧');
     expect(walletReads).toBe(2);
     expect(verifications).toBe(1);
   }finally{finishOldRead();}
@@ -106,7 +108,7 @@ async function interruptedCheckout(page: Page) {
       AiadcastNative: {postMessage(message: string) {
         const request = JSON.parse(message);
         const emit = (detail: object) => window.dispatchEvent(new CustomEvent('aiadcast-play', {detail}));
-        if (request.type === 'play-catalog') emit({type: 'catalog', products: [{id: 'credits_30', price: '₩3,300'}]});
+        if (request.type === 'play-catalog') emit({type: 'catalog', products: [{id: 'topup_50', price: '₩18,000'}]});
         // The server consumed the purchase, so Play has nothing left to restore.
         if (request.type === 'play-restore') {
           const ui = document.documentElement.dataset;
@@ -124,11 +126,13 @@ async function interruptedCheckout(page: Page) {
   return member;
 }
 
-async function buyThreeAds(page: Page) {
+async function buySmallestPack(page: Page) {
   await page.goto('/#checkout');
   await expect(page.locator('html')).toHaveAttribute('data-restores', /[1-9]/);
+  await page.getByRole('button',{name:'크레딧 추가',exact:true}).click();
+  await page.locator('input[value="credits-v3-50"]').check();
   await page.getByLabel('이용권 수량, 금액과 환불 조건을 확인했습니다').check();
-  await page.getByRole('button', {name: '₩3,300 · Google Play 결제'}).click();
+  await page.getByRole('button', {name: '₩18,000 · Google Play 결제'}).click();
 }
 
 test('retry confirms a consumed purchase after the verification response is lost', async ({page}) => {
@@ -138,12 +142,12 @@ test('retry confirms a consumed purchase after the verification response is lost
     expect(route.request().headers().authorization).toBe('Bearer ' + member.token);
     expect(route.request().postDataJSON()).toEqual({token: 'interrupted-play-receipt'});
     if (++requests === 1) return route.abort('connectionreset');
-    return route.fulfill({json: {state: 'paid', balance: 30, grantedCredits: 30}});
+    return route.fulfill({json: {state: 'paid', balance: 50, grantedCredits: 50}});
   });
-  await buyThreeAds(page);
+  await buySmallestPack(page);
   await expect(page.getByRole('status').filter({hasText: '구매 확인이 지연'})).toBeVisible();
   await page.getByRole('button', {name: '구매 내역 다시 확인'}).click();
-  await expect(page.getByRole('status').filter({hasText: '광고 3장'})).toBeVisible();
+  await expect(page.getByRole('status').filter({hasText: '잔액 50 크레딧'})).toBeVisible();
   const before = await page.locator('html').getAttribute('data-restores');
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await expect.poll(() => page.locator('html').getAttribute('data-restores')).not.toBe(before);
@@ -162,7 +166,7 @@ test('another signed-in member never retries a previous member’s interrupted p
     owners.push(route.request().headers().authorization);
     return route.abort('connectionreset');
   });
-  await buyThreeAds(page);
+  await buySmallestPack(page);
   await expect(page.getByRole('status').filter({hasText: '구매 확인이 지연'})).toBeVisible();
   const before = await page.locator('html').getAttribute('data-restores');
   await page.evaluate(session => {
@@ -180,7 +184,7 @@ test('a refused receipt is not replayed on reconnect', async ({page}) => {
     requests++;
     return route.fulfill({status: 409, json: {error: {code: 'PLAY_PURCHASE_NOT_ELIGIBLE'}}});
   });
-  await buyThreeAds(page);
+  await buySmallestPack(page);
   await expect(page.getByRole('status').filter({hasText: '구매 계정과 주문 상태'})).toBeVisible();
   const before = await page.locator('html').getAttribute('data-restores');
   await page.evaluate(() => window.dispatchEvent(new Event('online')));

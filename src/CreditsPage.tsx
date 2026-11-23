@@ -49,14 +49,11 @@ export function CreditsPage({returnPage}:{returnPage:string}){
  };
  const locale=language==='ko'?'ko-KR':'en-US';
  const shortDate=(timestamp:string|number)=>new Intl.DateTimeFormat(locale,{year:'numeric',month:'short',day:'numeric'}).format(new Date(timestamp));
- const available=data?(data.wallet.unlimited?t('관리자 · 차감 없음','Administrator · No charge'):data.wallet.kind==='customer-ads'
-  ?t(`광고 ${Math.floor((data.wallet.credits?.available??0)/10)}장`,`${Math.floor((data.wallet.credits?.available??0)/10)} ads`)
-  :data.wallet.credits?data.wallet.credits.available+t(' 크레딧',' credits'):data.wallet.available+t('개',' credits')):t('미조회','Not checked');
+ const available=data?(data.wallet.unlimited?t('관리자 · 차감 없음','Administrator · No charge'):data.wallet.credits?data.wallet.credits.available+t(' 크레딧',' credits'):data.wallet.available+t('개',' credits')):t('미조회','Not checked');
  const legacy=!!data?.wallet.credits&&data.wallet.available>0;
  return <section className="account-page credits-page">
   <a className="page-back" href={'#'+returnPage}><ArrowLeft size={18} aria-hidden="true"/>{t('돌아가기','Back')}</a>
-  <header className="wallet-heading"><h1>{t('내 이용권','My credits')}</h1>{session&&<span>{session.user.label}</span>}</header>
-  <p className="account-help">{t('아래 잔액은 광고 이미지에 사용합니다. 영상 테스트는 이 잔액에서 차감하지 않습니다.','This balance is for ad images. Video trials do not use these credits.')}</p>
+  <header className="wallet-heading"><h1>{t('내 크레딧','My credits')}</h1>{session&&<span>{session.user.label}</span>}</header>
   <div className="wallet-card"><dl className="credit-summary"><dt>{t('사용 가능','Available')}</dt><dd>{available}</dd></dl>
    {legacy&&<div className="wallet-legacy"><span>{t('기존 이용권','Legacy tickets')}</span><strong>{data.wallet.available}{t('개',' tickets')}</strong><span>{t('먼저 사용','Used first')}</span></div>}
    <div className="wallet-tools"><p role="status" title={checked?new Date(checked).toLocaleTimeString(locale):undefined}>{busy?t('조회 중…','Checking…'):checked?t('조회 완료','Checked'):t('미조회','Not checked')}</p>
@@ -65,11 +62,11 @@ export function CreditsPage({returnPage}:{returnPage:string}){
   </div>
   {error&&<p role="alert">{error}</p>}
   {!session||expired?<a className="wallet-button wallet-primary" href="#login" onClick={()=>{if(expired)setBetaSession(null,'login');}}>{expired?t('같은 계정으로 로그인','Sign in with the same account'):t('로그인','Sign in')}</a>:null}
-  <div className="wallet-actions"><a className="wallet-button wallet-primary" href="#checkout">{t('이용권 구매하기','Buy credits')}</a>
-   {session&&<a className="wallet-button wallet-secondary" href="#create"><ImagePlus size={20} aria-hidden="true"/>{t('광고 이미지 만들기','Create an ad image')}</a>}</div>
+  <div className="wallet-actions"><a className="wallet-button wallet-primary" href="#checkout">{t('크레딧 충전','Top up credits')}</a>
+   {session&&<a className="wallet-button wallet-secondary" href="#create"><ImagePlus size={20} aria-hidden="true"/>{t('광고 이미지 만들기','Create an ad image')}</a>}{session&&<a className="wallet-button wallet-secondary" href="#video">{t('광고 영상 만들기','Create an ad video')}</a>}</div>
   <h2>{t('최근 구매 내역','Recent purchases')}</h2>
   {!data?<p>{t('구매 내역 미조회','Purchases not checked')}</p>:data.sales?.length?<ul className="wallet-history">{data.sales.map(s=><li key={s.id}>
-   <strong>{t(`광고 ${s.ads}장`,`${s.ads} ads`)}</strong><span className="wallet-state">{s.restored?t('구매 복원','Restored'):t('구매 확인','Verified')}</span><time>{shortDate(s.verified)}</time></li>)}</ul>
+   <strong>{t(`${s.ads*10}크레딧`,`${s.ads*10} credits`)}</strong><span className="wallet-state">{s.restored?t('구매 복원','Restored'):t('구매 확인','Verified')}</span><time>{shortDate(s.verified)}</time></li>)}</ul>
    :!data.orders.length?<p>{t('조회된 구매 내역이 없습니다.','No purchases found.')}</p>:<ul className="wallet-history">{data.orders.map(o=><li key={o.id}>
     <strong>{o.credits}{o.unit==='credit-v2'?t(' 크레딧',' credits'):t('개 기존 이용권',' legacy tickets')}</strong>
     <span className={'wallet-state state-'+o.state}>{orderStatus(o)}</span><time>{shortDate(o.created)}</time><b>{o.amount.toLocaleString(locale)}{t('원',' KRW')}</b>

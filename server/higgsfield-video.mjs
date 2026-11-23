@@ -1,3 +1,4 @@
+import {validVideoDuration} from '../src/video-duration.ts';
 const api = 'https://api.higgsfield.ai';
 export const higgsfieldModel = 'bytedance/seedance-2.5';
 
@@ -66,7 +67,7 @@ export function higgsfieldInput(plan, urls) {
 
 // The two Seedance operations can return a per-second rate card instead of a flat USD quote.
 function seedanceRateQuote(description, endpoint, body) {
-  if (typeof description !== 'string' || body.resolution !== '720p' || ![10,15,20,30].includes(body.duration) ||
+  if (typeof description !== 'string' || body.resolution !== '720p' || !validVideoDuration(body.duration) ||
       body.video_urls?.length || body.draft || !['text-to-video','reference-to-video'].some(op => endpoint === higgsfieldModel + '/' + op)) return null;
   const terms = description.replace(/[*_`]/g, '').toLowerCase();
   // Read only the no-video tier for product photos. Other billing units need a separate calculation.

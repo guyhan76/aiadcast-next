@@ -1,6 +1,9 @@
 import type {VideoBrief} from './video-brief';
 export const videoDurations = [10, 15, 20, 30] as const;
-export type VideoDuration = typeof videoDurations[number];
+export type VideoDuration = number;
+export function validVideoDuration(value:unknown):value is VideoDuration {
+  return typeof value==='number' && Number.isInteger(value) && value>=10 && value<=30;
+}
 export type VideoSource = {name: string; media: Blob | string; kind: 'image' | 'video'; importedProduct?:boolean; brief?:VideoBrief};
 
 export function recommendDuration(images: number, clips: number, brief: string): VideoDuration {

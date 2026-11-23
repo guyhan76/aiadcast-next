@@ -1,3 +1,4 @@
+import {validVideoDuration} from '../src/video-duration.ts';
 import {getVideoFormat} from '../src/video-formats.ts';
 import {sceneStops} from '../src/video-style.ts';
 
@@ -6,7 +7,7 @@ export function normalizeVideoPromptRequest(raw){
   const invalid=()=>{throw Error('INVALID_ASSISTANT_REQUEST');};
   if(typeof requestId!=='string'||!/^[a-zA-Z0-9_-]{8,100}$/.test(requestId)||!['ko','en'].includes(targetLocale)||
      !brief||!['product','service'].includes(brief.kind)||!(brief.kind==='service'?['service','presenter']:['product','presenter','unboxing']).includes(brief.style)||
-     ![10,15,20,30].includes(brief.seconds)||getVideoFormat(brief.ratio).ratio!==brief.ratio||
+     !validVideoDuration(brief.seconds)||getVideoFormat(brief.ratio).ratio!==brief.ratio||
      typeof brief.music!=='boolean'||typeof brief.voice!=='boolean'||!Array.isArray(references)||references.length>10)invalid();
   const facts={kind:brief.kind,style:brief.style,ratio:brief.ratio,seconds:brief.seconds,music:brief.music,voice:brief.voice};
   for(const [key,limit] of Object.entries({field:120,industry:160,title:100,description:2000,highlight:600,caption:1000,contact:340,musicStyle:140,voiceStyle:140,narration:600})){

@@ -54,8 +54,7 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
     } if (++requests > 600 || (isLogin && ++logins > 20))
         throw new ApiFailure('RATE_LIMITED', 429); };
     const service = async (user) => { if (!services.has(user.id))
-        services.set(user.id, Promise.resolve().then(() => serviceFactory(user))); const instance = await services.get(user.id); instance.adminTestUnlimited = user.role === 'admin'; if (user.role !== 'admin' && await store.db.prepare('SELECT user_id FROM welcome_ad_eligibility WHERE user_id=?').get(user.id))
-        await instance.grantWelcomeAd(); return instance; };
+        services.set(user.id, Promise.resolve().then(() => serviceFactory(user))); const instance = await services.get(user.id); instance.adminTestUnlimited = user.role === 'admin'; await instance.initializeSharedWallet(); await instance.applySubscriptionCredits(); return instance; };
     const email = await new EmailAuth().initialize(store, { sendMail: accounts.sendMail, publicOrigin: origin, now });
     const kakao = await new KakaoAuth().initialize(store, { provider: accounts.kakao, now });
     const google = await new GoogleAuth().initialize(store, { provider: accounts.google, now });
@@ -277,8 +276,6 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 return;
             }
             if (req.method === 'POST' && url.pathname === '/api/videos') {
-                if (user.role !== 'admin')
-                    throw new ApiFailure('VIDEO_TRIAL_UNAVAILABLE', 403);
                 send(res, 202, await (await service(user)).startVideo(await read(req, 14100000)), cors);
                 return;
             }

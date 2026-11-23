@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   artifact_id TEXT,
   reason TEXT
 );
+CREATE TABLE IF NOT EXISTS subscription_terms(purchase_id TEXT PRIMARY KEY,plan TEXT NOT NULL,started INTEGER NOT NULL,months INTEGER NOT NULL CHECK(months IN (1,12)),issued INTEGER NOT NULL CHECK(issued BETWEEN 1 AND months),next_due INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS previous_beta_jobs(job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE);
 CREATE TABLE IF NOT EXISTS credit_events (
   event_key TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,

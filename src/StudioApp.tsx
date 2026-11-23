@@ -78,7 +78,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  const [workspaceScope]=useState(storageNamespace);
  useEffect(()=>{const publish=()=>window.dispatchEvent(new CustomEvent('aiadcast-export-context',{detail:{owner:storageNamespace()}}));publish();window.addEventListener('aiadcast-export-context-needed',publish);return()=>window.removeEventListener('aiadcast-export-context-needed',publish);},[workspaceScope]);
  const {language,text,t}=useUiLanguage();
- const priorPage=useRef<Page>(currentPage()),creditsBack=useRef<Page>('home');
+ const priorPage=useRef<Page>(currentPage()),creditsBack=useRef<Page>('home'),videoCheckout=useRef(false);
  const [page,setPage]=useState<Page>(currentPage),[seed,setSeed]=useState<Project>(()=>restored?.editor??({...newProject(),locale:language})),[current,setCurrent]=useState<Project>(seed),[editorKey,setEditorKey]=useState(0);
  const creating=page==='create';
  const [video,setVideo]=useState(()=>videoDraft());
@@ -107,7 +107,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  async function preserve(){await saveWorkspace(snapshot,workspaceScope);}
  // Persist every committed edit immediately: a debounce discarded photos on quick reloads.
  useLayoutEffect(()=>{let active=true;setDraftSaving(true);void saveWorkspace({wizard,editor:current,returnPage},workspaceScope).then(()=>{if(active){setDraftSaving(false);setDraftError(false);}}).catch(()=>{if(active){setDraftSaving(false);setDraftError(true);}});return()=>{active=false;};},[wizard,current,returnPage,workspaceScope]);
- useEffect(()=>{const onHash=()=>{const next=currentPage();if(next!=='studio')setGenerationIntent(undefined);if(next==='credits'&&priorPage.current!=='credits')creditsBack.current=priorPage.current;priorPage.current=next;setPage(next);window.scrollTo(0,0);};window.addEventListener('hashchange',onHash);return()=>window.removeEventListener('hashchange',onHash);},[]);
+ useEffect(()=>{const onHash=()=>{const next=currentPage();if(next!=='studio')setGenerationIntent(undefined);if(next==='credits'&&priorPage.current!=='credits')creditsBack.current=priorPage.current;if(next==='checkout')videoCheckout.current=priorPage.current==='video'||(priorPage.current==='credits'&&creditsBack.current==='video');priorPage.current=next;setPage(next);window.scrollTo(0,0);};window.addEventListener('hashchange',onHash);return()=>window.removeEventListener('hashchange',onHash);},[]);
  useEffect(()=>{
   if(page!=='projects')return;
   let alive=true;
@@ -219,7 +219,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
    {(page==='signup'||page==='login')&&<div className="app-page"><EmailAccountPage key={page} mode={page} preserve={preserve} returnPage={returnPage}/></div>}
    {page==='admin'&&<div className="app-page"><AdminPage/></div>}
    {page==='credits'&&<div className="app-page"><CreditsPage returnPage={creditsBack.current}/></div>}
-   {page==='checkout'&&<div className="app-page"><CheckoutPage preserve={preserve} returnPage={returnPage}/></div>}
+   {page==='checkout'&&<div className="app-page"><CheckoutPage preserve={preserve} returnPage={videoCheckout.current?'video':returnPage}/></div>}
    {simpleStudio?<div className="app-page"><SimpleAdResult project={current} change={fn=>setCurrent(p=>fn(p))} onEdit={()=>requestPreviewLeave(editDetails)} onCreativeDraft={createCreativeDraft} onNewProduct={()=>requestPreviewLeave(()=>void begin())} autoRequest={generationIntent} onAutoHandled={()=>setGenerationIntent(undefined)}/></div>:(page==='studio'||page==='editor')&&<div className="editor-container"><Editor key={editorKey} initialProject={current} onProjectChange={setCurrent}/></div>}
 
    {page==='portfolio'&&<AppFooter/>}
