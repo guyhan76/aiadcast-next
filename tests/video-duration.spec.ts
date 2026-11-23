@@ -156,7 +156,8 @@ test('service brief, grey reference upload and exact caption settings feed AI ge
  await page.route('**/api/videos/*',r=>r.fulfill({json:{state:'failed'}}));
  await page.goto('/#video');
  const editor=page.getByRole('region',{name:'광고 영상 편집'});
- await expect(editor.getByRole('button',{name:/참조 이미지·영상 넣기/})).toHaveCSS('background-color','rgb(243, 244, 245)');
+ await expect(editor.getByRole('button',{name:/이미지·영상 첨부/})).toHaveCSS('background-color','rgb(243, 244, 245)');
+ await expect(editor.locator('.vd-upload-help')).toContainText('최대 10개 · AI 참조 이미지 합계 10MB');
  await editor.getByRole('button',{name:'서비스',exact:true}).click();
  await editor.getByLabel('분야',{exact:true}).selectOption('logistics');
  await editor.getByLabel('세부 업종',{exact:true}).selectOption('parcel');

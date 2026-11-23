@@ -41,7 +41,7 @@ export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredit
   const [finishedUrl,setFinishedUrl]=useState(''),[selected,setSelected]=useState(0);
   const task=useRef<AbortController|null>(null);
   const [confirm,setConfirm]=useState(false);
-  const industryId=useId();
+  const industryId=useId(), uploadHelpId=useId();
   const style=styleForBrief(brief), service=brief.kind==='service';
   const styles:VideoStyle[]=service?['service','presenter']:['product','unboxing','presenter'];
   const selectedIndustry=brief.category?findAdField(brief.category,brief.industryDetail):undefined;
@@ -204,6 +204,12 @@ export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredit
   }
   const step=result||run==='ai'||confirm?3:currentReview||useManual||run==='prompt'?2:1;
   const durationText=seconds+t('초','s');
+  const uploadHelp=<div className="reference-file-info vd-upload-help" id={uploadHelpId}>
+    <p>{t('이미지 PNG · JPG · WebP','Images: PNG · JPG · WebP')}</p>
+    <p>{t('영상 MP4 · WebM 등 기기에서 재생 가능한 형식','Videos: MP4, WebM or another format your device can play')}</p>
+    <p>{t('최대 10개 · AI 참조 이미지 합계 10MB','Up to 10 items · 10 MB combined for AI reference images')}</p>
+    <p>{t('영상은 첫 장면만 용량에 포함됩니다.','Only the first frame of each clip counts toward this limit.')}</p>
+  </div>;
   return <section className="video-draft" aria-label={t('광고 영상 편집','Video ad editor')}>
     <div className="vd-heading"><h1>{t('광고 영상 만들기','Create an ad video')}</h1></div>
     <ol className="vd-steps" aria-label={t('영상 제작 단계','Video creation steps')}>
@@ -235,11 +241,14 @@ export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredit
       </button>)}</div>
     </fieldset>
     <div className="vd-section-heading"><h2>{t('광고 소재','Ad media')}</h2><small>{mediaHint}</small></div>
-    <input type="file" ref={input} className="vd-file" aria-label={t('사진·영상 파일','Media files')} accept="image/*,video/*" multiple disabled={!!run||sources.length>=10}
+    <input type="file" ref={input} className="vd-file" aria-describedby={uploadHelpId} aria-label={t('사진·영상 파일','Media files')} accept="image/*,video/*" multiple disabled={!!run||sources.length>=10}
       onChange={e=>{addFiles(Array.from(e.target.files??[]));e.target.value='';}}/>
-    {!sources.length && <button type="button" className="vd-upload" disabled={!!run} onClick={()=>input.current?.click()}>
-      <span className="vd-upload-icon"><ImagePlus size={30}/></span><strong>{t('참조 이미지·영상 넣기','Add reference images or clips')}</strong>
-      <small>{t('한 번에 최대 10개','Up to 10 items')}</small></button>}
+    {!sources.length && <div className="reference-upload-zone vd-upload-zone">
+      <button type="button" className="reference-add vd-upload" disabled={!!run} aria-describedby={uploadHelpId} onClick={()=>input.current?.click()}>
+        <ImagePlus size={36} aria-hidden="true"/><span>{t('이미지·영상 첨부','Attach images or clips')}</span>
+      </button>
+      {uploadHelp}
+    </div>}
     {(sources.length>0||textOnly||servicePromptOnly) && <>
       <div className="vd-stage" hidden={servicePromptOnly&&!textOnly&&!result&&run!=='ai'} style={{'--vd-aspect':width/height} as CSSProperties}>
         <canvas width={width} height={height} ref={canvas} hidden={!!result && showResult} aria-label={t('영상 미리보기','Video preview')}/>
@@ -249,12 +258,13 @@ export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredit
       {result&&!showResult&&<button type="button" className="vd-library" onClick={()=>setShowResult(true)}>{t('완성 영상 보기','View finished video')}</button>}
       {bad&&<p role="alert">{t('열 수 없는 소재를 삭제하거나 교체해 주세요.','Remove or replace this unreadable file.')} {bad}</p>}
       {sources.length>0&&<div className="vd-tray"><div className="vd-tray-label"><strong>{t('소재','Media')} <small>{sources.length}/10</small></strong>
-        {sources.length<10&&<button type="button" disabled={!!run} onClick={()=>input.current?.click()}><Plus size={16}/>{t('추가','Add')}</button>}</div>
+        {sources.length<10&&<button type="button" aria-describedby={uploadHelpId} disabled={!!run} onClick={()=>input.current?.click()}><Plus size={16}/>{t('추가','Add')}</button>}</div>
         <ol>{sources.map((s,i)=><li key={i}><button className="vd-scene" aria-pressed={i===selected} disabled={!!run} onClick={()=>{setSelected(i);setShowResult(false);}} title={s.name}>{i+1} · {s.name}</button>{sources.length>1&&i===selected&&<>
           <button className="vd-remove" disabled={!!run||i===0} aria-label={t('이 장면을 앞으로','Move this scene earlier')} onClick={()=>move(i,-1)}><ChevronLeft size={16}/></button>
           <button className="vd-remove" disabled={!!run||i===sources.length-1} aria-label={t('이 장면을 뒤로','Move this scene later')} onClick={()=>move(i,1)}><ChevronRight size={16}/></button></>}<button disabled={!!run} className="vd-remove" aria-label={s.name+' '+t('삭제','Remove')} onClick={()=>edit({sources:sources.filter((_,n)=>n!==i)})}><X size={15}/></button></li>)}</ol>
       </div>}
     </>}
+    {sources.length>0&&uploadHelp}
     {needOpenBox&&sources.length===1&&<p role="status">{t('열린 박스 사진을 한 장 더 추가해 주세요.','Add one more photo showing the open box.')}</p>}
     {clips>0&&<small>{t('첨부 영상의 첫 장면을 AI 참조 이미지로 사용해요.','The first frame of each clip is used as a reference image.')}</small>}
     <fieldset className="vd-duration" disabled={!!run}><legend>{t('영상 길이','Video length')}</legend>

@@ -7,10 +7,10 @@
 .vd-heading h1 {margin:0;font-size:clamp(25px,5vw,34px);line-height:1.2;letter-spacing:-.045em;}
 .vd-heading p {margin:7px 0 1px;font-size:15px;color:#625f59;}
 .vd-file {display:none;}
-.video-draft button.vd-upload {width:100%;display:grid;justify-items:center;align-content:center;gap:5px;min-height:148px;background:#f3f4f5;border:1px dashed #a9adb0;border-radius:14px;color:#2d2823;}
-.vd-upload-icon {display:grid;place-items:center;color:#53595d;background:#e4e6e8;border-radius:12px;width:48px;height:48px;margin-bottom:3px;}
-.vd-upload strong {font-size:17px;}
-.vd-upload small,.vd-tray-label small {color:#66635c;font-size:13px;font-weight:500;}
+.video-draft .reference-upload-zone.vd-upload-zone {margin:0;}
+.video-draft .vd-upload-zone .reference-add {min-height:130px;}
+.video-draft .vd-upload-help {margin:12px 0 8px;}
+.vd-tray-label small {color:#66635c;font-size:13px;font-weight:500;}
 .video-draft .vd-library,.video-draft .vd-primary,.vd-cancel {display:flex;align-items:center;justify-content:center;gap:9px;width:100%;min-height:45px;border:1px solid #d8d6cf;border-radius:10px;background:white;color:#282722;font-weight:650;}
 .video-draft button.vd-primary {background:#242521;color:white;min-height:49px;border-color:#242521;font-size:16px;}
 .vd-stage {position:relative;display:grid;place-items:center;overflow:hidden;border-radius:14px;background:#edece6;min-height:144px;}
@@ -42,8 +42,6 @@
 .vd-picker h2 {margin:0;font-size:20px;}
 .ad-card-actions>.video-open {grid-column:1/-1;}
 @media (prefers-reduced-motion:no-preference){.vd-spinner {animation:vd-rotate 1s linear infinite;} @keyframes vd-rotate {to {transform:rotate(360deg);}}}
-.video-draft button.vd-upload,.video-draft button.vd-upload:hover,.video-draft button.vd-upload:focus-visible {background:#f3f4f5;color:#303438;border-color:#a9adb0;}
-.vd-upload-icon {color:#53595d;background:#e4e6e8;}
 .video-draft button:focus-visible,.video-draft summary:focus-visible {outline:2px solid #42484c;outline-offset:2px;}
 .vd-tray li:has([aria-pressed=true]) {background:#f3f4f5;border-color:#777d81;}
 .vd-brief {display:grid;gap:10px;padding:0;min-width:0;margin:4px 0;border:0;}
