@@ -56,6 +56,7 @@ export function CreditsPage({returnPage}:{returnPage:string}){
  return <section className="account-page credits-page">
   <a className="page-back" href={'#'+returnPage}><ArrowLeft size={18} aria-hidden="true"/>{t('돌아가기','Back')}</a>
   <header className="wallet-heading"><h1>{t('내 이용권','My credits')}</h1>{session&&<span>{session.user.label}</span>}</header>
+  <p className="account-help">{t('아래 잔액은 광고 이미지에 사용합니다. 영상 테스트는 이 잔액에서 차감하지 않습니다.','This balance is for ad images. Video trials do not use these credits.')}</p>
   <div className="wallet-card"><dl className="credit-summary"><dt>{t('사용 가능','Available')}</dt><dd>{available}</dd></dl>
    {legacy&&<div className="wallet-legacy"><span>{t('기존 이용권','Legacy tickets')}</span><strong>{data.wallet.available}{t('개',' tickets')}</strong><span>{t('먼저 사용','Used first')}</span></div>}
    <div className="wallet-tools"><p role="status" title={checked?new Date(checked).toLocaleTimeString(locale):undefined}>{busy?t('조회 중…','Checking…'):checked?t('조회 완료','Checked'):t('미조회','Not checked')}</p>

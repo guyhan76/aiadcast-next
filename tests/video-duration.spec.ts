@@ -23,7 +23,7 @@ test('video examples follow the selected offer and leave the brief empty', async
   await expect(highlight).toHaveValue('');
 });
 
-test('a saved ad opens with a free length preview and honors the chosen duration', async ({page, isMobile}) => {
+test('a saved ad opens with reference framing and honors the chosen duration', async ({page, isMobile}) => {
   const bytes = await sharp({create:{width:64,height:64,channels:3,background:'#cc9d68'}}).png().toBuffer();
   const hash = createHash('sha256').update(bytes).digest('hex');
   const dataUrl = 'data:image/png;base64,'+bytes.toString('base64');
@@ -44,7 +44,7 @@ test('a saved ad opens with a free length preview and honors the chosen duration
   await page.route('**/api/membership/downloads/*/original', r=>r.fulfill({json:{
     ...file, projectId:'saved-example',artifactId:hash,artifact:{id:hash,sha256:hash,width:64,height:64,dataUrl}
   }}));
-  await page.route('**/api/status', r=>r.fulfill({json:{videoDurationPrices:{15:123},generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}}));
+  await page.route('**/api/status', r=>r.fulfill({json:{videoTrial:true,videoDurationPrices:{15:123},generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}}));
   const writes: string[] = [];
   page.on('request', req=>{if (req.url().includes('/api/') && req.method()==='POST') writes.push(req.url());});
   await page.goto(origin+'/#projects');
@@ -80,66 +80,71 @@ test('a saved ad opens with a free length preview and honors the chosen duration
   await editor.getByRole('button',{name:'사용 전.png 삭제'}).click();
   await expect(chosen(20)).toHaveAttribute('aria-pressed','true');
   await length.getByRole('button',{name:/자동 추천/}).click();
-  await editor.getByRole('button',{name:'미리보기',exact:true}).click();
-  await expect(editor.locator('.vd-play')).toContainText('1 / 10초');
-  await editor.getByRole('button',{name:'정지'}).click();
-  await expect(editor.locator('.vd-checkout')).toContainText('0크레딧');
+  await expect(chosen(10)).toHaveAttribute('aria-pressed','true');
+  await expect(editor.getByRole('button',{name:'미리보기',exact:true})).toHaveCount(0);
+  await expect(editor.getByRole('button',{name:'사진으로 기기 편집하기'})).toHaveCount(0);
   await page.getByRole('button',{name:'뒤로',exact:true}).click();
   await expect(page).toHaveURL(/#projects$/);
   expect(writes).toEqual([]);
 });
 
-test('home to video to a finished free download',async({page},testInfo)=>{
-  await protectedScreen(page,mockSession('free-export','admin'));
+test('unavailable AI permits plan review but never offers a slideshow',async({page})=>{
+  await protectedScreen(page,mockSession('member-video'));
   await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
-  const writes:string[]=[];
-  page.on('request',r=>{if(r.url().includes('/api/')&&r.method()==='POST')writes.push(r.url());});
+  const posts:string[]=[];
+  page.on('request',r=>{if(r.method()==='POST'&&r.url().includes('/api/'))posts.push(r.url());});
   await page.goto('/#home');
   await page.getByRole('link',{name:'광고 영상 만들기',exact:true}).click();
   const editor=page.getByRole('region',{name:'광고 영상 편집'});
-  await expect(editor.getByRole('heading',{name:'광고 영상 만들기'})).toBeVisible();
-  await editor.getByRole('button',{name:'16:9',exact:true}).click();
-  await expect(editor.getByRole('button',{name:'영상 만들기',exact:true})).toBeDisabled();
-  await expect(editor.getByRole('button',{name:/내 광고/})).toHaveCount(0);
-  const firstFile=page.waitForEvent('filechooser');
-  await editor.getByRole('button',{name:/참조 이미지·영상 넣기/}).click();
-  await (await firstFile).setFiles('src/assets/premium-beauty-generated.png');
+  await editor.getByLabel('사진·영상 파일').setInputFiles('src/assets/premium-beauty-generated.png');
   await editor.getByRole('button',{name:'영상 구성안 만들기'}).click();
-  await editor.getByLabel('첫 장면 자막',{exact:true}).fill('오늘 만나는 신상품');
-  await editor.getByText('음악·목소리',{exact:true}).click();
-  const builtIn=editor.getByRole('button',{name:'기본 음악',exact:true});
-  await builtIn.click();
-  await expect(builtIn).toHaveAttribute('aria-pressed','true');
-  await expect(editor.locator('.vd-checkout')).toContainText('소리 켜짐');
-  await editor.getByText('음악·목소리',{exact:true}).click();
-  const create=editor.getByRole('button',{name:'영상 만들기',exact:true});
-  await create.click();
-  const confirm=page.getByRole('dialog',{name:'제작 전 확인'});
-  await expect(confirm).toContainText('16:9 · 10초');
-  await expect(confirm).toContainText('0크레딧');
-  await confirm.getByRole('button',{name:'취소',exact:true}).click();
-  await expect(confirm).toHaveCount(0);
-  await create.click();
-  await confirm.getByRole('button',{name:'제작 시작'}).click();
-  await editor.getByRole('button',{name:'제작 취소'}).click();
-  await expect(create).toBeEnabled();
-  await create.click();
-  await confirm.getByRole('button',{name:'제작 시작'}).click();
+  await expect(editor.getByLabel('첫 장면 연출',{exact:true})).toBeEditable();
+  await expect(editor.getByText(/구성안까지 작성할 수 있어요/)).toBeVisible();
+  const ai=editor.getByRole('button',{name:'AI 영상 생성',exact:true});
+  await expect(ai).toBeDisabled();
+  await editor.getByRole('radio',{name:'내 프롬프트 사용'}).check();
+  await editor.getByRole('textbox',{name:'내 프롬프트',exact:true}).fill('카메라가 상품에 다가간다.');
+  await expect(ai).toBeDisabled();
+  await expect(editor.getByText(/기기 편집|AI 영상 제작으로 돌아가기|0크레딧/)).toHaveCount(0);
+  await expect(editor.getByRole('button',{name:'영상 만들기',exact:true})).toHaveCount(0);
+  expect(posts).toEqual([]);
+});
+
+test('a reference clip stays in AI creation and a captioned provider result can be saved',async({page})=>{
+  await protectedScreen(page,mockSession('clip-reference','admin'));
+  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
+  await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,assistant:{available:true},generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}}));
+  await page.route('**/api/assistant',r=>{
+    const body=r.request().postDataJSON();
+    expect(body.references).toHaveLength(1);
+    expect(body.references[0]).toMatch(/^data:image\/jpeg;base64,/);
+    return r.fulfill({json:{requestId:body.requestId,shots:['전체 구도','소재 클로즈업','정면 구도']}});
+  });
+  let submissions=0;
+  await page.route('**/api/videos',r=>{
+    const body=r.request().postDataJSON();submissions++;
+    expect(body.promptMode).toBe('auto');
+    expect(body.references[0]).toMatch(/^data:image\/jpeg;base64,/);
+    return r.fulfill({json:{id:body.requestId}});
+  });
+  await page.route('**/api/videos/*',r=>r.fulfill({json:{state:'ready'}}));
+  await page.route('**/api/videos/*/file',r=>r.fulfill({path:'tests/fixtures/ad-reference-clip.mp4',contentType:'video/mp4'}));
+  await page.goto('/#video');
+  const editor=page.getByRole('region',{name:'광고 영상 편집'});
+  await editor.getByLabel('사진·영상 파일').setInputFiles('tests/fixtures/ad-reference-clip.mp4');
+  await expect(editor.getByText(/첫 장면을 AI 참조 이미지/)).toBeVisible();
+  await editor.getByRole('button',{name:'10초',exact:true}).click();
+  await editor.getByRole('button',{name:'영상 구성안 만들기'}).click();
+  await editor.getByLabel('첫 장면 자막',{exact:true}).fill('제품 상세');
+  const ai=editor.getByRole('button',{name:'AI 영상 생성',exact:true});
+  await ai.click();
+  expect(submissions).toBe(0);
+  await page.getByRole('dialog').getByRole('button',{name:'제작 시작'}).click();
   const save=editor.getByRole('button',{name:'영상 저장',exact:true});
-  await expect(save).toBeVisible({timeout:18000});
-  await page.locator('.mobile-app-nav a[href="#home"]').click();
-  await page.locator('.creation-choices a[href="#video"]').click();
-  await expect(save).toBeEnabled();
-  await expect.poll(()=>editor.locator('.vd-stage video').evaluate((v:HTMLVideoElement)=>[v.videoWidth,v.videoHeight])).toEqual([1280,720]);
-  const downloadEvent=page.waitForEvent('download');await save.click();const download=await downloadEvent;
-  expect(download.suggestedFilename()).toMatch(/\.(mp4|webm)$/);
-  await download.saveAs(testInfo.outputPath(download.suggestedFilename()));
-  await editor.getByRole('button',{name:'1:1',exact:true}).click();
-  await expect(create).toBeDisabled();
-  await expect(editor.getByRole('button',{name:'변경된 정보로 구성안 다시 만들기'})).toBeEnabled();
-  await expect(save).toHaveCount(0);
-  expect(await editor.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
-  expect(writes).toEqual([]);
+  await expect(save).toBeEnabled({timeout:20000});
+  const downloaded=page.waitForEvent('download');await save.click();
+  expect((await downloaded).suggestedFilename()).toMatch(/\.(mp4|webm)$/);
+  expect(submissions).toBe(1);
 });
 
 test('service brief, grey reference upload and exact caption settings feed AI generation',async({page})=>{
@@ -189,6 +194,7 @@ test('service brief, grey reference upload and exact caption settings feed AI ge
 
 test('unboxing uses two photos and shows the selected story and total before creation',async({page})=>{
   await protectedScreen(page,mockSession('unboxing-ad','admin'));
+  await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,videoProvider:'topview',generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}}));
   await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
   await page.goto('/#video');
   const editor=page.getByRole('region',{name:'광고 영상 편집'});
@@ -196,18 +202,19 @@ test('unboxing uses two photos and shows the selected story and total before cre
   const file=editor.getByLabel('사진·영상 파일');
   await file.setInputFiles('src/assets/premium-beauty-generated.png');
   await expect(editor.getByRole('status')).toContainText('열린 박스 사진');
-  const create=editor.getByRole('button',{name:'영상 만들기',exact:true});
+  const create=editor.getByRole('button',{name:'AI 영상 생성',exact:true});
   await expect(create).toBeDisabled();
   await file.setInputFiles('src/assets/premium-beauty-generated.png');
   await editor.getByRole('button',{name:'10초',exact:true}).click();
   await editor.getByRole('button',{name:'영상 구성안 만들기'}).click();
   const reveal=editor.locator('.vd-review-scene').nth(1);
   await expect(reveal).toContainText('3–7초');
-  await expect(reveal).toContainText('개봉 장면');
+  await expect(editor.getByLabel('중간 장면 연출')).toHaveValue(/개봉 후/);
   expect(await editor.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
   await create.click();
   const dialog=page.getByRole('dialog',{name:'제작 전 확인'});
   await expect(dialog).toContainText('언박싱');
+  await expect(dialog).toContainText('TOPVIEW · T1');
   await expect(dialog).toContainText('9:16 · 10초');
   await expect(dialog).toContainText('0크레딧');
   await page.keyboard.press('Escape');
@@ -215,7 +222,7 @@ test('unboxing uses two photos and shows the selected story and total before cre
   await editor.getByRole('button',{name:'UGC',exact:true}).click();
   await expect(create).toBeDisabled();
   await editor.getByRole('button',{name:'변경된 정보로 구성안 다시 만들기'}).click();
-  await expect(reveal).toContainText('상품 소개');
+  await expect(editor.getByLabel('첫 장면 연출')).toHaveValue(/눈높이/);
   await create.click();
   await expect(dialog).toContainText('UGC');
 });
@@ -312,7 +319,8 @@ test('manual prompts retain pasted directions, skip the drafting call, and submi
  await editor.getByLabel('사진·영상 파일').setInputFiles({name:'example.mp4',mimeType:'video/mp4',buffer:original});
  await expect(manual).toBeChecked();
  await expect(field).toHaveValue(text);
- await expect(editor.getByText(/첨부 영상을 빼고/)).toBeVisible();
+ await expect(editor.getByRole('alert')).toContainText('열 수 없는 소재');
+ await expect(ai).toBeDisabled();
  await expect(editor.getByRole('button',{name:'영상 구성안 만들기'})).toHaveCount(0);
  await editor.getByRole('button',{name:'example.mp4 삭제'}).click();
  await auto.click();

@@ -270,6 +270,12 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 }
                 return;
             }
+            if (req.method === 'GET' && url.pathname === '/api/videos/summary') {
+                if (user.role !== 'admin')
+                    throw new ApiFailure('VIDEO_TRIAL_UNAVAILABLE', 403);
+                send(res, 200, await (await service(user)).videoAdminSummary(), cors);
+                return;
+            }
             if (req.method === 'POST' && url.pathname === '/api/videos') {
                 if (user.role !== 'admin')
                     throw new ApiFailure('VIDEO_TRIAL_UNAVAILABLE', 403);

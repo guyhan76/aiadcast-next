@@ -15,13 +15,30 @@ async function requestId(input:string,prefix?:string){
   const id=crypto.randomUUID();sessionStorage.setItem(key,hash+':'+id);return id;
 }
 
-export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,signal:AbortSignal,onState:(s:'queue'|'download')=>void){
+function referenceJpeg(visual:LoadedVideoScene['visual'],maxEdge:number){
+  const video=visual instanceof HTMLVideoElement;
+  const width=video?visual.videoWidth:visual.naturalWidth, height=video?visual.videoHeight:visual.naturalHeight;
+  if(!width||!height)throw Error('VIDEO_REFERENCE_FORMAT');
+  const scale=Math.min(1,maxEdge/Math.max(width,height));
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.max(1,Math.round(width*scale));canvas.height=Math.max(1,Math.round(height*scale));
+  const ctx=canvas.getContext('2d');
+  if(!ctx)throw Error('VIDEO_REFERENCE_FORMAT');
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(visual,0,0,canvas.width,canvas.height);
+  return canvas.toDataURL('image/jpeg',.82);
+}
+
+export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,signal:AbortSignal,onState:(s:'queue'|'download')=>void,scenes:LoadedVideoScene[]){
   const session=betaSession();
   const references:string[]=[];let bytes=0;
-  for(const source of draft.sources){
-    if(source.kind!=='image')throw Error('VIDEO_STILLS_ONLY');
+  for(const [index,source] of draft.sources.entries()){
     let media:Blob;
-    if(typeof source.media==='string'){
+    if(source.kind==='video'){
+      const visual=scenes[index]?.visual;
+      if(!(visual instanceof HTMLVideoElement))throw Error('VIDEO_REFERENCE_FORMAT');
+      media=await (await fetch(referenceJpeg(visual,1536),{signal})).blob();
+    }else if(typeof source.media==='string'){
       if(!/^data:image\//.test(source.media))throw Error('VIDEO_REFERENCE_FORMAT');
       media=await (await fetch(source.media,{signal})).blob();
     }else media=source.media;
@@ -38,7 +55,7 @@ export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,sign
     if(!validManualPrompt(draft.manualPrompt))throw Error('VIDEO_PROMPT_REQUIRED');
     directions={manualPrompt:draft.manualPrompt};
   }else{
-    if(promptMode!=='auto'||!draft.review||draft.review.device||!validVideoShots(draft.review?.shots))throw Error('VIDEO_PROMPT_REQUIRED');
+    if(promptMode!=='auto'||!draft.review||!validVideoShots(draft.review?.shots))throw Error('VIDEO_PROMPT_REQUIRED');
     directions={shots:draft.review.shots};
   }
   const review=draft.review;
@@ -79,17 +96,7 @@ export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,sign
 
 export async function requestVideoPrompt(brief:PromptBrief,scenes:LoadedVideoScene[],language:'ko'|'en',signal:AbortSignal):Promise<VideoPlanIdea>{
   const session=betaSession();
-  const references=scenes.map(({visual})=>{
-    if(!(visual instanceof HTMLImageElement))throw Error('VIDEO_STILLS_ONLY');
-    const scale=Math.min(1,512/Math.max(visual.naturalWidth,visual.naturalHeight));
-    const canvas=document.createElement('canvas');
-    canvas.width=Math.max(1,Math.round(visual.naturalWidth*scale));canvas.height=Math.max(1,Math.round(visual.naturalHeight*scale));
-    const ctx=canvas.getContext('2d');
-    if(!ctx)throw Error('VIDEO_REFERENCE_FORMAT');
-    ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
-    ctx.drawImage(visual,0,0,canvas.width,canvas.height);
-    return canvas.toDataURL('image/jpeg',.82);
-  });
+  const references=scenes.map(({visual})=>referenceJpeg(visual,512));
   const input={kind:'video-prompt',planVersion:1,targetLocale:language,brief,references};
   const id=await requestId(JSON.stringify(input),'aiadcast.video-prompt.');
   signal.throwIfAborted();

@@ -67,12 +67,13 @@ export function Withdrawal({onCancel}:{onCancel:()=>void}){
   finally{setBusy(false);}
  }
  return <section className="membership-withdraw" aria-labelledby="workspace-menu-title">
-  <p className="withdrawal-warning">{t('서버의 프로젝트와 첨부 원본, 생성한 광고가 영구 삭제됩니다.','Your server projects, uploads and generated ads will be permanently deleted.')}</p>
+  <p className="withdrawal-warning">{t('aiadcast 서버의 프로젝트, 첨부 원본, 이미지·영상 작업 정보가 삭제됩니다.','Your projects, uploads and image and video job data will be deleted from aiadcast servers.')}</p>
   <p>{t('남은 이용권은 재가입해도 이전되지 않습니다.','Unused credits will not transfer if you sign up again.')}</p>
   <label className="withdrawal-refund"><input type="checkbox" disabled={busy} checked={requestRefund} onChange={e=>setRequestRefund(e.target.checked)}/>{t('미사용 유료 이용권 환불 검토 요청','Request a refund review for unused paid credits')}</label>
   <details><summary>{t('탈퇴 전 확인사항','Before you leave')}</summary>
    <p>{t('필요한 파일과 결제 내역, 접수번호를 먼저 저장하세요. 기기에 저장하거나 공유한 파일은 유지됩니다.','Save any files, payment records and receipt numbers you need. Downloaded and shared copies remain available.')}</p>
    <p>{t('단순 변심 환불은 신청 기한 내 구매만 검토합니다. 결제 오류·생성 실패·법정 해지는 탈퇴 전 내 이용권에서 문의해 주세요.','Change-of-mind refunds are reviewed for purchases within the request period. For payment errors, failed generations or statutory cancellations, contact support in My Credits before leaving.')} <a href="#credits">{t('내 이용권','My Credits')}</a></p>
+   <p>{t('TOPVIEW에 전송된 참조 이미지와 생성 영상의 보관 및 삭제 문의는 아래 안내에서 확인하세요.','See the details below for retention and deletion requests covering TOPVIEW references and videos.')}</p>
    <a href="/account-deletion.html" target="_blank" rel="noreferrer">{t('삭제 범위와 보관 기간','Deletion and retention details')}</a>
   </details>
   {error&&<p role="alert">{error}</p>}

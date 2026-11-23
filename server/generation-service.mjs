@@ -1,4 +1,5 @@
-import {activeVideoProvider,higgsfieldModel,higgsfieldKey,higgsfieldInput,uploadHiggsfieldImages,estimateHiggsfield,submitHiggsfield,pollHiggsfield} from './higgsfield-video.mjs';
+import {activeVideoProvider} from './higgsfield-video.mjs';
+import {quotedVideoProvider} from './quoted-video.mjs';
 import {seedanceConfig,seedancePayload,seedanceTask,seedanceMovie} from './seedance-video.mjs';
 import {videoDurationPrices} from './video-duration-prices.mjs';
 import {planAdBatch} from './automatic-image-skills.mjs';
@@ -209,12 +210,24 @@ export class GenerationService {
     const unit=this.adminTestUnlimited||wallet.available>0?'legacy-ticket':'credit-v2';
     return {unit,amount:this.adminTestUnlimited?0:unit==='legacy-ticket'?1:10,policy:unit==='legacy-ticket'?'legacy-accept-v1':'delivered-2026-10-18'};
   }
+  videoAdminSummary(){
+    if(!this.adminTestUnlimited)fail('VIDEO_TRIAL_UNAVAILABLE',403);
+    const provider=activeVideoProvider();
+    const totals=this.db.prepare(`SELECT COUNT(*) AS jobs,
+      COALESCE(SUM(CASE WHEN a.status='completed' THEN a.actual_micros ELSE 0 END),0) AS spent,
+      COALESCE(SUM(CASE WHEN a.actual_micros IS NULL AND a.status<>'failed' THEN a.maximum_micros ELSE 0 END),0) AS held
+      FROM jobs j JOIN attempts a ON a.job_id=j.id WHERE j.kind='video'`).get();
+    return {provider,configured:provider==='byteplus'?!!seedanceConfig():!!quotedVideoProvider(provider)?.key(),
+      jobs:Number(totals.jobs),spentMicros:Number(totals.spent),heldMicros:Number(totals.held)};
+  }
   async startVideo(body){
     if(!this.adminTestUnlimited)fail('VIDEO_TRIAL_UNAVAILABLE',403);
     if(!identifier(body?.requestId))fail('INVALID_VIDEO');
-    const saved=this.db.prepare('SELECT * FROM higgsfield_video_jobs WHERE id=?').get(body.requestId);
+    // Existing quoted jobs keep their original model across provider changes.
+    const saved=this.db.prepare('SELECT v.*,j.model_revision FROM higgsfield_video_jobs v JOIN jobs j ON v.id=j.id WHERE v.id=?').get(body.requestId);
     const legacy=this.db.prepare('SELECT j.model_revision FROM video_trials v JOIN jobs j ON j.id=v.id WHERE v.id=?').get(body.requestId);
-    if(saved||(!legacy&&activeVideoProvider()==='higgsfield'))return this.startHiggsfieldVideo(body,saved);
+    const provider=quotedVideoProvider(saved?saved.model_revision.split('/')[0]:activeVideoProvider());
+    if(!legacy&&provider)return this.startQuotedVideo(body,saved,provider);
     const config=seedanceConfig();
     if(!config||(!legacy&&activeVideoProvider()!=='byteplus'))fail('VIDEO_TRIAL_UNAVAILABLE',403);
     let payload;
@@ -240,11 +253,11 @@ export class GenerationService {
     }
     return {id};
   }
-  async startHiggsfieldVideo(body,saved){
-    const key=higgsfieldKey();
+  async startQuotedVideo(body,saved,provider){
+    const key=provider.key();
     if(!key)fail('VIDEO_TRIAL_UNAVAILABLE',403);
     let plan;
-    try{plan=seedancePayload(body,higgsfieldModel);}catch{fail('INVALID_VIDEO');}
+    try{plan=seedancePayload(body,provider.model);}catch{fail('INVALID_VIDEO');}
     const id=body.requestId;
     const fingerprint=hashBytes(Buffer.from(JSON.stringify(plan)));
     if(!saved){
@@ -252,18 +265,19 @@ export class GenerationService {
       if(!limit)fail('BUDGET_UNAVAILABLE',409);
       let images,quote;
       try{
-        images=await uploadHiggsfieldImages(key,plan.content);
-        quote=await estimateHiggsfield(key,higgsfieldInput(plan,images));
+        images=await provider.upload(key,plan.content);
+        quote=await provider.estimate(key,provider.input(plan,images));
       }catch(error){
         if(error.providerStatus===401)fail('VIDEO_PROVIDER_AUTH',503);
-        if(error.providerStatus===403)fail('VIDEO_PROVIDER_BALANCE',503);
+        if(error.providerStatus===403&&provider.revision.startsWith('topview/'))fail('VIDEO_PROVIDER_PERMISSION',503);
+        if([402,403].includes(error.providerStatus))fail('VIDEO_PROVIDER_BALANCE',503);
         fail('VIDEO_QUOTE_UNAVAILABLE',503);
       }
       saved=this.ledger.transaction(()=>{
         const existing=this.db.prepare('SELECT * FROM higgsfield_video_jobs WHERE id=?').get(id);
         if(existing)return existing;
         this.ledger.reserve({jobId:id,userId:LOCAL_USER,kind:'video',requestHash:fingerprint,
-          credits:1,creditExempt:true,modelRevision:'higgsfield/'+higgsfieldModel,expiresAt:this.now()+86400000});
+          credits:1,creditExempt:true,modelRevision:provider.revision,expiresAt:this.now()+86400000});
         this.ledger.beginAttempt({jobId:id,attemptId:id,period,maximumMicros:quote,limitMicros:limit,periodScoped:Boolean(this.budgetForPeriod)});
         this.db.prepare('INSERT INTO higgsfield_video_jobs(id,fingerprint,replay_key,images_json,quoted_micros) VALUES(?,?,?,?,?)')
           .run(id,fingerprint,randomUUID(),JSON.stringify(images),quote);
@@ -281,9 +295,9 @@ export class GenerationService {
     // Keep the original image URLs and key across timeouts, server restarts and concurrent clients.
     let providerId;
     try{
-      providerId=await submitHiggsfield(key,higgsfieldInput(plan,JSON.parse(saved.images_json)),saved.replay_key);
+      providerId=await provider.submit(key,provider.input(plan,JSON.parse(saved.images_json)),saved.replay_key);
     }catch(error){
-      if(claim.submissions===1&&[400,401,403,404,422,423,429].includes(error.providerStatus)){
+      if(claim.submissions===1&&[400,401,402,403,404,422,423,429].includes(error.providerStatus)){
         this.ledger.transaction(()=>{
           this.ledger.settleAttempt(id,0,'failed');
           this.ledger.release(id,LOCAL_USER,'system_error');
@@ -300,18 +314,20 @@ export class GenerationService {
     this.db.prepare('UPDATE higgsfield_video_jobs SET provider_id=?,images_json=NULL WHERE id=?').run(providerId,id);
     return {id};
   }
-  async higgsfieldResult(row,download){
+  async quotedVideoResult(row,download){
     const job=this.ledger.job(row.id);
     if(job.expires_at<=this.now())fail('VIDEO_EXPIRED',410);
     if(job.status==='released')return {state:'failed'};
     if(!row.provider_id)return {state:job.status==='uncertain'||row.lease_until<=this.now()?'uncertain':'running'};
-    const key=higgsfieldKey();
+    const provider=quotedVideoProvider(job.model_revision.split('/')[0]);
+    const key=provider?.key();
     if(!key)fail('VIDEO_TRIAL_UNAVAILABLE',403);
-    const result=await pollHiggsfield(key,row.provider_id);
+    const result=await provider.poll(key,row.provider_id);
+    if(result.state==='payment_required')fail('VIDEO_PROVIDER_BALANCE',503);
     if(result.state==='running')return {state:'running'};
     this.ledger.transaction(()=>{
       if(result.state==='ready'){
-        this.ledger.settleAttempt(row.id,row.quoted_micros,'completed');
+        this.ledger.settleAttempt(row.id,result.actualMicros??row.quoted_micros,'completed');
         this.ledger.markReady(row.id,row.provider_id);
       }else{
         this.ledger.settleAttempt(row.id,0,'failed');
@@ -323,7 +339,7 @@ export class GenerationService {
   async videoResult(id,download=false){
     if(!this.adminTestUnlimited)fail('VIDEO_TRIAL_UNAVAILABLE',403);
     const hf=this.db.prepare('SELECT * FROM higgsfield_video_jobs WHERE id=?').get(id);
-    if(hf)return this.higgsfieldResult(hf,download);
+    if(hf)return this.quotedVideoResult(hf,download);
     const config=seedanceConfig();
     if(!this.adminTestUnlimited||!config)fail('VIDEO_TRIAL_UNAVAILABLE',403);
     const row=this.db.prepare('SELECT * FROM video_trials WHERE id=?').get(id);
@@ -400,7 +416,7 @@ export class GenerationService {
     const wallet=readinessMeasure('wallet',()=>this.wallet());
     const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : !customer && ((cumulative?.limitMicros??limit) < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS) ? 'BUDGET_NOT_AVAILABLE' : !this.adminTestUnlimited && wallet.available < 1 && wallet.credits.available < 10 ? 'NO_TEST_CREDITS' : null;
     const assistantReason = customer || !this.assistantEnabled || (this.ledger.sharedBudget && !this.adminTestUnlimited) ? 'ASSISTANT_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : (cumulative?.availableMicros??(this.budgetMicros-(budget?.spent_micros??0)-(budget?.held_micros??0))) < TEXT_MAX_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : null;
-    return { mode: 'local-development', commercialReady: false, videoTrial:this.adminTestUnlimited&&(activeVideoProvider()==='higgsfield'?!!higgsfieldKey():activeVideoProvider()==='byteplus'&&!!seedanceConfig()), videoProvider:this.adminTestUnlimited?activeVideoProvider():undefined,videoDurationPrices:videoDurationPrices(), generation: { batchVersion:1, selectiveEditProofVersion:1, selectiveEdit: this.selectiveEditingEnabled===true&&this.adapter?.selectiveEditReady===true, creditQuote:this.creditQuote(wallet), enabled: reason === null, exactAdText:false, plannedAdText:false, manualDimensionOverlay:true, aiDimensionDisplay: true, photoPurposes: true, textExamples: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet, budget: customer?{scope:'customer-entitlement',limitMicros:0,spentMicros:0,heldMicros:0}:{ currency: 'USD', period, limitMicros: limit, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false, ...(cumulative?{scope:cumulative.scope,historyMode:cumulative.historyMode,activatedAt:cumulative.activatedAt,limitMicros:cumulative.limitMicros,spentMicros:cumulative.spentMicros,heldMicros:cumulative.heldMicros,availableMicros:cumulative.availableMicros}:{}) }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
+    return { mode: 'local-development', commercialReady: false, videoTrial:this.adminTestUnlimited&&(activeVideoProvider()==='byteplus'?!!seedanceConfig():!!quotedVideoProvider(activeVideoProvider())?.key()), videoProvider:this.adminTestUnlimited?activeVideoProvider():undefined,videoDurationPrices:videoDurationPrices(), generation: { batchVersion:1, selectiveEditProofVersion:1, selectiveEdit: this.selectiveEditingEnabled===true&&this.adapter?.selectiveEditReady===true, creditQuote:this.creditQuote(wallet), enabled: reason === null, exactAdText:false, plannedAdText:false, manualDimensionOverlay:true, aiDimensionDisplay: true, photoPurposes: true, textExamples: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet, budget: customer?{scope:'customer-entitlement',limitMicros:0,spentMicros:0,heldMicros:0}:{ currency: 'USD', period, limitMicros: limit, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false, ...(cumulative?{scope:cumulative.scope,historyMode:cumulative.historyMode,activatedAt:cumulative.activatedAt,limitMicros:cumulative.limitMicros,spentMicros:cumulative.spentMicros,heldMicros:cumulative.heldMicros,availableMicros:cumulative.availableMicros}:{}) }, limitations: ['local-single-user','no-live-payment','no-automatic-quality-approval','no-background-removal','no-region-edit','no-production-auth'] };
   }
   storeAsset(asset) {
     this.db.prepare('INSERT INTO generation_assets VALUES (?,?,?,?,?) ON CONFLICT(hash) DO NOTHING').run(asset.sha256, asset.mime, asset.width, asset.height, asset.bytes);
@@ -783,4 +799,3 @@ export class GenerationService {
   async waitForIdle() { await Promise.all([...this.tasks]); }
   async close() { await this.waitForIdle(); this.ledger.close(); this.unlock(); }
 }
-

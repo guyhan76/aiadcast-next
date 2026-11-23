@@ -7,7 +7,7 @@ export function higgsfieldKey(env = process.env) {
 }
 
 export function activeVideoProvider(env = process.env) {
-  return env.AIADCAST_VIDEO_PROVIDER ?? (env.HF_CREDENTIALS ? 'higgsfield' : 'byteplus');
+  return env.AIADCAST_VIDEO_PROVIDER ?? (env.TOPVIEW_API_PLATFORM_KEY ? 'topview' : env.HF_CREDENTIALS ? 'higgsfield' : 'byteplus');
 }
 
 function mediaUrl(value) {

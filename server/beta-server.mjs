@@ -122,6 +122,10 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
     }finally{activeProductImports.delete(user.id);}
     return;
    }
+   if(req.method==='GET'&&url.pathname==='/api/videos/summary'){
+    if(user.role!=='admin')throw new ApiFailure('VIDEO_TRIAL_UNAVAILABLE',403);
+    send(res,200,await service(user).videoAdminSummary(),cors);return;
+   }
    if(req.method==='POST'&&url.pathname==='/api/videos'){
     if(user.role!=='admin')throw new ApiFailure('VIDEO_TRIAL_UNAVAILABLE',403);
     send(res,202,await service(user).startVideo(await read(req,14_100_000)),cors);return;
@@ -245,8 +249,11 @@ async function main(){
   const {startCloudServer}=await import('./cloud/runtime.mjs');
   const app=await startCloudServer(c);
   console.log('Supabase-backed beta server started; real payments disabled.');
-  const {higgsfieldConnection}=await import('./higgsfield-video.mjs');
-  void higgsfieldConnection().then(result=>console.info('Higgsfield connection:',JSON.stringify(result)));
+  const {activeVideoProvider,higgsfieldConnection}=await import('./higgsfield-video.mjs');
+  if(activeVideoProvider()==='topview'){
+    const {topviewConnection}=await import('./topview-video.mjs');
+    void topviewConnection().then(result=>console.info('Topview connection:',JSON.stringify(result)));
+  }else if(activeVideoProvider()==='higgsfield')void higgsfieldConnection().then(result=>console.info('Higgsfield connection:',JSON.stringify(result)));
   let closing=false;const stop=async()=>{if(closing)return;closing=true;await app.close();};process.once('SIGTERM',()=>void stop());process.once('SIGINT',()=>void stop());return;
  }
  const c=betaConfig(),store=new BetaStore(c.directory,c),gate=providerGate(2);
@@ -273,5 +280,3 @@ export function betaStartupMessage(error){
  return 'Beta startup failed: '+code+'. '+(details.length?'Check Render Environment: '+details.join(' ')+' Save the values and deploy again.':'Verify private server configuration.');
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(e=>{console.error(betaStartupMessage(e));process.exitCode=1;});
-
-

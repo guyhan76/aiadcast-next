@@ -15,6 +15,19 @@ type Budget={limitMicros:number;spentMicros:number;heldMicros:number};
 type Member={id:string;customerFunded?:boolean;joinedAt?:string|null;label:string;email:string|null;role:'member'|'admin';disabled:boolean;projects:number;wallet:{available:number;reserved:number;unlimited?:boolean;credits?:{available:number;reserved:number}};budget:Budget;supplierBudget?:Budget&{scope:'lifetime';shared?:boolean;availableMicros:number};generation:{enabled:boolean;reason:string|null}};
 type Overview={operatingCosts?:{spentMicros:number;heldMicros:number;previousMicros:number;soldAds:number;attempts:number;duplicateRequests:number;uncertain:number;burstAccounts:number;costSpike:boolean}|null;demoSupportAvailable?:boolean;octoberApproval?:{eligible:boolean;active:boolean;baselineTotalMicros:number};readiness:{emailConfigured:boolean;checkoutConfigured:boolean;imageProviderConfigured:boolean;generationSwitch:boolean};budget:Budget&{allocatedMicros:number;shared?:boolean;availableMicros?:number};users:Member[];jobs:{id:string;userLabel:string;state:string;createdAt:string;model:string;outputFormat:string;errorCode:string|null;costMicros:number|null}[];orders:{id:string;userId:string;credits:number;amount:number;state:string;created:number;test:true}[];audit:{id:string;action:string;targetId:string;created:number}[]};
 const usd=(n:number)=>'$'+(n/1e6).toFixed(4);
+type VideoSummary={provider:string;configured:boolean;jobs:number;spentMicros:number;heldMicros:number};
+function AdminVideoStatus(){
+ const {t}=useUiLanguage(),[summary,setSummary]=useState<VideoSummary|null>(null);
+ const status=useAdminRead<VideoSummary>(setSummary,v=>Boolean(v)&&typeof v.configured==='boolean'&&[v.jobs,v.spentMicros,v.heldMicros].every(Number.isFinite));
+ useEffect(()=>{void status.read('/api/videos/summary');},[]);
+ const names:Record<string,string>={topview:'TOPVIEW · T1',higgsfield:'Higgsfield',byteplus:'BytePlus'};
+ return <section className="admin-card"><h2>{t('광고 영상 테스트','Ad video testing')}</h2>
+  <p>{t('관리자 전용 · 고객 이용권 차감 없음','Administrators only · No customer credits deducted')}</p>
+  {summary&&<><p>{names[summary.provider]??summary.provider} · {summary.configured?t('서버 키 설정됨','Server key configured'):t('서버 설정 필요','Server setup required')}</p>
+  <p>{t('이 관리자 계정의 영상 요청','Video requests on this admin account')} {summary.jobs} · {t('확정 비용','Settled cost')} {usd(summary.spentMicros)} · {t('보류 금액','On hold')} {usd(summary.heldMicros)}</p></>}
+  {status.error&&<button type="button" onClick={()=>void status.read('/api/videos/summary')}>{t('영상 상태 다시 조회','Retry video status')}</button>}
+  <a href="#video">{t('광고 영상 만들기','Create an ad video')}</a></section>;
+}
 export function AdminPage(){
  const {t,language}=useUiLanguage(),[data,setData]=useState<Overview|null>(null),[mutating,setMutating]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const [selected,setSelected]=useState(''),[credits,setCredits]=useState('1'),[budget,setBudget]=useState(''),[revoke,setRevoke]=useState(false);
@@ -47,6 +60,7 @@ export function AdminPage(){
   {betaSession()?.user.role==='admin'&&<CommerceRecords key={betaSession()?.user.id} admin/>}
   {data&&<>
    <AppVersionInfo/>
+   <AdminVideoStatus/>
    <div className="admin-stats"><article><span>{t('가입 회원','Members')}</span><strong>{data.users.length}</strong><small>{t('중지 계정 포함','Includes suspended accounts')}</small></article><article><span>{data.budget.shared?t('개발·테스트 누적 한도','Lifetime development and test budget'):t('공급사 월예산','Monthly provider budget')}</span><strong>{usd(data.budget.limitMicros)}</strong><small>{data.budget.shared?t('월이 바뀌어도 누적','No monthly reset'):<>{t('배정','Allocated')} {usd(data.budget.allocatedMicros)}</>}</small></article><article><span>{t('테스트 사용 비용','Test usage cost')}</span><strong>{usd(data.budget.spentMicros)}</strong><small>{t('보류','Held')} {usd(data.budget.heldMicros)}</small></article></div>
    {data.operatingCosts&&<section className="admin-card" aria-label={t('고객 광고 운영비','Customer ad costs')}><h2>{t('고객 광고 운영비','Customer ad costs')}</h2>
     <p>{t('최근 24시간 판매','Ads sold in the last 24 hours')} {data.operatingCosts.soldAds} · {t('공급사 호출','Provider calls')} {data.operatingCosts.attempts}</p>

@@ -197,6 +197,9 @@ export class Membership {
     CASE WHEN to_timestamp(g.created_at/1000.0) < ?::timestamptz THEN ?::timestamptz
          ELSE to_timestamp(j.expires_at/1000.0) END<=now()`;
    const args=[deadlines.cutover,deadlines.grace];
+   if(await this.exists(tenant,'higgsfield_video_jobs')){
+    await this.db.prepare('UPDATE '+q+'higgsfield_video_jobs SET images_json=NULL WHERE images_json IS NOT NULL AND id IN (SELECT id FROM '+q+'jobs WHERE expires_at<=extract(epoch FROM now())*1000)').run();
+   }
    if(await this.exists(tenant,'recommendation_jobs')){
     const subset='SELECT id FROM '+q+'recommendation_jobs WHERE generation_id IN ('+expired+')';
     await this.db.prepare('DELETE FROM '+q+'recommendation_requests WHERE job_id IN ('+subset+')').run(...args);

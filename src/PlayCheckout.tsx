@@ -166,9 +166,9 @@ export function PlayCheckoutPage({preserve,returnPage}:{preserve:()=>Promise<voi
     <button className="wallet-button wallet-secondary" onClick={()=>{setStatus(undefined);setPolicyReceipt(undefined);setAgreed(false);}}>{t('다른 이용권 구매','Make another purchase')}</button>
   </section>;
   return <section className="account-page checkout-page"><a className="page-back" href={'#'+returnPage}>{t('돌아가기','Back')}</a><h1>{t('이용권 선택','Choose credits')}</h1>
-    <p className="page-intro">{t('신규 가입 첫 광고 1장 무료 · 계정당 1회','One free ad per newly registered account')}</p>
+    <p className="account-help">{t('광고 영상은 관리자 테스트 중입니다. 일반 회원의 영상 요금은 출시 전에 안내합니다.','Video generation is in admin testing. Member pricing will be announced before launch.')}</p><p className="page-intro">{t('신규 가입 첫 광고 이미지 1장 무료 · 계정당 1회','One free ad per newly registered account')}</p>
     {session&&<>{!account?.enabled && !status && <p>{account?t('Google Play 결제 준비 중입니다.','Google Play billing is not available yet.'):t('결제 연결 확인 중…','Checking billing…')}</p>}
-    {account?.enabled&&<fieldset className="checkout-packs"><legend>{t('광고 이용권','Ad credits')}</legend>
+    {account?.enabled&&<fieldset className="checkout-packs"><legend>{t('광고 이미지 이용권','Ad image credits')}</legend>
       {pricingCatalog.packs.map(pack=>{const item=products?.find(p=>p.id==='credits_'+pack.credits);return item&&<label key={item.id} className={choice===item.id?'selected':''}>
         <input type="radio" name="play-credit-pack" checked={choice===item.id} disabled={busy} onChange={()=>{choose(item.id);setAgreed(false);}}/>
         <span>{pack.credits/pack.creditsPerGeneration}{t('장',' ads')}</span><b>{item.price}</b></label>;})}

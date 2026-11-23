@@ -1,8 +1,7 @@
-import {videoShot,type VideoStyle} from './video-style';
 import {sceneCaptionAt} from './video-brief';
 import type {VideoDuration, VideoSource} from './video-duration';
 
-import {prepareAdSound,usesSound,type VideoSound} from './video-sound';
+import {prepareAdSound} from './video-sound';
 
 type Visual = HTMLImageElement | HTMLVideoElement;
 const fps = 24;
@@ -74,28 +73,29 @@ export function drawAdFrame(ctx: CanvasRenderingContext2D, visual: Visual | unde
   ctx.fillStyle='white';lines.forEach((line,i)=>ctx.fillText(line,width/2,y+14+(i+.5)*spacing));
 }
 
-export async function playAdTimeline(canvas: HTMLCanvasElement, scenes: LoadedVideoScene[], seconds: VideoDuration,
-  captions: readonly string[], sound:VideoSound, signal: AbortSignal, capture: boolean, onProgress: (seconds: number) => void, style:VideoStyle='product'): Promise<File | undefined> {
+export async function captionGeneratedVideo(canvas:HTMLCanvasElement, video:HTMLVideoElement, seconds:VideoDuration,
+  captions:readonly string[], withSound:boolean, signal:AbortSignal):Promise<File> {
   signal.throwIfAborted();
   const ctx=canvas.getContext('2d',{alpha:false});
-  if (!ctx || (!scenes.length&&!captions.some(c=>c.trim()))) throw Error('NO_MEDIA');
-  let visuals=scenes.map(s=>s.visual);
-  const audible=usesSound(sound,visuals.some(el=>el instanceof HTMLVideoElement));
-  const format=capture ? videoFormat(audible) : undefined;
-  if (capture && !format) throw Error('UNSUPPORTED');
-  const stream=capture ? canvas.captureStream(fps) : undefined;
+  if(!ctx)throw Error('NO_CANVAS');
+  const format=videoFormat(withSound);
+  if(!format)throw Error('UNSUPPORTED');
+  const stream=canvas.captureStream(fps);
+  let visual=video;
   let removeListeners:(()=>void)|undefined;
   const chunks:Blob[]=[];
   let mix:Awaited<ReturnType<typeof prepareAdSound>>|undefined;
-  let recorder:MediaRecorder|undefined, frame=0, previous=-1;
+  let recorder:MediaRecorder|undefined, frame=0;
   try {
-    if(audible){
-      mix=await prepareAdSound(sound,visuals,seconds,capture,signal);
-      signal.throwIfAborted();visuals=mix.visuals;
-      if(stream)stream.addTrack(mix.track);
+    if(withSound){
+      mix=await prepareAdSound({music:'off',original:true},[video],seconds,true,signal);
+      signal.throwIfAborted();
+      visual=mix.visuals[0] as HTMLVideoElement;
+      stream.addTrack(mix.track);
     }
-    if(stream && format) recorder=new MediaRecorder(stream,{mimeType:format,videoBitsPerSecond:2500000});
-    const result = await new Promise<File|undefined>((resolve,reject)=>{
+    const recording=new MediaRecorder(stream,{mimeType:format,videoBitsPerSecond:2500000});
+    recorder=recording;
+    const result=await new Promise<File>((resolve,reject)=>{
       let finished=false;
       function fail() {reject(Error('RECORDING_FAILED'));}
       function abort() {reject(new DOMException('Cancelled','AbortError'));}
@@ -105,44 +105,33 @@ export async function playAdTimeline(canvas: HTMLCanvasElement, scenes: LoadedVi
       };
       signal.addEventListener('abort',abort,{once:true}); document.addEventListener('visibilitychange',visibility);
       removeListeners=clean;
-      if (recorder) {
-        const recording=recorder;
-        recording.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
-        recording.onerror=fail;
-        recording.onstop=()=>{
-          if(!finished || !chunks.length){fail();return;}
-          const mp4=recording.mimeType.startsWith('video/mp4');
-          resolve(new File(chunks,'aiadcast-'+crypto.randomUUID().slice(0,8)+'-01.'+(mp4?'mp4':'webm'),{type:mp4?'video/mp4':'video/webm'}));
-        };
-      }
+      recording.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
+      recording.onerror=fail;
+      recording.onstop=()=>{
+        if(!finished||!chunks.length){fail();return;}
+        const mp4=recording.mimeType.startsWith('video/mp4');
+        resolve(new File(chunks,'aiadcast-'+crypto.randomUUID().slice(0,8)+'-01.'+(mp4?'mp4':'webm'),{type:mp4?'video/mp4':'video/webm'}));
+      };
       const start=performance.now();
       function paint(now:number) {
         if(signal.aborted)return;
         try {
           const time=Math.min(seconds,(now-start)/1000);
-          const {source:index,zoom}=videoShot(time,seconds,scenes.length,style);
-          const visual=visuals[index];
-          if(index!==previous) {
-            const last=visuals[previous];
-            if(last instanceof HTMLVideoElement)last.pause();
-            if(visual instanceof HTMLVideoElement){visual.currentTime=0;void visual.play().catch(e=>{if(e.name!=='AbortError')fail();});}
-            previous=index;
-          }
-          drawAdFrame(ctx!,visual,sceneCaptionAt(captions,time,seconds),zoom);
-          onProgress(Math.floor(time*10)/10);
-          if(time>=seconds){finished=true;if(recorder)recorder.stop();else resolve(undefined);}
+          drawAdFrame(ctx!,visual,sceneCaptionAt(captions,time,seconds));
+          if(time>=seconds){finished=true;recording.stop();}
           else frame=requestAnimationFrame(paint);
         } catch {fail();}
       }
-      drawAdFrame(ctx,visuals[0],sceneCaptionAt(captions,0,seconds));
-      recorder?.start(250);mix?.start(fail);paint(start);
+      drawAdFrame(ctx,visual,sceneCaptionAt(captions,0,seconds));
+      recording.start(250);mix?.start(fail);
+      visual.currentTime=0;void visual.play().catch(fail);paint(start);
     });
     return result;
   } finally {
     removeListeners?.();cancelAnimationFrame(frame);
     if(recorder && recorder.state!=='inactive')recorder.stop();
-    stream?.getTracks().forEach(track=>track.stop());
+    stream.getTracks().forEach(track=>track.stop());
     mix?.close();
-    for(const {visual} of scenes)if(visual instanceof HTMLVideoElement)visual.pause();
+    visual.pause();
   }
 }
