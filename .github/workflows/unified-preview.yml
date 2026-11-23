@@ -41,7 +41,6 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm run check:cloud
-          npm run test:domain
           npm run build
           node scripts/check-web-build.mjs --require-commit
           node native/prepare-android.mjs
@@ -51,9 +50,7 @@ jobs:
           export CHROMIUM_PATH="$(command -v google-chrome)"
           export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$CHROMIUM_PATH"
           node native/test-android-bridge.mjs
-          npx playwright test tests/web-payment-continue.spec.ts -g "Preview checkout keeps" --project=mobile
-          npx playwright test tests/kakao-signin.spec.ts tests/membership.spec.ts tests/preview-delivery.spec.ts tests/input-example-guides.spec.ts --project=desktop --project=mobile
-          npx playwright test tests/production-parity.spec.ts --project=desktop
+          npx playwright test tests/account-credits.spec.ts -g "plans screen opens both ad creators" --project=desktop --project=mobile
 
       - name: Verify the Preview signing identity
         env:
@@ -136,9 +133,32 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/preview.p12"
 
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Verify existing browser and domain workflows before publication
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          node native/prepare-android.mjs
+          export CHROMIUM_PATH="$(command -v google-chrome)"
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$CHROMIUM_PATH"
+          npx playwright test tests/web-payment-continue.spec.ts -g "Preview checkout keeps" --project=mobile
+          npx playwright test tests/kakao-signin.spec.ts tests/membership.spec.ts tests/preview-delivery.spec.ts tests/input-example-guides.spec.ts --project=desktop --project=mobile
+          npx playwright test tests/production-parity.spec.ts --project=desktop
+          npm run test:domain
+
   publish:
     if: github.ref_name == 'feat/patent-product-generation-20261011'
-    needs: build
+    needs: [build, regression]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

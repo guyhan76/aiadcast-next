@@ -2,7 +2,7 @@ import {VideoAdPage} from './VideoAdPage';
 import {videoDraft} from './VideoDurationEditor';
 import {OpenVideoDraft} from './VideoDraftAction';
 import './creation-home.css';
-import homeImageCover from './assets/showcase-beauty.webp';
+import homeImageCover from './assets/home-lipstick-palette.jpg';
 import homeVideoCover from './assets/showcase-travel.webp';
 import type {BatchPrice} from './batch-price';
 import {submitAdBatch} from './submit-ad-batch';

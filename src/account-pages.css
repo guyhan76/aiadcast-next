@@ -111,3 +111,11 @@
 .studio-shell .refund-policy-notice p{margin:0;font-size:1rem;line-height:1.6}
 
 .history-account .case-facts {margin:6px 0 8px;font-variant-numeric:tabular-nums}.history-account .wallet-button {min-height:44px}
+
+.checkout-creator-actions {
+ display:grid;
+ grid-template-columns:repeat(auto-fit,minmax(min(100%,8rem),1fr));
+ gap:8px;
+ margin:12px 0 18px;
+}
+.checkout-creator-actions .wallet-button {padding-inline:6px}

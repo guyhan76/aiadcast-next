@@ -55,3 +55,31 @@ test('wallet shows payment outcomes and opens the creator directly with an unfin
  await expect(page.getByRole('textbox',{name:'상품명',exact:true})).toBeVisible();
  expect(orderReads).toEqual([]);expect(writes).toEqual([]);
 });
+
+test('plans screen opens both ad creators and cancels only the scheduled switch',async({page})=>{
+ const writes=await setup(page);
+ const cancellations:unknown[]=[];
+ let selection:object|null={sourceId:'monthly-fixture',effectiveAt:Date.now()+86400000,due:false,pack:'plan-ultra-annual',amount:1402800};
+ await page.route('**/api/checkout/annual-switch',route=>{
+  if(route.request().method()==='POST'){
+   cancellations.push(route.request().postDataJSON());
+   selection=null;
+  }
+  return route.fulfill({json:{selection}});
+ });
+ await page.goto('/#checkout');
+ const form=page.locator('.checkout-page');
+ await expect(form.getByText('구독과 추가 구매 크레딧을 이미지와 영상에 함께 사용하세요.')).toHaveCount(0);
+ const cancel=form.getByRole('button',{name:'전환 예약 취소',exact:true});
+ await expect(cancel).toBeVisible();
+ await expect(cancel).toHaveCSS('border-top-style','solid');
+ await cancel.click();
+ await expect(cancel).toHaveCount(0);
+ expect(cancellations).toEqual([expect.objectContaining({sourceId:'monthly-fixture',pack:null,amount:null})]);
+ await form.getByRole('link',{name:'광고 이미지 만들기',exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'상품명',exact:true})).toBeVisible();
+ await page.goto('/#checkout');
+ await form.getByRole('link',{name:'광고 영상 만들기',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'광고 영상 만들기',exact:true})).toBeVisible();
+ expect(writes).toEqual([]);
+});
