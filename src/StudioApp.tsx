@@ -206,7 +206,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
       <div className="creation-choice-copy">
        <Clapperboard className="creation-choice-icon" size={22} aria-hidden="true"/>
        <strong id="home-video-title">{t('광고 영상 만들기','Create an ad video')}</strong>
-       <span id="home-video-detail">{t('릴스·쇼츠에 맞는 짧은 영상','Short videos for Reels and Shorts')}</span>
+       <span id="home-video-detail">{t('릴스·쇼츠에 맞는 영상','Videos for Reels and Shorts')}</span>
       </div>
       <div className="creation-choice-cover"><img src={homeVideoCover} alt=""/></div>
      </a>

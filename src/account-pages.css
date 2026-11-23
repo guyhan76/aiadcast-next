@@ -119,3 +119,13 @@
  margin:12px 0 18px;
 }
 .checkout-creator-actions .wallet-button {padding-inline:6px}
+
+.studio-shell .wallet-button.annual-switch-cancel {
+ width:100%;
+ margin-top:12px;
+}
+.studio-shell .wallet-button.annual-switch-cancel:not(:disabled) {
+ background:#000;
+ border-color:#000;
+ color:#fff;
+}

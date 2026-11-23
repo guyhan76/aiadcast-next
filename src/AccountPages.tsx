@@ -206,7 +206,7 @@ function WebCheckoutPage({preserve,returnPage,preview}:Omit<Context,'returnPage'
   <p>{t(reservedOffer?.ko??'',reservedOffer?.en??'')} · {formatPrice(switchInfo.amount,'KRW',language)}</p>
   <p>{when} (KST) · {t('월간 이용 종료 후 직접 결제하면 연간 구독이 시작됩니다.','Complete checkout after your monthly term ends to start the annual plan.')}</p>
   {switchInfo.due&&!sameChoice&&<button className="primary-action" onClick={()=>{setSelected(switchInfo.pack!);setAgreed(false);}}>{t('예약한 요금제 선택','Select reserved plan')}</button>}
-  <button type="button" className="wallet-button wallet-secondary" disabled={busy} onClick={()=>void saveSwitch(null)}>{t('전환 예약 취소','Cancel switch')}</button></section>}
+  <button type="button" className="wallet-button wallet-primary annual-switch-cancel" disabled={busy} onClick={()=>void saveSwitch(null)}>{t('전환 예약 취소','Cancel switch')}</button></section>}
  <CreditOffers value={selected} change={id=>{setSelected(id);setAgreed(false);}}/>
  {pack.period!=='topup'&&<p className="account-help">{t('베타 테스트 결제입니다. 기간이 끝나도 카드가 자동 청구되지 않습니다.','Beta test checkout. Your card will not be charged automatically at renewal.')}</p>}
  <p className="account-help">{t('이미지는 1장당 5크레딧, AI 영상은 1초당 2크레딧입니다. 생성 전에 총 차감액을 확인할 수 있습니다.','Images use 5 credits each and AI video uses 2 credits per second. Review the total before creating.')}</p>

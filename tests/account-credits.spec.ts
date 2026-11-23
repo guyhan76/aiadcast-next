@@ -72,7 +72,10 @@ test('plans screen opens both ad creators and cancels only the scheduled switch'
  await expect(form.getByText('구독과 추가 구매 크레딧을 이미지와 영상에 함께 사용하세요.')).toHaveCount(0);
  const cancel=form.getByRole('button',{name:'전환 예약 취소',exact:true});
  await expect(cancel).toBeVisible();
- await expect(cancel).toHaveCSS('border-top-style','solid');
+ await expect(cancel).toHaveCSS('background-color','rgb(0, 0, 0)');
+ await expect(cancel).toHaveCSS('color','rgb(255, 255, 255)');
+ await expect(cancel).toHaveCSS('justify-content','center');
+ expect(await cancel.evaluate(button=>Math.abs(button.getBoundingClientRect().width-button.parentElement!.clientWidth))).toBeLessThanOrEqual(1);
  await cancel.click();
  await expect(cancel).toHaveCount(0);
  expect(cancellations).toEqual([expect.objectContaining({sourceId:'monthly-fixture',pack:null,amount:null})]);
