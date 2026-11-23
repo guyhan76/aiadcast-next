@@ -29,7 +29,20 @@ function referenceJpeg(visual:LoadedVideoScene['visual'],maxEdge:number){
   return canvas.toDataURL('image/jpeg',.82);
 }
 
-export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,signal:AbortSignal,onState:(s:'queue'|'download')=>void,scenes:LoadedVideoScene[],expectedCredits?:number){
+export type VideoRequestStage = 'prepare'|'submit'|'check'|'queue'|'download';
+
+async function timedVideoRequest<T>(signal:AbortSignal,ms:number,work:(requestSignal:AbortSignal)=>Promise<T>):Promise<T>{
+  signal.throwIfAborted();
+  const controller=new AbortController();
+  const abort=()=>controller.abort(signal.reason);
+  signal.addEventListener('abort',abort,{once:true});
+  const timer=setTimeout(()=>controller.abort(new Error('VIDEO_RESPONSE_TIMEOUT')),ms);
+  try{return await work(controller.signal);}
+  catch(error){if(controller.signal.aborted)throw controller.signal.reason;throw error;}
+  finally{clearTimeout(timer);signal.removeEventListener('abort',abort);}
+}
+
+export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,signal:AbortSignal,onState:(s:VideoRequestStage)=>void,scenes:LoadedVideoScene[],expectedCredits?:number){
   const session=betaSession();
   const references:string[]=[];let bytes=0;
   for(const [index,source] of draft.sources.entries()){
@@ -70,13 +83,30 @@ export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,sign
   // Preserve the request key for vertical jobs already submitted by older clients.
   const id=await requestId(JSON.stringify(ratio===defaultVideoRatio?payload:{...payload,ratio}));
   signal.throwIfAborted();
-  const submitted=await apiRequest<{id:string}>('/api/videos',{...payload,ratio,promptMode,requestId:id,expectedCredits},signal);
-  if(submitted.id!==id)throw Error('VIDEO_TASK_MISMATCH');
   const path='/api/videos/'+encodeURIComponent(id);
-  onState('queue');
+  onState('submit');
+  let acknowledged=false;
+  try{
+    const submitted=await timedVideoRequest(signal,120_000,s=>apiRequest<{id:string}>('/api/videos',{...payload,ratio,promptMode,requestId:id,expectedCredits},s));
+    if(submitted.id!==id)throw Error('VIDEO_TASK_MISMATCH');
+    acknowledged=true;
+  }catch(error){
+    signal.throwIfAborted();
+    if(!(error instanceof TypeError)&&!(error instanceof Error&&['VIDEO_RESPONSE_TIMEOUT','API_UNAVAILABLE'].includes(error.message)))throw error;
+  }
+  onState(acknowledged?'queue':'check');
   const deadline=Date.now()+10*60_000;
   for(;;){
-    const status=await apiRequest<{state:string;code?:string}>(path,undefined,signal);
+    let status:{state:string;code?:string};
+    try{
+      status=await timedVideoRequest(signal,30_000,s=>apiRequest<{state:string;code?:string}>(path,undefined,s));
+    }catch(error){
+      signal.throwIfAborted();
+      if(!acknowledged)throw Error('VIDEO_SUBMISSION_UNCERTAIN');
+      if(error instanceof TypeError||(error instanceof Error&&['VIDEO_RESPONSE_TIMEOUT','API_UNAVAILABLE'].includes(error.message)))throw Error('VIDEO_WAIT');
+      throw error;
+    }
+    if(!acknowledged){acknowledged=true;onState('queue');}
     if(status.state==='ready')break;
     if(status.state==='failed'){sessionStorage.removeItem(storageKey());throw Error(status.code??'VIDEO_FAILED');}
     if(status.state==='uncertain')throw Error('VIDEO_SUBMISSION_UNCERTAIN');
@@ -88,9 +118,12 @@ export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,sign
     });
   }
   onState('download');
-  const response=await fetch(apiUrl(path+'/file'),{headers:session?{Authorization:'Bearer '+session.token}:{},redirect:'error',signal});
-  if(!response.ok||response.headers.get('content-type')!=='video/mp4')throw Error('VIDEO_DOWNLOAD_FAILED');
-  const media=await response.blob();if(betaSession()?.token!==session?.token)throw Error('SESSION_CHANGED');
+  const media=await timedVideoRequest(signal,120_000,async requestSignal=>{
+    const response=await fetch(apiUrl(path+'/file'),{headers:session?{Authorization:'Bearer '+session.token}:{},redirect:'error',signal:requestSignal});
+    if(!response.ok||response.headers.get('content-type')!=='video/mp4')throw Error('VIDEO_DOWNLOAD_FAILED');
+    return response.blob();
+  });
+  if(betaSession()?.token!==session?.token)throw Error('SESSION_CHANGED');
   return media;
 }
 

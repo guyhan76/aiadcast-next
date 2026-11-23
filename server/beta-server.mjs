@@ -127,7 +127,12 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
     send(res,200,await service(user).videoAdminSummary(),cors);return;
    }
    if(req.method==='POST'&&url.pathname==='/api/videos'){
-    send(res,202,await service(user).startVideo(await read(req,14_100_000)),cors);return;
+    submissionStage('body_read');
+    const body=await read(req,14_100_000);
+    submissionStage('service_initialization');
+    const instance=service(user);
+    submissionStage('generation_admission');
+    send(res,202,await instance.startVideo(body),cors);return;
    }
    const videoPath=/^\/api\/videos\/([a-zA-Z0-9_-]{8,100})(\/file)?$/.exec(url.pathname);
    if(req.method==='GET'&&videoPath){

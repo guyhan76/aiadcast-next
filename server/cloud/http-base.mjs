@@ -276,7 +276,12 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 return;
             }
             if (req.method === 'POST' && url.pathname === '/api/videos') {
-                send(res, 202, await (await service(user)).startVideo(await read(req, 14100000)), cors);
+                submissionStage('body_read');
+                const body = await read(req, 14100000);
+                submissionStage('service_initialization');
+                const instance = await service(user);
+                submissionStage('generation_admission');
+                send(res, 202, await instance.startVideo(body), cors);
                 return;
             }
             const videoPath = /^\/api\/videos\/([a-zA-Z0-9_-]{8,100})(\/file)?$/.exec(url.pathname);

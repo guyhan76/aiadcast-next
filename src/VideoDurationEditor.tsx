@@ -1,3 +1,4 @@
+import type {VideoRequestStage} from './video-ai-client';
 import {VideoPromptReview,type VideoReview} from './VideoPromptReview';
 import {promptBrief,basicVideoShots,validManualPrompt,validVideoShots,type VideoPromptMode,type VideoPlanIdea,type PromptBrief} from './video-prompt';
 import {AdIndustryFields} from './AdIndustryFields';
@@ -21,7 +22,7 @@ export type VideoDraft = {productUrl?:string; sources:VideoSource[]; ratio:Video
 export function videoDraft(sources:VideoSource[]=[],brief:VideoBrief=emptyVideoBrief):VideoDraft {return {sources,promptMode:'auto',manualPrompt:'',ratio:defaultVideoRatio,manual:null,brief,caption:brief.savedCaption??'',voiceText:'',musicStyle:'',voiceStyle:'',aiMusic:true,aiVoice:true};}
 type Props = {
   draft:VideoDraft; change:(draft:VideoDraft)=>void;
-  generateAi?:(draft:VideoDraft,seconds:VideoDuration,signal:AbortSignal,onState:(s:'queue'|'download')=>void,scenes:LoadedVideoScene[])=>Promise<Blob>;
+  generateAi?:(draft:VideoDraft,seconds:VideoDuration,signal:AbortSignal,onState:(s:VideoRequestStage)=>void,scenes:LoadedVideoScene[])=>Promise<Blob>;
   draftPrompt?:(brief:PromptBrief,scenes:LoadedVideoScene[],language:'ko'|'en',signal:AbortSignal)=>Promise<VideoPlanIdea>;
   admin:boolean; availableCredits:number;
   checkingAccess:boolean;
@@ -56,7 +57,7 @@ export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredit
     return scene?[scene]:[];
   }),[sources,scenes]);
   const [run,setRun]=useState<'save'|'ai'|'prompt'|null>(null);
-  const [aiStage,setAiStage]=useState<'queue'|'download'|'finish'>('queue');
+  const [aiStage,setAiStage]=useState<VideoRequestStage|'finish'>('prepare');
   const [saved,setSaved]=useState(false), [showResult,setShowResult]=useState(!!result);
   const [promptError,setPromptError]=useState('');
   const [message,setMessage]=useState('');
@@ -188,7 +189,7 @@ export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredit
   async function makeAiVideo(){
     if(!generateAi||task.current||!canGenerateAi)return;
     const controller=new AbortController();
-    task.current=controller;setRun('ai');setMessage('');setAiStage('queue');setShowResult(false);
+    task.current=controller;setRun('ai');setMessage('');setAiStage('prepare');setShowResult(false);
     let scene:LoadedVideoScene|undefined;
     try{
       const movie=await generateAi(draft,seconds,controller.signal,setAiStage,loaded);
@@ -211,6 +212,7 @@ export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredit
           code==='VIDEO_PRICE_CHANGED'?t('영상 요금이 변경되었습니다. 화면을 다시 열어 확인해 주세요.','Reopen the video page to review the updated price.'):
           code==='VIDEO_REFERENCE_SIZE'?t('참조 이미지 용량을 합계 10MB 이내로 줄여 주세요.','Keep reference images under 10 MB in total.'):
           code==='VIDEO_REFERENCE_FORMAT'?t('AI 영상에는 JPG, PNG, WebP 사진을 넣어 주세요.','Use JPG, PNG or WebP for AI video.'):
+          code==='VIDEO_WAIT'||code==='VIDEO_RESPONSE_TIMEOUT'?t('영상 상태를 확인하는 데 시간이 걸리고 있어요. 이 화면에서 같은 내용으로 다시 누르면 기존 작업을 확인합니다.','The video is taking longer to respond. Retry here with the same inputs to check the existing job.'):
           code==='VIDEO_SUBMISSION_UNCERTAIN'?t('요청 접수 여부를 확인 중이에요. 같은 내용으로 다시 열면 기존 요청을 확인합니다.','Submission is pending reconciliation. Retry with the same brief to check it.'):
           code==='VIDEO_PROVIDER_INPUT'?t('영상 공급사가 입력을 거절했습니다. 프롬프트와 참조 파일 형식을 확인해 주세요.','The provider rejected the input. Check your prompt and reference files.'):
           code==='VIDEO_PROVIDER_MODEL'?t('영상 모델을 찾을 수 없습니다. 공급사 모델 설정을 확인해 주세요.','The provider could not find this model. Check the model settings.'):
@@ -324,7 +326,7 @@ export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredit
     {generateAi&&currentReview?.showCaptions&&!format&&ready&&<p role="status">{t('파일 제작은 최신 Chrome에서 열어주세요.','Open in a current Chrome browser to export.')}</p>}
     {result?<button type="button" className="vd-primary" disabled={!!run} onClick={()=>void saveVideo()}><Download size={18}/>{t('영상 저장','Save video')}</button>
       :<button type="button" className="vd-primary" disabled={!!run||shortfall||charge===undefined||!canGenerateAi||(captions.some(line=>line.trim())&&!format)} onClick={()=>setConfirm(true)}>
-        <Clapperboard size={18}/>{run==='ai'?(aiStage==='queue'?t('AI 영상 생성 중…','Generating AI video…'):aiStage==='download'?t('영상 받는 중…','Downloading video…'):t('자막 입히는 중…','Adding captions…')):t('AI 영상 생성','Generate AI video')}</button>}
+        <Clapperboard size={18}/>{run==='ai'?(aiStage==='prepare'?t('사진과 프롬프트 준비 중…','Preparing media and prompt…'):aiStage==='submit'?t('제작 요청 보내는 중…','Sending video request…'):aiStage==='check'?t('요청 접수 확인 중…','Checking submission…'):aiStage==='queue'?t('AI 영상 생성 중…','Generating AI video…'):aiStage==='download'?t('영상 받는 중…','Downloading video…'):t('자막 입히는 중…','Adding captions…')):t('AI 영상 생성','Generate AI video')}</button>}
     {run==='ai'&&<button className="vd-cancel" type="button" onClick={()=>task.current?.abort()}>{t('대기 닫기','Stop waiting')}</button>}
     {saved&&<p role="status">{t('저장 요청을 완료했어요.','Video sent to your downloads.')}</p>}
     {confirm&&charge!==undefined&&<VideoCostDialog credits={charge} admin={admin} provider={provider} style={style} promptMode={promptMode} ratio={ratio} seconds={seconds} onCancel={()=>setConfirm(false)} onConfirm={()=>{
