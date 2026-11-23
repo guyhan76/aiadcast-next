@@ -3,7 +3,7 @@ import {restoreDraftProfile} from './product.ts';
 import {industryKindFor, type ProductCategory, type IndustryKind} from './industry.ts';
 import type {Project} from './model.ts';
 
-import type {VideoStyle} from './video-style';
+import {sceneStops,type VideoStyle} from './video-style.ts';
 
 export type VideoBrief = {kind:IndustryKind; style?:VideoStyle; fieldId?:string; category?:ProductCategory; industryDetail?:string; title:string; description:string; emphasis:string; contact:string; savedCaption?:string};
 export const emptyVideoBrief:VideoBrief = {kind:'product',title:'',description:'',emphasis:'',contact:''};
@@ -42,4 +42,19 @@ export function videoPlan(brief:VideoBrief, manualCaption:string, narration:stri
 }
 export function captionAt(captions:readonly string[],fraction:number){
   return captions[Math.min(captions.length-1,Math.max(0,Math.floor(fraction*captions.length)))]??'';
+}
+
+// Keep customer copy and qualifiers together, including approved multiline captions.
+export function sceneCaptions(brief:VideoBrief, approved:string):[string,string,string] {
+  if(approved.trim()){
+    const [opening='',detail='',...closing]=approved.trim().split(/\n+/);
+    return [opening,detail,closing.join('\n')];
+  }
+  const lines=videoPlan({...brief,contact:''},'','').captions;
+  return [brief.title.trim(),lines.find(line=>line!==brief.title.trim()&&line!==brief.emphasis.trim())??'',lines.includes(brief.emphasis.trim())?brief.emphasis.trim():''];
+}
+
+export function sceneCaptionAt(captions:readonly string[], time:number, seconds:number){
+  const [,middle,end]=sceneStops(seconds);
+  return captions[time<middle?0:time<end?1:2]??'';
 }

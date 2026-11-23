@@ -1,4 +1,5 @@
-import {normalizeVideoPromptRequest,videoPromptMessages,videoPromptSchema} from './video-prompt-assistant.mjs';
+import {validVideoAudio} from '../src/video-prompt.ts';
+import {normalizeVideoPromptRequest,videoPromptMessages,videoPromptSchema,videoPlanSchema} from './video-prompt-assistant.mjs';
 import { ProviderFailure } from './openai-image-adapter.mjs';
 
 // Server-owned, pinned configuration; callers cannot choose a model or a price.
@@ -83,7 +84,7 @@ export async function assistCopy({ request: raw, fetchImpl = globalThis.fetch, a
   const payload = {
     model, store: false, n: 1, messages: video?videoPromptMessages(request):[{ role: 'developer', content: instructions }, { role: 'user', content: input }],
     max_completion_tokens: MAX_OUTPUT_TOKENS,
-    response_format: { type: 'json_schema', json_schema: video?videoPromptSchema:{ name: 'advertising_copy', strict: true, schema: { type: 'object', properties: { title: { type: 'string', maxLength: 180 }, description: { type: 'string', maxLength: 240 } }, required: ['title', 'description'], additionalProperties: false } } },
+    response_format: { type: 'json_schema', json_schema: video?(request.planVersion===1?videoPlanSchema:videoPromptSchema):{ name: 'advertising_copy', strict: true, schema: { type: 'object', properties: { title: { type: 'string', maxLength: 180 }, description: { type: 'string', maxLength: 240 } }, required: ['title', 'description'], additionalProperties: false } } },
   };
   let response;
   try {
@@ -106,8 +107,9 @@ export async function assistCopy({ request: raw, fetchImpl = globalThis.fetch, a
   try { proposal = JSON.parse(choice.message.content); } catch { throw new ProviderFailure('PROVIDER_INVALID_RESPONSE'); }
   if(video){
     const shots=['opening','detail','closing'].map(key=>proposal?.[key]);
-    if(!proposal||Object.keys(proposal).length!==3||shots.some(s=>typeof s!=='string'||!s.trim()||s.length>900))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
-    return {requestId:request.requestId,kind:request.kind,targetLocale:request.targetLocale,shots,usage,cost:textUsageCost(usage),model};
+    const full=request.planVersion===1;
+    if(!proposal||Object.keys(proposal).length!==(full?6:3)||(full&&!validVideoAudio(proposal))||shots.some(s=>typeof s!=='string'||!s.trim()||s.length>900))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
+    return {requestId:request.requestId,kind:request.kind,targetLocale:request.targetLocale,shots,...(full?{audio:{musicMood:proposal.musicMood,narration:proposal.narration,recommendVoice:proposal.recommendVoice}}:{}),usage,cost:textUsageCost(usage),model};
   }
   if (!proposal || typeof proposal !== 'object' || Array.isArray(proposal) || Object.keys(proposal).sort().join(',') !== 'description,title' || typeof proposal.title !== 'string' || typeof proposal.description !== 'string' || proposal.title.length > 180 || proposal.description.length > 240 || !proposal.title.trim()) throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
   return { requestId: request.requestId, kind: request.kind, targetLocale: request.targetLocale, proposal, review: { required: true, numericChanges: reviewNumericChanges(request, proposal) }, usage, cost: textUsageCost(usage), model, providerRequestId: response.headers.get('x-request-id')?.slice(0, 200) ?? null };

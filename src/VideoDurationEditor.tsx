@@ -1,13 +1,13 @@
 import {VideoPromptReview,type VideoReview} from './VideoPromptReview';
-import {promptBrief,basicVideoShots,validManualPrompt,validVideoShots,type VideoPromptMode,type VideoShots,type PromptBrief} from './video-prompt';
+import {promptBrief,basicVideoShots,validManualPrompt,validVideoShots,type VideoPromptMode,type VideoPlanIdea,type PromptBrief} from './video-prompt';
 import {AdIndustryFields} from './AdIndustryFields';
 import {findAdField,formatIndustryDetail} from './ad-fields';
 import {industryLabel} from './industry';
 import {VideoCostDialog} from './VideoCostDialog';
-import {videoStyles,styleForBrief,sceneStops,type VideoStyle} from './video-style';
+import {videoStyles,styleForBrief,type VideoStyle} from './video-style';
 import {VideoProductImport,type ProductImport} from './VideoProductImport';
 import {VideoBriefFields} from './VideoBriefFields';
-import {captionAt,emptyVideoBrief,videoPlan,type VideoBrief} from './video-brief';
+import {sceneCaptionAt,sceneCaptions,emptyVideoBrief,videoPlan,type VideoBrief} from './video-brief';
 import {useEffect, useId, useMemo, useRef, useState, type CSSProperties} from 'react';
 import {Box, PackageOpen, UserRound, Store, Check, ChevronLeft, ChevronRight, Clapperboard, Download, ImagePlus, LoaderCircle, Pause, Play, Plus, X} from 'lucide-react';
 import {useUiLanguage} from './ui-language';
@@ -24,7 +24,7 @@ export function videoDraft(sources:VideoSource[]=[],brief:VideoBrief=emptyVideoB
 type Props = {
   draft:VideoDraft; change:(draft:VideoDraft)=>void;
   generateAi?:(draft:VideoDraft,seconds:VideoDuration,signal:AbortSignal,onState:(s:'queue'|'download')=>void)=>Promise<Blob>;
-  draftPrompt?:(brief:PromptBrief,scenes:LoadedVideoScene[],language:'ko'|'en',signal:AbortSignal)=>Promise<VideoShots>;
+  draftPrompt?:(brief:PromptBrief,scenes:LoadedVideoScene[],language:'ko'|'en',signal:AbortSignal)=>Promise<VideoPlanIdea>;
   higgsfield?:boolean;
   aiPrices?:Partial<Record<VideoDuration,number>>;
 };
@@ -51,20 +51,29 @@ export function VideoDurationEditor({draft,change,aiPrices,higgsfield,generateAi
   }:videoStyles[style];
   const styleIcons={product:Box,unboxing:PackageOpen,presenter:UserRound,service:Store};
   const clips=sources.filter(x=>x.kind==='video').length;
-  const plan=useMemo(()=>videoPlan(brief,caption,draft.voiceText),[brief,caption,draft.voiceText]);
+  const [localOnly,setLocalOnly]=useState(false);
+  const device=!!clips||localOnly||!generateAi;
+  const review=draft.review;
+  const fallbackCaptions=useMemo(()=>sceneCaptions(brief,caption),[brief,caption]);
   const textOnly=service && !sources.length && !!brief.title.trim() && !!brief.description.trim();
   const recommended=recommendDuration(sources.length-clips,clips,[style==='unboxing'?'언박싱':'',brief.title,brief.description,brief.emphasis,caption].join(' ')), seconds=manual??recommended;
   const shotBrief=promptBrief(draft,seconds);
   const briefKey=JSON.stringify(shotBrief);
-  const stale=!!draft.review&&(draft.review.briefKey!==briefKey||draft.review.sources!==sources);
+  const stale=!!draft.review&&(draft.review.briefKey!==briefKey||draft.review.sources!==sources||draft.review.device!==device);
   const promptMode=draft.promptMode??'auto';
   const manualPrompt=draft.manualPrompt??'';
   const useManual=promptMode==='manual';
-  const stops=sceneStops(seconds);
-  const needOpenBox=style==='unboxing'&&clips===0&&sources.length<2;
-  const ready=!needOpenBox&&(textOnly || (!!sources.length && loaded.length===sources.length && !bad)), audible=usesSound(sound,clips>0), format=videoFormat(audible);
+  const currentReview=!useManual&&!stale?review:undefined;
+  const captions=useManual||currentReview?.showCaptions===false?[]:[...(currentReview?.captions??fallbackCaptions)];
+  const contact=currentReview?.contact??brief.contact;
+  if(captions.length&&contact)captions[2]=[captions[2],contact].filter(Boolean).join('\n');
+  const needOpenBox=style==='unboxing'&&!useManual&&clips===0&&sources.length<2;
+  const ready=!needOpenBox&&(textOnly || (!!sources.length && loaded.length===sources.length && !bad)), audible=usesSound(sound,clips>0);
+  const format=videoFormat(device?audible:!!currentReview?.music||!!currentReview?.voice);
   const servicePromptOnly=useManual&&service&&!sources.length;
-  const promptReady=useManual?validManualPrompt(manualPrompt):!stale&&validVideoShots(draft.review?.shots);
+  const planReady=!!currentReview&&validVideoShots(currentReview.shots)&&(device||!currentReview.voice||!!currentReview.narration.trim());
+  const promptReady=useManual?validManualPrompt(manualPrompt):planReady;
+  const localReady=ready&&planReady&&(sources.length>0||captions.some(line=>line.trim()));
   const canGenerateAi=!clips&&promptReady&&(ready||servicePromptOnly);
   useEffect(()=>{
     const controller=new AbortController(),resources:LoadedVideoScene[]=[];
@@ -89,10 +98,10 @@ export function VideoDurationEditor({draft,change,aiPrices,higgsfield,generateAi
   useEffect(()=>{
     const ctx=canvas.current?.getContext('2d'), visual=loaded[selected]?.visual;
     if(!ctx||(!visual&&!textOnly)||run==='ai'||run==='encode'||run==='preview')return;
-    const paint=()=>drawAdFrame(ctx,visual,captionAt(plan.captions,selected/Math.max(1,sources.length)));
+    const paint=()=>drawAdFrame(ctx,visual,sceneCaptionAt(captions,selected*seconds/Math.max(1,sources.length),seconds));
     paint();
     if(visual instanceof HTMLVideoElement){visual.addEventListener('seeked',paint);visual.currentTime=0;return()=>visual.removeEventListener('seeked',paint);}
-  },[loaded,selected,plan,textOnly,run,result,showResult,sources.length,ratio]);
+  },[loaded,selected,brief,caption,review,stale,useManual,textOnly,run,result,showResult,sources.length,ratio,seconds]);
   function edit(fields:Partial<VideoDraft>) {
     if(task.current)return;
     if(fields.sources){
@@ -125,13 +134,13 @@ export function VideoDurationEditor({draft,change,aiPrices,higgsfield,generateAi
     if(media.length!==files.length)setMessage(t('사진이나 영상 파일을 선택해 주세요.','Choose a photo or video file.'));
   }
   async function perform(mode:'preview'|'encode'|'save') {
-    if(task.current||(!ready&&!(mode==='save'&&result))||!canvas.current)return;
+    if(task.current||(mode==='save'?!result:!ready||!canvas.current)||(mode==='encode'&&!localReady))return;
     const controller=new AbortController();task.current=controller;setRun(mode);setMessage('');
     try {
       if(mode==='save'&&result){await exportBatch([result],'save',controller.signal);if(!controller.signal.aborted)setSaved(true);}
       else {
         setTime(0);setSelected(0);
-        const file=await playAdTimeline(canvas.current,loaded,seconds,plan.captions,sound,controller.signal,mode==='encode',setTime,style);
+        const file=await playAdTimeline(canvas.current!,loaded,seconds,captions,sound,controller.signal,mode==='encode',setTime,style);
         if(file&&!controller.signal.aborted){change({...draft,file});setShowResult(true);setSaved(false);}
       }
     } catch(e) {
@@ -144,27 +153,42 @@ export function VideoDurationEditor({draft,change,aiPrices,higgsfield,generateAi
     } finally {if(task.current===controller){task.current=null;setRun(null);if(controller.signal.aborted)setTime(0);}}
   }
   async function buildPrompt(){
-    if(useManual||task.current||!ready||clips)return;
+    if(useManual||task.current||!ready)return;
     const controller=new AbortController();
     task.current=controller;setRun('prompt');setPromptError('');
     try{
-      const shots=draftPrompt?await draftPrompt(shotBrief,loaded,language,controller.signal):basicVideoShots(shotBrief,language);
+      const idea:VideoPlanIdea=device
+        ? {shots:[t(layout.scenes[0][0],layout.scenes[0][1]),t(layout.scenes[1][0],layout.scenes[1][1]),t(layout.scenes[2][0],layout.scenes[2][1])]}
+        : draftPrompt?await draftPrompt(shotBrief,loaded,language,controller.signal):{shots:basicVideoShots(shotBrief,language)};
       controller.signal.throwIfAborted();
-      change({...draft,review:{shots,briefKey,sources,fromAi:!!draftPrompt}});
+      const script=draft.voiceText||idea.audio?.narration||videoPlan(brief,caption,'').voice;
+      const recommendVoice=style==='presenter'||(idea.audio?.recommendVoice??service);
+      change({...draft,file:undefined,review:{
+        shots:idea.shots,briefKey,sources,device,
+        captions:fallbackCaptions,showCaptions:true,contact:brief.contact,
+        music:draft.aiMusic,musicMood:draft.musicStyle||idea.audio?.musicMood||(style==='unboxing'?t('경쾌한 리듬','Upbeat rhythm'):t('차분한 연주곡','Soft instrumental')),
+        narration:script.slice(0,600),voice:draft.aiVoice&&!!script&&(recommendVoice||!!draft.voiceText)
+      }});
     }catch{
-      if(!controller.signal.aborted)setPromptError(t('프롬프트를 받지 못했어요. 잠시 후 다시 시도해 주세요.','Could not get the prompt. Please try again.'));
+      if(!controller.signal.aborted)setPromptError(t('구성안을 작성하지 못했어요. 잠시 후 다시 시도해 주세요.','Could not draft the plan. Please try again.'));
     }finally{if(task.current===controller){task.current=null;setRun(null);}}
   }
   async function makeAiVideo(){
-    if(!generateAi||task.current||!canvas.current||!canGenerateAi)return;
+    if(!generateAi||task.current||device||!canGenerateAi)return;
     const controller=new AbortController();
     task.current=controller;setRun('ai');setMessage('');setAiStage('queue');setShowResult(false);
     let scene:LoadedVideoScene|undefined;
     try{
       const movie=await generateAi(draft,seconds,controller.signal,setAiStage);
+      controller.signal.throwIfAborted();
+      if(!captions.some(line=>line.trim())){
+        change({...draft,file:new File([movie],'aiadcast-'+crypto.randomUUID()+'.mp4',{type:'video/mp4'})});
+        setShowResult(true);setSaved(false);return;
+      }
+      if(!canvas.current)throw Error('NO_CANVAS');
       scene=await loadVideoScene({media:movie,name:'AI video',kind:'video'},controller.signal);
       setAiStage('finish');setTime(0);
-      const file=await playAdTimeline(canvas.current,[scene],seconds,plan.captions,{music:'off',original:draft.aiMusic||draft.aiVoice},controller.signal,true,setTime);
+      const file=await playAdTimeline(canvas.current,[scene],seconds,captions,{music:'off',original:!!review?.music||!!review?.voice},controller.signal,true,setTime,style);
       controller.signal.throwIfAborted();
       if(file){change({...draft,file});setShowResult(true);setSaved(false);}
     }catch(e){
@@ -185,9 +209,14 @@ export function VideoDurationEditor({draft,change,aiPrices,higgsfield,generateAi
       if(task.current===controller){task.current=null;setRun(null);}
     }
   }
+  const step=result||run==='ai'||run==='encode'||confirm?3:currentReview||useManual||run==='prompt'?2:1;
   const durationText=seconds+t('초','s');
   return <section className="video-draft" aria-label={t('광고 영상 편집','Video ad editor')}>
     <div className="vd-heading"><h1>{t('광고 영상 만들기','Create an ad video')}</h1></div>
+    <ol className="vd-steps" aria-label={t('영상 제작 단계','Video creation steps')}>
+      {[t('정보 입력','Add details'),t('구성안 확인','Review plan'),t('영상 생성','Create video')].map((label,index)=>
+        <li key={label} aria-current={step===index+1?'step':undefined}>{label}</li>)}
+    </ol>
     <fieldset className="vd-industry" disabled={!!run}><legend>{t('광고할 분야','Your industry')}</legend>
       <AdIndustryFields id={industryId} kind={brief.kind} fieldId={brief.fieldId??''} saved={selectedIndustry}
         legacy={brief.category&&!selectedIndustry?text(industryLabel(brief.category)):undefined}
@@ -222,7 +251,7 @@ export function VideoDurationEditor({draft,change,aiPrices,higgsfield,generateAi
       <div className="vd-stage" hidden={servicePromptOnly&&!textOnly&&!result&&run!=='ai'} style={{'--vd-aspect':width/height} as CSSProperties}>
         <canvas width={width} height={height} ref={canvas} hidden={!!result && showResult} aria-label={t('영상 미리보기','Video preview')}/>
         {result && showResult && finishedUrl && <video key={finishedUrl} src={finishedUrl} controls playsInline aria-label={t('완성한 영상','Finished video')}/>}
-        {(!result || !showResult) && ready && run!=='encode'&&run!=='ai'&&<button type="button" className="vd-play" aria-label={run==='preview'?t('정지','Stop'):t('미리보기','Preview')} onClick={()=>run==='preview'?task.current?.abort():void perform('preview')}>
+        {(!result || !showResult) && ready && !useManual && run!=='encode'&&run!=='ai'&&<button type="button" className="vd-play" aria-label={run==='preview'?t('정지','Stop'):t('미리보기','Preview')} disabled={!!run&&run!=='preview'} onClick={()=>run==='preview'?task.current?.abort():void perform('preview')}>
           {run==='preview'?<Pause size={16}/>:<Play size={16}/>}<span>{Math.floor(time)} / {durationText}</span></button>}
         {sources.length>0&&loaded.length!==sources.length&& !bad&&<small className="vd-stage-note">{t('소재 불러오는 중…','Loading media…')}</small>}
       </div>
@@ -236,46 +265,36 @@ export function VideoDurationEditor({draft,change,aiPrices,higgsfield,generateAi
       </div>}
     </>}
     {needOpenBox&&sources.length===1&&<p role="status">{t('열린 박스 사진을 한 장 더 추가해 주세요.','Add one more photo showing the open box.')}</p>}
-    {style==='presenter'&&<p className="vd-format-note">{t('기기 편집은 올린 사진이나 촬영 영상을 사용해요. 목소리는 녹음 파일로 추가할 수 있어요.','Device editing uses your photos or footage. Add a recording for the voice-over.')}</p>}
+    {device&&style==='presenter'&&<p className="vd-format-note">{t('기기 편집은 올린 사진이나 촬영 영상을 사용해요. 목소리는 녹음 파일로 추가할 수 있어요.','Device editing uses your photos or footage. Add a recording for the voice-over.')}</p>}
     <fieldset className="vd-duration" disabled={!!run}><legend>{t('영상 길이','Video length')}</legend>
       <div>{videoDurations.map(value=><button key={value} type="button" aria-pressed={seconds===value}
         onClick={()=>edit({manual:value})}>{value}{t('초','s')}</button>)}</div>
       <button type="button" className="vd-recommend" aria-pressed={manual===null}
         onClick={()=>edit({manual:null})}>{manual===null&&<Check size={14}/>} {t('자동 추천','Recommended')} · {recommended}{t('초','s')}</button>
     </fieldset>
-    {(!useManual||!!clips)&&<div className="vd-story" aria-label={t('장면 구성','Scene plan')}>{layout.scenes.map((name,i)=><div key={i}><small>{stops[i]}–{stops[i+1]}{t('초','s')}</small><strong>{t(name[0],name[1])}</strong></div>)}</div>}
-    <details className="vd-details"><summary>{t('자막 추가','Add a caption')}{caption&&<Check size={15}/>}</summary>
-      <label>{t('영상에 표시할 문구','On-screen caption')}<textarea rows={2} maxLength={1000} value={caption} disabled={!!run}
-        placeholder={plan.captions[0]||t('비워두면 광고 내용으로 구성해요','Leave blank to use your brief')} onChange={e=>edit({caption:e.target.value})}/></label>
-      <label>{t('마지막 화면 연락처 (선택)','End card contact (optional)')}<textarea rows={2} maxLength={340} value={brief.contact} disabled={!!run} onChange={e=>edit({brief:{...brief,contact:e.target.value}})}/></label></details>
-    {generateAi&&<><details className="vd-details vd-ai-sound"><summary>{t('배경음악','Background music')}<small>{draft.aiMusic?(draft.musicStyle||t('AI 자동','AI auto')):t('없음','Off')}</small></summary>
-      <label><input type="checkbox" checked={draft.aiMusic} disabled={!!run} onChange={e=>edit({aiMusic:e.target.checked,sound:{...sound,music:e.target.checked?(sound.musicFile?'file':'built-in'):'off'}})}/>{t('음악 넣기','Include music')}</label>
-      {draft.aiMusic&&<label>{t('분위기 (선택)','Mood (optional)')}<input value={draft.musicStyle} maxLength={140} disabled={!!run} placeholder={t('예: 밝고 경쾌하게','e.g. Bright and upbeat')} onChange={e=>edit({musicStyle:e.target.value})}/></label>}</details>
-    <details className="vd-details vd-ai-sound"><summary>{t('내레이션','Narration')}<small>{draft.aiVoice?(draft.voiceText?t('직접 입력','Custom script'):t('AI 자동','AI auto')):t('없음','Off')}</small></summary>
-      <label><input type="checkbox" checked={draft.aiVoice} disabled={!!run} onChange={e=>edit({aiVoice:e.target.checked})}/>{t('한국어 내레이션 넣기','Include Korean narration')}</label>
-      {draft.aiVoice&&<><label>{t('읽을 문장','Narration script')}<textarea rows={2} maxLength={600} value={draft.voiceText} placeholder={plan.voice||t('비워두면 광고 내용으로 작성해요','Leave blank for an automatic script')} disabled={!!run} onChange={e=>edit({voiceText:e.target.value})}/></label>
-        <label>{t('목소리 느낌 (선택)','Voice direction (optional)')}<input maxLength={140} disabled={!!run} value={draft.voiceStyle} placeholder={t('예: 차분하고 또렷하게','e.g. Calm and clear')} onChange={e=>edit({voiceStyle:e.target.value})}/></label></>}</details></>}
-    {plan.captions.length>0&&<details className="vd-details"><summary>{t('장면 문구 확인','Review scene copy')}</summary><ol className="vd-plan">{plan.captions.map((line,i)=><li key={i}>{line}</li>)}</ol></details>}
-    {!clips&&<VideoPromptReview mode={promptMode} manualText={manualPrompt}
+    <VideoPromptReview mode={promptMode} manualText={manualPrompt} seconds={seconds} ratio={ratio}
       onMode={promptMode=>edit({promptMode})} onManual={manualPrompt=>edit({manualPrompt})}
-      brief={shotBrief} review={draft.review} ready={ready} busy={!!run} planning={run==='prompt'}
-      stale={stale} online={!!draftPrompt} onBuild={()=>void buildPrompt()} error={promptError}
-      onChange={shots=>{if(draft.review)edit({review:{...draft.review,shots}});}}/>}
-    {useManual&&!generateAi&&!clips&&<small>{t('직접 입력한 연출은 AI 영상 제작이 연결된 환경에서 사용할 수 있어요.','Use your prompt when AI video generation is available.')}</small>}
-    {generateAi&&<><button type="button" className="vd-primary" disabled={!!run||!canGenerateAi||!format} onClick={()=>setConfirm('ai')}>
-      <Clapperboard size={18}/>{run==='ai'?(aiStage==='queue'?t('AI 영상 생성 중…','Generating AI video…'):aiStage==='download'?t('영상 받는 중…','Downloading video…'):t('자막 입히는 중…','Adding captions…')):t('AI 영상 만들기 · 관리자 테스트 0크레딧','Create AI video · Admin test, 0 credits')}</button>
-      {!!clips&&<small>{t('AI 생성은 사진과 설명을 사용해요. 촬영 영상은 기기 편집으로 만들 수 있어요.','AI generation uses images and text. Use device editing for recorded clips.')}</small>}
-      {run==='ai'&&<button className="vd-cancel" type="button" onClick={()=>task.current?.abort()}>{t('대기 닫기','Stop waiting')}</button>}</>}
-    <div className="vd-local-heading"><strong>{t('기기 편집','Device editing')}</strong></div>
-    <VideoSoundControls sound={sound} hasClips={clips>0} disabled={!!run} change={next=>edit({sound:next})}/>
-        <div className="vd-checkout"><span>{ratio} · {audible?t('소리 켜짐','Sound on'):t('무음','Silent')}</span><span>{t('제작 비용','Cost')} <b>{t('0크레딧','0 credits')}</b></span></div>
+      review={review} ready={ready} busy={!!run} planning={run==='prompt'} allowModeChoice={useManual||(!clips&&!localOnly)} device={device}
+      stale={stale} onBuild={()=>void buildPrompt()} error={promptError}
+      onChange={patch=>{if(review)edit({review:{...review,...patch}});}}>
+      {device&&<VideoSoundControls sound={sound} hasClips={clips>0} disabled={!!run} change={next=>edit({sound:next})}/>}
+    </VideoPromptReview>
+    {useManual&&device&&<p>{clips?t('직접 입력한 프롬프트로 제작하려면 첨부 영상을 빼고 사진을 사용해 주세요.','Remove video clips and use photos to generate from your prompt.'):t('이 계정에서는 직접 입력한 프롬프트로 AI 영상을 생성할 수 없어요.','AI video generation from a custom prompt is unavailable for this account.')}</p>}
+    {device&&currentReview&&!sources.length&&!captions.some(line=>line.trim())&&<p role="status">{t('사진 없이 기기에서 편집하려면 장면 자막을 한 줄 이상 넣어 주세요.','Add at least one scene caption to edit on this device without photos.')}</p>}
+    {!useManual&&device&&<div className="vd-checkout"><span>{t('기기 편집','Device editing')} · {audible?t('소리 켜짐','Sound on'):t('무음','Silent')}</span><b>{t('0크레딧','0 credits')}</b></div>}
     {typeof aiPrices?.[seconds]==='number'&&<small className="vd-ai-price">{t('AI 생성 예상','AI generation estimate')} · {durationText} · {aiPrices[seconds]}{t('크레딧',' credits')}</small>}
     {message&&<p role="status">{message}</p>}
-    {!format && ready && <p role="status">{t('이 브라우저에서는 미리보기를 이용할 수 있어요. 파일 제작은 최신 Chrome에서 열어주세요.','Preview is available here. Use a current Chrome browser to create the video file.')}</p>}
-    <button type="button" className="vd-primary" disabled={(!ready&&!result)||!!run||!format} onClick={()=>result?void perform('save'):setConfirm('local')}>
-      {run==='encode'||run==='save'?<LoaderCircle className="vd-spinner" size={18}/>:result?<Download size={18}/>:<Clapperboard size={18}/>}
-      {run==='encode'?t('영상 만드는 중','Creating video')+' · '+Math.floor(time)+' / '+durationText:run==='save'?t('저장 중…','Saving…'):result?t('영상 저장','Save video'):useManual?t('기기 편집으로 만들기','Create with device editing'):t('영상 만들기','Create video')}</button>
+    {(!device&&!useManual&&currentReview?.showCaptions||device)&&!format&&ready&&<p role="status">{t('파일 제작은 최신 Chrome에서 열어주세요.','Open in a current Chrome browser to export.')}</p>}
+    {result?<button type="button" className="vd-primary" disabled={!!run} onClick={()=>void perform('save')}><Download size={18}/>{t('영상 저장','Save video')}</button>
+      :!device?<button type="button" className="vd-primary" disabled={!!run||!canGenerateAi||(captions.some(line=>line.trim())&&!format)} onClick={()=>setConfirm('ai')}>
+        <Clapperboard size={18}/>{run==='ai'?(aiStage==='queue'?t('AI 영상 생성 중…','Generating AI video…'):aiStage==='download'?t('영상 받는 중…','Downloading video…'):t('자막 입히는 중…','Adding captions…')):t('AI 영상 생성','Generate AI video')}</button>
+      :!useManual&&<button type="button" className="vd-primary" disabled={!localReady||!!run||!format} onClick={()=>setConfirm('local')}>
+        {run==='encode'?<LoaderCircle className="vd-spinner" size={18}/>:<Clapperboard size={18}/>}
+        {run==='encode'?t('영상 만드는 중','Creating video')+' · '+Math.floor(time)+' / '+durationText:t('영상 만들기','Create video')}</button>}
+    {run==='ai'&&<button className="vd-cancel" type="button" onClick={()=>task.current?.abort()}>{t('대기 닫기','Stop waiting')}</button>}
     {run==='encode'&&<button type="button" className="vd-cancel" onClick={()=>task.current?.abort()}>{t('제작 취소','Cancel creation')}</button>}
+    {generateAi&&!clips&&!useManual&&<button type="button" className="vd-recommend vd-switch-method" disabled={!!run} onClick={()=>{setLocalOnly(!localOnly);setMessage('');}}>
+      {localOnly?t('AI 영상 제작으로 돌아가기','Return to AI creation'):t('사진으로 기기 편집하기','Edit photos on this device')}</button>}
     {saved&&<p role="status">{t('저장 요청을 완료했어요.','Video sent to your downloads.')}</p>}
     {confirm&&<VideoCostDialog higgsfield={higgsfield} style={style} promptMode={promptMode} ratio={ratio} seconds={seconds} ai={confirm==='ai'} onCancel={()=>setConfirm(null)} onConfirm={()=>{
       setConfirm(null);

@@ -29,7 +29,7 @@ test('an unreadable link can use a screenshot and editable facts before a prompt
   await editor.getByRole('button',{name:'상품 정보 적용'}).click();
   await expect(editor.getByLabel('상품명',{exact:true})).toHaveValue('겨울 코트');
   await expect(editor.getByLabel('강조할 점 (선택)')).toHaveValue('259,000원 · 무료배송');
-  await expect(editor.getByRole('button',{name:'프롬프트 만들기'})).toBeEnabled();
+  await expect(editor.getByRole('button',{name:'영상 구성안 만들기'})).toBeEnabled();
   expect(reads).toBe(2);expect(submissions).toBe(0);
   expect(await editor.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
 });

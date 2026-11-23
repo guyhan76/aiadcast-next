@@ -131,3 +131,17 @@
 .vd-import-actions .vd-library,.vd-import-photo .vd-library {width:auto;margin:0}
 .vd-import-photo img {width:94px;height:104px;object-fit:contain}
 .vd-import-panel p {margin:0}
+
+.vd-review-fields {min-inline-size:0;margin:6px 0 0;padding:0;border:0;display:grid;gap:12px;}
+.vd-review-fields legend {padding:0 0 10px;font-size:15px;font-weight:650;}
+.vd-review-scene {display:grid;gap:8px;padding:14px;border:1px solid #dedfe0;border-radius:12px;}
+.vd-review-scene h3 {display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0;font-size:16px;}
+.vd-review-scene h3 small {font-weight:500;font-variant-numeric:tabular-nums;}
+.vd-review-fields label.vd-plan-toggle {display:flex;align-items:center;gap:8px;min-height:40px;}
+.vd-review-fields .vd-plan-toggle input {width:18px;height:18px;margin:0;}
+.vd-review-fields input:not([type=checkbox]) {width:100%;min-width:0;font:inherit;font-weight:400;padding:8px;border:1px solid #cdd0d2;border-radius:8px;}
+
+.vd-steps {display:flex;gap:8px;align-items:center;list-style:none;padding:0;margin:-4px 0 4px;color:#64696d;font-size:13px;}
+.vd-steps li+li::before {content:'›';margin-right:8px;color:#8b8f91;}
+.vd-steps [aria-current=step] {color:#242629;font-weight:700;}
+.vd-switch-method {justify-self:center;padding:9px 12px;background:none;border:0;color:#4d5358;text-decoration:underline;text-underline-offset:3px;font:inherit;font-size:14px;}

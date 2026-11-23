@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {GenerationService} from '../server/generation-service.mjs';
 import {seedancePayload} from '../server/seedance-video.mjs';
-import {projectVideoBrief,videoPlan,captionAt} from '../src/video-brief.ts';
+import {projectVideoBrief,videoPlan,captionAt,sceneCaptions,sceneCaptionAt} from '../src/video-brief.ts';
 
 const brief={kind:'service',title:'박스접기 계약직',description:'인천 물류센터에서 근무합니다.',emphasis:'한 달 최대 369만 원',contact:'010-1234-5678'};
 const input={requestId:'video-request-01',brief,references:[],seconds:15,music:true,voice:true,musicStyle:'경쾌한 연주곡',voiceStyle:'또렷하게',narration:'한 달 최대 삼백육십구만 원.'};
@@ -133,4 +133,39 @@ test('manual video direction retains formatting and its own shot structure',()=>
  for(const bad of ['', ' \n ',null,42,'x'.repeat(8001)])assert.throws(()=>seedancePayload({...briefOnly,manualPrompt:bad},'model'),/INVALID_VIDEO/);
  assert.throws(()=>seedancePayload({...briefOnly,shots:['a','b','c']},'model'),/INVALID_VIDEO/);
  assert.throws(()=>seedancePayload({...briefOnly,brief:{...brief,kind:'product'}},'model'),/INVALID_VIDEO/);
+});
+
+test('reviewed captions keep full offer conditions and use the reviewed scene boundaries',()=>{
+ const captions=sceneCaptions(brief,'');
+ assert.deepEqual(captions,[brief.title,brief.description,brief.emphasis]);
+ assert.deepEqual([0,2.99,3,6.99,7,10].map(t=>sceneCaptionAt(captions,t,10)),[captions[0],captions[0],captions[1],captions[1],captions[2],captions[2]]);
+ assert.deepEqual(sceneCaptions(brief,'롱코트\n285,000원\n무료배송\n제주 추가 비용'),['롱코트','285,000원','무료배송\n제주 추가 비용']);
+});
+
+test('an owner-only prompt reaches the video provider verbatim without automatic copy or audio instructions',async()=>{
+ const {higgsfieldInput}=await import('../server/higgsfield-video.mjs');
+ const manualPrompt='  Keep one continuous shot.\n\n마지막 2초는 무음.  ';
+ const fields={...input,manualPrompt,promptMode:'manual',promptPolicy:'owner-only'};
+ const plan=seedancePayload(fields,'model');
+ assert.equal(higgsfieldInput(plan,[]).body.prompt,manualPrompt);
+ assert.deepEqual(plan.content,[{type:'text',text:manualPrompt}]);
+ assert.throws(()=>seedancePayload({...fields,shots:['one','two','three']},'model'),/INVALID_VIDEO/);
+ assert.throws(()=>seedancePayload({...input,promptMode:'auto',shots:['one','two','three'],promptPolicy:'owner-only'},'model'),/INVALID_VIDEO/);
+});
+
+test('a versioned plan returns editable audio with the three directions and charges a retry once',async t=>{
+ const {assistCopy}=await import('../server/text-assistant.mjs');
+ const audio={musicMood:'작은 타악기와 피아노',narration:'인천 물류센터에서 근무합니다.',recommendVoice:true};
+ const request={kind:'video-prompt',planVersion:1,requestId:'full-video-plan-01',targetLocale:'ko',references:[],
+   brief:{kind:'service',style:'presenter',ratio:'9:16',seconds:10,title:brief.title,description:brief.description,highlight:brief.emphasis,field:'',industry:'',caption:'',contact:'',music:true,voice:true,musicStyle:'',voiceStyle:'',narration:''}};
+ let count=0;
+ const service=new GenerationService({assistantEnabled:true,providerConfigured:true,budgetMicros:100000,assistantAdapter:args=>assistCopy({...args,apiKey:'fixture',fetchImpl:async(_url,opts)=>{
+   count++;
+   assert.equal(JSON.parse(opts.body).response_format.json_schema.name,'advertising_video_plan');
+   return Response.json({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify({opening:'전경',detail:'가까이',closing:'정면',...audio})}}],usage:{prompt_tokens:300,completion_tokens:70}});
+ }})});t.after(()=>service.close());
+ const result=await service.assist(request);
+ assert.deepEqual(result.shots,['전경','가까이','정면']);assert.deepEqual(result.audio,audio);
+ assert.deepEqual((await service.assist(request)).audio,audio);assert.equal(count,1);
+ await assert.rejects(service.assist({...request,planVersion:2}),/INVALID_ASSISTANT_REQUEST/);
 });

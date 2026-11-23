@@ -52,6 +52,11 @@ export function seedancePayload(input,model){
   if(!Object.hasOwn(directions,style))throw Error('INVALID_VIDEO');
   const {ratio,width,height}=getVideoFormat(input.ratio);
   // Keep the original vertical prompt so retries match existing server fingerprints.
+  if(input.promptPolicy!==undefined){
+    if(input.promptPolicy!=='owner-only'||!manual||input.promptMode!=='manual')throw Error('INVALID_VIDEO');
+    return {model,ratio,resolution:'720p',duration:seconds,generate_audio:true,content:[
+      {type:'text',text:input.manualPrompt},...references.map(url=>({type:'image_url',role:'reference_image',image_url:{url}}))]};
+  }
   const orientation=width===height?'square':width>height?'landscape':'vertical';
   const sceneDirection=manual
     ? ['Follow the owner’s creative direction, including their shot sequence and timing. Leave room for app-added captions.',input.manualPrompt]

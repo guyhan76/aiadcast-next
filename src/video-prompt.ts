@@ -45,3 +45,12 @@ export function timedShots(shots:VideoShots,seconds:number){
   const stops=sceneStops(seconds);
   return shots.map((shot,i)=>stops[i]+'–'+stops[i+1]+'s · '+shot).join('\n');
 }
+
+export type VideoAudioIdea = {musicMood:string; narration:string; recommendVoice:boolean};
+export type VideoPlanIdea = {shots:VideoShots; audio?:VideoAudioIdea};
+export function validVideoAudio(value:unknown):value is VideoAudioIdea {
+  if (!value || typeof value!=='object') return false;
+  const audio=value as Partial<VideoAudioIdea>;
+  return typeof audio.musicMood==='string' && !!audio.musicMood.trim() && audio.musicMood.length<=140 &&
+    typeof audio.narration==='string' && audio.narration.length<=600 && typeof audio.recommendVoice==='boolean';
+}

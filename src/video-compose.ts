@@ -1,5 +1,5 @@
 import {videoShot,type VideoStyle} from './video-style';
-import {captionAt} from './video-brief';
+import {sceneCaptionAt} from './video-brief';
 import type {VideoDuration, VideoSource} from './video-duration';
 
 import {prepareAdSound,usesSound,type VideoSound} from './video-sound';
@@ -78,7 +78,7 @@ export async function playAdTimeline(canvas: HTMLCanvasElement, scenes: LoadedVi
   captions: readonly string[], sound:VideoSound, signal: AbortSignal, capture: boolean, onProgress: (seconds: number) => void, style:VideoStyle='product'): Promise<File | undefined> {
   signal.throwIfAborted();
   const ctx=canvas.getContext('2d',{alpha:false});
-  if (!ctx || (!scenes.length&&!captions.length)) throw Error('NO_MEDIA');
+  if (!ctx || (!scenes.length&&!captions.some(c=>c.trim()))) throw Error('NO_MEDIA');
   let visuals=scenes.map(s=>s.visual);
   const audible=usesSound(sound,visuals.some(el=>el instanceof HTMLVideoElement));
   const format=capture ? videoFormat(audible) : undefined;
@@ -128,13 +128,13 @@ export async function playAdTimeline(canvas: HTMLCanvasElement, scenes: LoadedVi
             if(visual instanceof HTMLVideoElement){visual.currentTime=0;void visual.play().catch(e=>{if(e.name!=='AbortError')fail();});}
             previous=index;
           }
-          drawAdFrame(ctx!,visual,captionAt(captions,time/seconds),zoom);
+          drawAdFrame(ctx!,visual,sceneCaptionAt(captions,time,seconds),zoom);
           onProgress(Math.floor(time*10)/10);
           if(time>=seconds){finished=true;if(recorder)recorder.stop();else resolve(undefined);}
           else frame=requestAnimationFrame(paint);
         } catch {fail();}
       }
-      drawAdFrame(ctx,visuals[0],captionAt(captions,0));
+      drawAdFrame(ctx,visuals[0],sceneCaptionAt(captions,0,seconds));
       recorder?.start(250);mix?.start(fail);paint(start);
     });
     return result;
