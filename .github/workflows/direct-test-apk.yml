@@ -1,0 +1,32 @@
+name: Direct test APK download
+on:
+  push:
+    branches: [delivery/direct-test-apk-ba6713f6]
+    paths: ['.github/workflows/direct-test-apk.yml']
+permissions:
+  actions: read
+  contents: write
+jobs:
+  deliver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Download the existing signed test artifact
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '14867895453'
+          run-id: 45275262829
+          github-token: ${{ github.token }}
+          path: signed
+          merge-multiple: true
+      - name: Verify the APK and attach it to a testing-only download
+        working-directory: signed
+        run: |
+          set -euo pipefail
+          sha256sum --check SHA256SUMS.txt
+          apk=aiadcast-0.2.122.apk
+          unzip -p "$apk" assets/web-release.json | jq -e '.commit == "ba6713f634e4954c81221b24b99a93d465403277"'
+          gh release create 'test-apk-0.2.122-ba6713f6' "$apk" --target 'ba6713f634e4954c81221b24b99a93d465403277' --prerelease --latest=false --title 'aiadcast 0.2.122 · 광고 소재 미리보기 테스트용 APK' --notes '서명된 Android Preview 테스트 빌드입니다. 광고 영상 첨부 소재 미리보기 확인용이며 일괄 이미지 생성·정밀편집 회귀 테스트에 미해결 항목이 있습니다.'
