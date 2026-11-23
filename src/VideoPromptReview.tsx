@@ -75,7 +75,7 @@ export function VideoPromptReview({mode,manualText,onMode,onManual,seconds,ratio
             <label className="vd-plan-toggle"><input type="checkbox" checked={review.voice} onChange={e=>onChange({voice:e.target.checked})}/>{t('한국어 내레이션 넣기','Include Korean narration')}</label>
             {review.voice&&<label>{t('읽을 문장','Narration script')}<textarea rows={3} maxLength={600} value={review.narration} onChange={e=>onChange({narration:e.target.value})}/></label>}
           </details>
-          <button type="button" className="vd-library" onClick={()=>void copy()}>{t('구성안 복사','Copy plan')}</button>
+          <button type="button" className="vd-library" onClick={()=>void copy()}>{t('영상 프롬프트 복사','Copy video prompt')}</button>
           {copyMessage&&<small role="status">{copyMessage}</small>}
         </fieldset>
       </>}
