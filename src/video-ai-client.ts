@@ -76,9 +76,9 @@ export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,sign
   onState('queue');
   const deadline=Date.now()+10*60_000;
   for(;;){
-    const status=await apiRequest<{state:string}>(path,undefined,signal);
+    const status=await apiRequest<{state:string;code?:string}>(path,undefined,signal);
     if(status.state==='ready')break;
-    if(status.state==='failed'){sessionStorage.removeItem(storageKey());throw Error('VIDEO_FAILED');}
+    if(status.state==='failed'){sessionStorage.removeItem(storageKey());throw Error(status.code??'VIDEO_FAILED');}
     if(status.state==='uncertain')throw Error('VIDEO_SUBMISSION_UNCERTAIN');
     if(status.state!=='running'||Date.now()>=deadline)throw Error('VIDEO_WAIT');
     await new Promise<void>((resolve,reject)=>{

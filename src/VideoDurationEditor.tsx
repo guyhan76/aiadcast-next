@@ -181,9 +181,12 @@ export function VideoDurationEditor({draft,change,aiPrices,provider,generateAi,d
         setMessage(code==='VIDEO_REFERENCE_SIZE'?t('참조 이미지 용량을 합계 10MB 이내로 줄여 주세요.','Keep reference images under 10 MB in total.'):
           code==='VIDEO_REFERENCE_FORMAT'?t('AI 영상에는 JPG, PNG, WebP 사진을 넣어 주세요.','Use JPG, PNG or WebP for AI video.'):
           code==='VIDEO_SUBMISSION_UNCERTAIN'?t('요청 접수 여부를 확인 중이에요. 같은 내용으로 다시 열면 기존 요청을 확인합니다.','Submission is pending reconciliation. Retry with the same brief to check it.'):
+          code==='VIDEO_PROVIDER_INPUT'?t('영상 공급사가 입력을 거절했습니다. 프롬프트와 참조 파일 형식을 확인해 주세요.','The provider rejected the input. Check your prompt and reference files.'):
+          code==='VIDEO_PROVIDER_MODEL'?t('영상 모델을 찾을 수 없습니다. 공급사 모델 설정을 확인해 주세요.','The provider could not find this model. Check the model settings.'):
+          code==='VIDEO_PROVIDER_LIMIT'||code==='VIDEO_PROVIDER_PAUSED'?t('공급사가 새 영상 접수를 일시 제한했습니다. 잠시 후 다시 시도해 주세요.','The provider is temporarily limiting submissions. Try again later.'):
           code==='VIDEO_PROVIDER_PERMISSION'?t('영상 공급사 키에서 선택한 모델의 생성·조회 권한을 확인해 주세요.','Check model generation and read permissions on the provider key.'):
           code==='VIDEO_PROVIDER_AUTH'?t('영상 공급사 API 키를 확인해 주세요.','Check the video provider API key.'):
-          code==='VIDEO_PROVIDER_BALANCE'?t('영상 공급사 잔액을 확인해 주세요.','Check the video provider balance.'):
+          code==='VIDEO_PROVIDER_BALANCE'?t('영상 공급사의 API 가용 잔액이 부족합니다. 공급사 결제 화면에서 잔액과 영상 예약 금액을 확인해 주세요.','The available API balance is insufficient. Check the provider balance and reservation amount.'):
           code==='VIDEO_QUOTE_UNAVAILABLE'?t('영상 제작 견적을 받지 못했어요. 잠시 후 다시 시도해 주세요.','Could not obtain a video quote. Try again later.'):
           code==='BUDGET_UNAVAILABLE'?t('서버의 영상 제작 예산을 확인해 주세요.','Check the available video generation budget.'):
           code==='VIDEO_FAILED'?t('AI 영상 생성에 실패했어요. 자료를 확인한 뒤 다시 시도해 주세요.','AI generation failed. Review your inputs and retry.'):

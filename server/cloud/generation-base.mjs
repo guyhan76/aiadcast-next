@@ -61,6 +61,7 @@ export class GenerationService {
         id TEXT PRIMARY KEY REFERENCES jobs(id), fingerprint TEXT NOT NULL, replay_key TEXT NOT NULL,
         images_json TEXT, quoted_micros INTEGER NOT NULL, provider_id TEXT,
         lease_until INTEGER NOT NULL DEFAULT 0, submissions INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS video_submission_errors(id TEXT PRIMARY KEY REFERENCES jobs(id),code TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS ad_batches(id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, job_ids TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS generation_keys(request_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, job_id TEXT NOT NULL REFERENCES generation_records(id));
       CREATE TABLE IF NOT EXISTS local_development_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -256,6 +257,10 @@ export class GenerationService {
                     await this.ledger.settleAttempt(id, 0, 'failed');
                     await this.ledger.release(id, LOCAL_USER, 'system_error');
                     await this.db.prepare('UPDATE higgsfield_video_jobs SET images_json=NULL WHERE id=?').run(id);
+                    if (provider.revision.startsWith('topview/')) {
+                        const reason = { 400: 'VIDEO_PROVIDER_INPUT', 401: 'VIDEO_PROVIDER_AUTH', 402: 'VIDEO_PROVIDER_BALANCE', 403: 'VIDEO_PROVIDER_PERMISSION', 404: 'VIDEO_PROVIDER_MODEL', 422: 'VIDEO_PROVIDER_INPUT', 423: 'VIDEO_PROVIDER_PAUSED', 429: 'VIDEO_PROVIDER_LIMIT' }[error.providerStatus];
+                        await this.db.prepare('INSERT INTO video_submission_errors(id,code) VALUES(?,?) ON CONFLICT(id) DO NOTHING').run(id, reason);
+                    }
                 });
                 return { id };
             }
@@ -272,8 +277,10 @@ export class GenerationService {
         const job = await this.ledger.job(row.id);
         if (job.expires_at <= this.now())
             fail('VIDEO_EXPIRED', 410);
-        if (job.status === 'released')
-            return { state: 'failed' };
+        if (job.status === 'released') {
+            const failure = await this.db.prepare('SELECT code FROM video_submission_errors WHERE id=?').get(row.id);
+            return failure ? { state: 'failed', code: failure.code } : { state: 'failed' };
+        }
         if (!row.provider_id)
             return { state: job.status === 'uncertain' || row.lease_until <= this.now() ? 'uncertain' : 'running' };
         const provider = quotedVideoProvider(job.model_revision.split('/')[0]);

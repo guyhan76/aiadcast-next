@@ -20,7 +20,7 @@ for(const engine of ['sqlite','pg'])test('TOPVIEW T1 '+engine+' reserves, submit
   const brief={kind:'service',title:'스튜디오',description:'스튜디오 촬영',emphasis:''};
   const input={brief,requestId:'topview-ad-test-01',seconds:10,ratio:'9:16',music:false,voice:false,
     narration:'',voiceStyle:'',musicStyle:'',promptMode:'manual',manualPrompt:'A ceramic cup under soft studio light.',references:['data:image/png;base64,YWJj']};
-  let status='processing',submissions=0,quote,denied=false;
+  let status='processing',submissions=0,quote,denied=false,rejectSubmission=false;
   const source='https://media.example/reference',movie='https://media.example/movie';
   t.mock.method(globalThis,'fetch',async(raw,options)=>{
     const url=String(raw);
@@ -37,6 +37,7 @@ for(const engine of ['sqlite','pg'])test('TOPVIEW T1 '+engine+' reserves, submit
       return Response.json({data:{estimatedUsd:'0.35',reserveUsd:'0.40'}});
     }
     if(options.method==='POST'){
+      if(rejectSubmission)return new Response(null,{status:402});
       assert.equal(url,'https://platform-backend.topview.ai/api/v1/models/topview/topview-t1/omni-reference-to-video/predictions');
       assert.ok(options.headers['Idempotency-Key']);assert.deepEqual(JSON.parse(options.body),quote.input);
       assert.equal(quote.input.content[1].image_url.url,source);submissions++;return Response.json({data:{id:'topview-task-1'}});
@@ -49,6 +50,11 @@ for(const engine of ['sqlite','pg'])test('TOPVIEW T1 '+engine+' reserves, submit
   await assert.rejects(service.startVideo(input),/VIDEO_TRIAL_UNAVAILABLE/);
   service.adminTestUnlimited=true;
   denied=true;await assert.rejects(service.startVideo(input),/VIDEO_PROVIDER_BALANCE/);denied=false;
+  rejectSubmission=true;
+  const unpaid={...input,requestId:'topview-unfunded-01'};await service.startVideo(unpaid);
+  assert.deepEqual(await service.videoResult(unpaid.requestId),{state:'failed',code:'VIDEO_PROVIDER_BALANCE'});
+  assert.equal((await service.ledger.budget(service.period())).held_micros,0);
+  rejectSubmission=false;
   await service.startVideo(input);await service.startVideo(input);assert.equal(submissions,1);
   assert.equal((await service.ledger.budget(service.period())).held_micros,400000);
   process.env.AIADCAST_VIDEO_PROVIDER='higgsfield';
@@ -57,5 +63,5 @@ for(const engine of ['sqlite','pg'])test('TOPVIEW T1 '+engine+' reserves, submit
   status='completed';assert.deepEqual(await service.videoResult(input.requestId),{state:'ready'});
   assert.equal((await service.videoResult(input.requestId,true)).toString('ascii',4,8),'ftyp');
   const budget=await service.ledger.budget(service.period());assert.equal(budget.spent_micros,350000);assert.equal(budget.held_micros,0);
-  const summary=await service.videoAdminSummary();assert.equal(summary.jobs,1);assert.equal(summary.spentMicros,350000);assert.equal(summary.heldMicros,0);
+  const summary=await service.videoAdminSummary();assert.equal(summary.jobs,2);assert.equal(summary.spentMicros,350000);assert.equal(summary.heldMicros,0);
 });
