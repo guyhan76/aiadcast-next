@@ -396,6 +396,19 @@ export async function createBetaServer({ store, publicUrl, serviceFactory, overv
                 send(res, 200, await verifyPlayPurchase(accounts.play, user.id, body?.token, await service(user)), cors);
                 return;
             }
+            if (url.pathname === '/api/checkout/annual-switch' && req.method === 'GET') {
+                send(res, 200, { selection: await checkout.annualSwitch(user) }, cors);
+                return;
+            }
+            if (url.pathname === '/api/checkout/annual-switch' && req.method === 'POST') {
+                if (store.customerGeneration) {
+                    const instance = await service(user);
+                    if (instance.customerImagesEnabled && !instance.adminTestUnlimited)
+                        throw new ApiFailure('TEST_CHECKOUT_UNAVAILABLE', 403);
+                }
+                send(res, 200, { selection: await checkout.changeAnnualSwitch(user, await read(req, 2048)) }, cors);
+                return;
+            }
             if (url.pathname === '/api/checkout/orders' && req.method === 'POST') {
                 if (store.customerGeneration) {
                     const instance = await service(user);

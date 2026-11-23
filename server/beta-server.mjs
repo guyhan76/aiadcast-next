@@ -178,6 +178,13 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
     const body=await read(req,8192);
     send(res,200,await verifyPlayPurchase(accounts.play,user.id,body?.token,service(user)),cors);return;
    }
+   if(url.pathname==='/api/checkout/annual-switch'&&req.method==='GET'){
+    send(res,200,{selection:checkout.annualSwitch(user)},cors);return;
+   }
+   if(url.pathname==='/api/checkout/annual-switch'&&req.method==='POST'){
+    if(store.customerGeneration){const instance=service(user);if(instance.customerImagesEnabled&&!instance.adminTestUnlimited)throw new ApiFailure('TEST_CHECKOUT_UNAVAILABLE',403);}
+    send(res,200,{selection:checkout.changeAnnualSwitch(user,await read(req,2048))},cors);return;
+   }
    if(url.pathname==='/api/checkout/orders'&&req.method==='POST'){
     if(store.customerGeneration){const instance=service(user);if(instance.customerImagesEnabled&&!instance.adminTestUnlimited)throw new ApiFailure('TEST_CHECKOUT_UNAVAILABLE',403);}
     send(res,201,checkout.create(user,await read(req,2048)),cors);return;}

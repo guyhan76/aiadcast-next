@@ -42,3 +42,37 @@ test('a verified annual payment funds one month at a time and cannot renew itsel
  now=Date.parse('2027-02-01T01:00:00+09:00');
  s.applySubscriptionCredits();s.applySubscriptionCredits();assert.equal(s.wallet().credits.available,3000);
 });
+
+test('monthly members reserve, change or cancel an annual switch and pay once after expiry',async t=>{
+ const {s,c,user}=setup(t);
+ const start=Date.parse('2026-01-31T12:00:00+09:00');
+ const end=Date.parse('2026-02-28T12:00:00+09:00');
+ let now=start;c.now=s.now=()=>now;
+ const monthly=c.create(user,{pack:'plan-plus-monthly',requestId:'monthly-to-annual',agreed:true});
+ const ticket=o=>new URLSearchParams(new URL(o.checkoutUrl).hash.split('?')[1]).get('ticket');
+ assert.equal(c.annualSwitch(user),null);
+ await c.confirm({orderId:monthly.id,ticket:ticket(monthly),paymentKey:'monthly-payment',amount:33900});
+ const choice={sourceId:monthly.id,pack:'plan-ultra-annual',amount:1402800,agreed:true};
+ const other={id:'other-member'};
+ assert.throws(()=>c.changeAnnualSwitch(other,choice),/SWITCH_UNAVAILABLE/);
+ assert.throws(()=>c.changeAnnualSwitch(user,{...choice,amount:1}),/SWITCH_UNAVAILABLE/);
+ const first=c.changeAnnualSwitch(user,choice);
+ assert.equal(first.effectiveAt,end);assert.equal(first.due,false);
+ assert.deepEqual(c.changeAnnualSwitch(user,choice),first);
+ c.changeAnnualSwitch(user,{...choice,pack:'plan-business-annual',amount:742800});
+ assert.equal(c.changeAnnualSwitch(user,{sourceId:monthly.id,pack:null}).pack,null);
+ c.changeAnnualSwitch(user,choice);
+ const orderRequest={pack:choice.pack,switchSource:monthly.id,requestId:'reserved-annual-order',agreed:true};
+ now=end-1;
+ assert.throws(()=>c.create(user,orderRequest),/SWITCH_UNAVAILABLE/);
+ assert.equal(s.wallet().credits.available,100);assert.equal(c.history(user).length,1);
+ now=end;
+ assert.equal(c.annualSwitch(user).due,true);
+ const annual=c.create(user,orderRequest),retry=c.create(user,orderRequest);
+ assert.equal(retry.id,annual.id);assert.equal(annual.amount,1402800);
+ assert.equal(s.wallet().credits.available,100);
+ c.provider.lookup=async()=>{throw new ApiFailure('PAYMENT_NOT_FOUND',404);};
+ const confirm={orderId:annual.id,ticket:ticket(retry),amount:annual.amount,paymentKey:'annual-switch-payment'};
+ await c.confirm(confirm);await c.confirm(confirm);
+ assert.equal(s.wallet().credits.available,600);assert.equal(c.annualSwitch(user),null);
+});

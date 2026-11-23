@@ -17,6 +17,10 @@ export class TestCheckout {
         this.pending = new Map();
         await this.db.exec(`CREATE TABLE IF NOT EXISTS test_orders(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),request_id TEXT NOT NULL,pack TEXT NOT NULL,credits INTEGER NOT NULL,amount INTEGER NOT NULL,created INTEGER NOT NULL,ticket_hash TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending',payment_key TEXT UNIQUE,UNIQUE(user_id,request_id));`);
         const columns = (await this.db.prepare('PRAGMA table_info(test_orders)').all()).map(column => column.name);
+        if (!columns.includes('annual_choice'))
+            await this.db.exec('ALTER TABLE test_orders ADD COLUMN annual_choice TEXT');
+        if (!columns.includes('annual_amount'))
+            await this.db.exec('ALTER TABLE test_orders ADD COLUMN annual_amount INTEGER');
         if (!columns.includes('provider_status'))
             await this.db.exec('ALTER TABLE test_orders ADD COLUMN provider_status TEXT');
         if (!columns.includes('checked_at'))
@@ -25,7 +29,38 @@ export class TestCheckout {
     }
     available() { return Boolean(this.provider && this.clientKey); }
     view(order) { return { id: order.id, pack: order.pack, unit: orderUnit(order), policy: orderUnit(order) === 'credit-v2' ? 'delivered-2026-10-18' : 'legacy-accept-v1', credits: order.credits, amount: order.amount, currency: 'KRW', state: order.state, providerStatus: order.provider_status ?? undefined, created: order.created, test: true }; }
-    async create(user, { pack, requestId, agreed } = {}) {
+    async annualSwitch(user) {
+        const row = await this.db.prepare("SELECT id,pack,created,annual_choice,annual_amount FROM test_orders WHERE user_id=? AND pack LIKE 'plan-%' AND state IN ('paid','verified') ORDER BY created DESC,id DESC LIMIT 1").get(user.id);
+        if (!row?.pack.endsWith('-monthly'))
+            return null;
+        const effectiveAt = billingAnniversary(row.created, 1);
+        const due = this.now() >= effectiveAt;
+        if (due && !row.annual_choice)
+            return null;
+        return { sourceId: row.id, effectiveAt, due, pack: row.annual_choice ?? null, amount: row.annual_amount ?? null };
+    }
+    async changeAnnualSwitch(user, { sourceId, pack, amount, agreed } = {}) {
+        if (!this.available())
+            fail('CHECKOUT_UNAVAILABLE', 503);
+        return await this.store.transaction(async () => {
+            const current = await this.annualSwitch(user);
+            if (!current || sourceId !== current.sourceId)
+                fail('SWITCH_UNAVAILABLE', 409);
+            if (pack === null && current.due && await this.db.prepare("SELECT id FROM test_orders WHERE user_id=? AND pack=? AND state='pending' AND created>? LIMIT 1").get(user.id, current.pack, this.now() - checkoutWindow))
+                fail('SWITCH_CHECKOUT_PENDING', 409);
+            if (pack !== null) {
+                if (typeof pack !== 'string' || !pack.endsWith('-annual') || !Object.hasOwn(packs, pack) || agreed !== true)
+                    fail('INVALID_ORDER');
+                if (current.pack === pack && current.amount === amount)
+                    return current;
+                if (current.due || amount !== packs[pack].amount)
+                    fail('SWITCH_UNAVAILABLE', 409);
+            }
+            await this.db.prepare('UPDATE test_orders SET annual_choice=?,annual_amount=? WHERE id=? AND user_id=?').run(pack, pack === null ? null : packs[pack].amount, sourceId, user.id);
+            return await this.annualSwitch(user);
+        });
+    }
+    async create(user, { pack, requestId, agreed, switchSource } = {}) {
         if (!this.available())
             fail('CHECKOUT_UNAVAILABLE', 503);
         if ((!Object.hasOwn(packs, pack ?? '') && !retiredPacks.has(pack)) || typeof requestId !== 'string' || !/^[A-Za-z0-9_-]{8,100}$/.test(requestId) || agreed !== true)
@@ -38,6 +73,13 @@ export class TestCheckout {
             if (row && row.state !== 'pending')
                 return row;
             if (!row) {
+                let amount = packs[pack]?.amount;
+                if (switchSource !== undefined) {
+                    const reservation = await this.annualSwitch(user);
+                    if (!reservation?.due || reservation.sourceId !== switchSource || reservation.pack !== pack)
+                        fail('SWITCH_UNAVAILABLE', 409);
+                    amount = reservation.amount;
+                }
                 if (pack.startsWith('plan-')) {
                     const previous = await this.db.prepare("SELECT pack,state,created FROM test_orders WHERE user_id=? AND pack LIKE 'plan-%' AND state IN ('pending','verified','paid') ORDER BY created DESC").all(user.id);
                     if (previous.some(o => o.state === 'pending' ? o.created + checkoutWindow > this.now() : billingAnniversary(o.created, o.pack.endsWith('-annual') ? 12 : 1) > this.now()))
@@ -48,7 +90,7 @@ export class TestCheckout {
                 if ((await this.db.prepare('SELECT COUNT(*) n FROM test_orders WHERE user_id=? AND created>?').get(user.id, this.now() - 3600000)).n >= 10)
                     fail('ORDER_RATE_LIMIT', 429);
                 const id = 'ad_' + randomUUID();
-                await this.db.prepare('INSERT INTO test_orders(id,user_id,request_id,pack,credits,amount,created,ticket_hash) VALUES(?,?,?,?,?,?,?,?)').run(id, user.id, requestId, pack, packs[pack].credits, packs[pack].amount, this.now(), digest(ticket));
+                await this.db.prepare('INSERT INTO test_orders(id,user_id,request_id,pack,credits,amount,created,ticket_hash) VALUES(?,?,?,?,?,?,?,?)').run(id, user.id, requestId, pack, packs[pack].credits, amount, this.now(), digest(ticket));
                 row = await this.db.prepare('SELECT * FROM test_orders WHERE id=?').get(id);
             }
             else

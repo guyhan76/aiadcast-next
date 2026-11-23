@@ -121,6 +121,7 @@ export function CheckoutPage(props:Omit<Context,'returnPage'>&{returnPage:Contex
  if(!native && location.hostname==='appassets.androidplatform.net')return null;
  return <WebCheckoutPage {...props} preview={native?.packageName===PREVIEW_PACKAGE}/>;
 }
+type AnnualSwitch={sourceId:string;effectiveAt:number;due:boolean;pack:string|null;amount:number|null};
 function WebCheckoutPage({preserve,returnPage,preview}:Omit<Context,'returnPage'>&{returnPage:Context['returnPage']|'video';preview:boolean}){
  const {language,t}=useUiLanguage(),ko=language==='ko',capability=useCapabilities(),cap=capability.value,session=betaSession();
  const preference=readSession<{selected:string;currency:PricingCurrency}>('aiadcast.checkout-choice');
@@ -131,6 +132,41 @@ function WebCheckoutPage({preserve,returnPage,preview}:Omit<Context,'returnPage'
  const demo=offlineDemo(),refreshing=useRef(false),refreshAgain=useRef(false);const [checking,setChecking]=useState(false);
  async function simulate(action:'approve'|'decline'|'cancel'){if(!order||locked.current)return;locked.current=true;setBusy(true);try{const next=await apiRequest<TestOrder>(`/api/demo/checkout/orders/${order.id}/${action}`,{});keepOrder(next);const status=await apiRequest<{wallet:{available:number;credits?:{available:number}}}>('/api/status');setBalance(order?.unit==='legacy-ticket'||order&&!order.unit?status.wallet.available:status.wallet.credits?.available??0);setMessage(action==='cancel'?t('결제를 취소했습니다. 이용권은 추가되지 않았습니다.','Checkout canceled. No credits were added.'):'');}catch(e){setMessage(accountError(e,ko));}finally{locked.current=false;setBusy(false);}}
  const pack=checkoutOffers.find(p=>p.id===selected)??checkoutOffers[0];
+ const [switchInfo,setSwitchInfo]=useState<AnnualSwitch|null>(null);
+ const [switchReady,setSwitchReady]=useState(false),[switchRetry,setSwitchRetry]=useState(0);
+ useEffect(()=>{
+  let stale=false,timer:ReturnType<typeof setTimeout>;
+  setSwitchReady(false);
+  if(!session){setSwitchInfo(null);return;}
+  async function loadSwitch(){
+   try{
+    const result=await apiRequest<{selection:AnnualSwitch|null}>('/api/checkout/annual-switch');
+    if(stale)return;
+    setSwitchInfo(result.selection);setSwitchReady(true);
+    if(result.selection&&!result.selection.due){
+     const delay=Math.min(86400000,Math.max(1000,result.selection.effectiveAt-Date.now()+100));
+     timer=setTimeout(()=>setSwitchRetry(n=>n+1),delay);
+    }
+   }catch{if(!stale)setSwitchReady(false);}
+  }
+  void loadSwitch();
+  return ()=>{stale=true;clearTimeout(timer);};
+ },[session?.token,order?.state,switchRetry]);
+ const reserving=pack.period==='annual'&&switchInfo!==null&&!switchInfo.due;
+ const sameChoice=switchInfo?.pack===selected;
+ const reservedOffer=checkoutOffers.find(o=>o.id===switchInfo?.pack);
+ const annualAmount=sameChoice&&switchInfo?.amount!=null?switchInfo.amount:pack.prices.KRW;
+ const when=switchInfo?new Intl.DateTimeFormat(ko?'ko-KR':'en-US',{timeZone:'Asia/Seoul',year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(switchInfo.effectiveAt):'';
+ async function saveSwitch(target:string|null){
+  if(!switchInfo||locked.current)return;
+  locked.current=true;setBusy(true);setMessage('');
+  try{
+   const result=await apiRequest<{selection:AnnualSwitch|null}>('/api/checkout/annual-switch',{sourceId:switchInfo.sourceId,pack:target,amount:target?pack.prices.KRW:null,agreed});
+   setSwitchInfo(result.selection);setAgreed(false);
+   setMessage(target?t('연간 전환을 예약했습니다.','Annual switch scheduled.'):t('전환 예약을 취소했습니다.','Switch canceled.'));
+  }catch(error){setSwitchRetry(n=>n+1);setMessage(error instanceof Error&&error.message==='SWITCH_CHECKOUT_PENDING'?t('연간 결제가 진행 중입니다. 결제 상태를 먼저 확인해 주세요.','Annual checkout is pending. Check the payment status first.'):t('전환 상태를 확인한 뒤 다시 시도해 주세요.','Check your switch status and try again.'));}
+  finally{locked.current=false;setBusy(false);}
+ }
  useEffect(()=>{sessionStorage.setItem('aiadcast.checkout-choice',JSON.stringify({selected,currency}));},[selected,currency]);
  function keepOrder(value:TestOrder){setOrder(value);sessionStorage.setItem(orderKey,JSON.stringify(value));}
  async function refresh(manual=false){
@@ -150,23 +186,31 @@ function WebCheckoutPage({preserve,returnPage,preview}:Omit<Context,'returnPage'
  useEffect(()=>{if(!session)return;void refresh();const timer=setInterval(()=>{if(document.visibilityState==='visible'&&order&&order.state==='pending')void refresh();},5000);return()=>clearInterval(timer);},[order?.id,order?.state,session?.token]);
  async function checkout(){if(locked.current||!cap?.checkout.enabled)return;locked.current=true;setBusy(true);setMessage('');try{
   await preserve();if(!session){rememberLoginDestination('checkout');location.hash='login';return;}
-  const key='aiadcast.checkout-request:'+session.user.id+':'+selected;
+  const switchSource=switchInfo?.due&&sameChoice?switchInfo.sourceId:undefined;
+  const key='aiadcast.checkout-request:'+session.user.id+':'+selected+(switchSource?':'+switchSource:'');
   let requestId=sessionStorage.getItem(key);if(!requestId){requestId=crypto.randomUUID();sessionStorage.setItem(key,requestId);}
-  const result=await apiRequest<TestOrder>('/api/checkout/orders',{pack:selected,requestId,agreed});keepOrder(result);rememberCheckout(result,returnPage);
+  const result=await apiRequest<TestOrder>('/api/checkout/orders',{pack:selected,requestId,agreed,switchSource});keepOrder(result);sessionStorage.setItem(orderKey+':request',key);rememberCheckout(result,returnPage);
  }catch(e){setMessage(e instanceof Error&&e.message==='SUBSCRIPTION_ALREADY_ACTIVE'?t('이용 중인 구독 또는 결제 대기 중인 구독이 있습니다. 크레딧은 별도로 추가할 수 있습니다.','An active or pending plan already exists. You can still buy top-up credits.'):accountError(e,ko));}finally{locked.current=false;setBusy(false);}}
- function clearOrder(){if(order)sessionStorage.removeItem('aiadcast.checkout-request:'+session?.user.id+':'+order.pack);sessionStorage.removeItem(orderKey);setOrder(undefined);setAgreed(false);setMessage('');}
- if(order?.state==='paid')return <section className="account-page"><Check size={40}/><h1>{demo?t('체험 이용권이 추가되었습니다','Demo credits added'):t('이용권이 추가되었습니다','Credits added')}</h1><p>{order.credits}{order.unit==='credit-v2'?t('크레딧 충전',' credits added'):t('장 추가',' tickets added')}{balance!==null&&<> · {t('보유','Balance')} {balance}{order.unit==='credit-v2'?t('크레딧',' credits'):t('장',' tickets')}</>}</p><p className="account-help">{demo?t('시연용 · 실제 청구 없음','Demo · No real charge'):t('시연용 · 실제 청구 없음','Demo · No real charge')}</p><a className="primary-action" href={'#'+(['studio','editor','video'].includes(returnPage)?returnPage:'create')}>{t('광고 만들기','Create an ad')}</a><button className="guest-link" onClick={clearOrder}>{t('이용권 목록','Credit packs')}</button></section>;
+ function clearOrder(){const requestKey=sessionStorage.getItem(orderKey+':request');if(requestKey)sessionStorage.removeItem(requestKey);sessionStorage.removeItem(orderKey+':request');if(order)sessionStorage.removeItem('aiadcast.checkout-request:'+session?.user.id+':'+order.pack);sessionStorage.removeItem(orderKey);setOrder(undefined);setAgreed(false);setMessage('');}
+ if(order?.state==='paid')return <section className="account-page"><Check size={40}/><h1>{demo?t('체험 이용권이 추가되었습니다','Demo credits added'):t('이용권이 추가되었습니다','Credits added')}</h1><p>{order.credits}{order.unit==='credit-v2'?t('크레딧 충전',' credits added'):t('장 추가',' tickets added')}{balance!==null&&<> · {t('보유','Balance')} {balance}{order.unit==='credit-v2'?t('크레딧',' credits'):t('장',' tickets')}</>}</p><p className="account-help">{demo?t('시연용 · 실제 청구 없음','Demo · No real charge'):t('시연용 · 실제 청구 없음','Demo · No real charge')}</p><a className="primary-action" href={'#'+(['studio','editor','video'].includes(returnPage)?returnPage:'create')}>{t('광고 만들기','Create an ad')}</a>{order.pack.endsWith('-monthly')&&<button className="primary-action" onClick={()=>{setSelected(order.pack.replace(/-monthly$/,'-annual'));clearOrder();}}>{t('연간으로 전환','Switch to annual')}</button>}<button className="guest-link" onClick={clearOrder}>{t('이용권 목록','Credit packs')}</button></section>;
  return <section className="account-page checkout-page"><a href={'#'+returnPage} className="page-back"><ArrowLeft size={18}/>{t('돌아가기','Back')}</a><h1>{t('요금제와 크레딧','Plans and credits')}</h1>{session&&<a className="primary-action" href="#create">{t('광고 이미지 만들기','Create an ad image')}</a>}<p className="page-intro">{t('구독과 추가 구매 크레딧을 이미지와 영상에 함께 사용하세요.','Use your balance for both ad images and videos.')}</p>
  <div className="connection-notice" id="checkout-availability">{!cap?(capability.failed?t('결제 연결 상태를 확인하지 못했습니다. 다시 확인해주세요.','Could not check checkout availability. Please retry.'):t('결제 연결 상태를 확인하고 있습니다…','Checking checkout availability…')):demo?t('시연용 · 실제 청구 없음','Demo · No real charge'):cap.checkout.enabled?t('시연용 · 실제 청구 없음','Demo · No real charge'):t('결제 준비 중입니다. 준비가 완료되면 여기에서 이용권을 구매할 수 있습니다.','Test checkout is not connected on the server. Waiting will not start a payment. Ask your administrator to arrange test credits and a generation budget.')}</div>
  {capability.failed&&<button className="guest-link" onClick={capability.retry}>{t('결제 연결 다시 확인','Retry checkout connection')}</button>}
  {balance!==null&&<p className="credit-balance">{t('보유 크레딧','Your credits')} <strong>{balance}</strong></p>}
  {order?<section className="checkout-summary"><h2>{t('결제 진행 확인','Checkout status')}</h2><p>{order.credits}{order.unit==='credit-v2'?t(' 크레딧',' credits'):t('개 기존 이용권',' legacy tickets')} · {formatPrice(order.amount,'KRW',language)}</p><p>{demo?t('성공·실패·취소 상황을 선택해 시험하세요. 금액은 체험용 견적입니다.','Choose success, failure or cancellation. Prices are demo quotes.'):t('결제창에서 완료한 뒤 이 앱으로 돌아오세요.','Complete checkout, then return to this app.')}</p>{demo&&<div className="demo-checkout-actions"><button disabled={busy||order.state!=='pending'} onClick={()=>void simulate('approve')}>{t('결제 성공 시험','Simulate successful checkout')}</button><button disabled={busy||order.state!=='pending'} onClick={()=>void simulate('decline')}>{t('결제 실패 시험','Simulate failed checkout')}</button><button disabled={busy||order.state!=='pending'} onClick={()=>void simulate('cancel')}>{t('결제 취소 시험','Simulate canceled checkout')}</button>{order.state==='canceled'&&<button onClick={clearOrder}>{t('이용권 다시 선택','Select credits again')}</button>}</div>}{order.checkoutUrl&&<a className="primary-action" href={preview?order.checkoutUrl+'&app=preview':order.checkoutUrl} referrerPolicy="no-referrer">{t('결제창 열기','Open checkout')}</a>}<button className="guest-link" disabled={busy} aria-busy={checking} aria-label={t('결제 상태 확인','Check payment status')} onClick={()=>void refresh(true)}>{checking?t('확인 중 · 다시 확인 예약','Checking · queue another check'):t('결제 상태 확인','Check payment status')}</button><details><summary>{t('결제를 취소했나요?','Canceled checkout?')}</summary><p>{t('승인 여부가 불확실하면 먼저 상태를 확인해주세요.','If approval is uncertain, check the status first.')}</p><button onClick={clearOrder}>{t('이용권 다시 선택','Select credits again')}</button></details></section>:<>
+ {switchInfo?.pack&&<section className="checkout-summary" aria-live="polite"><h2>{t('연간 전환 예약','Scheduled annual switch')}</h2>
+  <p>{t(reservedOffer?.ko??'',reservedOffer?.en??'')} · {formatPrice(switchInfo.amount,'KRW',language)}</p>
+  <p>{when} (KST) · {t('월간 이용 종료 후 직접 결제하면 연간 구독이 시작됩니다.','Complete checkout after your monthly term ends to start the annual plan.')}</p>
+  {switchInfo.due&&!sameChoice&&<button className="primary-action" onClick={()=>{setSelected(switchInfo.pack!);setAgreed(false);}}>{t('예약한 요금제 선택','Select reserved plan')}</button>}
+  <button className="guest-link" disabled={busy} onClick={()=>void saveSwitch(null)}>{t('전환 예약 취소','Cancel switch')}</button></section>}
  <CreditOffers value={selected} change={id=>{setSelected(id);setAgreed(false);}}/>
  {pack.period!=='topup'&&<p className="account-help">{t('베타 테스트 결제입니다. 기간이 끝나도 카드가 자동 청구되지 않습니다.','Beta test checkout. Your card will not be charged automatically at renewal.')}</p>}
  <p className="account-help">{t('이미지는 1장당 5크레딧, AI 영상은 1초당 2크레딧입니다. 생성 전에 총 차감액을 확인할 수 있습니다.','Images use 5 credits each and AI video uses 2 credits per second. Review the total before creating.')}</p>
- <section className="checkout-summary" aria-label={t('결제 확인','Order review')}><h2>{currency==='USD'?t('USD 안내 가격','USD display price'):t('최종 금액','Total')}</h2><p><span>{pack.period==='topup'?t('일회 충전','One-time top-up'):t(pack.ko,pack.en)+' · '+(pack.period==='annual'?t('1년 결제','Annual payment'):t('한 달 결제','Monthly payment'))}</span><strong>{formatPrice(pack.prices[currency],currency,language)}</strong></p>{currency==='USD'&&<p>{t('실제 테스트 결제 금액 (KRW)','Actual test checkout amount (KRW)')}: <strong>{formatPrice(pack.prices.KRW,'KRW',language)}</strong> · {t('USD 결제는 지원하지 않습니다. 원화로 전환해 진행하세요.','USD checkout is not supported. Switch to KRW to continue.')}</p>}<p className="checkout-tax">{currency==='KRW'?t('부가세 포함','Includes Korean VAT'):t('현지 세금 별도 · 원화 테스트 결제만 지원','Local taxes excluded · Test checkout supports KRW only')}</p></section>
+ <section className="checkout-summary" aria-label={t('결제 확인','Order review')}><h2>{currency==='USD'?t('USD 안내 가격','USD display price'):t('최종 금액','Total')}</h2><p><span>{pack.period==='topup'?t('일회 충전','One-time top-up'):t(pack.ko,pack.en)+' · '+(pack.period==='annual'?t('1년 결제','Annual payment'):t('한 달 결제','Monthly payment'))}</span><strong>{formatPrice(currency==='KRW'?annualAmount:pack.prices[currency],currency,language)}</strong></p>{currency==='USD'&&<p>{t('실제 테스트 결제 금액 (KRW)','Actual test checkout amount (KRW)')}: <strong>{formatPrice(pack.prices.KRW,'KRW',language)}</strong> · {t('USD 결제는 지원하지 않습니다. 원화로 전환해 진행하세요.','USD checkout is not supported. Switch to KRW to continue.')}</p>}<p className="checkout-tax">{currency==='KRW'?t('부가세 포함','Includes Korean VAT'):t('현지 세금 별도 · 원화 테스트 결제만 지원','Local taxes excluded · Test checkout supports KRW only')}</p></section>
+ {reserving&&<p className="account-help">{t('오늘 결제액은 0원입니다. '+when+' (한국시간) 이후 예약한 요금제를 결제하면 연간 구독이 시작됩니다.','Nothing is due today. Complete checkout after '+when+' (KST) to start the annual subscription.')}</p>}
+ {session&&pack.period==='annual'&&!switchReady&&<button className="guest-link" onClick={()=>setSwitchRetry(n=>n+1)}>{t('구독 상태 다시 확인','Refresh subscription status')}</button>}
  <RefundNotice/>
  {cap?.checkout.enabled&&session&&<label className="checkout-consent"><input type="checkbox" checked={agreed} onChange={e=>setAgreed(e.target.checked)}/>{t('이용권 수량, 금액과 환불 조건을 확인했습니다','I have checked the credits, price and refund conditions.')}</label>}
- <button className="primary-action" disabled={busy||!cap?.checkout.enabled||currency!=='KRW'||Boolean(session&&!agreed)} onClick={()=>void checkout()}>{!cap?(capability.failed?t('결제 상태 확인 실패','Checkout check failed'):t('결제 상태 확인 중…','Checking checkout…')):!cap.checkout.enabled?t('테스트 결제 미연결','Test checkout unavailable'):!session?t('이메일로 로그인하고 계속','Sign in with email to continue'):busy?t('준비 중…','Preparing…'):t('결제','Pay')}</button></>}
+ <button className="primary-action" disabled={busy||!cap?.checkout.enabled||currency!=='KRW'||Boolean(session&&(!agreed||(pack.period==='annual'&&!switchReady)))||Boolean(reserving&&sameChoice)} onClick={()=>reserving?void saveSwitch(selected):void checkout()}>{!cap?(capability.failed?t('결제 상태 확인 실패','Checkout check failed'):t('결제 상태 확인 중…','Checking checkout…')):!cap.checkout.enabled?t('테스트 결제 미연결','Test checkout unavailable'):!session?t('이메일로 로그인하고 계속','Sign in with email to continue'):busy?t('준비 중…','Preparing…'):reserving?(sameChoice?t('전환 예약 완료','Switch scheduled'):t('연간 전환 예약','Schedule annual switch')):switchInfo?.due&&sameChoice?t('연간 전환 결제','Pay for annual switch'):t('결제','Pay')}</button></>}
  {message&&<p role="alert">{message}</p>}</section>;
 }

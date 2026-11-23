@@ -4,7 +4,7 @@ import {imageFile,loadImage,type Asset} from './model';
 import {checkoutOffers,billingAnniversary} from './pricing';
 import type {GenerationJob} from './generation-client';
 type Order={unit?:'legacy-ticket'|'credit-v2';id:string;pack:string;credits:number;amount:number;currency:'KRW';state:'pending'|'paid'|'canceled';created:number;test:true};
-type Account={sharedBeta?:boolean;subscription?:{orderId:string;id:string;started:number;issued:number;months:number};newCredits?:number;credits:number;orders:Record<string,Order>;orderRequests:Record<string,string>;jobs:Record<string,GenerationJob>};
+type Account={annualChoice?:{pack:string;amount:number};sharedBeta?:boolean;subscription?:{orderId:string;id:string;started:number;issued:number;months:number};newCredits?:number;credits:number;orders:Record<string,Order>;orderRequests:Record<string,string>;jobs:Record<string,GenerationJob>};
 type Store={version:1;sessions?:Record<string,{userId:string;expires:number}>;users:Record<string,Account>;emails:Record<string,string>;requests:Record<string,{email:string;token:string;expires:number;verified:boolean}>};
 const key='aiadcast.local-demo-data.v1';
 const fresh=():Store=>({version:1,users:{},emails:{},requests:{}});
@@ -65,16 +65,36 @@ async function handle(path:string,body:any,session:ReturnType<typeof betaSession
  if(path==='/api/status')return {mode:'offline-demo',commercialReady:false,generation:{...(account?{creditQuote:quote(account)}:{}),enabled:!!account,model:'local-demo.composition',reason:account?null:'AUTH_REQUIRED'},wallet:account?wallet(account):{available:0,reserved:0,kind:'local-simulation'},budget:{limitMicros:0,spentMicros:0,heldMicros:0},assistant:{available:false}};
  if(!account)failure('AUTH_REQUIRED',401);
  if(path==='/api/account/credits')return {wallet:wallet(account!),orders:Object.values(account!.orders).sort((a,b)=>b.created-a.created).slice(0,30),grants:[]};
+ const activeTerm=account!.subscription;
+ const monthlyEnd=activeTerm?.id.endsWith('-monthly')?billingAnniversary(activeTerm.started,1):0;
+ const switchDue=monthlyEnd>0&&monthlyEnd<=Date.now();
+ const selection=()=>monthlyEnd&&(!switchDue||account!.annualChoice)?{sourceId:activeTerm!.orderId,effectiveAt:monthlyEnd,due:switchDue,pack:account!.annualChoice?.pack??null,amount:account!.annualChoice?.amount??null}:null;
+ if(path==='/api/checkout/annual-switch'){
+  if(body){
+   const state=selection();
+   if(!state||body.sourceId!==state.sourceId)failure('SWITCH_UNAVAILABLE',409);
+   if(body.pack===null&&switchDue&&Object.values(account!.orders).some(o=>o.pack===state!.pack&&o.state==='pending'&&o.created>Date.now()-1800000))failure('SWITCH_CHECKOUT_PENDING',409);
+   if(body.pack===null)delete account!.annualChoice;
+   else{
+    const annual=checkoutOffers.find(p=>p.id===body.pack&&p.period==='annual');
+    if(switchDue||!annual||body.agreed!==true||body.amount!==annual.prices.KRW)failure('SWITCH_UNAVAILABLE',409);
+    account!.annualChoice={pack:annual!.id,amount:annual!.prices.KRW};
+   }
+   await save(store);
+  }
+  return {selection:selection()};
+ }
  if(path==='/api/checkout/orders'){
   if(!body?.agreed)failure('CONSENT_REQUIRED');const pack=checkoutOffers.find(p=>p.id===body?.pack);if(!pack||typeof body?.requestId!=='string')failure('INVALID_ORDER');
   const prior=account!.orderRequests[body.requestId];if(prior)return account!.orders[prior];
   if(pack!.period!=='topup'&&account!.subscription&&billingAnniversary(account!.subscription.started,account!.subscription.months)>Date.now())failure('SUBSCRIPTION_ALREADY_ACTIVE',409);
-  const order:Order={id:crypto.randomUUID(),pack:pack!.id,unit:'credit-v2',credits:pack!.credits,amount:pack!.prices.KRW,currency:'KRW',state:'pending',created:Date.now(),test:true};account!.orders[order.id]=order;account!.orderRequests[body.requestId]=order.id;await save(store);return order;
+  if(body.switchSource!==undefined&&(!switchDue||activeTerm?.orderId!==body.switchSource||account!.annualChoice?.pack!==pack!.id))failure('SWITCH_UNAVAILABLE',409);
+  const order:Order={id:crypto.randomUUID(),pack:pack!.id,unit:'credit-v2',credits:pack!.credits,amount:body.switchSource?account!.annualChoice!.amount:pack!.prices.KRW,currency:'KRW',state:'pending',created:Date.now(),test:true};account!.orders[order.id]=order;account!.orderRequests[body.requestId]=order.id;await save(store);return order;
  }
  const checkout=path.match(/^\/api\/(demo\/)?checkout\/orders\/([^/]+)(?:\/(approve|cancel|decline))?$/);
  if(checkout){const order=account!.orders[checkout[2]];if(!order)failure('ORDER_EXPIRED',404);const action=checkout[3];if(action==='decline')failure('DEMO_DECLINED');if(order.state==='pending'&&action){order.state=action==='approve'?'paid':'canceled';if(order.state==='paid'){const plan=checkoutOffers.find(o=>o.id===order.pack&&o.period!=='topup');
    if(plan){const prior=account!.subscription;if(prior&&billingAnniversary(prior.started,prior.months)>Date.now())failure('SUBSCRIPTION_ALREADY_ACTIVE',409);
-    account!.subscription={orderId:order.id,id:plan.id,started:Date.now(),issued:1,months:plan.period==='annual'?12:1};}
+    delete account!.annualChoice;account!.subscription={orderId:order.id,id:plan.id,started:Date.now(),issued:1,months:plan.period==='annual'?12:1};}
    if(order.unit==='credit-v2')account!.newCredits=(account!.newCredits??0)+order.credits;else account!.credits+=order.credits;}await save(store);}return order;}
  if(path==='/api/generations'&&body){
   const old=Object.values(account!.jobs).find(j=>j.requestId===body.requestId);if(old)return {job:old,wallet:wallet(account!)};
