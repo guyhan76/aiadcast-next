@@ -72,6 +72,14 @@ test('a saved ad opens with reference framing and honors the chosen duration', a
   await (await nextFile).setFiles({name:'사용 전.png',mimeType:'image/png',buffer:bytes});
   await expect(chosen(15)).toHaveAttribute('aria-pressed','true');
   await expect(editor.locator('.vd-ai-price')).toContainText('123크레딧');
+  const thumbs=editor.locator('.vd-scene canvas');
+  await expect(thumbs).toHaveCount(2);
+  for(const thumb of await thumbs.all()){
+    await expect.poll(()=>thumb.evaluate((el:HTMLCanvasElement)=>el.getContext('2d')!.getImageData(120,100,1,1).data[3])).toBe(255);
+  }
+  await editor.locator('.vd-scene').nth(1).click();
+  await expect(editor.locator('.vd-scene').nth(1)).toHaveAttribute('aria-pressed','true');
+  await editor.locator('.vd-scene').first().click();
   await editor.getByRole('button',{name:'이 장면을 뒤로'}).click();
   await expect(editor.locator('.vd-scene').first()).toContainText('사용 전.png');
   await chosen(20).click();

@@ -28,11 +28,33 @@ type Props = {
   provider?:string;
   aiPrices?:Partial<Record<VideoDuration,number>>;
 };
+function SceneThumbnail({scene}:{scene?:LoadedVideoScene}) {
+  const ref=useRef<HTMLCanvasElement>(null);
+  useEffect(()=>{
+    const canvas=ref.current, context=canvas?.getContext('2d');
+    if(!canvas||!context)return;
+    context.clearRect(0,0,canvas.width,canvas.height);
+    if(!scene)return;
+    const visual=scene.visual;
+    const [width,height]=visual instanceof HTMLVideoElement
+      ? [visual.videoWidth,visual.videoHeight] : [visual.naturalWidth,visual.naturalHeight];
+    if(!width||!height)return;
+    const scale=Math.min(canvas.width/width,canvas.height/height);
+    const w=width*scale,h=height*scale;
+    context.drawImage(visual,(canvas.width-w)/2,(canvas.height-h)/2,w,h);
+  },[scene]);
+  return <canvas ref={ref} width={240} height={200} aria-hidden="true"/>;
+}
+
 export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredits,provider,generateAi,draftPrompt,checkingAccess}:Props) {
   const {t,text,language}=useUiLanguage(), {sources,manual,brief,caption,file:result}=draft;
   const {ratio,width,height}=getVideoFormat(draft.ratio);
   const input=useRef<HTMLInputElement>(null),canvas=useRef<HTMLCanvasElement>(null);
-  const [loaded,setLoaded]=useState<LoadedVideoScene[]>([]),[bad,setBad]=useState('');
+  const [scenes,setScenes]=useState(new Map<VideoSource,LoadedVideoScene>()),[bad,setBad]=useState('');
+  const loaded=useMemo(()=>sources.flatMap(source=>{
+    const scene=scenes.get(source);
+    return scene?[scene]:[];
+  }),[sources,scenes]);
   const [run,setRun]=useState<'save'|'ai'|'prompt'|null>(null);
   const [aiStage,setAiStage]=useState<'queue'|'download'|'finish'>('queue');
   const [saved,setSaved]=useState(false), [showResult,setShowResult]=useState(!!result);
@@ -73,16 +95,19 @@ export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredit
   const canGenerateAi=!!generateAi&&promptReady&&(ready||servicePromptOnly);
   useEffect(()=>{
     const controller=new AbortController(),resources:LoadedVideoScene[]=[];
-    setLoaded([]);setBad('');
+    setScenes(new Map());setBad('');
     void (async()=>{
-      try {
-        for(const source of sources) {
+      for(const source of sources) {
+        try {
           const scene=await loadVideoScene(source,controller.signal);
           if(controller.signal.aborted){scene.dispose();return;}
           resources.push(scene);
+          setScenes(previous=>new Map(previous).set(source,scene));
+        } catch {
+          if(controller.signal.aborted)return;
+          setBad(source.name);
         }
-        if(!controller.signal.aborted)setLoaded(resources);
-      } catch(e){if(!controller.signal.aborted)setBad(e instanceof Error ? e.message : t('파일 오류','File error'));}
+      }
     })();
     return ()=>{controller.abort();resources.forEach(x=>x.dispose());};
   },[sources]);
@@ -92,10 +117,11 @@ export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredit
   },[result]);
   useEffect(()=>()=>task.current?.abort(),[]);
   useEffect(()=>{
-    const ctx=canvas.current?.getContext('2d'), visual=loaded[selected]?.visual;
-    if(!ctx||(!visual&&!textOnly)||run==='ai')return;
+    const ctx=canvas.current?.getContext('2d'), visual=scenes.get(sources[selected])?.visual;
+    if(!ctx||run==='ai')return;
+    if(!visual&&!textOnly){ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);return;}
     drawAdFrame(ctx,visual,sceneCaptionAt(captions,selected*seconds/Math.max(1,sources.length),seconds));
-  },[loaded,selected,brief,caption,review,stale,useManual,textOnly,run,result,showResult,sources.length,ratio,seconds]);
+  },[scenes,selected,brief,caption,review,stale,useManual,textOnly,run,result,showResult,sources,ratio,seconds]);
   function edit(fields:Partial<VideoDraft>) {
     if(task.current)return;
     if(fields.sources){
@@ -259,9 +285,19 @@ export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredit
       {bad&&<p role="alert">{t('열 수 없는 소재를 삭제하거나 교체해 주세요.','Remove or replace this unreadable file.')} {bad}</p>}
       {sources.length>0&&<div className="vd-tray"><div className="vd-tray-label"><strong>{t('소재','Media')} <small>{sources.length}/10</small></strong>
         {sources.length<10&&<button type="button" aria-describedby={uploadHelpId} disabled={!!run} onClick={()=>input.current?.click()}><Plus size={16}/>{t('추가','Add')}</button>}</div>
-        <ol>{sources.map((s,i)=><li key={i}><button className="vd-scene" aria-pressed={i===selected} disabled={!!run} onClick={()=>{setSelected(i);setShowResult(false);}} title={s.name}>{i+1} · {s.name}</button>{sources.length>1&&i===selected&&<>
-          <button className="vd-remove" disabled={!!run||i===0} aria-label={t('이 장면을 앞으로','Move this scene earlier')} onClick={()=>move(i,-1)}><ChevronLeft size={16}/></button>
-          <button className="vd-remove" disabled={!!run||i===sources.length-1} aria-label={t('이 장면을 뒤로','Move this scene later')} onClick={()=>move(i,1)}><ChevronRight size={16}/></button></>}<button disabled={!!run} className="vd-remove" aria-label={s.name+' '+t('삭제','Remove')} onClick={()=>edit({sources:sources.filter((_,n)=>n!==i)})}><X size={15}/></button></li>)}</ol>
+        <ol>{sources.map((source,index)=><li key={index}>
+          <button type="button" className="vd-scene" aria-pressed={index===selected} disabled={!!run}
+            onClick={()=>{setSelected(index);setShowResult(false);}} title={source.name}>
+            <SceneThumbnail scene={scenes.get(source)}/>
+            <span className="vd-scene-name">{index+1} · {source.name}</span>
+          </button>
+          <button type="button" className="vd-remove vd-delete" disabled={!!run} aria-label={source.name+' '+t('삭제','Remove')}
+            onClick={()=>edit({sources:sources.filter((_,n)=>n!==index)})}><X size={15}/></button>
+        </li>)}</ol>
+        {sources.length>1&&<div className="vd-order">
+          <button type="button" className="vd-remove" disabled={!!run||selected===0} aria-label={t('이 장면을 앞으로','Move this scene earlier')} onClick={()=>move(selected,-1)}><ChevronLeft size={16}/>{t('앞으로','Earlier')}</button>
+          <button type="button" className="vd-remove" disabled={!!run||selected===sources.length-1} aria-label={t('이 장면을 뒤로','Move this scene later')} onClick={()=>move(selected,1)}>{t('뒤로','Later')}<ChevronRight size={16}/></button>
+        </div>}
       </div>}
     </>}
     {sources.length>0&&uploadHelp}
