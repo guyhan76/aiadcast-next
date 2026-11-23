@@ -9,7 +9,7 @@ test('plans show monthly grants, full annual charges and four independent top-up
  await expect(dialog.getByRole('radio')).toHaveCount(3);
  await expect(dialog).toContainText('₩33,900');
  await dialog.getByRole('button',{name:'연간',exact:true}).click();
- for(const total of ['₩310,800','₩742,800','₩1,486,800'])await expect(dialog).toContainText(total);
+ for(const total of ['₩310,800','₩742,800','₩1,438,800'])await expect(dialog).toContainText(total);
  await dialog.getByRole('button',{name:'크레딧 추가',exact:true}).click();
  await expect(dialog.getByRole('radio')).toHaveCount(4);
  await dialog.locator('input[value="credits-v3-250"]').check();

@@ -12,12 +12,12 @@ export const pricingCatalog = {
     {id:'credits-v3-50', credits:50, creditsPerGeneration:imageCredits, prices:{KRW:18000, USD:null}},
     {id:'credits-v3-100', credits:100, creditsPerGeneration:imageCredits, prices:{KRW:33900, USD:null}},
     {id:'credits-v3-250', credits:250, creditsPerGeneration:imageCredits, prices:{KRW:79900, USD:null}},
-    {id:'credits-v3-500', credits:500, creditsPerGeneration:imageCredits, prices:{KRW:159900, USD:null}},
+    {id:'credits-v3-500', credits:500, creditsPerGeneration:imageCredits, prices:{KRW:149900, USD:null}},
   ],
   plans: [
     {id:'plus', ko:'플러스', en:'Plus', credits:100, monthly:33900, annualMonthly:25900},
     {id:'business', ko:'비즈니스', en:'Business', credits:250, monthly:79900, annualMonthly:61900},
-    {id:'ultra', ko:'울트라', en:'Ultra', credits:500, monthly:159900, annualMonthly:123900},
+    {id:'ultra', ko:'울트라', en:'Ultra', credits:500, monthly:149900, annualMonthly:119900},
   ],
 } as const;
 export type BillingPeriod='monthly'|'annual'|'topup';

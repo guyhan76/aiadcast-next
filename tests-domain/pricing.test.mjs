@@ -7,7 +7,7 @@ const assumptions=JSON.parse(readFileSync(new URL('../config/pricing-assumptions
 const legacyPacks=[{id:'trial',credits:3,prices:{KRW:6900,USD:499}},{id:'basic',credits:10,prices:{KRW:19900,USD:1499}},{id:'bundle',credits:30,prices:{KRW:49900,USD:3999}}];
 const base={pack:legacyPacks[1],currency:'KRW',unitCostKrw:350,krwPerUsd:1400,vatRate:.1,storeFeeRate:.15,refundReserveRate:.02};
 test('Korean launch catalog has four shared top-ups and zero welcome credits',()=>{
- assert.deepEqual(pricingCatalog.packs.map(p=>[p.credits,p.prices.KRW,p.prices.USD]),[[50,18000,null],[100,33900,null],[250,79900,null],[500,159900,null]]);
+ assert.deepEqual(pricingCatalog.packs.map(p=>[p.credits,p.prices.KRW,p.prices.USD]),[[50,18000,null],[100,33900,null],[250,79900,null],[500,149900,null]]);
  assert.equal(pricingCatalog.status,'beta');assert.equal(pricingCatalog.purchasesEnabled,false);
  assert.equal(pricingCatalog.welcomeCredits,0);assert.equal(pricingCatalog.standardCredits,5);assert.equal('premiumCredits' in pricingCatalog,false);
  assert.equal(pricingProposal,pricingCatalog);
@@ -55,8 +55,8 @@ test('new packs count five credits per image without inventing a USD launch pric
 
 test('annual totals and monthly allowances are independent of billing frequency',()=>{
  const annual=checkoutOffers.filter(o=>o.period==='annual');
- assert.deepEqual(annual.map(o=>[o.credits,o.prices.KRW]),[[100,310800],[250,742800],[500,1486800]]);
- assert.deepEqual(checkoutOffers.filter(o=>o.period==='monthly').map(o=>o.prices.KRW),[33900,79900,159900]);
+ assert.deepEqual(annual.map(o=>[o.credits,o.prices.KRW]),[[100,310800],[250,742800],[500,1438800]]);
+ assert.deepEqual(checkoutOffers.filter(o=>o.period==='monthly').map(o=>o.prices.KRW),[33900,79900,149900]);
  assert.equal(new Set(checkoutOffers.map(o=>o.id)).size,10);
  const jan=Date.parse('2027-01-31T02:00:00+09:00');
  assert.equal(billingAnniversary(jan,1),Date.parse('2027-02-28T02:00:00+09:00'));
