@@ -327,7 +327,7 @@ export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredit
         <Clapperboard size={18}/>{run==='ai'?(aiStage==='queue'?t('AI 영상 생성 중…','Generating AI video…'):aiStage==='download'?t('영상 받는 중…','Downloading video…'):t('자막 입히는 중…','Adding captions…')):t('AI 영상 생성','Generate AI video')}</button>}
     {run==='ai'&&<button className="vd-cancel" type="button" onClick={()=>task.current?.abort()}>{t('대기 닫기','Stop waiting')}</button>}
     {saved&&<p role="status">{t('저장 요청을 완료했어요.','Video sent to your downloads.')}</p>}
-    {confirm&&<VideoCostDialog credits={charge??0} admin={admin} provider={provider} style={style} promptMode={promptMode} ratio={ratio} seconds={seconds} onCancel={()=>setConfirm(false)} onConfirm={()=>{
+    {confirm&&charge!==undefined&&<VideoCostDialog credits={charge} admin={admin} provider={provider} style={style} promptMode={promptMode} ratio={ratio} seconds={seconds} onCancel={()=>setConfirm(false)} onConfirm={()=>{
       setConfirm(false);
       void makeAiVideo();
     }}/>}

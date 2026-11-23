@@ -223,7 +223,9 @@ test('unboxing uses two photos and shows the selected story and total before cre
   await create.click();
   const dialog=page.getByRole('dialog',{name:'제작 전 확인'});
   await expect(dialog).toContainText('언박싱');
-  await expect(dialog).toContainText('TOPVIEW · T1');
+  await expect(dialog).not.toContainText(/TOPVIEW|공급사 API|공급사 과금/i);
+  await expect(dialog.locator('dl > div').first()).toContainText('이번 제작에 사용할 크레딧');
+  await expect(dialog.getByRole('link',{name:'영상 자료 처리 안내'})).toHaveAttribute('href','/video-privacy.html');
   await expect(dialog).toContainText('9:16 · 10초');
   await expect(dialog).toContainText('0크레딧');
   await page.keyboard.press('Escape');

@@ -83,7 +83,12 @@
 .vd-confirm dl {display:grid;gap:12px;margin:18px 0 20px;}
 .vd-confirm dl>div {display:flex;align-items:baseline;justify-content:space-between;gap:12px;}
 .vd-confirm dd {margin:0;font-weight:700;}
-.vd-confirm dl>div:last-child {border-top:1px solid #dedfe0;padding-top:12px;}
+.vd-confirm .vd-credit-summary {align-items:center;padding:14px 12px;margin-bottom:4px;border-radius:10px;background:#f3f4f5;}
+.vd-credit-summary dt {font-weight:650;}
+.vd-credit-summary dt small {display:block;margin-top:3px;color:#555;font-size:12px;font-weight:400;}
+.vd-credit-summary dd {font-size:1.35em;white-space:nowrap;}
+.vd-confirm .vd-data-policy {margin:0 0 16px;font-size:14px;}
+.vd-data-policy a {color:inherit;text-decoration:underline;}
 .vd-confirm footer {display:grid;grid-template-columns:1fr 1.6fr;gap:8px;}
 .vd-confirm footer button {border-radius:9px;min-height:44px;border:1px solid #d4d5d6;background:white;color:#212326;font-weight:650;}
 .vd-confirm footer .vd-primary {background:#242521;color:white;border-color:#242521;}
