@@ -251,7 +251,7 @@ export class GenerationService {
         }
         const id = body.requestId;
         const originalPlan = plan;
-        plan = provider.preparePlan?.(originalPlan) ?? originalPlan;
+        plan = provider.preparePlan?.(originalPlan, body) ?? originalPlan;
         let fingerprint = hashBytes(Buffer.from(JSON.stringify(plan)));
         if (!saved) {
             const quotePolicy = await this.videoQuote(body);

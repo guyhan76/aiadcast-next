@@ -1,3 +1,4 @@
+import {sceneStops} from '../src/video-style.ts';
 import {submissionStage} from './submission-observation.mjs';
 
 const api = 'https://platform-backend.topview.ai/api/v1';
@@ -106,6 +107,20 @@ export function topviewCleanFramePlan(plan){
   const [direction,...media]=plan.content;
   const frameRule='Frame text: Keep the filmed scene edge to edge through the very last frame. Any space requested for a later caption or price must show natural scenery, with no banner, white strip or card. Never invent or imitate text, pseudo-letters, numbers, prices, currency, watermarks or graphic overlays. Do not animate text or a price panel from a reference poster into the shot. Preserve real product markings visible on the garment or object. Only show an overlay if the user explicitly supplied the exact wording and asked for it to appear in the picture; omit it if it cannot be reproduced exactly.';
   return {...plan,content:[{...direction,text:direction.text+'\n\n'+frameRule},...media]};
+}
+
+export function wanCutPlan(plan, body) {
+  const clean = topviewCleanFramePlan(plan);
+  if (body?.brief?.kind !== 'product' || !body.shots || body.manualPrompt !== undefined) return clean;
+  const [,detail,closing] = sceneStops(plan.duration);
+  const edit = [
+    'Render the three approved shots as an edited commercial. Follow the requested tone and subject.',
+    'Begin on the opening action in progress. For a high-energy opening show its visible reaction within the first second.',
+    `At ${detail}s cut to the distinct detail action. At ${closing}s cut to a wider final product view and hold it until ${plan.duration}s.`,
+    'Keep the middle action inside its own interval. If the approved directions explicitly call for a continuous take or different framing, follow them.'
+  ].join(' ');
+  const [direction,...media] = clean.content;
+  return {...clean,content:[{...direction,text:edit+'\n'+direction.text},...media]};
 }
 
 export function topviewInput(plan, urls) {

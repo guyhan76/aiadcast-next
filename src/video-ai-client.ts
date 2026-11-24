@@ -131,7 +131,8 @@ export async function requestVideoPrompt(brief:PromptBrief,scenes:LoadedVideoSce
   const session=betaSession();
   const references=scenes.map(({visual})=>referenceJpeg(visual,512));
   const input={kind:'video-prompt',planVersion:1,targetLocale:language,brief,references};
-  const id=await requestId(JSON.stringify(input),'aiadcast.video-prompt.');
+  const planIdentity=brief.kind==='product'?['product-cuts-v1',input]:input;
+  const id=await requestId(JSON.stringify(planIdentity),'aiadcast.video-prompt.');
   signal.throwIfAborted();
   const result=await apiRequest<{requestId:string;shots:unknown;audio?:unknown}>('/api/assistant',{...input,requestId:id},signal).catch(error=>{
     // A rate-limited attempt is recorded as failed with no provider charge.

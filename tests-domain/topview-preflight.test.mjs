@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {estimateTopview,uploadTopviewImages,topviewInput,topviewConnection,submitTopview} from '../server/topview-video.mjs';
 
 import sharp from 'sharp';
+import {basicVideoShots} from '../src/video-prompt.ts';
+import {videoPromptMessages} from '../server/video-prompt-assistant.mjs';
 const sample = await sharp({create:{width:260,height:300,channels:3,background:'#765432'}}).jpeg().toBuffer();
 const sampleUrl = 'data:image/jpeg;base64,'+sample.toString('base64');
 
@@ -26,7 +28,7 @@ test('WAN requests preserve reference order, timing, ratio and audio; old jobs r
       input:{duration,ratio:'9:16',resolution:'720p',generate_audio:audio,
         content:[plan.content[0],{type:'image_url',role:'reference_image',image_url:{url:urls[0]}}]}
     });
-    assert.equal(quotedVideoProvider('topview').revision,'topview/alibaba/wan-3.0');
+    assert.equal(quotedVideoProvider('topview').revision,'topview/alibaba/wan-3.0/cuts-v1');
   }
 });
 
@@ -87,4 +89,29 @@ test('WAN upload fits a transparent small PNG into the allowed frame without cro
     return Response.json({data:{download_url:'https://example.com/reference.jpg'}});
   });
   await uploadTopviewImages('test',[{}, {image_url:{url:'data:image/png;base64,'+tiny.toString('base64')}}]);
+});
+
+test('new product auto plans deliver two cut points to WAN while manual and saved jobs retain their prompts',()=>{
+  const body={brief:{kind:'product'},shots:['ice tips','milk marbles','glass rests']};
+  const plan={content:[{type:'text',text:body.shots.join('\n')}],resolution:'720p',duration:10,ratio:'9:16',generate_audio:false};
+  const current=quotedVideoProvider('topview');
+  const old=quotedVideoProvider('topview','topview/alibaba/wan-3.0');
+  const text=current.input(current.preparePlan(plan,body),[]).input.input.prompt;
+  assert.match(text,/within the first second/);assert.match(text,/At 3s cut/);assert.match(text,/At 7s cut/);
+  assert.ok(text.includes(plan.content[0].text));
+  for(const brief of [{...body,manualPrompt:'one take'},{brief:{kind:'service'},shots:body.shots}]){
+    assert.deepEqual(current.preparePlan(plan,brief),old.preparePlan(plan));
+  }
+  assert.ok(!old.preparePlan(plan,body).content[0].text.includes('At 3s cut'));
+});
+
+test('iced latte gets impact, swirl and a whole-glass finish in both the fallback and planner input',()=>{
+  const brief={kind:'product',style:'product',field:'식품',title:'아이스라떼',description:'에스프레소, 얼음과 우유',highlight:'강렬한 시작',seconds:10};
+  const [opening,detail,closing]=basicVideoShots(brief,'ko');
+  assert.match(opening,/얼음 모서리를 때려/);assert.match(detail,/잔 옆면으로 컷/);assert.match(closing,/잔 전체/);
+  const [instructions]=videoPromptMessages({brief,references:[],targetLocale:'ko'});
+  assert.match(instructions.content,/impact and recoil in the first second/);
+  for(const change of [{title:'아이스 말차라떼'},{description:'에스프레소 캡슐 밀봉'},{style:'unboxing'},{style:'presenter'}]){
+    assert.doesNotMatch(basicVideoShots({...brief,...change},'ko')[0],/얼음 모서리를 때려/);
+  }
 });
