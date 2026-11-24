@@ -64,7 +64,7 @@ export function VideoProjectHistory(){
  },[videos]);
  const stamp=(ms:number)=>new Date(ms).toLocaleString(language==='ko'?'ko-KR':'en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
  return <section className="download-library video-projects" aria-label={t('생성한 영상','Generated videos')}>
-  <p>{t('영상 원본은 생성 요청 후 24시간 동안 열고 저장할 수 있습니다.','Original videos are available for 24 hours from the generation request.')}</p>
+  <p>{t('영상 생성 후 24시간 동안 재생 저장할 수 있습니다.','Original videos are available for 24 hours from the generation request.')}</p>
   {failed?<p role="alert">{t('영상 목록을 불러오지 못했습니다.','Could not load your videos.')} <button onClick={()=>retry(v=>v+1)}>{t('다시 시도','Retry')}</button></p>
    :!videos?<p role="status">{t('불러오는 중…','Loading…')}</p>
    :videos.length===0?<p>{t('보관 중인 영상이 없습니다.','No videos currently available.')}</p>
