@@ -68,7 +68,7 @@ async function wanImage(bytes, type) {
     if (short >= 240 && long <= 8000 && long <= 8*short && !(format==='png' && hasAlpha)) {
       return {bytes,type};
     }
-    const scale = Math.min(1,8000/long);
+    const scale = Math.min(8000/long,Math.max(1,240/short));
     const w = Math.round(width*scale), h = Math.round(height*scale);
     const targetWidth = Math.max(w,240,Math.ceil(h/8));
     const targetHeight = Math.max(h,240,Math.ceil(w/8));
