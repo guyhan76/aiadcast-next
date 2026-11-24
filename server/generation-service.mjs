@@ -299,7 +299,9 @@ export class GenerationService {
     let plan;
     try{plan=seedancePayload(body,provider.model);}catch{fail('INVALID_VIDEO');}
     const id=body.requestId;
-    const fingerprint=hashBytes(Buffer.from(JSON.stringify(plan)));
+    const originalPlan=plan;
+    plan=provider.preparePlan?.(originalPlan)??originalPlan;
+    let fingerprint=hashBytes(Buffer.from(JSON.stringify(plan)));
     if(!saved){
       const quotePolicy=this.videoQuote(body);
       const period=this.period(),limit=quotePolicy.customerFunded?0:this.budgetLimit(period);
@@ -325,6 +327,11 @@ export class GenerationService {
           .run(id,fingerprint,randomUUID(),JSON.stringify(images),quote);
         return this.db.prepare('SELECT * FROM higgsfield_video_jobs WHERE id=?').get(id);
       });
+    }
+    // A previously admitted job must replay its exact original provider input.
+    if(saved.fingerprint!==fingerprint&&originalPlan!==plan){
+      fingerprint=hashBytes(Buffer.from(JSON.stringify(originalPlan)));
+      plan=originalPlan;
     }
     if(saved.fingerprint!==fingerprint)fail('IDEMPOTENCY_CONFLICT',409);
     const job=this.ledger.job(id);

@@ -40,7 +40,10 @@ for(const engine of ['sqlite','pg'])test('TOPVIEW T1 '+engine+' reserves, submit
       if(rejectSubmission)return new Response(null,{status:402});
       assert.equal(url,'https://platform-backend.topview.ai/api/v1/models/topview/topview-t1/omni-reference-to-video/predictions');
       assert.ok(options.headers['Idempotency-Key']);assert.deepEqual(JSON.parse(options.body),quote.input);
-      assert.equal(quote.input.content[1].image_url.url,source);submissions++;return Response.json({data:{id:'topview-task-1'}});
+      assert.equal(quote.input.content[1].image_url.url,source);
+      assert.ok(quote.input.content[0].text.includes(input.manualPrompt));
+      assert.match(quote.input.content[0].text,/no banner, white strip or card/);
+      submissions++;return Response.json({data:{id:'topview-task-1'}});
     }
     assert.ok(url.endsWith('/predictions/topview-task-1'));
     return Response.json({data:{id:'topview-task-1',status,billing_state:status==='completed'?'CAPTURED':'RESERVED',charged_usd:'0.350000000000',outputs:[movie]}});

@@ -67,6 +67,13 @@ export async function uploadTopviewImages(key, content) {
   }));
 }
 
+// This affects generated pixels only. The user's shot, casting and audio directions stay intact.
+export function topviewCleanFramePlan(plan){
+  const [direction,...media]=plan.content;
+  const frameRule='Frame text: Keep the filmed scene edge to edge through the very last frame. Any space requested for a later caption or price must show natural scenery, with no banner, white strip or card. Never invent or imitate text, pseudo-letters, numbers, prices, currency, watermarks or graphic overlays. Do not animate text or a price panel from a reference poster into the shot. Preserve real product markings visible on the garment or object. Only show an overlay if the user explicitly supplied the exact wording and asked for it to appear in the picture; omit it if it cannot be reproduced exactly.';
+  return {...plan,content:[{...direction,text:direction.text+'\n\n'+frameRule},...media]};
+}
+
 export function topviewInput(plan, urls) {
   const modelKey = topviewModel + (urls.length ? '/omni-reference-to-video' : '/text-to-video');
   const {ratio,resolution,duration,generate_audio} = plan;
