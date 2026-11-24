@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {estimateTopview,uploadTopviewImages,topviewInput,topviewConnection,submitTopview} from '../server/topview-video.mjs';
 
+import sharp from 'sharp';
+const sample = await sharp({create:{width:260,height:300,channels:3,background:'#765432'}}).jpeg().toBuffer();
+const sampleUrl = 'data:image/jpeg;base64,'+sample.toString('base64');
+
 import {quotedVideoProvider} from '../server/quoted-video.mjs';
 
 test('WAN requests preserve reference order, timing, ratio and audio; old jobs replay T1',()=>{
@@ -28,7 +32,7 @@ test('WAN requests preserve reference order, timing, ratio and audio; old jobs r
 
 test('manual 15s quote retries a temporary failure and keeps the same reference and prompt',async t=>{
   const plan={duration:15,resolution:'720p',ratio:'9:16',generate_audio:true,content:[
-    {type:'text',text:'눈길을 걷는 모델의 롱코트'}, {type:'image_url',image_url:{url:'data:image/png;base64,YWJj'}}]};
+    {type:'text',text:'눈길을 걷는 모델의 롱코트'}, {type:'image_url',image_url:{url:sampleUrl}}]};
   const calls=[];
   t.mock.method(globalThis,'fetch',async(url,options)=>{
     if(url.endsWith('/media/files'))return Response.json({data:{download_url:'https://example.com/coat.png'}});
@@ -45,7 +49,7 @@ test('manual 15s quote retries a temporary failure and keeps the same reference 
 test('image and quote errors retain their stage and invalid input is not retried',async t=>{
   let calls=0;
   t.mock.method(globalThis,'fetch',async()=>{calls++;return new Response(null,{status:422});});
-  await assert.rejects(uploadTopviewImages('test',[{}, {image_url:{url:'data:image/png;base64,YWJj'}}]),{videoPreflightCode:'VIDEO_REFERENCE_FORMAT'});
+  await assert.rejects(uploadTopviewImages('test',[{}, {image_url:{url:sampleUrl}}]),{videoPreflightCode:'VIDEO_REFERENCE_FORMAT'});
   await assert.rejects(estimateTopview('test',{}),{videoPreflightCode:'VIDEO_PROVIDER_INPUT'});
   assert.equal(calls,2);
 });
@@ -66,4 +70,17 @@ test('temporary prediction submission errors do not trigger a second submission'
   t.mock.method(globalThis,'fetch',async()=>{count++;return new Response(null,{status:503});});
   await assert.rejects(submitTopview('test',{modelKey:'test',input:{}},'same-id'),{providerStatus:503});
   assert.equal(count,1);
+});
+
+test('WAN upload fits a transparent small PNG into the allowed frame without cropping',async t=>{
+  const tiny = await sharp({create:{width:24,height:8,channels:4,background:'#77440088'}}).png().toBuffer();
+  t.mock.method(globalThis,'fetch',async(url,options)=>{
+    const file=options.body.get('file');
+    const metadata=await sharp(Buffer.from(await file.arrayBuffer())).metadata();
+    assert.equal(metadata.format,'jpeg');
+    assert.equal(metadata.hasAlpha,false);
+    assert.ok(metadata.width>=240 && metadata.height>=240);
+    return Response.json({data:{download_url:'https://example.com/reference.jpg'}});
+  });
+  await uploadTopviewImages('test',[{}, {image_url:{url:'data:image/png;base64,'+tiny.toString('base64')}}]);
 });

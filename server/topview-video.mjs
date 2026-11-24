@@ -56,14 +56,40 @@ function mediaUrl(value) {
   return url.href;
 }
 
+// Prepare a provider copy only when WAN cannot accept the original dimensions or PNG alpha.
+async function wanImage(bytes, type) {
+  const {default:sharp} = await import('sharp');
+  try {
+    const image = sharp(bytes,{limitInputPixels:40_000_000});
+    const metadata = await image.metadata();
+    const {width,height} = metadata.autoOrient ?? metadata;
+    const {format,hasAlpha} = metadata;
+    const short = Math.min(width,height), long = Math.max(width,height);
+    if (short >= 240 && long <= 8000 && long <= 8*short && !(format==='png' && hasAlpha)) {
+      return {bytes,type};
+    }
+    const scale = Math.min(1,8000/long);
+    const w = Math.round(width*scale), h = Math.round(height*scale);
+    const targetWidth = Math.max(w,240,Math.ceil(h/8));
+    const targetHeight = Math.max(h,240,Math.ceil(w/8));
+    const normalized = await image.autoOrient().resize({
+      width:targetWidth,height:targetHeight,fit:'contain',background:'white'
+    }).flatten({background:'white'}).jpeg({quality:90}).toBuffer();
+    return {bytes:normalized,type:'image/jpeg'};
+  } catch {
+    throw Object.assign(Error('INVALID_IMAGE'), {videoPreflightCode:'VIDEO_REFERENCE_FORMAT'});
+  }
+}
+
 export async function uploadTopviewImages(key, content) {
   submissionStage('video_reference_upload');
   return Promise.all(content.slice(1).map(async ({image_url}) => {
     const [,type,encoded] = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(image_url.url) || [];
     if (!encoded) throw Error('INVALID_IMAGE');
+    const media = await wanImage(Buffer.from(encoded,'base64'),type);
     const form = new FormData();
     form.set('kind','image');
-    form.set('file',new Blob([Buffer.from(encoded,'base64')],{type}),'reference.' + type.slice(6));
+    form.set('file',new Blob([media.bytes],{type:media.type}),'reference.' + media.type.slice(6));
     return preflight('upload',async()=>mediaUrl((await request(key,'/media/files',form)).download_url));
   }));
 }
