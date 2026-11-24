@@ -129,7 +129,7 @@ for (const native of [false,true]) test('buy missing generation credits and retu
   expect((await buy.boundingBox())!.y).toBe((await confirm.boundingBox())!.y);
   await buy.click();
   await expect(page.getByRole('heading',{name:'요금제와 크레딧'})).toBeVisible();
-  await expect(page.locator('.checkout-packs')).toBeVisible();
+  await expect(page.getByRole('group',{name:'월간',exact:true}).getByRole('radio',{checked:true})).toBeVisible();
   await expect(dialog).toHaveCount(0);
   balance=20;
   await page.getByRole('link',{name:'돌아가기',exact:true}).click();
