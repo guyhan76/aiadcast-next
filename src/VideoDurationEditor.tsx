@@ -178,9 +178,9 @@ export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredit
       const recommendVoice=style==='presenter'||(idea.audio?.recommendVoice??service);
       change({...draft,file:undefined,review:{
         shots:idea.shots,briefKey,sources,
-        captions:fallbackCaptions,showCaptions:true,contact:brief.contact,
-        music:draft.aiMusic,musicMood:draft.musicStyle||idea.audio?.musicMood||(style==='unboxing'?t('경쾌한 리듬','Upbeat rhythm'):t('차분한 연주곡','Soft instrumental')),
-        narration:script.slice(0,600),voice:draft.aiVoice&&!!script&&(recommendVoice||!!draft.voiceText)
+        captions:fallbackCaptions,showCaptions:review?.showCaptions??true,contact:brief.contact,
+        music:review?.music??draft.aiMusic,musicMood:draft.musicStyle||idea.audio?.musicMood||(style==='unboxing'?t('경쾌한 리듬','Upbeat rhythm'):t('차분한 연주곡','Soft instrumental')),
+        narration:script.slice(0,600),voice:review?.voice??(draft.aiVoice&&!!script&&(recommendVoice||!!draft.voiceText))
       }});
     }catch{
       if(!controller.signal.aborted)setPromptError(t('구성안을 작성하지 못했어요. 잠시 후 다시 시도해 주세요.','Could not draft the plan. Please try again.'));

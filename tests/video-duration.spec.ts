@@ -354,3 +354,33 @@ test('manual prompts retain pasted directions, skip the drafting call, and submi
  expect(bytes).toEqual([...original]);
  expect(assistantCalls).toBe(0);
 });
+
+test('rebuilding the same ad plan preserves disabled captions and narration',async({page})=>{
+ await protectedScreen(page,mockSession('retake-preferences','admin'));
+ await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
+ await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,assistant:{available:true},wallet:{unlimited:true,available:0,reserved:0},generation:{enabled:false},budget:{limitMicros:0}}}));
+ await page.route('**/api/assistant',r=>r.fulfill({json:{requestId:r.request().postDataJSON().requestId,
+  shots:['얼음이 튀는 순간','잔을 타고 내려오는 커피','완성된 라떼'],audio:{musicMood:'리듬감 있는 연주곡',narration:'시원한 라떼입니다.',recommendVoice:true}}}));
+ let request:Record<string,unknown>|undefined;
+ await page.route('**/api/videos',r=>{request=r.request().postDataJSON();return r.fulfill({json:{id:request!.requestId}});});
+ await page.route('**/api/videos/*',r=>r.fulfill({json:{state:'failed'}}));
+ await page.goto('/#video');
+ const editor=page.getByRole('region',{name:'광고 영상 편집'});
+ await editor.getByLabel('사진·영상 파일').setInputFiles('src/assets/premium-beauty-generated.png');
+ await editor.getByLabel('상품명',{exact:true}).fill('아이스라떼');
+ await editor.getByRole('button',{name:'영상 구성안 만들기'}).click();
+ const captions=editor.getByLabel('자막 넣기',{exact:true});
+ await captions.uncheck();
+ await editor.locator('summary').filter({hasText:'내레이션'}).click();
+ const voice=editor.getByLabel('한국어 내레이션 넣기');
+ await voice.uncheck();
+ await editor.getByLabel('상품명',{exact:true}).fill('아이스라떼 한 잔');
+ await editor.getByRole('button',{name:'변경된 정보로 구성안 다시 만들기'}).click();
+ await expect(captions).toBeEnabled();
+ await expect(captions).not.toBeChecked();
+ await expect(voice).not.toBeChecked();
+ await expect(editor.getByLabel('첫 장면 자막',{exact:true})).toHaveCount(0);
+ await editor.getByRole('button',{name:'AI 영상 생성',exact:true}).click();
+ await page.getByRole('dialog').getByRole('button',{name:'제작 시작'}).click();
+ await expect.poll(()=>request).toMatchObject({voice:false,narration:'',music:true});
+});
