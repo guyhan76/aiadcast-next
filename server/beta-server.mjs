@@ -122,6 +122,9 @@ export function createBetaServer({store,publicUrl,serviceFactory,overviewReader,
     }finally{activeProductImports.delete(user.id);}
     return;
    }
+   if(req.method==='GET'&&url.pathname==='/api/videos'){
+    send(res,200,{videos:await service(user).videoHistory()},cors);return;
+   }
    if(req.method==='GET'&&url.pathname==='/api/videos/summary'){
     if(user.role!=='admin')throw new ApiFailure('VIDEO_TRIAL_UNAVAILABLE',403);
     send(res,200,await service(user).videoAdminSummary(),cors);return;

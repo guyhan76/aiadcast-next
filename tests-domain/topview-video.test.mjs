@@ -66,9 +66,16 @@ for(const engine of ['sqlite','pg'])test('Topview WAN 3.0 '+engine+' reserves, s
   assert.equal((await service.ledger.budget(service.period())).held_micros,400000);
   process.env.AIADCAST_VIDEO_PROVIDER='higgsfield';
   assert.deepEqual(await service.videoResult(input.requestId),{state:'running'});
+  assert.deepEqual(await service.videoHistory(),[]);
   status='payment_required';await assert.rejects(service.videoResult(input.requestId),/VIDEO_PROVIDER_BALANCE/);
   status='completed';assert.deepEqual(await service.videoResult(input.requestId),{state:'ready'});
   assert.equal((await service.videoResult(input.requestId,true)).toString('ascii',4,8),'ftyp');
+  const history=await service.videoHistory();
+  assert.deepEqual(history.map(video=>video.id),[input.requestId]);
+  assert.equal((await service.videoResult(history[0].id,true)).toString('ascii',4,8),'ftyp');
+  assert.equal(submissions,1);
   const budget=await service.ledger.budget(service.period());assert.equal(budget.spent_micros,350000);assert.equal(budget.held_micros,0);
   const summary=await service.videoAdminSummary();assert.equal(summary.jobs,2);assert.equal(summary.spentMicros,350000);assert.equal(summary.heldMicros,0);
+  service.now=()=>Number(history[0].expires_at);
+  assert.deepEqual(await service.videoHistory(),[]);
 });

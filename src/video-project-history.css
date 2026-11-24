@@ -1,0 +1,6 @@
+.project-media-switch{display:flex;gap:.5rem;margin:.8rem 0}
+.project-media-switch button{border:1px solid currentColor;background:transparent;color:inherit;border-radius:1.5rem;padding:.5rem 1.15rem}
+.project-media-switch button[aria-pressed="true"]{color:#fff;background:#28394e;border-color:#28394e}
+.video-projects .ad-card{display:grid;gap:.5rem;padding:1rem;justify-items:start}
+.video-project-player{display:grid;gap:.6rem;width:100%;justify-items:start}
+.video-project-player video{width:100%;max-height:50vh;object-fit:contain;background:#111}

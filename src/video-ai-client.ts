@@ -118,13 +118,7 @@ export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,sign
     });
   }
   onState('download');
-  const media=await timedVideoRequest(signal,120_000,async requestSignal=>{
-    const response=await fetch(apiUrl(path+'/file'),{headers:session?{Authorization:'Bearer '+session.token}:{},redirect:'error',signal:requestSignal});
-    if(!response.ok||response.headers.get('content-type')!=='video/mp4')throw Error('VIDEO_DOWNLOAD_FAILED');
-    return response.blob();
-  });
-  if(betaSession()?.token!==session?.token)throw Error('SESSION_CHANGED');
-  return media;
+  return downloadVideoOriginal(id,signal,session?.token);
 }
 
 export async function requestVideoPrompt(brief:PromptBrief,scenes:LoadedVideoScene[],language:'ko'|'en',signal:AbortSignal):Promise<VideoPlanIdea>{
@@ -143,4 +137,16 @@ export async function requestVideoPrompt(brief:PromptBrief,scenes:LoadedVideoSce
   if(session?.token!==betaSession()?.token||result.requestId!==id||!validVideoShots(result.shots))throw Error('INVALID_VIDEO_PROMPT');
   if(result.audio!==undefined&&!validVideoAudio(result.audio))throw Error('INVALID_VIDEO_PROMPT');
   return {shots:result.shots,audio:result.audio};
+}
+
+export async function downloadVideoOriginal(id:string,signal:AbortSignal,token:string|undefined){
+  if(!token||token!==betaSession()?.token)throw Error('SESSION_CHANGED');
+  const path='/api/videos/'+encodeURIComponent(id);
+  const media=await timedVideoRequest(signal,120_000,async requestSignal=>{
+    const response=await fetch(apiUrl(path+'/file'),{headers:{Authorization:'Bearer '+token},redirect:'error',signal:requestSignal});
+    if(!response.ok||response.headers.get('content-type')!=='video/mp4')throw Error('VIDEO_DOWNLOAD_FAILED');
+    return response.blob();
+  });
+  if(betaSession()?.token!==token)throw Error('SESSION_CHANGED');
+  return media;
 }
