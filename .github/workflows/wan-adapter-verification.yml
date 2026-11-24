@@ -1,0 +1,20 @@
+name: WAN adapter verification
+on: [push]
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/verify/wan3-video-generation'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c9b962ec6b4d9b634d750b3cc8961b8b467c4bff
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - run: npm ci --no-audit --no-fund
+      - run: node --experimental-strip-types --test tests-domain/topview-preflight.test.mjs tests-domain/topview-video.test.mjs
+      - run: npm run check:cloud && npm run build && node native/prepare-android.mjs
