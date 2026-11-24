@@ -1,10 +1,11 @@
 [CmdletBinding()]
 param(
-    [string]$Bundle = (Join-Path $PSScriptRoot 'app-release.aab'),
+    [string]$Bundle,
     [string]$KeyDirectory = (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'aiadcast-play-upload'),
     [switch]$CreateKey
 )
 $ErrorActionPreference = 'Stop'
+if (-not $Bundle) { $Bundle = Join-Path $PSScriptRoot 'app-release.aab' }
 foreach ($tool in @('java', 'keytool', 'jarsigner')) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "Install JDK 17 or newer and add its bin folder to PATH ($tool)." }
 }
