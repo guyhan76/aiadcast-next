@@ -169,3 +169,35 @@ test('a versioned plan returns editable audio with the three directions and char
  assert.deepEqual((await service.assist(request)).audio,audio);assert.equal(count,1);
  await assert.rejects(service.assist({...request,planVersion:2}),/INVALID_ASSISTANT_REQUEST/);
 });
+
+test('a product plan requires a first-frame event and a distinct visible response in the actual WAN request',async()=>{
+ const {assistCopy}=await import('../server/text-assistant.mjs');
+ const {quotedVideoProvider}=await import('../server/quoted-video.mjs');
+ const {productDirection}=await import('../src/video-product-direction.ts');
+ const photo='data:image/jpeg;base64,/9j/2Q==';
+ const latte={kind:'product',style:'product',ratio:'9:16',seconds:10,field:'',industry:'',title:'아이스라떼',description:'사진 속 유리잔',highlight:'',caption:'',contact:'',music:true,voice:false,musicStyle:'',voiceStyle:'',narration:''};
+ assert.match(productDirection(latte,'ko')[0],/얼음이 부딪/);
+ const request={kind:'video-prompt',planVersion:2,requestId:'opening-beats-001',targetLocale:'ko',brief:latte,references:[photo]};
+ const proposal={opening:'잔 위에서 얼음 두 개가 부딪친다.',reaction:'낮은 측면에서 솟은 커피 방울이 반짝인다.',detail:'잔 옆면의 우유 층',closing:'완성된 한 잔',musicMood:'타악기',narration:'',recommendVoice:false};
+ async function draft(answer){
+  return assistCopy({request,apiKey:'fixture',fetchImpl:async(_url,options)=>{
+   const schema=JSON.parse(options.body).response_format.json_schema;
+   assert.ok(schema.schema.required.includes('reaction'));
+   return Response.json({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify(answer)}}],usage:{prompt_tokens:250,completion_tokens:60}});
+  }});
+ }
+ for(const reaction of ['',proposal.opening])await assert.rejects(draft({...proposal,reaction}),/PROVIDER_INVALID_RESPONSE/);
+ const {shots}=await draft(proposal);
+ const body={...input,seconds:10,brief:latte,references:[photo],shots,music:true,voice:false,narration:''};
+ const wan=quotedVideoProvider('topview');
+ const plan=seedancePayload(body,'wan');
+ const payload=wan.input(wan.preparePlan(plan,body),['https://example.org/ref.jpg']);
+ const prompt=payload.input.input.prompt;
+ assert.ok(prompt.startsWith('FRAME 1'));
+ assert.ok(prompt.indexOf(proposal.opening)<prompt.indexOf(proposal.reaction));
+ assert.ok(prompt.indexOf(proposal.reaction)<prompt.indexOf(proposal.detail));
+ assert.match(prompt,/0\.8초 이내/);
+ assert.match(prompt,/No speech or vocals/);
+ const old=quotedVideoProvider('topview','topview/alibaba/wan-3.0/cuts-v1');
+ assert.ok(old.preparePlan(plan,body).content[0].text.startsWith('Render the three approved shots'));
+});

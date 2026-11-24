@@ -246,7 +246,7 @@ test('a product photo and brief make a reviewable AI prompt before the video is 
  await page.route('**/api/assistant',async r=>{
    const body=r.request().postDataJSON();drafts++;
    expect(body.kind).toBe('video-prompt');
-   expect(body.planVersion).toBe(1);
+   expect(body.planVersion).toBe(2);
    expect(body.references).toHaveLength(1);
    expect(body.references[0]).toMatch(/^data:image\/jpeg;base64,/);
    expect(body.brief.title).toBe('하이브리드 롱코트');

@@ -123,6 +123,20 @@ export function wanCutPlan(plan, body) {
   return {...clean,content:[{...direction,text:edit+'\n'+direction.text},...media]};
 }
 
+export function wanOpeningPlan(plan, body) {
+  if (body?.brief?.kind !== 'product' || !body.shots || body.manualPrompt !== undefined) return topviewCleanFramePlan(plan);
+  const clean=topviewCleanFramePlan(plan);
+  const [direction,...media]=clean.content;
+  const [,detail,closing]=sceneStops(plan.duration);
+  const edit=[
+    'FRAME 1 — Start inside the reviewed opening action, at its most legible contact, reveal or change. The reference supplies product identity, not a still to hold before the action.',
+    body.shots[0],
+    'By 0.8 seconds show the visible consequence in a second framing of the same product. Cut on motion by default. Respect any explicitly reviewed stillness, slow timing or single take.',
+    `At ${detail}s switch to the reviewed detail action. At ${closing}s switch to the final product view through ${plan.duration}s. Keep the detail action out of the opening.`
+  ].join('\n');
+  return {...clean,content:[{...direction,text:edit+'\n'+direction.text},...media]};
+}
+
 export function topviewInput(plan, urls) {
   const mode = urls.length ? 'reference-to-video' : 'text-to-video';
   const input = {prompt:plan.content[0].text};
