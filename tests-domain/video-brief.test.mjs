@@ -188,7 +188,7 @@ test('a product plan requires a first-frame event and a distinct visible respons
  }
  for(const reaction of ['',proposal.opening])await assert.rejects(draft({...proposal,reaction}),/PROVIDER_INVALID_RESPONSE/);
  const {shots}=await draft(proposal);
- const body={...input,seconds:10,brief:latte,references:[photo],shots,music:true,voice:false,narration:''};
+ const body={...input,seconds:10,brief:{...latte,emphasis:latte.highlight},references:[photo],shots,music:true,voice:false,narration:''};
  const wan=quotedVideoProvider('topview');
  const plan=seedancePayload(body,'wan');
  const payload=wan.input(wan.preparePlan(plan,body),['https://example.org/ref.jpg']);
