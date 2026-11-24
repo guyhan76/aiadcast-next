@@ -20,11 +20,36 @@ test('member can reopen an existing video in projects without submitting a gener
   return route.fulfill({json:body});
  });
  await page.goto('/#projects');
- await page.getByRole('button',{name:'영상',exact:true}).click();
+ const image=page.getByRole('button',{name:'이미지',exact:true});
+ const video=page.getByRole('button',{name:'영상',exact:true});
+ const switcher=page.locator('.project-media-switch');
+ const selected=async(button:typeof image)=>{
+  await expect(button).toHaveAttribute('aria-pressed','true');
+  await expect(button).toHaveCSS('background-color','rgb(0, 0, 0)');
+  await expect(button).toHaveCSS('color','rgb(255, 255, 255)');
+ };
+ const unselected=async(button:typeof image)=>{
+  await expect(button).toHaveAttribute('aria-pressed','false');
+  await expect(button).toHaveCSS('background-color','rgb(255, 255, 255)');
+ };
+ await selected(image);
+ await unselected(video);
+ const [left,right,row]=await Promise.all([image.boundingBox(),video.boundingBox(),switcher.boundingBox()]);
+ expect(left&&right&&row).toBeTruthy();
+ expect(Math.abs(left!.width-right!.width)).toBeLessThanOrEqual(1);
+ expect(left!.x).toBeCloseTo(row!.x,0);
+ expect(right!.x+right!.width).toBeCloseTo(row!.x+row!.width,0);
+ expect(left!.height).toBeGreaterThanOrEqual(48);
+ expect(right!.height).toBe(left!.height);
+ await video.click();
+ await selected(video);
+ await unselected(image);
  await page.getByRole('button',{name:'영상 보기'}).click();
  await expect(page.getByRole('button',{name:'원본 저장'})).toBeVisible();
  expect(downloads).toBe(1);
  expect(submits).toBe(0);
- await page.getByRole('button',{name:'이미지',exact:true}).click();
+ await image.click();
+ await selected(image);
+ await unselected(video);
  await expect(page.getByRole('button',{name:'사진·백업 불러와 정밀 편집'})).toBeVisible();
 });
