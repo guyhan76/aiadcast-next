@@ -1,7 +1,8 @@
 import {submissionStage} from './submission-observation.mjs';
 
 const api = 'https://platform-backend.topview.ai/api/v1';
-export const topviewModel = 'topview/topview-t1';
+export const topviewModel = 'alibaba/wan-3.0';
+export const legacyTopviewModel = 'topview/topview-t1';
 export function topviewKey(env = process.env) {
   const key = env.TOPVIEW_API_PLATFORM_KEY?.trim();
   return key && /^[\x21-\x7e]+$/.test(key) ? key : null;
@@ -75,7 +76,17 @@ export function topviewCleanFramePlan(plan){
 }
 
 export function topviewInput(plan, urls) {
-  const modelKey = topviewModel + (urls.length ? '/omni-reference-to-video' : '/text-to-video');
+  const mode = urls.length ? 'reference-to-video' : 'text-to-video';
+  const input = {prompt:plan.content[0].text};
+  if (urls.length) input.media = urls.map(url => ({type:'reference_image', url}));
+  return {modelKey:`${topviewModel}/${mode}`, input:{input, parameters:{
+    ratio:plan.ratio, resolution:plan.resolution.toUpperCase(), duration:plan.duration, audio:plan.generate_audio
+  }}};
+}
+
+// Existing T1 jobs replay the original request body and idempotency key after a timeout.
+export function legacyTopviewInput(plan, urls) {
+  const modelKey = legacyTopviewModel + (urls.length ? '/omni-reference-to-video' : '/text-to-video');
   const {ratio,resolution,duration,generate_audio} = plan;
   return {modelKey,input:{ratio,resolution,duration,generate_audio,content:[
     plan.content[0], ...urls.map(url=>({type:'image_url',role:'reference_image',image_url:{url}}))]}};

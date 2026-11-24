@@ -6,7 +6,7 @@ import {CloudGenerationService} from '../server/cloud/beta.mjs';
 import {PostgresDatabase} from '../server/cloud/postgres.mjs';
 import {pgPool} from './helpers/recommendation-pg-pool.mjs';
 
-for(const engine of ['sqlite','pg'])test('TOPVIEW T1 '+engine+' reserves, submits once and settles the actual video cost',async t=>{
+for(const engine of ['sqlite','pg'])test('Topview WAN 3.0 '+engine+' reserves, submits once and settles the actual video cost',async t=>{
   const prev={AIADCAST_VIDEO_PROVIDER:process.env.AIADCAST_VIDEO_PROVIDER,TOPVIEW_API_PLATFORM_KEY:process.env.TOPVIEW_API_PLATFORM_KEY};
   Object.assign(process.env,{AIADCAST_VIDEO_PROVIDER:'topview',TOPVIEW_API_PLATFORM_KEY:'test-only'});
   t.after(()=>{for(const [key,value] of Object.entries(prev)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
@@ -38,11 +38,11 @@ for(const engine of ['sqlite','pg'])test('TOPVIEW T1 '+engine+' reserves, submit
     }
     if(options.method==='POST'){
       if(rejectSubmission)return new Response(null,{status:402});
-      assert.equal(url,'https://platform-backend.topview.ai/api/v1/models/topview/topview-t1/omni-reference-to-video/predictions');
+      assert.equal(url,'https://platform-backend.topview.ai/api/v1/models/alibaba/wan-3.0/reference-to-video/predictions');
       assert.ok(options.headers['Idempotency-Key']);assert.deepEqual(JSON.parse(options.body),quote.input);
-      assert.equal(quote.input.content[1].image_url.url,source);
-      assert.ok(quote.input.content[0].text.includes(input.manualPrompt));
-      assert.match(quote.input.content[0].text,/no banner, white strip or card/);
+      assert.equal(quote.input.input.media[0].url,source);
+      assert.ok(quote.input.input.prompt.includes(input.manualPrompt));
+      assert.match(quote.input.input.prompt,/no banner, white strip or card/);
       submissions++;return Response.json({data:{id:'topview-task-1'}});
     }
     assert.ok(url.endsWith('/predictions/topview-task-1'));
