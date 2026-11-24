@@ -55,3 +55,11 @@ export function productDirection(brief: DirectionBrief, language: 'ko' | 'en'): 
   }
   return directions.commerce[language];
 }
+
+export function closingAction(kind:string,style:string|undefined,language:'ko'|'en') {
+  const ko=language==='ko';
+  if(kind==='service')return ko?'보여준 이용 과정에서 고객이 이어서 할 수 있는 행동 하나를 보여준다.':'Show one next step the customer can take in the demonstrated service.';
+  if(style==='unboxing')return ko?'개봉한 제품을 바로 쓸 수 있는 상태로 보여주며 끝낸다.':'Finish the reveal with the supplied item ready for its first use.';
+  if(style==='presenter')return ko?'시연한 특징을 시청자가 직접 살펴볼 수 있게 제품을 렌즈 쪽으로 돌려 잠시 멈춘다.':'After the demonstration, offer the same item toward the viewer for a closer look and pause.';
+  return ko?'처음 눈길을 끈 특징을 다시 보여주며 다음 행동 하나를 제안한다. 마실 음료라면 잔을 시청자 쪽으로 살짝 밀어 한 모금을 권한다.':'Return to the feature from the opening and visually invite one next action. For a ready-to-drink beverage, slide the glass toward the viewer as an invitation to try it.';
+}

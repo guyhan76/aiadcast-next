@@ -28,7 +28,7 @@ test('WAN requests preserve reference order, timing, ratio and audio; old jobs r
       input:{duration,ratio:'9:16',resolution:'720p',generate_audio:audio,
         content:[plan.content[0],{type:'image_url',role:'reference_image',image_url:{url:urls[0]}}]}
     });
-    assert.equal(quotedVideoProvider('topview').revision,'topview/alibaba/wan-3.0/product-hook-v3');
+    assert.equal(quotedVideoProvider('topview').revision,'topview/alibaba/wan-3.0/hook-cta-v4');
   }
 });
 
@@ -114,7 +114,8 @@ test('WAN hooks new auto and manual product requests while retaining the old rev
     assert.deepEqual(prior.preparePlan(manualPlan,manual),old.preparePlan(manualPlan));
   }
   const service={brief:{kind:'service'},shots:body.shots};
-  assert.deepEqual(current.preparePlan(plan,service),old.preparePlan(plan));
+  assert.match(current.preparePlan(plan,service).content[0].text,/FRAME 1.*mid-task/);
+  assert.deepEqual(quotedVideoProvider('topview','topview/alibaba/wan-3.0/product-hook-v3').preparePlan(plan,service),old.preparePlan(plan));
   assert.ok(!old.preparePlan(plan,body).content[0].text.includes('At 3s switch'));
 });
 
@@ -129,5 +130,26 @@ test('iced latte gets impact, swirl and a whole-glass finish in both the fallbac
   assert.match(videoPromptMessages({brief:presenter,references:[],targetLocale:'ko'})[0].content,/Ice slides into the glass wall/);
   for(const change of [{title:'아이스 말차라떼'},{description:'에스프레소 캡슐 밀봉'},{style:'unboxing'},{style:'presenter'}]){
     assert.doesNotMatch(basicVideoShots({...brief,...change},'ko')[0],/얼음이 부딪/);
+  }
+});
+
+test('quote payload connects a mute opening, proof and one closing action in both modes',()=>{
+  const provider=quotedVideoProvider('topview');
+  for(const style of ['product','presenter','unboxing'])for(const manual of [false,true]){
+    const brief={kind:'product',style,title:'아이스라떼',description:'얼음과 커피',highlight:''};
+    const shots=basicVideoShots(brief,'ko');
+    const direction=manual?'One take. No speech.':shots.join('\n');
+    const body=manual?{brief,manualPrompt:direction}:{brief,shots};
+    const plan={content:[{type:'text',text:direction}],duration:15,ratio:'9:16',resolution:'720p',generate_audio:false};
+    const payload=provider.input(provider.preparePlan(plan,body),['https://example.org/glass']);
+    const prompt=payload.input.input.prompt;
+    assert.match(prompt,/^FRAME 1/);
+    assert.match(prompt,/By 0\.8 seconds/);
+    assert.match(prompt,/one visible demonstration/);
+    assert.match(prompt,/Closing action/);
+    assert.ok(prompt.includes(direction));
+    assert.match(prompt,style==='presenter'?/offer the same item/:style==='unboxing'?/first use/:/invitation to try it/);
+    assert.equal(payload.input.parameters.audio,false);
+    assert.doesNotMatch(quotedVideoProvider('topview','topview/alibaba/wan-3.0/product-hook-v3').preparePlan(plan,body).content[0].text,/Closing action/);
   }
 });

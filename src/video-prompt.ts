@@ -1,4 +1,4 @@
-import {productDirection} from './video-product-direction.ts';
+import {productDirection,closingAction} from './video-product-direction.ts';
 import {adFields} from './ad-fields.ts';
 import {industryLabel} from './industry.ts';
 import {sceneStops,styleForBrief} from './video-style.ts';
@@ -34,12 +34,12 @@ export function basicVideoShots(b:PromptBrief,language:'ko'|'en'):VideoShots {
   const focus=detail?(ko?' 강조할 내용은 “'+detail+'”.':' Focus on “'+detail+'”.'):'';
   if (b.kind === 'product') {
     const [opening, middle, closing] = productDirection(b,language);
-    return [subject+' · '+opening, middle+focus, closing];
+    return [subject+' · '+opening, middle+focus, closing+' '+closingAction(b.kind,b.style,language)];
   }
   const opening=b.style==='presenter'?(ko?subject+' 소개를 눈높이 구도로 시작한다.':'Introduce '+subject+' at eye level.')
     :(ko?subject+' 이용을 시작하는 순간을 한 장면으로 보여준다.':'Open on a scene introducing '+subject+'.');
   const middle=ko?'상세설명에 있는 이용 과정 한 단계를 가까이 보여준다.':'Move in on one step from the service description.';
-  return [opening,middle+focus,ko?'마지막에는 '+subject+'이 한눈에 들어오는 정지 구도를 잡고 자막 자리를 남긴다.':'Finish on a steady view of '+subject+' with room for the closing caption.'];
+  return [opening,middle+focus,closingAction(b.kind,b.style,language)];
 }
 
 export function timedShots(shots:VideoShots,seconds:number){

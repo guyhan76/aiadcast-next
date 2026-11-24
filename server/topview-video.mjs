@@ -1,3 +1,4 @@
+import {closingAction} from '../src/video-product-direction.ts';
 import {sceneStops} from '../src/video-style.ts';
 import {submissionStage} from './submission-observation.mjs';
 
@@ -161,6 +162,22 @@ export function wanProductHookPlan(plan, body) {
     opening.push(`At ${detail}s switch to the reviewed detail action. At ${closing}s switch to the final product view through ${plan.duration}s.`);
   }
   return {...clean, content:[{...direction, text:opening.filter(Boolean).join('\n')+'\n'+direction.text}, ...media]};
+}
+
+export function wanHookToActionPlan(plan, body) {
+  const directed=wanProductHookPlan(plan,body);
+  if(!body?.brief)return directed;
+  const {kind,style}=body.brief;
+  const [direction,...media]=directed.content;
+  const steps=[
+    body.manualPrompt!==undefined&&!style ? 'Use the format in the owner prompt: a UGC demonstration begins mid-use; an unboxing begins mid-reveal.' : '',
+    kind==='service' ? 'FRAME 1 — Open mid-task on the specific customer need. Show an observable change by 0.8 seconds, even on mute.' : '',
+    'Follow the opening change into one visible demonstration of the same feature or service step. Make the reason to choose it clear before the invitation.',
+    'Closing action: stage exactly one next step supported by the brief. Follow a supplied CTA or ending first; otherwise use this visual invitation: '+closingAction(kind,style,'en'),
+    'Let the action land and keep its subject legible in the last second. Respect product-only framing and continuous takes. Never invent a button, shop, discount, URL or checkout screen.',
+    body.manualPrompt!==undefined ? 'Leave speech, subtitles and CTA lettering out unless the owner explicitly requests them. A visual invitation works in silence.' : 'Keep this visual invitation independent of narration and app-added captions.'
+  ];
+  return {...directed,content:[{...direction,text:direction.text+'\n'+steps.filter(Boolean).join('\n')},...media]};
 }
 
 export function topviewInput(plan, urls) {

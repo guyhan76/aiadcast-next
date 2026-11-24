@@ -175,12 +175,14 @@ export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredit
       const idea:VideoPlanIdea=draftPrompt?await draftPrompt(shotBrief,loaded,language,controller.signal):{shots:basicVideoShots(shotBrief,language)};
       controller.signal.throwIfAborted();
       const script=draft.voiceText||idea.audio?.narration||videoPlan(brief,caption,'').voice;
-      const recommendVoice=style==='presenter'||(idea.audio?.recommendVoice??service);
+      const closingCopy=service?t('서비스 자세히 보기','Explore the service'):t('제품 자세히 보기','Explore the product');
+      const plannedCaptions=sceneCaptions(brief,caption);
+      if(!caption.trim()&&!plannedCaptions[2])plannedCaptions[2]=closingCopy;
       change({...draft,file:undefined,review:{
         shots:idea.shots,briefKey,sources,
-        captions:fallbackCaptions,showCaptions:review?.showCaptions??true,contact:brief.contact,
+        captions:plannedCaptions,showCaptions:review?.showCaptions??false,contact:brief.contact,
         music:review?.music??draft.aiMusic,musicMood:draft.musicStyle||idea.audio?.musicMood||(style==='unboxing'?t('경쾌한 리듬','Upbeat rhythm'):t('차분한 연주곡','Soft instrumental')),
-        narration:script.slice(0,600),voice:review?.voice??(draft.aiVoice&&!!script&&(recommendVoice||!!draft.voiceText))
+        narration:script.slice(0,600),voice:review?.voice??(draft.aiVoice&&!!draft.voiceText.trim())
       }});
     }catch{
       if(!controller.signal.aborted)setPromptError(t('구성안을 작성하지 못했어요. 잠시 후 다시 시도해 주세요.','Could not draft the plan. Please try again.'));

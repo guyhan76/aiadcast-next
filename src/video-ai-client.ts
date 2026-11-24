@@ -74,7 +74,7 @@ export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,sign
   const review=draft.review;
   const manual=promptMode==='manual';
   const payload=manual
-    ? {...directions,promptPolicy:'owner-only',brief:{kind:draft.brief.kind,title:'',description:'',emphasis:''},seconds,
+    ? {...directions,promptPolicy:'owner-only',brief:{kind:draft.brief.kind,style:draft.brief.style,title:'',description:'',emphasis:''},seconds,
        music:true,voice:true,musicStyle:'',voiceStyle:'',narration:'',suggestedVoice:'',references}
     : {...directions,brief:draft.brief,seconds,music:review!.music,voice:review!.voice,
        musicStyle:review!.music?review!.musicMood:'',voiceStyle:review!.voice?draft.voiceStyle:'',
@@ -125,7 +125,7 @@ export async function requestVideoPrompt(brief:PromptBrief,scenes:LoadedVideoSce
   const session=betaSession();
   const references=scenes.map(({visual})=>referenceJpeg(visual,512));
   const input={kind:'video-prompt',planVersion:brief.kind==='product'?2:1,targetLocale:language,brief,references};
-  const planIdentity=brief.kind==='product'?['product-opening-beats-v2',input]:input;
+  const planIdentity=brief.kind==='product'?['product-hook-cta-v4',input]:input;
   const id=await requestId(JSON.stringify(planIdentity),'aiadcast.video-prompt.');
   signal.throwIfAborted();
   const result=await apiRequest<{requestId:string;shots:unknown;audio?:unknown}>('/api/assistant',{...input,requestId:id},signal).catch(error=>{
