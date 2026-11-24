@@ -8,7 +8,7 @@ export function topviewKey(env = process.env) {
   return key && /^[\x21-\x7e]+$/.test(key) ? key : null;
 }
 
-async function request(key, path, body, replayKey) {
+async function request(key, path, body, replayKey, probe = false) {
   const headers = {Authorization: 'Bearer ' + key};
   const form = body instanceof FormData;
   if (body && !form) headers['Content-Type'] = 'application/json';
@@ -19,7 +19,14 @@ async function request(key, path, body, replayKey) {
     const retryAfter=response.headers.get('retry-after');
     const seconds=retryAfter===null ? 0 : Number(retryAfter);
     const retryMs=Number.isFinite(seconds) ? Math.max(0,seconds*1000) : Math.max(0,Date.parse(retryAfter)-Date.now()) || 0;
-    throw Object.assign(Error('TOPVIEW_UNAVAILABLE'), {providerStatus:response.status,retryMs});
+    let diagnostic;
+    if (probe) {
+      const detail = await response.json().catch(()=>({}));
+      // Only for the fixed synthetic quote. Never put provider URLs or credentials into logs.
+      const reason = String(detail.message ?? detail.error?.message ?? '').replace(/https?:\/\/\S+/gi,'[url]').replace(/[a-zA-Z0-9_=-]{24,}/g,'[id]').slice(0,200);
+      diagnostic = {code:typeof detail.code==='number'?detail.code:undefined,reason};
+    }
+    throw Object.assign(Error('TOPVIEW_UNAVAILABLE'), {providerStatus:response.status,retryMs,diagnostic});
   }
   const {data} = await response.json();
   if (!data || typeof data !== 'object') throw Error('INVALID_PROVIDER_RESPONSE');
@@ -154,12 +161,18 @@ export async function pollTopview(key,id) {
   throw Error('INVALID_PROVIDER_STATUS');
 }
 
-export async function topviewConnection(env=process.env,referenceUrl) {
+export async function topviewConnection(env=process.env,checkReference=false) {
   const key=topviewKey(env);
   if (!key) return {state:'key_missing'};
-  const plan={content:[{type:'text',text:'A plain ceramic cup on a studio table.'}],ratio:'9:16',resolution:'720p',duration:referenceUrl?15:10,generate_audio:!!referenceUrl};
+  const plan={content:[{type:'text',text:'A plain ceramic cup on a studio table.'}],ratio:'9:16',resolution:'720p',duration:10,generate_audio:checkReference};
   try {
-    const quote=await request(key,'/predictions/quote',topviewInput(plan,referenceUrl?[referenceUrl]:[]));
+    let references=[];
+    if(checkReference){
+      const {default:sharp}=await import('sharp');
+      const sample=await sharp({create:{width:320,height:320,channels:3,background:'#b99370'}}).jpeg().toBuffer();
+      references=await uploadTopviewImages(key,[...plan.content,{image_url:{url:'data:image/jpeg;base64,'+sample.toString('base64')}}]);
+    }
+    const quote=await request(key,'/predictions/quote',topviewInput(plan,references),undefined,true);
     return {state:'estimate_verified',estimatedUsd:usdMicros(quote.estimatedUsd)/1e6,reserveUsd:usdMicros(quote.reserveUsd)/1e6};
-  } catch(error) { return {state:'estimate_unavailable',httpStatus:error.providerStatus??null}; }
+  } catch(error) { return {state:'estimate_unavailable',httpStatus:error.providerStatus??null,...(error.diagnostic?{diagnostic:error.diagnostic}:{})}; }
 }

@@ -54,15 +54,19 @@ test('image and quote errors retain their stage and invalid input is not retried
   assert.equal(calls,2);
 });
 
-test('hosted connection probe quotes a 15s reference video without submitting',async t=>{
+test('hosted connection probe uploads an opaque reference and quotes 10s without submitting',async t=>{
   t.mock.method(globalThis,'fetch',async(url,options)=>{
+    if(url.endsWith('/media/files')){
+      assert.equal(options.body.get('file').type,'image/jpeg');
+      return Response.json({data:{download_url:'https://example.com/icon.jpg'}});
+    }
     assert.ok(url.endsWith('/predictions/quote'));
     const {modelKey,input}=JSON.parse(options.body);
-    assert.equal(modelKey,'alibaba/wan-3.0/reference-to-video');assert.equal(input.parameters.duration,15);
-    assert.equal(input.input.media[0].url,'https://example.com/icon.png');
+    assert.equal(modelKey,'alibaba/wan-3.0/reference-to-video');assert.equal(input.parameters.duration,10);
+    assert.equal(input.input.media[0].url,'https://example.com/icon.jpg');
     return Response.json({data:{estimatedUsd:'2.6',reserveUsd:'2.86'}});
   });
-  assert.equal((await topviewConnection({TOPVIEW_API_PLATFORM_KEY:'test'},'https://example.com/icon.png')).state,'estimate_verified');
+  assert.equal((await topviewConnection({TOPVIEW_API_PLATFORM_KEY:'test'},true)).state,'estimate_verified');
 });
 
 test('temporary prediction submission errors do not trigger a second submission',async t=>{
