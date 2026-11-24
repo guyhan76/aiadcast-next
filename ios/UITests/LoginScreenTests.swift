@@ -13,5 +13,9 @@ final class LoginScreenTests: XCTestCase {
             let button = web.buttons.matching(label).firstMatch
             XCTAssertTrue(button.waitForExistence(timeout: 25), "Missing login button: " + provider)
         }
+        let screen = XCTAttachment(screenshot: app.screenshot())
+        screen.name = "aiadcast-login"
+        screen.lifetime = .keepAlways
+        add(screen)
     }
 }

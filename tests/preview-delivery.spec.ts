@@ -97,7 +97,11 @@ test('confirm the complete credit amount before submitting a batch',async({page}
  const saved=page.locator('.project-tile').filter({has:page.locator('.project-tile-caption strong',{hasText:/택배.* · [13]$/})});await expect(saved).toHaveCount(2);
  await expect(page.locator('.project-tile-caption strong').filter({hasText:/택배.* · [24]$/})).toHaveCount(0);
  await saved.first().click();await expect(page.getByRole('button',{name:'정밀 편집',exact:true})).toBeVisible();
- await page.goto('/#projects');await gallery.click();await expect(results.locator('.batch-grid img')).toHaveCount(4);
+ await page.goto('/#projects');
+ // Batch status is fetched when its card enters the viewport, below the saved images on mobile.
+ const batchCard=page.locator('.project-tile').filter({has:page.locator('small',{hasText:/결과 확인|생성 완료/})});
+ await batchCard.scrollIntoViewIfNeeded();
+ await gallery.click();await expect(results.locator('.batch-grid img')).toHaveCount(4);
  await results.getByLabel('전체 선택',{exact:true}).check();
  const allFiles=page.waitForEvent('download');await results.getByRole('button',{name:'선택 저장 (4)'}).click();await allFiles;
  await page.goto('/#projects');await expect(page.locator('.project-tile')).toHaveCount(4);
