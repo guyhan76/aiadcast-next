@@ -112,10 +112,13 @@
 
 .history-account .case-facts {margin:6px 0 8px;font-variant-numeric:tabular-nums}.history-account .wallet-button {min-height:44px}
 
+.checkout-page .credit-rates,
 .checkout-creator-actions {
  display:grid;
- grid-template-columns:repeat(auto-fit,minmax(min(100%,8rem),1fr));
- gap:8px;
+ grid-template-columns:repeat(2,minmax(0,1fr));
+ column-gap:8px;
+}
+.checkout-creator-actions {
  margin:12px 0 18px;
 }
 .checkout-creator-actions .wallet-button {padding-inline:6px}
@@ -130,8 +133,8 @@
  color:#fff;
 }
 
-.checkout-page .credit-rates {display:flex;flex-wrap:wrap;gap:4px 18px;margin:0 0 14px;font-size:1rem}
-.checkout-page .credit-rates span {white-space:nowrap}
+.checkout-page .credit-rates {margin:0 0 14px;font-size:1rem;text-align:center;align-items:center}
+.checkout-page .credit-rates span {min-width:0;word-break:keep-all;overflow-wrap:anywhere}
 .studio-shell .checkout-page .checkout-total {align-items:baseline;flex-wrap:wrap}
 .studio-shell .checkout-total strong {margin-inline-start:auto;white-space:nowrap}
 .studio-shell .checkout-page .checkout-tax {margin-top:4px}
