@@ -25,6 +25,10 @@
   color: #fff;
 }
 
+.video-projects > p + .ad-cards {
+  margin-top: 1rem;
+}
+
 .video-projects .ad-card{display:grid;gap:.5rem;padding:1rem;justify-items:start}
 .video-project-player{display:grid;gap:.6rem;width:100%;justify-items:start}
 .video-project-player video{width:100%;max-height:50vh;object-fit:contain;background:#111}
