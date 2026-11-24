@@ -10,11 +10,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: f6e139d0b3e1e7bde46f16de1cd6c4588047f342
+          ref: b57ee88d140b96ad60d700356055d5818bffc1e9
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
       - run: npm ci --no-audit --no-fund
-      - run: node --experimental-strip-types --test tests-domain/topview-preflight.test.mjs tests-domain/topview-video.test.mjs
+      - run: node --experimental-strip-types --test tests-domain/topview-preflight.test.mjs tests-domain/topview-video.test.mjs tests-domain/video-brief.test.mjs
       - run: npm run check:cloud && npm run build && node native/prepare-android.mjs
