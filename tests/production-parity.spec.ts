@@ -1,3 +1,4 @@
+import {imageCredits} from '../src/pricing';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {expect,test,type Page} from '@playwright/test';
@@ -458,7 +459,7 @@ for(const native of [false,true])test('instruction editing, credit consent and i
    preservation:{version:1,sourceHash,maskHash,resultHash:editedHash,width:32,height:48,selectedPixels:1536,changedSelectedPixels:1536,changedOutsidePixels:0,bounds:{x:0,y:0,width:32,height:48},semanticQuality:'not-assessed'}};
  }
  await page.route('**/api/selective-edits/upload',r=>{
-  const body=r.request().postDataJSON();expect(body.mask).toEqual({mode:'scene'});expect(body.prompt).toBe(rear+'\n'+notes);expect(body.creditQuote.amount).toBe(10);
+  const body=r.request().postDataJSON();expect(body.mask).toEqual({mode:'scene'});expect(body.prompt).toBe(rear+'\n'+notes);expect(body.creditQuote.amount).toBe(imageCredits);
   sourceInfo=body;edits++;return r.fulfill({json:{job:editJob('running')}});
  });
  await page.route('**/api/generations/instruction-job',async r=>{
@@ -483,7 +484,7 @@ for(const native of [false,true])test('instruction editing, credit consent and i
  await angle.selectOption('');await expect(instructions).toHaveValue(notes);
  await angle.selectOption({label:'후면'});await expect(instructions).toHaveValue(rear+'\n'+notes);
  await page.clock.install();
- page.once('dialog',d=>{expect(d.message()).toContain('10 크레딧');return d.dismiss();});await submit.click();expect(edits).toBe(0);
+ page.once('dialog',d=>{expect(d.message()).toContain(`${imageCredits} 크레딧`);return d.dismiss();});await submit.click();expect(edits).toBe(0);
  page.once('dialog',d=>d.accept());await submit.click();await expect.poll(()=>edits).toBe(1);
  const retry=edit.getByRole('button',{name:'결과 확인',exact:true});
  await expect(edit.getByText('수정 시안 생성 중',{exact:true})).toBeVisible();await expect(retry).toHaveCount(0);

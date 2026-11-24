@@ -24,10 +24,29 @@ jobs:
       - run: npm ci --no-audit --no-fund && npm run build && node native/prepare-android.mjs
       - name: Build unsigned upload candidate
         run: bash android/gradlew -p android -PAIADCAST_API_ORIGIN=https://aiadcast-next.onrender.com :app:bundleRelease --console=plain
+      - name: Check signing and public certificate verification with a disposable CI identity
+        shell: pwsh
+        run: |
+          $storeDir = Join-Path $env:RUNNER_TEMP 'disposable-key'
+          New-Item -Path $storeDir -ItemType Directory | Out-Null
+          $env:CI_STORE_PASS = [guid]::NewGuid().ToString()
+          keytool -genkeypair -keystore "$storeDir/upload.p12" -storetype PKCS12 -alias aiadcast-upload -storepass:env CI_STORE_PASS -keyalg RSA -validity 7 -dname 'CN=Disposable CI Test'
+          if ($LASTEXITCODE -ne 0) { throw 'Test key generation failed' }
+          keytool -exportcert -alias aiadcast-upload -keystore "$storeDir/upload.p12" -storepass:env CI_STORE_PASS -file "$storeDir/upload-certificate.der"
+          if ($LASTEXITCODE -ne 0) { throw 'Test certificate export failed' }
+          $aab = 'android/app/build/outputs/bundle/release/app-release.aab'
+          java native/play-upload/VerifyBundle.java $aab "$storeDir/upload-certificate.der"
+          if ($LASTEXITCODE -eq 0) { throw 'Verifier accepted unsigned input' }
+          $env:CI_STORE_PASS | pwsh -NoProfile -File native/play-upload/Sign-PlayBundle.ps1 -Bundle $aab -KeyDirectory $storeDir
+          if ($LASTEXITCODE -ne 0) { throw 'Signing smoke test failed' }
+      - name: Prepare company signing package
+        run: |
+          mkdir -p "$RUNNER_TEMP/company-signing"
+          cp native/play-upload/{Sign-PlayBundle.ps1,VerifyBundle.java} android/app/build/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/company-signing/"
       - uses: actions/upload-artifact@v4
         with:
-          name: aiadcast-unsigned-release
-          path: android/app/build/outputs/bundle/release/*.aab
+          name: aiadcast-company-signing
+          path: ${{ runner.temp }}/company-signing/
           if-no-files-found: error
       - name: Exercise preview release checks
         run: |
