@@ -137,6 +137,32 @@ export function wanOpeningPlan(plan, body) {
   return {...clean,content:[{...direction,text:edit+'\n'+direction.text},...media]};
 }
 
+// Stamp new requests only. Older revisions must reproduce their original quote and payload.
+export function wanProductHookPlan(plan, body) {
+  if (body?.brief?.kind !== 'product') return topviewCleanFramePlan(plan);
+  const clean = topviewCleanFramePlan(plan);
+  const [direction, ...media] = clean.content;
+  const reviewed = body.manualPrompt === undefined && body.shots;
+  const style = body.brief.style;
+  const staging = style === 'presenter'
+    ? 'UGC: Start at the decisive instant of a natural hand demonstration, product sharp in the foreground. Let the human reaction follow.'
+    : style === 'unboxing'
+      ? 'Unboxing: Open on the moving package seam at close range. As the opening widens, catch the first glimpse of the supplied contents.'
+      : 'Commerce: Pick a movement motivated by the actual item: contact and rebound, a turn that reveals its silhouette, or a light sweep that exposes its finish.';
+  const opening = [
+    'FRAME 1 — Fill the opening with the identifiable product or its packaging, already mid-action. Stage the most striking instant of the supplied opening so it reads even on mute.',
+    staging,
+    reviewed ? reviewed[0] : '',
+    'By 0.8 seconds show a distinct visible consequence of that action in the same product. Use a cut on motion or a fast in-camera reveal. Skip the lead-in, static packshot and slow push-in. Keep details that identify the product sharp.',
+    'Adapt the movement to the supplied action, materials and setting. Honor explicit timing, camera and casting constraints; in a single take reveal the change inside the frame.'
+  ];
+  if (reviewed) {
+    const [, detail, closing] = sceneStops(plan.duration);
+    opening.push(`At ${detail}s switch to the reviewed detail action. At ${closing}s switch to the final product view through ${plan.duration}s.`);
+  }
+  return {...clean, content:[{...direction, text:opening.filter(Boolean).join('\n')+'\n'+direction.text}, ...media]};
+}
+
 export function topviewInput(plan, urls) {
   const mode = urls.length ? 'reference-to-video' : 'text-to-video';
   const input = {prompt:plan.content[0].text};

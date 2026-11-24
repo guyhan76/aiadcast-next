@@ -28,7 +28,7 @@ test('WAN requests preserve reference order, timing, ratio and audio; old jobs r
       input:{duration,ratio:'9:16',resolution:'720p',generate_audio:audio,
         content:[plan.content[0],{type:'image_url',role:'reference_image',image_url:{url:urls[0]}}]}
     });
-    assert.equal(quotedVideoProvider('topview').revision,'topview/alibaba/wan-3.0/opening-v2');
+    assert.equal(quotedVideoProvider('topview').revision,'topview/alibaba/wan-3.0/product-hook-v3');
   }
 });
 
@@ -91,7 +91,7 @@ test('WAN upload fits a transparent small PNG into the allowed frame without cro
   await uploadTopviewImages('test',[{}, {image_url:{url:'data:image/png;base64,'+tiny.toString('base64')}}]);
 });
 
-test('new product auto plans deliver two cut points to WAN while manual and saved jobs retain their prompts',()=>{
+test('WAN hooks new auto and manual product requests while retaining the old revision for retries',()=>{
   const body={brief:{kind:'product'},shots:['ice tips','milk marbles','glass rests']};
   const plan={content:[{type:'text',text:body.shots.join('\n')}],resolution:'720p',duration:10,ratio:'9:16',generate_audio:false};
   const current=quotedVideoProvider('topview');
@@ -99,9 +99,22 @@ test('new product auto plans deliver two cut points to WAN while manual and save
   const text=current.input(current.preparePlan(plan,body),[]).input.input.prompt;
   assert.match(text,/By 0\.8 seconds/);assert.match(text,/At 3s switch/);assert.match(text,/At 7s switch/);
   assert.ok(text.includes(plan.content[0].text));
-  for(const brief of [{...body,manualPrompt:'one take'},{brief:{kind:'service'},shots:body.shots}]){
-    assert.deepEqual(current.preparePlan(plan,brief),old.preparePlan(plan));
+  const prior=quotedVideoProvider('topview','topview/alibaba/wan-3.0/opening-v2');
+  for (const style of ['product','presenter','unboxing']) {
+    const manual={brief:{kind:'product',style},manualPrompt:'One continuous shot. No narration or subtitles.',promptPolicy:'owner-only'};
+    const manualPlan={...plan,content:[{type:'text',text:manual.manualPrompt}]};
+    const refs=['https://example.org/product.jpg','https://example.org/person.jpg'];
+    const {input,parameters}=current.input(current.preparePlan(manualPlan,manual),refs).input;
+    assert.match(input.prompt,/^FRAME 1/);
+    assert.match(input.prompt,/By 0\.8 seconds/);
+    assert.ok(input.prompt.includes(manual.manualPrompt));
+    assert.doesNotMatch(input.prompt,/At 3s switch/);
+    assert.deepEqual(input.media.map(item=>item.url),refs);
+    assert.equal(parameters.audio,false);
+    assert.deepEqual(prior.preparePlan(manualPlan,manual),old.preparePlan(manualPlan));
   }
+  const service={brief:{kind:'service'},shots:body.shots};
+  assert.deepEqual(current.preparePlan(plan,service),old.preparePlan(plan));
   assert.ok(!old.preparePlan(plan,body).content[0].text.includes('At 3s switch'));
 });
 
@@ -111,6 +124,9 @@ test('iced latte gets impact, swirl and a whole-glass finish in both the fallbac
   assert.match(opening,/얼음이 부딪/);assert.match(detail,/잔 옆면으로 컷/);assert.match(closing,/잔 전체/);
   const [instructions]=videoPromptMessages({brief,references:[],targetLocale:'ko'});
   assert.match(instructions.content,/Two ice cubes collide at frame one/);
+  const presenter={...brief,style:'presenter'};
+  assert.match(basicVideoShots(presenter,'ko')[0],/잔 벽을 치고/);
+  assert.match(videoPromptMessages({brief:presenter,references:[],targetLocale:'ko'})[0].content,/Ice slides into the glass wall/);
   for(const change of [{title:'아이스 말차라떼'},{description:'에스프레소 캡슐 밀봉'},{style:'unboxing'},{style:'presenter'}]){
     assert.doesNotMatch(basicVideoShots({...brief,...change},'ko')[0],/얼음이 부딪/);
   }
