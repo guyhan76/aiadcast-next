@@ -1,3 +1,4 @@
+import {VideoProjectHistory} from './VideoProjectHistory';
 import {projectVideoBrief} from './video-brief';
 import {VideoDraftAction} from './VideoDraftAction';
 import {libraryBatch} from './library-batches';
@@ -43,6 +44,7 @@ export function ProjectLibrary({items,error,onRemove,onNew,onOpen,onOpenServer,s
  const [filter,setFilter]=useState(''),[limit,setLimit]=useState(5),[openError,setOpenError]=useState('');
  const controller=useRef(new AbortController());
  useEffect(()=>{const lifetime=new AbortController();controller.current=lifetime;return ()=>lifetime.abort();},[]);
+ const [media,setMedia]=useState<'image'|'video'>('image');
  const cards=libraryCards(items,cloud.downloads,cloud.backups);
  const query=filter.trim().toLocaleLowerCase();
  const filtered=cards.filter(c=>(c.name+' '+(c.project?.productName??'')).toLocaleLowerCase().includes(query));
@@ -65,6 +67,11 @@ export function ProjectLibrary({items,error,onRemove,onNew,onOpen,onOpenServer,s
  }
  return <>
   <div className="projects-heading"><h1>{t('내 프로젝트','My projects')}</h1><button className="primary-action" onClick={onNew}><Plus size={18}/>{t('새 광고','New ad')}</button></div>
+  {showDownloads&&<div className="project-media-switch" role="group" aria-label={t('광고 종류','Ad type')}>
+   <button type="button" aria-pressed={media==='image'} onClick={()=>setMedia('image')}>{t('이미지','Images')}</button>
+   <button type="button" aria-pressed={media==='video'} onClick={()=>setMedia('video')}>{t('영상','Videos')}</button>
+  </div>}
+  {showDownloads&&media==='video'?<VideoProjectHistory/>:<>
   <div className="project-import"><PrecisionEditAction label={t('사진·백업 불러와 정밀 편집','Open a photo or backup to edit')}/></div>
   <section className="download-library" aria-label={t('광고 목록','Ads')}>
    {cards.length>0&&<label className="project-search"><Search size={20}/><input aria-label={t('프로젝트 검색','Search projects')} placeholder={t('광고 이름 검색','Search ad names')} value={filter} onChange={e=>{setFilter(e.target.value);setLimit(5);}}/></label>}
@@ -106,7 +113,7 @@ export function ProjectLibrary({items,error,onRemove,onNew,onOpen,onOpenServer,s
     </li>;
    })}</ul>:!error&&(!cloud.loading||cards.length>0)&&<div className="project-empty"><FolderOpen size={30} aria-hidden="true"/><h2>{cards.length?t('검색 결과가 없습니다.','No matches.'):t('저장한 광고가 없습니다.','No saved ads yet.')}</h2>{cards.length>0&&<button onClick={()=>{setFilter('');setLimit(5);}}>{t('검색 초기화','Clear search')}</button>}</div>}
    {limit<filtered.length&&<button type="button" className="library-more" onClick={()=>setLimit(n=>n+5)}>{t('광고 더 보기','Show more ads')}</button>}
-  </section>
+  </section></>}
  </>;
 }
 export function UsageGuide({onNew}:{onNew:()=>void}){

@@ -397,6 +397,9 @@ export class GenerationService {
     }
     return {state:result.state};
   }
+  videoHistory(){
+    return this.db.prepare("SELECT id,expires_at FROM jobs WHERE user_id=? AND kind='video' AND status IN ('ready','accepted') AND expires_at>? ORDER BY expires_at DESC,id DESC").all(LOCAL_USER,this.now());
+  }
   async videoResult(id,download=false){
     if(!this.adminTestUnlimited&&!this.sharedWalletReady)fail('VIDEO_TRIAL_UNAVAILABLE',403);
     const hf=this.db.prepare('SELECT * FROM higgsfield_video_jobs WHERE id=?').get(id);
