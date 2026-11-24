@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 19c155cfe9f3ed5eb86910f75e44a5ed375b5481
+          ref: faf3d43af3bc7f537cd800bb6fb1b62c070b3d61
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -18,4 +18,4 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: node --experimental-strip-types --test tests-domain/topview-preflight.test.mjs tests-domain/topview-video.test.mjs tests-domain/video-brief.test.mjs
       - run: npm run check:cloud && npm run build && node native/prepare-android.mjs
-      - run: PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(command -v google-chrome)" npx playwright test tests/video-duration.spec.ts -g "rebuilding the same ad plan" --project=desktop --project=mobile
+      - run: PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(command -v google-chrome)" npx playwright test tests/video-duration.spec.ts -g "a product photo and brief|rebuilding the same ad plan" --project=desktop --project=mobile
