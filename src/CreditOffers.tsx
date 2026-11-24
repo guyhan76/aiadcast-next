@@ -1,8 +1,13 @@
 import {useId} from 'react';
 import {Check} from 'lucide-react';
-import {checkoutOffers,formatPrice,type BillingPeriod} from './pricing';
+import {checkoutOffers,formatPrice,imageCredits,videoCreditsPerSecond,type BillingPeriod} from './pricing';
 import {useUiLanguage} from './ui-language';
 import './credit-offers.css';
+
+export function CreditRates(){
+ const {t}=useUiLanguage();
+ return <p className="credit-rates"><span>{t('이미지 1장 '+imageCredits+'크레딧',imageCredits+' credits per image')}</span><span>{t('AI 영상 1초 '+videoCreditsPerSecond+'크레딧',videoCreditsPerSecond+' credits per second of AI video')}</span></p>;
+}
 
 export function CreditOffers({value,change}:{value:string;change:(id:string)=>void}){
  const {t,language}=useUiLanguage();
@@ -23,7 +28,7 @@ export function CreditOffers({value,change}:{value:string;change:(id:string)=>vo
     <span><strong>{o.period==='topup'?t(o.credits+'크레딧',o.credits+' credits'):t(o.ko,o.en)}</strong>
     {o.period!=='topup'&&<small>{t('매월 '+o.credits+'크레딧',o.credits+' credits each month')}</small>}</span>
     <span className="offer-amount"><b>{formatPrice(o.monthlyRate||o.prices.KRW,'KRW',language)}{o.period!=='topup'&&t(' / 월',' / mo')}</b>
-    <small>{o.period==='annual'?t('연 '+formatPrice(o.prices.KRW,'KRW',language)+' 결제',formatPrice(o.prices.KRW,'KRW',language)+' billed yearly'):o.period==='topup'?t('1회 결제','One-time purchase'):t('월 결제','Monthly billing')}</small></span>
+    {o.period==='annual'&&<small>{t('연 '+formatPrice(o.prices.KRW,'KRW',language)+' 결제',formatPrice(o.prices.KRW,'KRW',language)+' billed yearly')}</small>}</span>
    </label>)}
   </fieldset>
  </div>;

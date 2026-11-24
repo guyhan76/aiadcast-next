@@ -129,3 +129,12 @@
  border-color:#000;
  color:#fff;
 }
+
+.checkout-page .credit-rates {display:flex;flex-wrap:wrap;gap:4px 18px;margin:0 0 14px;font-size:1rem}
+.checkout-page .credit-rates span {white-space:nowrap}
+.studio-shell .checkout-page .checkout-total {align-items:baseline;flex-wrap:wrap}
+.studio-shell .checkout-total strong {margin-inline-start:auto;white-space:nowrap}
+.studio-shell .checkout-page .checkout-tax {margin-top:4px}
+.studio-shell .checkout-refund {border-block:1px solid var(--brand-line);padding-block:4px}
+.studio-shell .checkout-refund summary {align-content:center;font-weight:600}
+.studio-shell .checkout-refund p {margin:4px 0 12px;font-size:1rem;line-height:1.6}

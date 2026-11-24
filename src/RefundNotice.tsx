@@ -3,8 +3,9 @@ import {apiRequest} from './generation-client';
 import {refundNoticeEn,refundNoticeKo} from './refund-policy';
 import {useUiLanguage} from './ui-language';
 
-export function RefundNotice(){
+export function RefundNotice({compact=false}:{compact?:boolean}={}){
  const {t}=useUiLanguage();
+ if(compact)return <details className="checkout-refund"><summary>{t('단순 변심 환불 · 미사용분 7일 이내','Change-of-mind refunds · Unused credits within 7 days')}</summary><p>{t(refundNoticeKo,refundNoticeEn)}</p></details>;
  return <section className="refund-policy-notice"><h3>{t('단순 변심 환불 기한','Change-of-mind refund period')}</h3><p>{t(refundNoticeKo,refundNoticeEn)}</p></section>;
 }
 export function PurchaseRefundReceipt({orderNo,deadline}:{orderNo:string;deadline?:string|null}){
