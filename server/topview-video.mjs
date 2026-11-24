@@ -1,7 +1,8 @@
 import {submissionStage} from './submission-observation.mjs';
 
 const api = 'https://platform-backend.topview.ai/api/v1';
-export const topviewModel = 'topview/topview-t1';
+export const topviewModel = 'alibaba/wan-3.0';
+export const legacyTopviewModel = 'topview/topview-t1';
 export function topviewKey(env = process.env) {
   const key = env.TOPVIEW_API_PLATFORM_KEY?.trim();
   return key && /^[\x21-\x7e]+$/.test(key) ? key : null;
@@ -55,14 +56,40 @@ function mediaUrl(value) {
   return url.href;
 }
 
+// Prepare a provider copy only when WAN cannot accept the original dimensions or PNG alpha.
+async function wanImage(bytes, type) {
+  const {default:sharp} = await import('sharp');
+  try {
+    const image = sharp(bytes,{limitInputPixels:40_000_000});
+    const metadata = await image.metadata();
+    const {width,height} = metadata.autoOrient ?? metadata;
+    const {format,hasAlpha} = metadata;
+    const short = Math.min(width,height), long = Math.max(width,height);
+    if (short >= 240 && long <= 8000 && long <= 8*short && !(format==='png' && hasAlpha)) {
+      return {bytes,type};
+    }
+    const scale = Math.min(8000/long,Math.max(1,240/short));
+    const w = Math.round(width*scale), h = Math.round(height*scale);
+    const targetWidth = Math.max(w,240,Math.ceil(h/8));
+    const targetHeight = Math.max(h,240,Math.ceil(w/8));
+    const normalized = await image.autoOrient().resize({
+      width:targetWidth,height:targetHeight,fit:'contain',background:'white'
+    }).flatten({background:'white'}).jpeg({quality:90}).toBuffer();
+    return {bytes:normalized,type:'image/jpeg'};
+  } catch {
+    throw Object.assign(Error('INVALID_IMAGE'), {videoPreflightCode:'VIDEO_REFERENCE_FORMAT'});
+  }
+}
+
 export async function uploadTopviewImages(key, content) {
   submissionStage('video_reference_upload');
   return Promise.all(content.slice(1).map(async ({image_url}) => {
     const [,type,encoded] = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(image_url.url) || [];
     if (!encoded) throw Error('INVALID_IMAGE');
+    const media = await wanImage(Buffer.from(encoded,'base64'),type);
     const form = new FormData();
     form.set('kind','image');
-    form.set('file',new Blob([Buffer.from(encoded,'base64')],{type}),'reference.' + type.slice(6));
+    form.set('file',new Blob([media.bytes],{type:media.type}),'reference.' + media.type.slice(6));
     return preflight('upload',async()=>mediaUrl((await request(key,'/media/files',form)).download_url));
   }));
 }
@@ -75,7 +102,17 @@ export function topviewCleanFramePlan(plan){
 }
 
 export function topviewInput(plan, urls) {
-  const modelKey = topviewModel + (urls.length ? '/omni-reference-to-video' : '/text-to-video');
+  const mode = urls.length ? 'reference-to-video' : 'text-to-video';
+  const input = {prompt:plan.content[0].text};
+  if (urls.length) input.media = urls.map(url => ({type:'reference_image', url}));
+  return {modelKey:`${topviewModel}/${mode}`, input:{input, parameters:{
+    ratio:plan.ratio, resolution:plan.resolution.toUpperCase(), duration:plan.duration, audio:plan.generate_audio
+  }}};
+}
+
+// Existing T1 jobs replay the original request body and idempotency key after a timeout.
+export function legacyTopviewInput(plan, urls) {
+  const modelKey = legacyTopviewModel + (urls.length ? '/omni-reference-to-video' : '/text-to-video');
   const {ratio,resolution,duration,generate_audio} = plan;
   return {modelKey,input:{ratio,resolution,duration,generate_audio,content:[
     plan.content[0], ...urls.map(url=>({type:'image_url',role:'reference_image',image_url:{url}}))]}};

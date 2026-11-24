@@ -6,7 +6,11 @@ import {CloudGenerationService} from '../server/cloud/beta.mjs';
 import {PostgresDatabase} from '../server/cloud/postgres.mjs';
 import {pgPool} from './helpers/recommendation-pg-pool.mjs';
 
-for(const engine of ['sqlite','pg'])test('TOPVIEW T1 '+engine+' reserves, submits once and settles the actual video cost',async t=>{
+import sharp from 'sharp';
+const sample = await sharp({create:{width:260,height:300,channels:3,background:'#765432'}}).jpeg().toBuffer();
+const sampleUrl = 'data:image/jpeg;base64,'+sample.toString('base64');
+
+for(const engine of ['sqlite','pg'])test('Topview WAN 3.0 '+engine+' reserves, submits once and settles the actual video cost',async t=>{
   const prev={AIADCAST_VIDEO_PROVIDER:process.env.AIADCAST_VIDEO_PROVIDER,TOPVIEW_API_PLATFORM_KEY:process.env.TOPVIEW_API_PLATFORM_KEY};
   Object.assign(process.env,{AIADCAST_VIDEO_PROVIDER:'topview',TOPVIEW_API_PLATFORM_KEY:'test-only'});
   t.after(()=>{for(const [key,value] of Object.entries(prev)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
@@ -19,7 +23,7 @@ for(const engine of ['sqlite','pg'])test('TOPVIEW T1 '+engine+' reserves, submit
 
   const brief={kind:'service',title:'스튜디오',description:'스튜디오 촬영',emphasis:''};
   const input={brief,requestId:'topview-ad-test-01',seconds:10,ratio:'9:16',music:false,voice:false,
-    narration:'',voiceStyle:'',musicStyle:'',promptMode:'manual',manualPrompt:'A ceramic cup under soft studio light.',references:['data:image/png;base64,YWJj']};
+    narration:'',voiceStyle:'',musicStyle:'',promptMode:'manual',manualPrompt:'A ceramic cup under soft studio light.',references:[sampleUrl]};
   let status='processing',submissions=0,quote,denied=false,rejectSubmission=false;
   const source='https://media.example/reference',movie='https://media.example/movie';
   t.mock.method(globalThis,'fetch',async(raw,options)=>{
@@ -29,7 +33,7 @@ for(const engine of ['sqlite','pg'])test('TOPVIEW T1 '+engine+' reserves, submit
     assert.equal(options.headers.Authorization,'Bearer test-only');
     if(url.endsWith('/media/files')){
       if(denied)return new Response(null,{status:402});
-      assert.equal(options.body.get('kind'),'image');assert.equal(await options.body.get('file').text(),'abc');
+      assert.equal(options.body.get('kind'),'image');assert.deepEqual(Buffer.from(await options.body.get('file').arrayBuffer()),sample);
       return Response.json({data:{download_url:source}});
     }
     if(url.endsWith('/predictions/quote')){
@@ -38,11 +42,11 @@ for(const engine of ['sqlite','pg'])test('TOPVIEW T1 '+engine+' reserves, submit
     }
     if(options.method==='POST'){
       if(rejectSubmission)return new Response(null,{status:402});
-      assert.equal(url,'https://platform-backend.topview.ai/api/v1/models/topview/topview-t1/omni-reference-to-video/predictions');
+      assert.equal(url,'https://platform-backend.topview.ai/api/v1/models/alibaba/wan-3.0/reference-to-video/predictions');
       assert.ok(options.headers['Idempotency-Key']);assert.deepEqual(JSON.parse(options.body),quote.input);
-      assert.equal(quote.input.content[1].image_url.url,source);
-      assert.ok(quote.input.content[0].text.includes(input.manualPrompt));
-      assert.match(quote.input.content[0].text,/no banner, white strip or card/);
+      assert.equal(quote.input.input.media[0].url,source);
+      assert.ok(quote.input.input.prompt.includes(input.manualPrompt));
+      assert.match(quote.input.input.prompt,/no banner, white strip or card/);
       submissions++;return Response.json({data:{id:'topview-task-1'}});
     }
     assert.ok(url.endsWith('/predictions/topview-task-1'));
