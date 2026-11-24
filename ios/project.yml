@@ -22,7 +22,9 @@ targets:
   AiadcastUITests:
     type: bundle.ui-testing
     platform: iOS
-    sources: [UITests]
+    sources:
+      - path: UITests
+        includes: ["*.swift"]
     dependencies:
       - target: Aiadcast
     settings:
