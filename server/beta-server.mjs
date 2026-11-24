@@ -263,7 +263,7 @@ async function main(){
   const {activeVideoProvider,higgsfieldConnection}=await import('./higgsfield-video.mjs');
   if(activeVideoProvider()==='topview'){
     const {topviewConnection}=await import('./topview-video.mjs');
-    void topviewConnection().then(result=>console.info('Topview connection:',JSON.stringify(result)));
+    void topviewConnection(process.env,new URL('/aiadcast-app-icon.png',c.publicUrl).href).then(result=>console.info('Topview connection:',JSON.stringify(result)));
   }else if(activeVideoProvider()==='higgsfield')void higgsfieldConnection().then(result=>console.info('Higgsfield connection:',JSON.stringify(result)));
   let closing=false;const stop=async()=>{if(closing)return;closing=true;await app.close();};process.once('SIGTERM',()=>void stop());process.once('SIGINT',()=>void stop());return;
  }

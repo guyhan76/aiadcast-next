@@ -1,3 +1,5 @@
+import {submissionStage} from './submission-observation.mjs';
+
 const api = 'https://platform-backend.topview.ai/api/v1';
 export const topviewModel = 'topview/topview-t1';
 export function topviewKey(env = process.env) {
@@ -12,10 +14,39 @@ async function request(key, path, body, replayKey) {
   if (replayKey) headers['Idempotency-Key'] = replayKey;
   const response = await fetch(api + path, {method: body ? 'POST' : 'GET', headers, redirect:'error',
     body: form ? body : JSON.stringify(body), signal:AbortSignal.timeout(30000)});
-  if (!response.ok) throw Object.assign(Error('TOPVIEW_UNAVAILABLE'), {providerStatus:response.status});
+  if (!response.ok) {
+    const retryAfter=response.headers.get('retry-after');
+    const seconds=retryAfter===null ? 0 : Number(retryAfter);
+    const retryMs=Number.isFinite(seconds) ? Math.max(0,seconds*1000) : Math.max(0,Date.parse(retryAfter)-Date.now()) || 0;
+    throw Object.assign(Error('TOPVIEW_UNAVAILABLE'), {providerStatus:response.status,retryMs});
+  }
   const {data} = await response.json();
   if (!data || typeof data !== 'object') throw Error('INVALID_PROVIDER_RESPONSE');
   return data;
+}
+
+// Only reference preparation and quotes are eligible; a prediction is never retried here.
+async function preflight(operation, action) {
+  for (let attempt=1; ; attempt++) {
+    try { return await action(); }
+    catch (error) {
+      const status=error.providerStatus;
+      const network=error.name==='TimeoutError'||(error instanceof TypeError&&error.message==='fetch failed');
+      const transient=network||[408,429,500,502,503,504].includes(status);
+      const delay=Math.max(800,error.retryMs||0);
+      if(attempt===1&&transient&&delay<=3000) {
+        await new Promise(resolve=>setTimeout(resolve,delay));
+        continue;
+      }
+      console.warn('Topview video preflight:',JSON.stringify({operation,httpStatus:status??null,attempt,network}));
+      const code=status===413?'VIDEO_REFERENCE_SIZE':
+        operation==='upload'&&[400,415,422].includes(status)?'VIDEO_REFERENCE_FORMAT':
+        operation==='quote'&&[400,415,422].includes(status)?'VIDEO_PROVIDER_INPUT':
+        status===429?'VIDEO_PROVIDER_LIMIT':status===423?'VIDEO_PROVIDER_PAUSED':null;
+      if(code)error.videoPreflightCode=code;
+      throw error;
+    }
+  }
 }
 
 function mediaUrl(value) {
@@ -25,13 +56,14 @@ function mediaUrl(value) {
 }
 
 export async function uploadTopviewImages(key, content) {
+  submissionStage('video_reference_upload');
   return Promise.all(content.slice(1).map(async ({image_url}) => {
     const [,type,encoded] = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(image_url.url) || [];
     if (!encoded) throw Error('INVALID_IMAGE');
     const form = new FormData();
     form.set('kind','image');
     form.set('file',new Blob([Buffer.from(encoded,'base64')],{type}),'reference.' + type.slice(6));
-    return mediaUrl((await request(key,'/media/files',form)).download_url);
+    return preflight('upload',async()=>mediaUrl((await request(key,'/media/files',form)).download_url));
   }));
 }
 
@@ -50,10 +82,15 @@ function usdMicros(amount) {
   return micros;
 }
 export async function estimateTopview(key, input) {
-  const {reserveUsd} = await request(key,'/predictions/quote',input);
-  const hold = usdMicros(reserveUsd);
-  if (hold<=0 || hold>100_000_000) throw Error('INVALID_QUOTE');
-  return hold;
+  submissionStage('video_quote');
+  const held=await preflight('quote',async()=>{
+    const {reserveUsd}=await request(key,'/predictions/quote',input);
+    const amount=usdMicros(reserveUsd);
+    if(amount<=0||amount>100_000_000)throw Error('INVALID_QUOTE');
+    return amount;
+  });
+  submissionStage('generation_admission');
+  return held;
 }
 export async function submitTopview(key,{modelKey,input},replayKey) {
   const {id} = await request(key,'/models/'+modelKey+'/predictions',input,replayKey);
@@ -73,12 +110,12 @@ export async function pollTopview(key,id) {
   throw Error('INVALID_PROVIDER_STATUS');
 }
 
-export async function topviewConnection(env=process.env) {
+export async function topviewConnection(env=process.env,referenceUrl) {
   const key=topviewKey(env);
   if (!key) return {state:'key_missing'};
-  const plan={content:[{type:'text',text:'A plain ceramic cup on a studio table.'}],ratio:'9:16',resolution:'720p',duration:10,generate_audio:false};
+  const plan={content:[{type:'text',text:'A plain ceramic cup on a studio table.'}],ratio:'9:16',resolution:'720p',duration:referenceUrl?15:10,generate_audio:!!referenceUrl};
   try {
-    const quote=await request(key,'/predictions/quote',topviewInput(plan,[]));
+    const quote=await request(key,'/predictions/quote',topviewInput(plan,referenceUrl?[referenceUrl]:[]));
     return {state:'estimate_verified',estimatedUsd:usdMicros(quote.estimatedUsd)/1e6,reserveUsd:usdMicros(quote.reserveUsd)/1e6};
   } catch(error) { return {state:'estimate_unavailable',httpStatus:error.providerStatus??null}; }
 }

@@ -309,6 +309,7 @@ export class GenerationService {
         images=await provider.upload(key,plan.content);
         quote=await provider.estimate(key,provider.input(plan,images));
       }catch(error){
+        if(error.videoPreflightCode)fail(error.videoPreflightCode,503);
         if(error.providerStatus===401)fail('VIDEO_PROVIDER_AUTH',503);
         if(error.providerStatus===403&&provider.revision.startsWith('topview/'))fail('VIDEO_PROVIDER_PERMISSION',503);
         if([402,403].includes(error.providerStatus))fail('VIDEO_PROVIDER_BALANCE',503);
