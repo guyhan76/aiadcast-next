@@ -1,3 +1,4 @@
+import {imageCredits} from '../src/pricing';
 import {createHash} from 'node:crypto';
 import sharp from 'sharp';
 import {normalizeGenerationRequest} from '../server/generation-service.mjs';
@@ -66,8 +67,8 @@ test('confirm the complete credit amount before submitting a batch',async({page}
  });
  await page.route('**/api/generations/mock-ad-*',r=>r.fulfill({json:{job:jobs.find(j=>r.request().url().endsWith(j.id))}}));
  await page.addInitScript(()=>{Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>true});Object.defineProperty(navigator,'share',{configurable:true,value:async({files}:{files:File[]})=>{sessionStorage.setItem('shared-names',JSON.stringify(files.map(f=>f.name)));}});});
- await page.route('**/api/status',route=>route.fulfill({json:{generation:{enabled:true,batchVersion:1,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:80,reserved:0}},budget:{limitMicros:8000000}}}));
- await page.route('**/api/generations',route=>{if(route.request().method()==='POST'){writes++;const body=route.request().postDataJSON();expect(body.batch.count).toBe(4);expect(body.batch.quote.creditsUsed).toBe(40);id=body.batch.id;
+ await page.route('**/api/status',route=>route.fulfill({json:{generation:{enabled:true,batchVersion:1,creditQuote:{unit:'credit-v2',amount:imageCredits,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:8*imageCredits,reserved:0}},budget:{limitMicros:8000000}}}));
+ await page.route('**/api/generations',route=>{if(route.request().method()==='POST'){writes++;const body=route.request().postDataJSON();expect(body.batch.count).toBe(4);expect(body.batch.quote.creditsUsed).toBe(4*imageCredits);id=body.batch.id;
  const fingerprint=createHash('sha256').update(generationMatchKey(normalizeGenerationRequest(body.request))).digest('hex');
  for(let index=0;index<4;index++)jobs.push({id:'mock-ad-'+index,projectId:id+'-'+(index+1),mode:'creative',state:'ready',sourceHash:null,requestFingerprint:fingerprint,artifactId:hash,composition:'complete-ad',compositionKey:body.request.output.compositionKey,model:'test',createdAt:new Date().toISOString(),creditUnit:'credit-v2',artifact:{id:hash,sha256:hash,width:864,height:1536,role:'creative',dataUrl:'data:image/png;base64,'+png.toString('base64')}});
  return route.fulfill({json:{id}});}return route.fulfill({json:{jobs:[]}});});
@@ -76,10 +77,10 @@ test('confirm the complete credit amount before submitting a batch',async({page}
  await form.getByLabel('분야',{exact:true}).selectOption('logistics');await form.getByLabel('세부 업종',{exact:true}).selectOption('parcel');
  await form.getByRole('textbox',{name:'서비스명',exact:true}).fill('택배');await form.getByRole('textbox',{name:'상세설명',exact:true}).fill('지역 택배 배송 서비스');
  await form.getByRole('button',{name:'10',exact:true}).click();await form.getByRole('button',{name:'광고 생성',exact:true}).click();
- const dialog=page.getByRole('dialog');await expect(dialog).toContainText('20크레딧이 부족');await expect(dialog.getByRole('button',{name:'확인',exact:true})).toBeDisabled();
+ const dialog=page.getByRole('dialog');await expect(dialog).toContainText(`${2*imageCredits}크레딧이 부족`);await expect(dialog.getByRole('button',{name:'확인',exact:true})).toBeDisabled();
  await dialog.getByRole('button',{name:'취소'}).click();expect(writes).toBe(0);
  await form.getByRole('button',{name:'4',exact:true}).click();await form.getByRole('button',{name:'광고 생성',exact:true}).click();
- await expect(dialog).toContainText('이미지 4장');await expect(dialog.locator('dd')).toHaveText(['80','40','40']);expect(writes).toBe(0);
+ await expect(dialog).toContainText('이미지 4장');await expect(dialog.locator('dd')).toHaveText([8,4,4].map(count=>String(count*imageCredits)));expect(writes).toBe(0);
  await dialog.getByRole('button',{name:'확인',exact:true}).click();await expect.poll(()=>writes).toBe(1);
  const results=page.locator('.batch-results');await expect(results.locator('.batch-grid img')).toHaveCount(4);
  await page.goto('/#projects');
@@ -108,14 +109,14 @@ test('confirm the complete credit amount before submitting a batch',async({page}
 test('open a device image and confirm a text-directed edit on mobile and desktop',async({page})=>{
  await protectedScreen(page,mockSession('device-editor'));
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
- await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,selectiveEditProofVersion:1,creditQuote:{unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:30,reserved:0}},budget:{limitMicros:1000000}}}));
+ await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,selectiveEditProofVersion:1,creditQuote:{unit:'credit-v2',amount:imageCredits,policy:'delivered-2026-10-18'}},wallet:{available:0,reserved:0,credits:{available:30,reserved:0}},budget:{limitMicros:1000000}}}));
  const png=await sharp({create:{width:128,height:96,channels:4,background:'#578aac'}}).png().toBuffer();
  let submissions=0;
  await page.route('**/api/selective-edits/upload',async r=>{
   submissions++;
   const body=r.request().postDataJSON();
   expect(body.original.width).toBe(128);expect(body.original.height).toBe(96);
-  expect(body.mask).toEqual({mode:'scene'});expect(body.prompt).toBe('하늘에 구름 추가');expect(body.creditQuote.amount).toBe(10);
+  expect(body.mask).toEqual({mode:'scene'});expect(body.prompt).toBe('하늘에 구름 추가');expect(body.creditQuote.amount).toBe(imageCredits);
   await r.fulfill({status:409,json:{error:{code:'GENERATION_ALREADY_RUNNING'}}});
  });
  await page.goto('/#projects');
@@ -124,10 +125,10 @@ test('open a device image and confirm a text-directed edit on mobile and desktop
  const dialog=page.getByRole('dialog',{name:'정밀 편집'});
  await expect(dialog.getByAltText('원본 광고')).toBeVisible();
  await expect(dialog.locator('canvas')).toHaveCount(0);
- const submit=dialog.getByRole('button',{name:'수정하기 · 10 크레딧'});
+ const submit=dialog.getByRole('button',{name:`수정하기 · ${imageCredits} 크레딧`});
  await expect(submit).toBeDisabled();
  await dialog.getByRole('textbox').fill('하늘에 구름 추가');
- page.once('dialog',d=>{expect(d.message()).toContain('10 크레딧');return d.accept();});
+ page.once('dialog',d=>{expect(d.message()).toContain(`${imageCredits} 크레딧`);return d.accept();});
  await submit.click();await expect.poll(()=>submissions).toBe(1);
  await expect(submit).toBeEnabled();
 });
@@ -137,7 +138,7 @@ test('reopen a released edit, restore its instructions and wait for explicit res
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
  const png=await sharp({create:{width:64,height:48,channels:4,background:'blue'}}).png().toBuffer();
  const file={name:'ad.png',mimeType:'image/png',buffer:png};
- const quote={unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'};
+ const quote={unit:'credit-v2',amount:imageCredits,policy:'delivered-2026-10-18'};
  await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,selectiveEditProofVersion:1,creditQuote:quote},wallet:{available:0,reserved:0,credits:{available:30,reserved:0}},budget:{limitMicros:2000000}}}));
  const prompt='오른쪽 남성의 포즈를 바꾸고 하늘에 먹구름을 추가해주세요.';
  let job:any,finished=false,reads=0;
@@ -154,7 +155,7 @@ test('reopen a released edit, restore its instructions and wait for explicit res
  const upload=page.getByLabel('편집할 사진 또는 백업 파일'),dialog=page.getByRole('dialog',{name:'정밀 편집'});
  await upload.setInputFiles(file);
  await dialog.getByRole('textbox').fill(prompt);
- const submit=dialog.getByRole('button',{name:'수정하기 · 10 크레딧'});
+ const submit=dialog.getByRole('button',{name:`수정하기 · ${imageCredits} 크레딧`});
  page.once('dialog',d=>d.accept());await submit.click();
  await expect(dialog.getByText('수정 시안 생성 중',{exact:true})).toBeVisible();
  // The information message at two minutes must not stop polling the same request.
@@ -176,7 +177,7 @@ test('reopen a released edit, restore its instructions and wait for explicit res
 test('inspect a rejected pose without charging or accepting it, and keep the instructions editable',async({page})=>{
  await protectedScreen(page,mockSession('edit-review-preview'));
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
- const quote={unit:'credit-v2',amount:10,policy:'delivered-2026-10-18'};
+ const quote={unit:'credit-v2',amount:imageCredits,policy:'delivered-2026-10-18'};
  await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,selectiveEdit:true,selectiveEditProofVersion:1,creditQuote:quote},wallet:{available:0,reserved:0,credits:{available:30,reserved:0}},budget:{limitMicros:2000000}}}));
  const png=await sharp({create:{width:64,height:48,channels:4,background:'blue'}}).png().toBuffer();
  const jpg=await sharp(png).jpeg().toBuffer();let posts=0;
@@ -187,7 +188,7 @@ test('inspect a rejected pose without charging or accepting it, and keep the ins
  });
  await page.goto('/#projects');await page.getByLabel('편집할 사진 또는 백업 파일').setInputFiles({name:'ad.png',mimeType:'image/png',buffer:png});
  const dialog=page.getByRole('dialog',{name:'정밀 편집'});await dialog.getByRole('textbox').fill('인물 포즈 변경');
- page.once('dialog',d=>d.accept());await dialog.getByRole('button',{name:'수정하기 · 10 크레딧'}).click();
+ page.once('dialog',d=>d.accept());await dialog.getByRole('button',{name:`수정하기 · ${imageCredits} 크레딧`}).click();
  await expect(dialog.getByLabel('원본과 수정본 비교')).toBeVisible();await expect(dialog.getByText(/이전 자세의 흔적/)).toBeVisible();
  await expect(dialog.getByText(/두 번째 커리어.*누락/)).toBeVisible();await expect(dialog.getByText(/드론.*원본 2.*시안 1/)).toBeVisible();
  await expect(dialog.getByRole('button',{name:'수정본 저장'})).toHaveCount(0);

@@ -1,0 +1,39 @@
+name: Aiadcast
+options:
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+targets:
+  Aiadcast:
+    type: application
+    platform: iOS
+    sources: [App]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.selluplabs.aiadcast.next
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: aiadcast
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        MARKETING_VERSION: "0.2.122"
+        CURRENT_PROJECT_VERSION: 1
+  AiadcastUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: Aiadcast
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.selluplabs.aiadcast.next.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Aiadcast
+schemes:
+  Aiadcast:
+    build:
+      targets:
+        Aiadcast: all
+    test:
+      targets: [AiadcastUITests]
