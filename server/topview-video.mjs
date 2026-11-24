@@ -1,13 +1,15 @@
+import {sceneStops} from '../src/video-style.ts';
 import {submissionStage} from './submission-observation.mjs';
 
 const api = 'https://platform-backend.topview.ai/api/v1';
-export const topviewModel = 'topview/topview-t1';
+export const topviewModel = 'alibaba/wan-3.0';
+export const legacyTopviewModel = 'topview/topview-t1';
 export function topviewKey(env = process.env) {
   const key = env.TOPVIEW_API_PLATFORM_KEY?.trim();
   return key && /^[\x21-\x7e]+$/.test(key) ? key : null;
 }
 
-async function request(key, path, body, replayKey) {
+async function request(key, path, body, replayKey, probe = false) {
   const headers = {Authorization: 'Bearer ' + key};
   const form = body instanceof FormData;
   if (body && !form) headers['Content-Type'] = 'application/json';
@@ -18,7 +20,14 @@ async function request(key, path, body, replayKey) {
     const retryAfter=response.headers.get('retry-after');
     const seconds=retryAfter===null ? 0 : Number(retryAfter);
     const retryMs=Number.isFinite(seconds) ? Math.max(0,seconds*1000) : Math.max(0,Date.parse(retryAfter)-Date.now()) || 0;
-    throw Object.assign(Error('TOPVIEW_UNAVAILABLE'), {providerStatus:response.status,retryMs});
+    let diagnostic;
+    if (probe) {
+      const detail = await response.json().catch(()=>({}));
+      // Only for the fixed synthetic quote. Never put provider URLs or credentials into logs.
+      const reason = String(detail.message ?? detail.error?.message ?? '').replace(/https?:\/\/\S+/gi,'[url]').replace(/[a-zA-Z0-9_=-]{24,}/g,'[id]').slice(0,200);
+      diagnostic = {code:typeof detail.code==='number'?detail.code:undefined,reason};
+    }
+    throw Object.assign(Error('TOPVIEW_UNAVAILABLE'), {providerStatus:response.status,retryMs,diagnostic});
   }
   const {data} = await response.json();
   if (!data || typeof data !== 'object') throw Error('INVALID_PROVIDER_RESPONSE');
@@ -55,14 +64,40 @@ function mediaUrl(value) {
   return url.href;
 }
 
+// Prepare a provider copy only when WAN cannot accept the original dimensions or PNG alpha.
+async function wanImage(bytes, type) {
+  const {default:sharp} = await import('sharp');
+  try {
+    const image = sharp(bytes,{limitInputPixels:40_000_000});
+    const metadata = await image.metadata();
+    const {width,height} = metadata.autoOrient ?? metadata;
+    const {format,hasAlpha} = metadata;
+    const short = Math.min(width,height), long = Math.max(width,height);
+    if (short >= 240 && long <= 8000 && long <= 8*short && !(format==='png' && hasAlpha)) {
+      return {bytes,type};
+    }
+    const scale = Math.min(8000/long,Math.max(1,240/short));
+    const w = Math.round(width*scale), h = Math.round(height*scale);
+    const targetWidth = Math.max(w,240,Math.ceil(h/8));
+    const targetHeight = Math.max(h,240,Math.ceil(w/8));
+    const normalized = await image.autoOrient().resize({
+      width:targetWidth,height:targetHeight,fit:'contain',background:'white'
+    }).flatten({background:'white'}).jpeg({quality:90}).toBuffer();
+    return {bytes:normalized,type:'image/jpeg'};
+  } catch {
+    throw Object.assign(Error('INVALID_IMAGE'), {videoPreflightCode:'VIDEO_REFERENCE_FORMAT'});
+  }
+}
+
 export async function uploadTopviewImages(key, content) {
   submissionStage('video_reference_upload');
   return Promise.all(content.slice(1).map(async ({image_url}) => {
     const [,type,encoded] = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(image_url.url) || [];
     if (!encoded) throw Error('INVALID_IMAGE');
+    const media = await wanImage(Buffer.from(encoded,'base64'),type);
     const form = new FormData();
     form.set('kind','image');
-    form.set('file',new Blob([Buffer.from(encoded,'base64')],{type}),'reference.' + type.slice(6));
+    form.set('file',new Blob([media.bytes],{type:media.type}),'reference.' + media.type.slice(6));
     return preflight('upload',async()=>mediaUrl((await request(key,'/media/files',form)).download_url));
   }));
 }
@@ -74,8 +109,32 @@ export function topviewCleanFramePlan(plan){
   return {...plan,content:[{...direction,text:direction.text+'\n\n'+frameRule},...media]};
 }
 
+export function wanCutPlan(plan, body) {
+  const clean = topviewCleanFramePlan(plan);
+  if (body?.brief?.kind !== 'product' || !body.shots || body.manualPrompt !== undefined) return clean;
+  const [,detail,closing] = sceneStops(plan.duration);
+  const edit = [
+    'Render the three approved shots as an edited commercial. Follow the requested tone and subject.',
+    'Begin on the opening action in progress. For a high-energy opening show its visible reaction within the first second.',
+    `At ${detail}s cut to the distinct detail action. At ${closing}s cut to a wider final product view and hold it until ${plan.duration}s.`,
+    'Keep the middle action inside its own interval. If the approved directions explicitly call for a continuous take or different framing, follow them.'
+  ].join(' ');
+  const [direction,...media] = clean.content;
+  return {...clean,content:[{...direction,text:edit+'\n'+direction.text},...media]};
+}
+
 export function topviewInput(plan, urls) {
-  const modelKey = topviewModel + (urls.length ? '/omni-reference-to-video' : '/text-to-video');
+  const mode = urls.length ? 'reference-to-video' : 'text-to-video';
+  const input = {prompt:plan.content[0].text};
+  if (urls.length) input.media = urls.map(url => ({type:'reference_image', url}));
+  return {modelKey:`${topviewModel}/${mode}`, input:{input, parameters:{
+    ratio:plan.ratio, resolution:plan.resolution.toUpperCase(), duration:plan.duration, audio:plan.generate_audio
+  }}};
+}
+
+// Existing T1 jobs replay the original request body and idempotency key after a timeout.
+export function legacyTopviewInput(plan, urls) {
+  const modelKey = legacyTopviewModel + (urls.length ? '/omni-reference-to-video' : '/text-to-video');
   const {ratio,resolution,duration,generate_audio} = plan;
   return {modelKey,input:{ratio,resolution,duration,generate_audio,content:[
     plan.content[0], ...urls.map(url=>({type:'image_url',role:'reference_image',image_url:{url}}))]}};
@@ -117,12 +176,18 @@ export async function pollTopview(key,id) {
   throw Error('INVALID_PROVIDER_STATUS');
 }
 
-export async function topviewConnection(env=process.env,referenceUrl) {
+export async function topviewConnection(env=process.env,checkReference=false) {
   const key=topviewKey(env);
   if (!key) return {state:'key_missing'};
-  const plan={content:[{type:'text',text:'A plain ceramic cup on a studio table.'}],ratio:'9:16',resolution:'720p',duration:referenceUrl?15:10,generate_audio:!!referenceUrl};
+  const plan={content:[{type:'text',text:'A plain ceramic cup on a studio table.'}],ratio:'9:16',resolution:'720p',duration:10,generate_audio:checkReference};
   try {
-    const quote=await request(key,'/predictions/quote',topviewInput(plan,referenceUrl?[referenceUrl]:[]));
+    let references=[];
+    if(checkReference){
+      const {default:sharp}=await import('sharp');
+      const sample=await sharp({create:{width:320,height:320,channels:3,background:'#b99370'}}).jpeg().toBuffer();
+      references=await uploadTopviewImages(key,[...plan.content,{image_url:{url:'data:image/jpeg;base64,'+sample.toString('base64')}}]);
+    }
+    const quote=await request(key,'/predictions/quote',topviewInput(plan,references),undefined,true);
     return {state:'estimate_verified',estimatedUsd:usdMicros(quote.estimatedUsd)/1e6,reserveUsd:usdMicros(quote.reserveUsd)/1e6};
-  } catch(error) { return {state:'estimate_unavailable',httpStatus:error.providerStatus??null}; }
+  } catch(error) { return {state:'estimate_unavailable',httpStatus:error.providerStatus??null,...(error.diagnostic?{diagnostic:error.diagnostic}:{})}; }
 }

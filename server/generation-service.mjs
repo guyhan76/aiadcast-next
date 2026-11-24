@@ -266,7 +266,7 @@ export class GenerationService {
     // Existing quoted jobs keep their original model across provider changes.
     const saved=this.db.prepare('SELECT v.*,j.model_revision FROM higgsfield_video_jobs v JOIN jobs j ON v.id=j.id WHERE v.id=?').get(body.requestId);
     const legacy=this.db.prepare('SELECT j.model_revision FROM video_trials v JOIN jobs j ON j.id=v.id WHERE v.id=?').get(body.requestId);
-    const provider=quotedVideoProvider(saved?saved.model_revision.split('/')[0]:activeVideoProvider());
+    const provider=quotedVideoProvider(saved?saved.model_revision.split('/')[0]:activeVideoProvider(),saved?.model_revision);
     if(!legacy&&provider)return this.startQuotedVideo(body,saved,provider);
     const config=seedanceConfig();
     if(!config||(!legacy&&activeVideoProvider()!=='byteplus'))fail('VIDEO_TRIAL_UNAVAILABLE',403);
@@ -300,7 +300,7 @@ export class GenerationService {
     try{plan=seedancePayload(body,provider.model);}catch{fail('INVALID_VIDEO');}
     const id=body.requestId;
     const originalPlan=plan;
-    plan=provider.preparePlan?.(originalPlan)??originalPlan;
+    plan=provider.preparePlan?.(originalPlan, body)??originalPlan;
     let fingerprint=hashBytes(Buffer.from(JSON.stringify(plan)));
     if(!saved){
       const quotePolicy=this.videoQuote(body);

@@ -2,9 +2,39 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {estimateTopview,uploadTopviewImages,topviewInput,topviewConnection,submitTopview} from '../server/topview-video.mjs';
 
+import sharp from 'sharp';
+import {basicVideoShots} from '../src/video-prompt.ts';
+import {videoPromptMessages} from '../server/video-prompt-assistant.mjs';
+const sample = await sharp({create:{width:260,height:300,channels:3,background:'#765432'}}).jpeg().toBuffer();
+const sampleUrl = 'data:image/jpeg;base64,'+sample.toString('base64');
+
+import {quotedVideoProvider} from '../server/quoted-video.mjs';
+
+test('WAN requests preserve reference order, timing, ratio and audio; old jobs replay T1',()=>{
+  const urls=Array.from({length:10},(_,i)=>'https://example.com/ref'+i+'.jpg');
+  for(const duration of [10,15,20,30]) for(const audio of [false,true]){
+    const plan={duration,ratio:'9:16',resolution:'720p',generate_audio:audio,content:[{type:'text',text:'Iced latte'}]};
+    for(const images of [[],urls.slice(0,1),urls]){
+      const {modelKey,input}=topviewInput(plan,images);
+      assert.equal(modelKey,'alibaba/wan-3.0/'+(images.length?'reference-to-video':'text-to-video'));
+      assert.equal(input.input.prompt,'Iced latte');
+      assert.deepEqual(input.input.media,images.length?images.map(url=>({type:'reference_image',url})):undefined);
+      assert.deepEqual(input.parameters,{duration,ratio:'9:16',resolution:'720P',audio});
+    }
+    const previous=quotedVideoProvider('topview','topview/topview-t1');
+    assert.equal(previous.model,'topview/topview-t1');
+    assert.deepEqual(previous.input(plan,[urls[0]]),{
+      modelKey:'topview/topview-t1/omni-reference-to-video',
+      input:{duration,ratio:'9:16',resolution:'720p',generate_audio:audio,
+        content:[plan.content[0],{type:'image_url',role:'reference_image',image_url:{url:urls[0]}}]}
+    });
+    assert.equal(quotedVideoProvider('topview').revision,'topview/alibaba/wan-3.0/cuts-v1');
+  }
+});
+
 test('manual 15s quote retries a temporary failure and keeps the same reference and prompt',async t=>{
   const plan={duration:15,resolution:'720p',ratio:'9:16',generate_audio:true,content:[
-    {type:'text',text:'눈길을 걷는 모델의 롱코트'}, {type:'image_url',image_url:{url:'data:image/png;base64,YWJj'}}]};
+    {type:'text',text:'눈길을 걷는 모델의 롱코트'}, {type:'image_url',image_url:{url:sampleUrl}}]};
   const calls=[];
   t.mock.method(globalThis,'fetch',async(url,options)=>{
     if(url.endsWith('/media/files'))return Response.json({data:{download_url:'https://example.com/coat.png'}});
@@ -14,27 +44,31 @@ test('manual 15s quote retries a temporary failure and keeps the same reference 
   });
   const urls=await uploadTopviewImages('test',plan.content);
   assert.equal(await estimateTopview('test',topviewInput(plan,urls)),2860110);
-  assert.deepEqual(calls[0],calls[1]);assert.equal(calls[1].input.content[0].text,plan.content[0].text);
-  assert.equal(calls[1].input.duration,15);
+  assert.deepEqual(calls[0],calls[1]);assert.equal(calls[1].input.input.prompt,plan.content[0].text);
+  assert.equal(calls[1].input.parameters.duration,15);
 });
 
 test('image and quote errors retain their stage and invalid input is not retried',async t=>{
   let calls=0;
   t.mock.method(globalThis,'fetch',async()=>{calls++;return new Response(null,{status:422});});
-  await assert.rejects(uploadTopviewImages('test',[{}, {image_url:{url:'data:image/png;base64,YWJj'}}]),{videoPreflightCode:'VIDEO_REFERENCE_FORMAT'});
+  await assert.rejects(uploadTopviewImages('test',[{}, {image_url:{url:sampleUrl}}]),{videoPreflightCode:'VIDEO_REFERENCE_FORMAT'});
   await assert.rejects(estimateTopview('test',{}),{videoPreflightCode:'VIDEO_PROVIDER_INPUT'});
   assert.equal(calls,2);
 });
 
-test('hosted connection probe quotes a 15s reference video without submitting',async t=>{
+test('hosted connection probe uploads an opaque reference and quotes 10s without submitting',async t=>{
   t.mock.method(globalThis,'fetch',async(url,options)=>{
+    if(url.endsWith('/media/files')){
+      assert.equal(options.body.get('file').type,'image/jpeg');
+      return Response.json({data:{download_url:'https://example.com/icon.jpg'}});
+    }
     assert.ok(url.endsWith('/predictions/quote'));
     const {modelKey,input}=JSON.parse(options.body);
-    assert.ok(modelKey.endsWith('/omni-reference-to-video'));assert.equal(input.duration,15);
-    assert.equal(input.content[1].image_url.url,'https://example.com/icon.png');
+    assert.equal(modelKey,'alibaba/wan-3.0/reference-to-video');assert.equal(input.parameters.duration,10);
+    assert.equal(input.input.media[0].url,'https://example.com/icon.jpg');
     return Response.json({data:{estimatedUsd:'2.6',reserveUsd:'2.86'}});
   });
-  assert.equal((await topviewConnection({TOPVIEW_API_PLATFORM_KEY:'test'},'https://example.com/icon.png')).state,'estimate_verified');
+  assert.equal((await topviewConnection({TOPVIEW_API_PLATFORM_KEY:'test'},true)).state,'estimate_verified');
 });
 
 test('temporary prediction submission errors do not trigger a second submission',async t=>{
@@ -42,4 +76,42 @@ test('temporary prediction submission errors do not trigger a second submission'
   t.mock.method(globalThis,'fetch',async()=>{count++;return new Response(null,{status:503});});
   await assert.rejects(submitTopview('test',{modelKey:'test',input:{}},'same-id'),{providerStatus:503});
   assert.equal(count,1);
+});
+
+test('WAN upload fits a transparent small PNG into the allowed frame without cropping',async t=>{
+  const tiny = await sharp({create:{width:24,height:8,channels:4,background:'#77440088'}}).png().toBuffer();
+  t.mock.method(globalThis,'fetch',async(url,options)=>{
+    const file=options.body.get('file');
+    const metadata=await sharp(Buffer.from(await file.arrayBuffer())).metadata();
+    assert.equal(metadata.format,'jpeg');
+    assert.equal(metadata.hasAlpha,false);
+    assert.ok(metadata.width>=240 && metadata.height>=240);
+    return Response.json({data:{download_url:'https://example.com/reference.jpg'}});
+  });
+  await uploadTopviewImages('test',[{}, {image_url:{url:'data:image/png;base64,'+tiny.toString('base64')}}]);
+});
+
+test('new product auto plans deliver two cut points to WAN while manual and saved jobs retain their prompts',()=>{
+  const body={brief:{kind:'product'},shots:['ice tips','milk marbles','glass rests']};
+  const plan={content:[{type:'text',text:body.shots.join('\n')}],resolution:'720p',duration:10,ratio:'9:16',generate_audio:false};
+  const current=quotedVideoProvider('topview');
+  const old=quotedVideoProvider('topview','topview/alibaba/wan-3.0');
+  const text=current.input(current.preparePlan(plan,body),[]).input.input.prompt;
+  assert.match(text,/within the first second/);assert.match(text,/At 3s cut/);assert.match(text,/At 7s cut/);
+  assert.ok(text.includes(plan.content[0].text));
+  for(const brief of [{...body,manualPrompt:'one take'},{brief:{kind:'service'},shots:body.shots}]){
+    assert.deepEqual(current.preparePlan(plan,brief),old.preparePlan(plan));
+  }
+  assert.ok(!old.preparePlan(plan,body).content[0].text.includes('At 3s cut'));
+});
+
+test('iced latte gets impact, swirl and a whole-glass finish in both the fallback and planner input',()=>{
+  const brief={kind:'product',style:'product',field:'식품',title:'아이스라떼',description:'에스프레소, 얼음과 우유',highlight:'강렬한 시작',seconds:10};
+  const [opening,detail,closing]=basicVideoShots(brief,'ko');
+  assert.match(opening,/얼음 모서리를 때려/);assert.match(detail,/잔 옆면으로 컷/);assert.match(closing,/잔 전체/);
+  const [instructions]=videoPromptMessages({brief,references:[],targetLocale:'ko'});
+  assert.match(instructions.content,/impact and recoil in the first second/);
+  for(const change of [{title:'아이스 말차라떼'},{description:'에스프레소 캡슐 밀봉'},{style:'unboxing'},{style:'presenter'}]){
+    assert.doesNotMatch(basicVideoShots({...brief,...change},'ko')[0],/얼음 모서리를 때려/);
+  }
 });
