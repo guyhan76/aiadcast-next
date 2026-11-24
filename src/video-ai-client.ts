@@ -124,8 +124,8 @@ export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,sign
 export async function requestVideoPrompt(brief:PromptBrief,scenes:LoadedVideoScene[],language:'ko'|'en',signal:AbortSignal):Promise<VideoPlanIdea>{
   const session=betaSession();
   const references=scenes.map(({visual})=>referenceJpeg(visual,512));
-  const input={kind:'video-prompt',planVersion:1,targetLocale:language,brief,references};
-  const planIdentity=brief.kind==='product'?['product-cuts-v1',input]:input;
+  const input={kind:'video-prompt',planVersion:brief.kind==='product'?2:1,targetLocale:language,brief,references};
+  const planIdentity=brief.kind==='product'?['product-opening-beats-v2',input]:input;
   const id=await requestId(JSON.stringify(planIdentity),'aiadcast.video-prompt.');
   signal.throwIfAborted();
   const result=await apiRequest<{requestId:string;shots:unknown;audio?:unknown}>('/api/assistant',{...input,requestId:id},signal).catch(error=>{

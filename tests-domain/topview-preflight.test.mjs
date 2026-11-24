@@ -28,7 +28,7 @@ test('WAN requests preserve reference order, timing, ratio and audio; old jobs r
       input:{duration,ratio:'9:16',resolution:'720p',generate_audio:audio,
         content:[plan.content[0],{type:'image_url',role:'reference_image',image_url:{url:urls[0]}}]}
     });
-    assert.equal(quotedVideoProvider('topview').revision,'topview/alibaba/wan-3.0/cuts-v1');
+    assert.equal(quotedVideoProvider('topview').revision,'topview/alibaba/wan-3.0/opening-v2');
   }
 });
 
@@ -97,21 +97,21 @@ test('new product auto plans deliver two cut points to WAN while manual and save
   const current=quotedVideoProvider('topview');
   const old=quotedVideoProvider('topview','topview/alibaba/wan-3.0');
   const text=current.input(current.preparePlan(plan,body),[]).input.input.prompt;
-  assert.match(text,/within the first second/);assert.match(text,/At 3s cut/);assert.match(text,/At 7s cut/);
+  assert.match(text,/By 0\.8 seconds/);assert.match(text,/At 3s switch/);assert.match(text,/At 7s switch/);
   assert.ok(text.includes(plan.content[0].text));
   for(const brief of [{...body,manualPrompt:'one take'},{brief:{kind:'service'},shots:body.shots}]){
     assert.deepEqual(current.preparePlan(plan,brief),old.preparePlan(plan));
   }
-  assert.ok(!old.preparePlan(plan,body).content[0].text.includes('At 3s cut'));
+  assert.ok(!old.preparePlan(plan,body).content[0].text.includes('At 3s switch'));
 });
 
 test('iced latte gets impact, swirl and a whole-glass finish in both the fallback and planner input',()=>{
   const brief={kind:'product',style:'product',field:'식품',title:'아이스라떼',description:'에스프레소, 얼음과 우유',highlight:'강렬한 시작',seconds:10};
   const [opening,detail,closing]=basicVideoShots(brief,'ko');
-  assert.match(opening,/얼음 모서리를 때려/);assert.match(detail,/잔 옆면으로 컷/);assert.match(closing,/잔 전체/);
+  assert.match(opening,/얼음이 부딪/);assert.match(detail,/잔 옆면으로 컷/);assert.match(closing,/잔 전체/);
   const [instructions]=videoPromptMessages({brief,references:[],targetLocale:'ko'});
-  assert.match(instructions.content,/impact and recoil in the first second/);
+  assert.match(instructions.content,/Two ice cubes collide at frame one/);
   for(const change of [{title:'아이스 말차라떼'},{description:'에스프레소 캡슐 밀봉'},{style:'unboxing'},{style:'presenter'}]){
-    assert.doesNotMatch(basicVideoShots({...brief,...change},'ko')[0],/얼음 모서리를 때려/);
+    assert.doesNotMatch(basicVideoShots({...brief,...change},'ko')[0],/얼음이 부딪/);
   }
 });

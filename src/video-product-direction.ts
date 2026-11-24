@@ -16,8 +16,8 @@ const directions = {
     en: ['For a worn look, open mid-turn as the item sweeps past the lens into silhouette. For a product-only brief, arc the camera around its edge instead.', 'Continue the motion into a close view of one visible material or finishing detail.', 'Widen to show the full look or item, giving its proportions room to read. Keep the original design and color.'],
   },
   icedLatte: {
-    ko: ['첫 프레임부터 잔 테두리와 얼음을 바짝 잡는다. 에스프레소 줄기가 맨 위 얼음 모서리를 때려 얼음이 한 번 꺾이고 갈색 방울이 테두리 위로 짧게 솟는다. 첫 1초 안에 충돌과 반동이 모두 보인다.', '충돌 직후 잔 옆면으로 컷. 이제 우유 속으로 파고드는 갈색 줄기에 초점을 맞추고, 아래쪽의 흰 우유 층은 보이게 한다.', '잔 전체가 보이는 별도 정면 컷으로 전환한다. 붓기가 끝난 뒤 얼음이 자리를 잡고, 마지막 순간에는 사진 속 잔의 형태와 층이 또렷하게 읽힌다.'],
-    en: ['Start tight on the rim and top ice, mid-strike. Espresso hits the corner of a cube; the cube tips and amber droplets kick above the rim. Show both impact and recoil in the first second.', 'Cut on impact to the side of the glass. Follow one dark ribbon descending into the milk, with white milk still visible below.', 'Cut wide to the entire reference glass. The pour has stopped, the ice settles, and the final frame holds the recognizable drink.'],
+    ko: ['첫 프레임부터 잔 테두리와 얼음을 바짝 잡는다. 두 얼음이 부딪친 바로 그 순간, 갈색 커피가 왕관처럼 솟아 잔 테두리 위에서 빛난다. 0.8초 안에 낮은 측면으로 컷해 튀어 오른 방울이 다시 잔에 닿는 순간을 잡는다.', '충돌 직후 잔 옆면으로 컷. 이제 우유 속으로 파고드는 갈색 줄기에 초점을 맞추고, 아래쪽의 흰 우유 층은 보이게 한다.', '잔 전체가 보이는 별도 정면 컷으로 전환한다. 붓기가 끝난 뒤 얼음이 자리를 잡고, 마지막 순간에는 사진 속 잔의 형태와 층이 또렷하게 읽힌다.'],
+    en: ['Start tight on the rim and top ice, mid-strike. Two ice cubes collide at frame one and an amber crown of coffee rises above the rim. Cut low on that impact and catch the falling droplets by 0.8 seconds.', 'Cut on impact to the side of the glass. Follow one dark ribbon descending into the milk, with white milk still visible below.', 'Cut wide to the entire reference glass. The pour has stopped, the ice settles, and the final frame holds the recognizable drink.'],
   },
   food: {
     ko: ['첫 프레임에서 실제 재료가 떨어지거나 음료가 쏟아지는 순간을 가까이 잡는다. 밀봉 제품만 보이면 포장을 빠르게 회전시켜 정면을 드러낸다.', '같은 동작의 방향을 따라 표면의 질감이나 액체의 흐름을 크게 보여준다. 제공된 재료와 용기를 그대로 쓴다.', '움직임이 잦아들면서 판매 대상인 음식이나 패키지가 화면 중앙에 선명하게 남는다.'],
@@ -37,10 +37,9 @@ export function productDirection(brief: DirectionBrief, language: 'ko' | 'en'): 
   const food = /식품|음료|식음료|가공식|농산물|축산물|수산물|food|beverage/i;
   const subject = [brief.title, brief.description, brief.highlight].filter(Boolean).join(' ');
   const icedLatte = /아이스\s*(?:카페\s*)?라[떼테]|\biced\s+(?:caff[eè]\s+)?latte\b/i;
-  const coffee = /에스프레소|커피|espresso|coffee/i;
   const packaged = /밀봉|캡슐|파우치|캔커피|캔\s*(?:음료|라[떼테])|병입|sealed|capsule|pouch|bottled|canned/i;
   const otherLatte = /말차|녹차|초코|딸기|고구마|matcha|chocolate|strawberry/i;
-  if ((!category.trim() || food.test(category)) && icedLatte.test(subject) && coffee.test(subject)
+  if (icedLatte.test(subject) && (!category.trim() || food.test(category) || icedLatte.test(brief.title ?? ''))
     && !packaged.test(subject) && !otherLatte.test(subject)) return directions.icedLatte[language];
   if (fashion.test(category)) return directions.fashion[language];
   if (food.test(category)) return directions.food[language];
