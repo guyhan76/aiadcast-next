@@ -82,6 +82,12 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
  const [page,setPage]=useState<Page>(currentPage),[seed,setSeed]=useState<Project>(()=>restored?.editor??({...newProject(),locale:language})),[current,setCurrent]=useState<Project>(seed),[editorKey,setEditorKey]=useState(0);
  const creating=page==='create';
  const [video,setVideo]=useState(()=>videoDraft());
+ const [videoKey,setVideoKey]=useState(0);
+ function beginVideo(){
+  setVideo(videoDraft());
+  setVideoKey(key=>key+1);
+  go('video');
+ }
  useEffect(()=>{
   const clear=()=>setVideo(videoDraft());
   window.addEventListener('aiadcast-session-change',clear);
@@ -202,7 +208,7 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
       </div>
       <div className="creation-choice-cover"><img src={homeImageCover} alt=""/></div>
      </a>
-     <a href="#video" aria-labelledby="home-video-title" aria-describedby="home-video-detail">
+     <a href="#video" onClick={event=>{if(video.file){event.preventDefault();beginVideo();}}} aria-labelledby="home-video-title" aria-describedby="home-video-detail">
       <div className="creation-choice-copy">
        <Clapperboard className="creation-choice-icon" size={22} aria-hidden="true"/>
        <strong id="home-video-title">{t('광고 영상 만들기','Create an ad video')}</strong>
@@ -212,9 +218,9 @@ function StudioWorkspace({restored}:{restored?:WorkspaceDraft}){
      </a>
     </nav>
    </main>}
-   {page==='video'&&<div className="app-page vd-page"><VideoAdPage draft={video} change={setVideo}/></div>}
-   <div hidden={!creating} className="app-page"><CreateCampaign active={creating} key={wizardKey} onReady={ready} draft={wizardSeed} onDraft={setWizard}/></div>
-   <div hidden={page!=='projects'} className="app-page projects-page">{page==='projects'&&<ProjectLibrary key={betaSession()?.token??workspaceScope} onRemove={removeSaved} items={libraryItems} error={libraryError} onNew={()=>void begin()} onOpen={p=>void open(p)} onOpenServer={p=>open(p,true)} showDownloads={!!betaSession()&&!offlineDemo()}/>}</div>
+   {page==='video'&&<div className="app-page vd-page"><VideoAdPage key={videoKey} draft={video} change={setVideo} onNew={beginVideo}/></div>}
+   <div hidden={!creating} className="app-page"><CreateCampaign onNew={()=>void begin()} active={creating} key={wizardKey} onReady={ready} draft={wizardSeed} onDraft={setWizard}/></div>
+   <div hidden={page!=='projects'} className="app-page projects-page">{page==='projects'&&<ProjectLibrary key={betaSession()?.token??workspaceScope} onRemove={removeSaved} items={libraryItems} error={libraryError} onNew={media=>media==='video'?beginVideo():void begin()} onOpen={p=>void open(p)} onOpenServer={p=>open(p,true)} showDownloads={!!betaSession()&&!offlineDemo()}/>}</div>
    <div hidden={page!=='guide'} className="app-page guide-page"><UsageGuide onNew={()=>void begin()}/></div>
    {(page==='signup'||page==='login')&&<div className="app-page"><EmailAccountPage key={page} mode={page} preserve={preserve} returnPage={returnPage}/></div>}
    {page==='admin'&&<div className="app-page"><AdminPage/></div>}

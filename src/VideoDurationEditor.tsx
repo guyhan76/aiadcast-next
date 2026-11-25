@@ -21,7 +21,7 @@ import './video-duration.css';
 export type VideoDraft = {productUrl?:string; sources:VideoSource[]; ratio:VideoRatio; manual:VideoDuration|null; brief:VideoBrief; caption:string; voiceText:string; musicStyle:string; voiceStyle:string; aiMusic:boolean; aiVoice:boolean; file?:File; promptMode:VideoPromptMode; manualPrompt:string; review?:VideoReview};
 export function videoDraft(sources:VideoSource[]=[],brief:VideoBrief=emptyVideoBrief):VideoDraft {return {sources,promptMode:'auto',manualPrompt:'',ratio:defaultVideoRatio,manual:null,brief,caption:brief.savedCaption??'',voiceText:'',musicStyle:'',voiceStyle:'',aiMusic:true,aiVoice:true};}
 type Props = {
-  draft:VideoDraft; change:(draft:VideoDraft)=>void;
+  draft:VideoDraft; change:(draft:VideoDraft)=>void; onNew?:()=>void;
   generateAi?:(draft:VideoDraft,seconds:VideoDuration,signal:AbortSignal,onState:(s:VideoRequestStage)=>void,scenes:LoadedVideoScene[])=>Promise<Blob>;
   draftPrompt?:(brief:PromptBrief,scenes:LoadedVideoScene[],language:'ko'|'en',signal:AbortSignal)=>Promise<VideoPlanIdea>;
   admin:boolean; availableCredits:number;
@@ -47,7 +47,7 @@ function SceneThumbnail({scene}:{scene?:LoadedVideoScene}) {
   return <canvas ref={ref} width={240} height={200} aria-hidden="true"/>;
 }
 
-export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredits,provider,generateAi,draftPrompt,checkingAccess}:Props) {
+export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,availableCredits,provider,generateAi,draftPrompt,checkingAccess}:Props) {
   const {t,text,language}=useUiLanguage(), {sources,manual,brief,caption,file:result}=draft;
   const {ratio,width,height}=getVideoFormat(draft.ratio);
   const input=useRef<HTMLInputElement>(null),canvas=useRef<HTMLCanvasElement>(null);
@@ -241,7 +241,7 @@ export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredit
     <p>{t('영상은 첫 장면만 용량에 포함됩니다.','Only the first frame of each clip counts toward this limit.')}</p>
   </div>;
   return <section className="video-draft" aria-label={t('광고 영상 편집','Video ad editor')}>
-    <div className="vd-heading"><h1>{t('광고 영상 만들기','Create an ad video')}</h1></div>
+    <div className="vd-heading"><h1>{t('광고 영상 만들기','Create an ad video')}</h1>{!result&&onNew&&<button type="button" className="fresh-ad-button" disabled={!!run} onClick={onNew}>{t('새 광고','New ad')}</button>}</div>
     <ol className="vd-steps" aria-label={t('영상 제작 단계','Video creation steps')}>
       {[t('정보 입력','Add details'),t('구성안 확인','Review plan'),t('영상 생성','Create video')].map((label,index)=>
         <li key={label} aria-current={step===index+1?'step':undefined}>{label}</li>)}
@@ -329,6 +329,7 @@ export function VideoDurationEditor({draft,change,aiPrices,admin,availableCredit
     {result?<button type="button" className="vd-primary" disabled={!!run} onClick={()=>void saveVideo()}><Download size={18}/>{t('영상 저장','Save video')}</button>
       :<button type="button" className="vd-primary" disabled={!!run||shortfall||charge===undefined||!canGenerateAi||(captions.some(line=>line.trim())&&!format)} onClick={()=>setConfirm(true)}>
         <Clapperboard size={18}/>{run==='ai'?(aiStage==='prepare'?t('사진과 프롬프트 준비 중…','Preparing media and prompt…'):aiStage==='submit'?t('제작 요청 보내는 중…','Sending video request…'):aiStage==='check'?t('요청 접수 확인 중…','Checking submission…'):aiStage==='queue'?t('AI 영상 생성 중…','Generating AI video…'):aiStage==='download'?t('영상 받는 중…','Downloading video…'):t('자막 입히는 중…','Adding captions…')):t('AI 영상 생성','Generate AI video')}</button>}
+    {result&&onNew&&<button type="button" className="vd-library" disabled={!!run} onClick={onNew}>{t('새 광고','New ad')}</button>}
     {run==='ai'&&<button className="vd-cancel" type="button" onClick={()=>task.current?.abort()}>{t('대기 닫기','Stop waiting')}</button>}
     {saved&&<p role="status">{t('저장 요청을 완료했어요.','Video sent to your downloads.')}</p>}
     {confirm&&charge!==undefined&&<VideoCostDialog credits={charge} admin={admin} provider={provider} style={style} promptMode={promptMode} ratio={ratio} seconds={seconds} onCancel={()=>setConfirm(false)} onConfirm={()=>{

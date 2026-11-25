@@ -73,6 +73,13 @@ test('home, repeated home taps, history and reload preserve the draft photo and 
  await expect(name).toHaveValue('보존할 상품');
  await expect(form.getByRole('textbox',{name:'추가 요청',exact:true})).toHaveValue('입력 내용 보존');
  await expect(image).toHaveAttribute('src',original!);
+ await form.getByRole('button',{name:'새 광고',exact:true}).click();
+ await expect(name).toHaveValue('');
+ await expect(form.getByRole('textbox',{name:'추가 요청',exact:true})).toHaveValue('');
+ await expect(image).toHaveCount(0);
+ await page.reload();
+ await expect(name).toHaveValue('');
+ await expect(image).toHaveCount(0);
 });
 for(const language of ['ko','en'])test(`home keeps empty and failed reads distinct without creating an ad (${language})`,async({page})=>{
  const requests:string[]=[];await protectedScreen(page,mockSession('home-read-'+language));await page.addInitScript(l=>localStorage.setItem('aiadcast.ui-language',l),language);

@@ -37,7 +37,7 @@ function ProjectTile({project,editing,selected,busy,onClick,connected}:{project:
    <small>{label&&label+' · '}{new Date(project.updatedAt).toLocaleDateString(language==='ko'?'ko-KR':'en-US')}</small>
   </div></button>;
 }
-type LibraryProps={onRemove:(ids:string[])=>Promise<void>;items:Project[];error:string;onNew:()=>void;onOpen:(p:Project)=>void;
+type LibraryProps={onRemove:(ids:string[])=>Promise<void>;items:Project[];error:string;onNew:(media:'image'|'video')=>void;onOpen:(p:Project)=>void;
  onOpenServer:(p:Project)=>Promise<boolean>;showDownloads:boolean};
 export function ProjectLibrary({items,error,onRemove,onNew,onOpen,onOpenServer,showDownloads}:LibraryProps){
  const {language,t}=useUiLanguage(),cloud=useCloudAds(showDownloads);
@@ -66,7 +66,7 @@ export function ProjectLibrary({items,error,onRemove,onNew,onOpen,onOpenServer,s
   catch{if(!signal.aborted)setOpenError(t('보관본을 열지 못했습니다. 다시 시도해주세요.','Could not open this saved project. Please retry.'));}
  }
  return <>
-  <div className="projects-heading"><h1>{t('내 프로젝트','My projects')}</h1><button className="primary-action" onClick={onNew}><Plus size={18}/>{t('새 광고','New ad')}</button></div>
+  <div className="projects-heading"><h1>{t('내 프로젝트','My projects')}</h1><button className="primary-action" onClick={()=>onNew(showDownloads?media:'image')}><Plus size={18}/>{t('새 광고','New ad')}</button></div>
   {showDownloads&&<div className="project-media-switch" role="group" aria-label={t('광고 종류','Ad type')}>
    <button type="button" aria-pressed={media==='image'} onClick={()=>setMedia('image')}>{t('이미지','Images')}</button>
    <button type="button" aria-pressed={media==='video'} onClick={()=>setMedia('video')}>{t('영상','Videos')}</button>

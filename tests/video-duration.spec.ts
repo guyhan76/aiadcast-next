@@ -352,6 +352,12 @@ test('manual prompts retain pasted directions, skip the drafting call, and submi
  await expect(editor.getByRole('button',{name:'영상 저장',exact:true})).toBeEnabled();
  const bytes=await editor.getByLabel('완성한 영상').evaluate(async (el:HTMLVideoElement)=>Array.from(new Uint8Array(await (await fetch(el.src)).arrayBuffer())));
  expect(bytes).toEqual([...original]);
+ await editor.getByRole('button',{name:'새 광고',exact:true}).click();
+ await expect(auto).toBeChecked();
+ await expect(editor.getByRole('button',{name:'영상 저장',exact:true})).toHaveCount(0);
+ await manual.click();
+ await expect(field).toHaveValue('');
+ expect(submitted).toHaveLength(1);
  expect(assistantCalls).toBe(0);
 });
 

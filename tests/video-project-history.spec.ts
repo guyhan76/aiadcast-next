@@ -52,4 +52,9 @@ test('member can reopen an existing video in projects without submitting a gener
  await selected(image);
  await unselected(video);
  await expect(page.getByRole('button',{name:'사진·백업 불러와 정밀 편집'})).toBeVisible();
+ await video.click();
+ await page.getByRole('button',{name:'새 광고',exact:true}).click();
+ await expect(page).toHaveURL(/#video$/);
+ await expect(page.getByRole('textbox',{name:'상품명',exact:true})).toHaveValue('');
+ expect(submits).toBe(0);
 });
