@@ -12,8 +12,8 @@ const directions = {
     en: ['Frame the opening edge of the closed package. Begin mid-opening and reveal a sliver of the product color from the next reference.', 'Follow the opening motion inside and shift focus to a distinctive detail as the product emerges.', 'Reveal the whole item just uncovered. Keep the packaging and contents consistent with the references.'],
   },
   fashion: {
-    ko: ['착용 장면에서는 모델이 몸을 돌리는 순간 상품이 렌즈 가까이를 스치고 전체 실루엣이 드러난다. 제품 단독 연출이면 카메라가 상품의 외곽선을 빠르게 돌아 같은 실루엣을 보여준다.', '같은 움직임이 이어지는 동안 사진에서 확인되는 소재나 마감 한 곳을 근접 촬영한다.', '디테일에서 전신 또는 상품 전체로 넓혀 길이와 비율을 읽을 수 있게 한다. 처음의 색상과 디자인을 유지한다.'],
-    en: ['For a worn look, open mid-turn as the item sweeps past the lens into silhouette. For a product-only brief, arc the camera around its edge instead.', 'Continue the motion into a close view of one visible material or finishing detail.', 'Widen to show the full look or item, giving its proportions room to read. Keep the original design and color.'],
+    ko: ['카메라가 상품의 외곽선을 따라 돌면서 옆선과 전체 실루엣을 드러낸다.', '같은 움직임이 이어지는 동안 사진에서 확인되는 소재나 마감 한 곳을 근접 촬영한다.', '디테일에서 상품 전체로 넓혀 길이와 비율을 읽을 수 있게 한다. 처음의 색상과 디자인을 유지한다.'],
+    en: ['Arc the camera around the outer edge of the item to reveal its side profile and full silhouette.', 'Continue the motion into a close view of one visible material or finishing detail.', 'Widen to show the entire item, giving its proportions room to read. Keep the original design and color.'],
   },
   icedLatte: {
     ko: ['투명한 잔 옆면을 가까이 잡는다. 얼음 아래 액체는 아직 흰 우유다. 첫 0.8초 안에 화면 위에서 가느다란 에스프레소 줄기가 우유 표면에 닿고, 첫 갈색 선이 흰 층 안으로 파고든다.', '같은 잔에서 그 선이 우유 속으로 내려가며 가는 갈색 무늬로 갈라진다. 무늬 주변의 흰 우유를 함께 보여주며 색이 변하는 과정을 따라간다.', '붓기가 멎는다. 카메라가 조금 물러나 같은 자리에 놓인 연갈색 아이스라떼 전체를 담는다. 마지막 프레임까지 잔과 얼음이 보인다.'],

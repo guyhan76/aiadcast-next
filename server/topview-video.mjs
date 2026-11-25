@@ -182,7 +182,7 @@ export function wanHookToActionPlan(plan, body) {
 }
 
 // Existing quotes still use wanHookToActionPlan for byte-identical replays.
-export function wanReviewedBriefPlan(plan, body) {
+export function wanReviewedBriefPlan(plan, body, preparationDirection) {
   if (body?.promptPolicy==='owner-only' && body.manualPrompt!==undefined) return plan;
   if (!body?.shots || body.manualPrompt !== undefined) return wanHookToActionPlan(plan,body);
   const clean=topviewCleanFramePlan(plan);
@@ -192,7 +192,7 @@ export function wanReviewedBriefPlan(plan, body) {
     visualBriefPriority,
     videoVisualDirection(body.brief),
     excludesOnscreenPeople(body.brief) ? 'Keep the excluded people or body parts outside the frame throughout. Never introduce a gesture at the end that would expose them.' : '',
-    describesLattePour(body.brief) ? 'The opening glass contains ice and white milk only. Show the first espresso entering from above and making the first dark mark in the white milk. Save the mixed latte color for the later shots.' : '',
+    preparationDirection ?? (describesLattePour(body.brief) ? 'The opening glass contains ice and white milk only. Show the first espresso entering from above and making the first dark mark in the white milk. Save the mixed latte color for the later shots.' : ''),
     'Use the reviewed timings and camera directions. If a generic suggestion conflicts with the written description or exclusions, the written constraints take precedence.',
   ].filter(Boolean).join('\n');
   return {...clean,content:[{...direction,text:priority+'\n'+direction.text},...media]};
