@@ -32,7 +32,7 @@ test('store build shows Play KRW prices, restores interrupted payments, and neve
   await page.locator('input[value="credits-v3-100"]').check();
   const pay=page.getByRole('button',{name:'₩33,900 · Google Play 결제'});
   await expect(pay).toBeDisabled();
-  await page.getByLabel('이용권 수량, 금액과 환불 조건을 확인했습니다').check();
+  await page.getByLabel('수량·금액·환불 조건 확인').check();
   await pay.click();
   await expect(page.getByRole('status').filter({hasText:'결제 대기 중'})).toBeVisible();
   expect(verifications).toBe(0);
@@ -131,7 +131,7 @@ async function buySmallestPack(page: Page) {
   await expect(page.locator('html')).toHaveAttribute('data-restores', /[1-9]/);
   await page.getByRole('button',{name:'크레딧 추가',exact:true}).click();
   await page.locator('input[value="credits-v3-50"]').check();
-  await page.getByLabel('이용권 수량, 금액과 환불 조건을 확인했습니다').check();
+  await page.getByLabel('수량·금액·환불 조건 확인').check();
   await page.getByRole('button', {name: '₩18,000 · Google Play 결제'}).click();
 }
 

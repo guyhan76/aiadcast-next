@@ -178,7 +178,7 @@ export function PlayCheckoutPage({preserve,returnPage}:{preserve:()=>Promise<voi
     {!topup&&<p>{t('Google Play 정기결제 연결 준비 중입니다.','Google Play subscription billing is being prepared.')}</p>}
 
     <RefundNotice compact/>
-    {topup&&session&&account?.enabled&&<label className="checkout-consent"><input type="checkbox" checked={agreed} disabled={busy} onChange={e=>setAgreed(e.target.checked)}/>{t('이용권 수량, 금액과 환불 조건을 확인했습니다','I have checked the credits, price and refund conditions.')}</label>}
+    {topup&&session&&account?.enabled&&<label className="checkout-consent"><input type="checkbox" checked={agreed} disabled={busy} onChange={e=>setAgreed(e.target.checked)}/>{t('수량·금액·환불 조건 확인','I confirm the quantity, price and refund terms.')}</label>}
     {topup&&(!session||account?.enabled)&&<button className="primary-action" disabled={Boolean(session)&&(!product||!agreed||!account?.policyAccountId||busy||status==='retry')} onClick={()=>void buy()}>
       {!session?t('로그인하고 계속','Sign in to continue'):product?product.price+' · '+t('Google Play 결제','Pay with Google Play'):t('Google Play 결제','Pay with Google Play')}</button>}
     {status&&<p role="status">{messages[status]} {status==='paid'&&balance!==undefined&&t('잔액 '+balance+' 크레딧','Balance: '+balance+' credits')}</p>}

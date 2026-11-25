@@ -5,7 +5,24 @@ import {useUiLanguage} from './ui-language';
 
 export function RefundNotice({compact=false}:{compact?:boolean}={}){
  const {t}=useUiLanguage();
- if(compact)return <details className="checkout-refund"><summary>{t('단순 변심 환불 · 미사용분 7일 이내','Change-of-mind refunds · Unused credits within 7 days')}</summary><p>{t(refundNoticeKo,refundNoticeEn)}</p></details>;
+ if(compact)return (
+  <details className="checkout-refund">
+   <summary>
+    <strong>{t('단순 변심 환불','Change-of-mind refunds')}</strong>
+    <span>{t('미사용분만 · 7일 이내 신청','Unused credits only · Apply within 7 days')}</span>
+   </summary>
+   <dl>
+    <div>
+     <dt>{t('7일은 언제부터인가요?','When do the 7 days start?')}</dt>
+     <dd>{t('구매 계약 내용을 받은 날과 이용권 사용 가능일 중 늦은 날부터 계산합니다.','Count from the later of receiving the purchase terms and gaining access to the credits.')}</dd>
+    </div>
+    <div>
+     <dt>{t('별도 접수','Other requests')}</dt>
+     <dd>{t('생성 실패·중복 결제·법정 해지 등은 따로 접수할 수 있습니다.','You can separately report failed delivery or duplicate charges, or exercise statutory rights.')}</dd>
+    </div>
+   </dl>
+  </details>
+ );
  return <section className="refund-policy-notice"><h3>{t('단순 변심 환불 기한','Change-of-mind refund period')}</h3><p>{t(refundNoticeKo,refundNoticeEn)}</p></section>;
 }
 export function PurchaseRefundReceipt({orderNo,deadline}:{orderNo:string;deadline?:string|null}){
