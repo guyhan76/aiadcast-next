@@ -32,7 +32,7 @@ import './create-campaign.css';
 
 export {starterProject,prepareCampaign} from './consumer-campaign';
 import {starterProject,prepareCampaign,automaticDimensionDraft} from './consumer-campaign';
-export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{active?:boolean;initialKind?:IndustryKind;onReady:(p:Project,price?:BatchPrice)=>Promise<void>;draft?:WizardDraft;onDraft?:(draft:WizardDraft)=>void}){
+export function CreateCampaign({initialKind,onReady,onNew,draft,onDraft,active=true}:{onNew?:()=>void;active?:boolean;initialKind?:IndustryKind;onReady:(p:Project,price?:BatchPrice)=>Promise<void>;draft?:WizardDraft;onDraft?:(draft:WizardDraft)=>void}){
  const {language,t,text}=useUiLanguage(),id=useId();
  const [project,setProject]=useState(()=>{
   const input=draft ? {...draft.project,productProfile:restoreDraftProfile(draft.project.productProfile)}
@@ -122,7 +122,7 @@ export function CreateCampaign({initialKind,onReady,draft,onDraft,active=true}:{
  }
  const companyFields:[FooterField,string,string][]=[['company',t('회사명','Company'),'셀업랩스'],['contact',t('연락처','Phone'),'010-0000-0000'],['email',t('이메일 주소','Email'),'hello@brand.com'],['website',t('홈페이지','Website'),'https://www.brand.com']];
  return <div className="create-page consumer-create">
-  <div className="create-heading"><h1>{t('광고 이미지 만들기','Create an ad image')}</h1><p>{t('사진과 정보로 만드는 광고','Create ads with photos and details')}</p></div>
+  <div className="create-heading"><div className="ad-creation-title"><h1>{t('광고 이미지 만들기','Create an ad image')}</h1>{onNew&&<button type="button" className="fresh-ad-button" disabled={busy} onClick={onNew}>{t('새 광고','New ad')}</button>}</div><p>{t('사진과 정보로 만드는 광고','Create ads with photos and details')}</p></div>
   <form aria-busy={busy} onSubmit={e=>{e.preventDefault();void submit();}}>
    <fieldset disabled={submittingBusy} style={{border:0,padding:0,margin:0,minWidth:0}}>
    <section className="creation-section" data-order="1"><h2><span>1</span>{t('광고할 분야','Your industry')}</h2>

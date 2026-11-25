@@ -21,7 +21,7 @@ import './ad-batch.css';
 
 type Preview={file:File;url:string;artifact:string;item:Project;accepted:boolean};
 type Summary={id:string;jobs:GenerationJob[]};
-export function BatchResults({project,batch,onEdit,renderDetail}:{project:Project;batch:AdBatch;onEdit:()=>void;renderDetail:(item:Project,back:()=>void)=>React.ReactNode}){
+export function BatchResults({project,batch,onEdit,onNew,renderDetail}:{project:Project;batch:AdBatch;onEdit:()=>void;onNew?:()=>void;renderDetail:(item:Project,back:()=>void)=>React.ReactNode}){
  const {t}=useUiLanguage(),[jobs,setJobs]=useState<GenerationJob[]>([]),[images,setImages]=useState<Record<string,Preview>>({});
  const [selected,setSelected]=useState<string[]>([]),[error,setError]=useState(''),[notice,setNotice]=useState(''),[retry,setRetry]=useState(0);
  const [detail,setDetail]=useState<Project>(),[busy,setBusy]=useState(false),lock=useRef(false),lifetime=useRef(new AbortController());
@@ -125,6 +125,7 @@ export function BatchResults({project,batch,onEdit,renderDetail}:{project:Projec
   {jobs.length>0&&!count&&!jobs.some(j=>['running','ready','accepted'].includes(j.state))&&<button onClick={onEdit}>{t('입력 내용 수정','Edit details')}</button>}
   {!!chosen.length&&chosen.every(canReuse)&&<VideoDraftAction disabled={busy} project={project} getSources={()=>chosen.map(j=>({name:images[j.id].item.name,media:images[j.id].file,kind:'image'}))}/>}
   {!!count&&<div className="batch-actions gallery-actions"><span aria-live="polite">{t(`${chosen.length}장 선택`,`${chosen.length} selected`)}</span><button disabled={busy||!chosen.length} aria-label={t(`선택 저장 (${chosen.length})`,`Save selected (${chosen.length})`)} onClick={()=>void deliver('save')}><Download size={17}/>{t('저장','Save')}</button><button disabled={busy||!chosen.length} aria-label={t(`선택 공유 (${chosen.length})`,`Share selected (${chosen.length})`)} onClick={()=>void deliver('share')}><Share2 size={17}/>{t('공유','Share')}</button></div>}
+  {!!count&&onNew&&<button type="button" className="fresh-ad-button" disabled={busy} onClick={onNew}>{t('새 광고','New ad')}</button>}
   {displayed&&<dialog className="gallery-preview" ref={zoomDialog} onClose={()=>{setZoom(undefined);setReviewItem(undefined);}} aria-label={reviewItem?t('규격 확인','Check dimensions'):t('광고 미리보기','Ad preview')}>
    <button className="gallery-close" autoFocus onClick={()=>zoomDialog.current?.close()}>{t('닫기','Close')}</button>
    <img src={images[displayed.id].url} alt={t('광고 미리보기','Ad preview')}/>
