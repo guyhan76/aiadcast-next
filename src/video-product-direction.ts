@@ -16,8 +16,8 @@ const directions = {
     en: ['For a worn look, open mid-turn as the item sweeps past the lens into silhouette. For a product-only brief, arc the camera around its edge instead.', 'Continue the motion into a close view of one visible material or finishing detail.', 'Widen to show the full look or item, giving its proportions room to read. Keep the original design and color.'],
   },
   icedLatte: {
-    ko: ['첫 프레임부터 잔 테두리와 얼음을 바짝 잡는다. 두 얼음이 부딪친 바로 그 순간, 갈색 커피가 왕관처럼 솟아 잔 테두리 위에서 빛난다. 0.8초 안에 낮은 측면으로 컷해 튀어 오른 방울이 다시 잔에 닿는 순간을 잡는다.', '충돌 직후 잔 옆면으로 컷. 이제 우유 속으로 파고드는 갈색 줄기에 초점을 맞추고, 아래쪽의 흰 우유 층은 보이게 한다.', '잔 전체가 보이는 별도 정면 컷으로 전환한다. 붓기가 끝난 뒤 얼음이 자리를 잡고, 마지막 순간에는 사진 속 잔의 형태와 층이 또렷하게 읽힌다.'],
-    en: ['Start tight on the rim and top ice, mid-strike. Two ice cubes collide at frame one and an amber crown of coffee rises above the rim. Cut low on that impact and catch the falling droplets by 0.8 seconds.', 'Cut on impact to the side of the glass. Follow one dark ribbon descending into the milk, with white milk still visible below.', 'Cut wide to the entire reference glass. The pour has stopped, the ice settles, and the final frame holds the recognizable drink.'],
+    ko: ['투명한 잔 옆면을 가까이 잡는다. 얼음 아래 액체는 아직 흰 우유다. 첫 0.8초 안에 화면 위에서 가느다란 에스프레소 줄기가 우유 표면에 닿고, 첫 갈색 선이 흰 층 안으로 파고든다.', '같은 잔에서 그 선이 우유 속으로 내려가며 가는 갈색 무늬로 갈라진다. 무늬 주변의 흰 우유를 함께 보여주며 색이 변하는 과정을 따라간다.', '붓기가 멎는다. 카메라가 조금 물러나 같은 자리에 놓인 연갈색 아이스라떼 전체를 담는다. 마지막 프레임까지 잔과 얼음이 보인다.'],
+    en: ['Frame the side of a clear glass of ice and still-white milk. Within 0.8 seconds a thin stream of espresso enters from above, touches the white surface and draws its first dark line below it.', 'Follow that same line branching into fine brown ribbons through the white milk. Keep the surrounding white milk visible as the color changes.', 'The pour stops. Ease the camera back to the entire light-beige iced latte in the same spot. Hold the glass and ice in frame through the final frame.'],
   },
   icedLatteUgc: {
     ko: ['첫 프레임부터 손에 든 투명한 잔을 화면 가득 잡는다. 손이 잔을 렌즈 앞에서 탁 멈추자 얼음이 한쪽으로 몰려 잔 벽을 치고 커피 표면에 짧은 물결이 선다. 0.8초 안에 그 물결을 낮은 측면에서 잡는다.', '같은 사람이 그 잔을 들어 한 모금 마신다. 잔 너머로 표정이 잠깐 보이고 초점은 커피와 우유 층에 남는다.', '잔을 내려놓는 동작에 맞춰 제품 전체로 전환한다. 원래 잔의 형태와 색을 또렷이 보여준다.'],
@@ -33,7 +33,25 @@ const directions = {
   },
 } satisfies Record<string, Directions>;
 
+export function excludesOnscreenPeople(brief: {description?: string; highlight?: string; emphasis?: string}) {
+  const facts=[brief.description,brief.highlight??brief.emphasis].filter(Boolean).join('\n');
+  return /(?:손(?:이|은|을|과|[ ,·、])|사람|인물)[^.!?。\n]{0,38}(?:넣지|나오지|보이지|등장하지|금지|제외|없이)|(?:no|without|exclude)\s+(?:visible\s+)?(?:hands|people|person|presenter)\b/i.test(facts);
+}
+
+// A service form can also describe filming a drink being prepared.
+export function describesLattePour(brief: {title?: string; description?: string; style?: string}) {
+  if (brief.style === 'unboxing') return false;
+  const description = brief.description ?? '';
+  return /아이스\s*(?:카페\s*)?라[떼테]|\biced\s+(?:caf[eéè]\s+)?latte\b/i.test(brief.title ?? '')
+    && (/흰\s*우유[\s\S]*에스프레소[^.!?。]{0,50}(?:부으|부어|부을|붓)/.test(description)
+      || /(?:white milk[\s\S]*pour[^.!?]*espresso|pour[^.!?]*espresso[^.!?]*(?:into|onto) (?:the )?white milk)/i.test(description));
+}
+
+export const visualBriefPriority = 'Keep the stated starting condition, transformation and ending in that order. Use reference photos for identity and framing; a photo of the finished product is not the first frame of its preparation. Follow explicit casting and text exclusions in every shot, including the last frame. If hands or people are excluded, keep them off camera from first frame to last. Stage the requested action with the operator outside the frame. If captions are excluded, keep every frame free of added lettering. If the ending is a held product shot, keep that product in its position through the last frame. Never add a pickup, exit or CTA after the specified ending.';
+
 export function productDirection(brief: DirectionBrief, language: 'ko' | 'en'): Shots {
+  const presenter = brief.style === 'presenter' && !excludesOnscreenPeople(brief);
+  if (describesLattePour(brief) && !presenter) return directions.icedLatte[language];
   if (brief.style === 'unboxing') return directions.unboxing[language];
   const category = [brief.field, brief.industry].filter(Boolean).join(' ');
   const fashion = /패션|의류|잡화|주얼리|fashion|apparel|jewel/i;
@@ -44,9 +62,9 @@ export function productDirection(brief: DirectionBrief, language: 'ko' | 'en'): 
   const otherLatte = /말차|녹차|초코|딸기|고구마|matcha|chocolate|strawberry/i;
   if (icedLatte.test(subject) && (!category.trim() || food.test(category) || icedLatte.test(brief.title ?? ''))
     && !packaged.test(subject) && !otherLatte.test(subject)) {
-    return (brief.style === 'presenter' ? directions.icedLatteUgc : directions.icedLatte)[language];
+    return (presenter ? directions.icedLatteUgc : directions.icedLatte)[language];
   }
-  if (brief.style === 'presenter') return directions.ugc[language];
+  if (presenter) return directions.ugc[language];
   if (fashion.test(category)) return directions.fashion[language];
   if (food.test(category)) return directions.food[language];
   if (!category.trim()) {

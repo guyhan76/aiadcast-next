@@ -1,4 +1,5 @@
-import {productDirection,closingAction} from './video-product-direction.ts';
+import {formatBeats} from './video-format-direction.ts';
+import {productDirection,describesLattePour,excludesOnscreenPeople} from './video-product-direction.ts';
 import {adFields} from './ad-fields.ts';
 import {industryLabel} from './industry.ts';
 import {sceneStops,styleForBrief} from './video-style.ts';
@@ -28,18 +29,21 @@ export function promptBrief(draft:VideoDraft,seconds:VideoDuration) {
 export type PromptBrief=ReturnType<typeof promptBrief>;
 
 export function basicVideoShots(b:PromptBrief,language:'ko'|'en'):VideoShots {
-  const ko=language==='ko';
-  const subject=b.title || (b.kind==='product'?(ko?'첨부 상품':'the pictured product'):(ko?'서비스':'the service'));
-  const detail=[b.highlight,b.description].find(value=>value.trim()&&value.length<=600);
-  const focus=detail?(ko?' 강조할 내용은 “'+detail+'”.':' Focus on “'+detail+'”.'):'';
-  if (b.kind === 'product') {
-    const [opening, middle, closing] = productDirection(b,language);
-    return [subject+' · '+opening, middle+focus, closing+' '+closingAction(b.kind,b.style,language)];
-  }
-  const opening=b.style==='presenter'?(ko?subject+' 소개를 눈높이 구도로 시작한다.':'Introduce '+subject+' at eye level.')
-    :(ko?subject+' 이용을 시작하는 순간을 한 장면으로 보여준다.':'Open on a scene introducing '+subject+'.');
-  const middle=ko?'상세설명에 있는 이용 과정 한 단계를 가까이 보여준다.':'Move in on one step from the service description.';
-  return [opening,middle+focus,closingAction(b.kind,b.style,language)];
+  const beats = formatBeats(b,language);
+  const context = [b.field, b.industry, b.title].filter(Boolean).join(' · ');
+  const pour = describesLattePour(b) && (b.style !== 'presenter' || excludesOnscreenPeople(b));
+  const specific = pour || (b.kind === 'product' && b.style === 'product') ? productDirection(b,language) : undefined;
+  const description = (b.description || '').trim();
+  // Keep a complete sentence when the description is too long for one editable shot.
+  const setting = description.length <= 330 ? description : description.split(/(?<=[.!?。])\s+|\n+/u).find(line=>line.length<=330);
+  const highlight = (b.highlight || '').trim();
+  const opening = [context, beats[0], specific?.[0]].filter(Boolean).join(' · ');
+  const hookCue = highlight.split(/(?<=[.!?。])\s+|\n+/u)[0];
+  return [
+    hookCue && opening.length + hookCue.length + 1 <= shotLimit ? opening+' '+hookCue : opening,
+    [beats[1], specific?.[1], setting].filter(Boolean).join(' '),
+    [beats[2], specific?.[2], highlight].filter(Boolean).join(' '),
+  ];
 }
 
 export function timedShots(shots:VideoShots,seconds:number){
