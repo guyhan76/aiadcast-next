@@ -1,5 +1,6 @@
+import {framingRule,lattePreparation} from './video-subject-framing.ts';
 import {formatBeats} from './video-format-direction.ts';
-import {productDirection,describesLattePour,excludesOnscreenPeople} from './video-product-direction.ts';
+import {productDirection} from './video-product-direction.ts';
 import {adFields} from './ad-fields.ts';
 import {industryLabel} from './industry.ts';
 import {sceneStops,styleForBrief} from './video-style.ts';
@@ -31,18 +32,18 @@ export type PromptBrief=ReturnType<typeof promptBrief>;
 export function basicVideoShots(b:PromptBrief,language:'ko'|'en'):VideoShots {
   const beats = formatBeats(b,language);
   const context = [b.field, b.industry, b.title].filter(Boolean).join(' · ');
-  const pour = describesLattePour(b) && (b.style !== 'presenter' || excludesOnscreenPeople(b));
-  const specific = pour || (b.kind === 'product' && b.style === 'product') ? productDirection(b,language) : undefined;
+  const specific = lattePreparation(b,language) ?? (b.kind === 'product' && b.style === 'product' ? productDirection(b,language) : undefined);
+  const framing = framingRule(b,language);
   const description = (b.description || '').trim();
   // Keep a complete sentence when the description is too long for one editable shot.
   const setting = description.length <= 330 ? description : description.split(/(?<=[.!?。])\s+|\n+/u).find(line=>line.length<=330);
   const highlight = (b.highlight || '').trim();
-  const opening = [context, beats[0], specific?.[0]].filter(Boolean).join(' · ');
+  const opening = [beats[0], specific?.[0], framing, context].filter(Boolean).join(' · ').slice(0,shotLimit);
   const hookCue = highlight.split(/(?<=[.!?。])\s+|\n+/u)[0];
   return [
     hookCue && opening.length + hookCue.length + 1 <= shotLimit ? opening+' '+hookCue : opening,
     [beats[1], specific?.[1], setting].filter(Boolean).join(' '),
-    [beats[2], specific?.[2], highlight].filter(Boolean).join(' '),
+    [beats[2], specific?.[2], highlight].filter(Boolean).join(' ').slice(0,shotLimit),
   ];
 }
 
