@@ -1,4 +1,4 @@
-import {productDirection,closingAction} from './video-product-direction.ts';
+import {productDirection,closingAction,describesLattePour,excludesOnscreenPeople} from './video-product-direction.ts';
 import {adFields} from './ad-fields.ts';
 import {industryLabel} from './industry.ts';
 import {sceneStops,styleForBrief} from './video-style.ts';
@@ -30,16 +30,21 @@ export type PromptBrief=ReturnType<typeof promptBrief>;
 export function basicVideoShots(b:PromptBrief,language:'ko'|'en'):VideoShots {
   const ko=language==='ko';
   const subject=b.title || (b.kind==='product'?(ko?'첨부 상품':'the pictured product'):(ko?'서비스':'the service'));
-  const detail=[b.highlight,b.description].find(value=>value.trim()&&value.length<=600);
-  const focus=detail?(ko?' 강조할 내용은 “'+detail+'”.':' Focus on “'+detail+'”.'):'';
+  const detail=b.description.trim().split(/(?<=[.!?。])\s+/)[0].slice(0,370);
+  const focus=[detail,b.highlight.trim().slice(0,330)].filter(Boolean).join(' · ');
+  const notes=focus?' '+focus:'';
+  if (describesLattePour(b) && (b.style !== 'presenter' || excludesOnscreenPeople(b))) {
+    const [opening,middle,closing] = productDirection(b,language);
+    return [opening,middle,b.highlight.trim() ? closing+' '+b.highlight.trim() : closing];
+  }
   if (b.kind === 'product') {
     const [opening, middle, closing] = productDirection(b,language);
-    return [subject+' · '+opening, middle+focus, closing+' '+closingAction(b.kind,b.style,language)];
+    return [subject+' · '+opening, middle+notes, closing];
   }
   const opening=b.style==='presenter'?(ko?subject+' 소개를 눈높이 구도로 시작한다.':'Introduce '+subject+' at eye level.')
     :(ko?subject+' 이용을 시작하는 순간을 한 장면으로 보여준다.':'Open on a scene introducing '+subject+'.');
   const middle=ko?'상세설명에 있는 이용 과정 한 단계를 가까이 보여준다.':'Move in on one step from the service description.';
-  return [opening,middle+focus,closingAction(b.kind,b.style,language)];
+  return [opening,middle+notes,closingAction(b.kind,b.style,language)];
 }
 
 export function timedShots(shots:VideoShots,seconds:number){

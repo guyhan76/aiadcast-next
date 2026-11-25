@@ -1,4 +1,5 @@
-import {closingAction} from '../src/video-product-direction.ts';
+import {videoVisualDirection} from './video-visual-direction.mjs';
+import {closingAction,describesLattePour,excludesOnscreenPeople,visualBriefPriority} from '../src/video-product-direction.ts';
 import {sceneStops} from '../src/video-style.ts';
 import {submissionStage} from './submission-observation.mjs';
 
@@ -178,6 +179,23 @@ export function wanHookToActionPlan(plan, body) {
     body.manualPrompt!==undefined ? 'Leave speech, subtitles and CTA lettering out unless the owner explicitly requests them. A visual invitation works in silence.' : 'Keep this visual invitation independent of narration and app-added captions.'
   ];
   return {...directed,content:[{...direction,text:direction.text+'\n'+steps.filter(Boolean).join('\n')},...media]};
+}
+
+// Existing quotes still use wanHookToActionPlan for byte-identical replays.
+export function wanReviewedBriefPlan(plan, body) {
+  if (body?.promptPolicy==='owner-only' && body.manualPrompt!==undefined) return plan;
+  if (!body?.shots || body.manualPrompt !== undefined) return wanHookToActionPlan(plan,body);
+  const clean=topviewCleanFramePlan(plan);
+  const [direction,...media]=clean.content;
+  const priority=[
+    'FRAME 1 — Stage the stated initial condition so the first visible change reads on mute.',
+    visualBriefPriority,
+    videoVisualDirection(body.brief),
+    excludesOnscreenPeople(body.brief) ? 'Keep the excluded people or body parts outside the frame throughout. Never introduce a gesture at the end that would expose them.' : '',
+    describesLattePour(body.brief) ? 'The opening glass contains ice and white milk only. Show the first espresso entering from above and making the first dark mark in the white milk. Save the mixed latte color for the later shots.' : '',
+    'Use the reviewed timings and camera directions. If a generic suggestion conflicts with the written description or exclusions, the written constraints take precedence.',
+  ].filter(Boolean).join('\n');
+  return {...clean,content:[{...direction,text:priority+'\n'+direction.text},...media]};
 }
 
 export function topviewInput(plan, urls) {

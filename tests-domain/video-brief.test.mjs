@@ -176,9 +176,9 @@ test('a product plan requires a first-frame event and a distinct visible respons
  const {productDirection}=await import('../src/video-product-direction.ts');
  const photo='data:image/jpeg;base64,/9j/2Q==';
  const latte={kind:'product',style:'product',ratio:'9:16',seconds:10,field:'',industry:'',title:'아이스라떼',description:'사진 속 유리잔',highlight:'',caption:'',contact:'',music:true,voice:false,musicStyle:'',voiceStyle:'',narration:''};
- assert.match(productDirection(latte,'ko')[0],/얼음이 부딪/);
+ assert.match(productDirection(latte,'ko')[0],/흰 우유/);
  const request={kind:'video-prompt',planVersion:2,requestId:'opening-beats-001',targetLocale:'ko',brief:latte,references:[photo]};
- const proposal={opening:'잔 위에서 얼음 두 개가 부딪친다.',reaction:'낮은 측면에서 솟은 커피 방울이 반짝인다.',detail:'잔 옆면의 우유 층',closing:'완성된 한 잔',musicMood:'타악기',narration:'',recommendVoice:false};
+ const proposal={opening:'얼음과 흰 우유가 담긴 잔으로 에스프레소가 떨어진다.',reaction:'흰 표면에 첫 갈색 실선이 생긴다.',detail:'잔 옆면의 우유 층',closing:'완성된 한 잔',musicMood:'타악기',narration:'',recommendVoice:false};
  async function draft(answer){
   return assistCopy({request,apiKey:'fixture',fetchImpl:async(_url,options)=>{
    const schema=JSON.parse(options.body).response_format.json_schema;

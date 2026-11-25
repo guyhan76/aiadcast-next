@@ -125,7 +125,7 @@ export async function requestVideoPrompt(brief:PromptBrief,scenes:LoadedVideoSce
   const session=betaSession();
   const references=scenes.map(({visual})=>referenceJpeg(visual,512));
   const input={kind:'video-prompt',planVersion:brief.kind==='product'?2:1,targetLocale:language,brief,references};
-  const planIdentity=brief.kind==='product'?['product-hook-cta-v4',input]:input;
+  const planIdentity=['reviewed-brief-v5',input];
   const id=await requestId(JSON.stringify(planIdentity),'aiadcast.video-prompt.');
   signal.throwIfAborted();
   const result=await apiRequest<{requestId:string;shots:unknown;audio?:unknown}>('/api/assistant',{...input,requestId:id},signal).catch(error=>{
