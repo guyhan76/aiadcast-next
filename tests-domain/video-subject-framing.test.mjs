@@ -19,10 +19,13 @@ for (const [kind,style] of [['product','product'],['product','unboxing'],['servi
     for (const prompt of [instructions,wire]) {
       assert.equal(prompt.includes('Subject-only framing throughout'),style!=='presenter');
       assert.equal(prompt.includes('two brown trails'),style!=='unboxing');
+      if(style!=='unboxing') assert.match(prompt,/two thirds[\s\S]*upper third visibly empty[\s\S]*rise gradually[\s\S]*below the rim/);
     }
     if(style!=='unboxing'){
       assert.match(shots[0],/흰 우유.*얼음.*에스프레소.*닿자.*파문/);
-      assert.match(shots[1],/얼음.*두 갈래.*섞인다/);
+      assert.match(shots[0],/얼음을 함께 담은 높이.*2\/3.*1\/3은 비어/);
+      assert.match(shots[1],/얼음.*두 갈래.*수면이 서서히 올라가고.*섞인다/);
+      assert.match(shots[2],/윗테두리에 닿기 전에/);
     }
     assert.equal(shots[0].includes('반사된 얼굴은 화면 밖'),style!=='presenter');
   });

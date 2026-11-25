@@ -11,14 +11,14 @@ export function framingRule(brief: Brief, language: 'ko'|'en') {
 
 const pourShots = {
   ko: [
-    '잔 옆면에서 바닥부터 수면까지 이어진 흰 우유를 보여준다. 우유가 얼음 사이를 채우고 윗모서리만 수면 위에 보인다. 가느다란 에스프레소 줄기가 그 모서리에 닿자 같은 얼음이 살짝 기울고 수면에 작은 파문이 생긴다.',
-    '같은 잔을 끊지 않고 따라간다. 갈색 줄기가 흔들린 얼음의 양옆을 타고 내려가 얼음 아래에서 두 갈래의 갈색 무늬로 퍼진다. 경계가 우유 속에서 흐려지면서 연갈색으로 섞인다.',
-    '붓기가 멎으면 얼음의 흔들림과 파문이 잦아든다. 마지막 프레임까지 잔 안에서 섞이는 색과 같은 얼음을 담는다.',
+    '투명한 잔을 옆에서 잡아 윗테두리까지 보여준다. 흰 우유와 얼음을 함께 담은 높이는 잔의 약 2/3다. 위쪽 1/3은 비어 있고, 우유에 잠긴 얼음의 윗모서리만 살짝 보인다. 가느다란 에스프레소 줄기가 그 모서리에 닿자 같은 얼음이 살짝 기울고 수면에 작은 파문이 생긴다.',
+    '같은 잔을 끊지 않고 따라간다. 갈색 줄기가 흔들린 얼음의 양옆을 타고 내려가 얼음 아래에서 두 갈래의 갈색 무늬로 퍼진다. 붓는 양만큼 수면이 서서히 올라가고 경계가 우유 속에서 흐려지면서 연갈색으로 섞인다.',
+    '수면이 윗테두리에 닿기 전에 붓기를 멈춘다. 수면 위로 빈 공간이 남고 파문이 잦아든다. 마지막 프레임까지 잔 안에서 섞이는 색과 같은 얼음을 담는다.',
   ],
   en: [
-    'Start with ice and white milk only. Through the side of the glass show one continuous volume of still-white milk from the bottom to a single liquid surface, filling the gaps around partly submerged ice. Only upper ice edges protrude. A thin espresso stream strikes one exposed edge; that cube rocks slightly and a small ripple crosses the milk.',
-    'In the same shot follow the coffee down both sides of that moving cube. Directly below it two brown trails spread into the surrounding milk, their edges diffusing into light brown. Maintain the liquid level and continuity; exclude a clear water base, a floating white film, an oil slick or a rigid sheet over the ice.',
-    'As the pour stops, let the cube settle and the ripples fade. Keep the same glass and ice visible as the color blends through the final frame.',
+    'Start with ice and white milk only. Frame the glass side-on with the rim visible. With the ice already in place, the still-white milk reaches about two thirds of the internal height. Leave the upper third visibly empty. Milk surrounds the cubes with only their upper edges exposed. A thin espresso stream strikes one exposed edge; that cube rocks slightly and a small ripple crosses the milk.',
+    'In the same shot follow the coffee down both sides of that moving cube. Directly below it two brown trails spread into the surrounding milk, their edges diffusing into light brown. Let the level rise gradually with the pour. Exclude a clear water base, a floating white film, an oil slick or a rigid sheet over the ice.',
+    'Stop the pour below the rim with a visible gap remaining. Let the cube settle and the ripples fade. Keep the same glass and ice visible as the color blends through the final frame.',
   ],
 } as const;
 

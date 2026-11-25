@@ -7,7 +7,7 @@ export function VideoBriefFields({value,disabled,change}:{value:VideoBrief;disab
   const description = service
     ? [
         t('오후 햇살이 드는 카페에서 주문 즉시 아이스 카페라떼를 만들어요.', 'The sunlit café makes each iced latte to order.'),
-        t('원목 바 위 투명한 잔에는 흰 우유가 바닥부터 차 있고, 각얼음 사이도 우유로 채워져 있어요.', 'On the wooden counter, milk fills the clear glass from the bottom and surrounds each ice cube.'),
+        t('원목 바 위 투명한 잔에 우유와 얼음을 함께 담아 높이의 약 2/3만 채워요. 위쪽 1/3은 에스프레소를 부을 자리예요.', 'On the wooden counter, ice and milk together fill about two thirds of the glass. Leave the upper third empty for the espresso.'),
         t('에스프레소를 얼음 모서리에 부어요. 잔의 위치와 빛은 끝까지 같아요.', 'Pour espresso onto an exposed ice edge. Keep the glass and light in the same position.')
       ].join('\n')
     : [
@@ -28,9 +28,9 @@ export function VideoBriefFields({value,disabled,change}:{value:VideoBrief;disab
       ].join('\n');
   const shots = service
     ? [
-        t('아직 섞이지 않은 흰 우유를 잔 옆에서 잡아요. 바닥과 수면을 함께 보여주고, 에스프레소가 닿자 같은 얼음이 기울며 우유 표면에 작은 파문이 생겨요.', 'Frame the bottom and the single milk surface together. As espresso strikes the ice, the cube tilts and a small ripple crosses the surface.'),
+        t('아직 섞이지 않은 흰 우유를 잔 옆에서 잡아요. 우유 표면과 잔 윗테두리 사이의 빈 공간을 보여주고, 에스프레소가 닿자 같은 얼음이 기울며 우유 표면에 작은 파문이 생겨요.', 'Frame the space between the milk surface and the rim. As espresso strikes the ice, the cube tilts and a small ripple crosses the surface.'),
         t('그 얼음을 계속 따라가세요. 양옆을 흐른 갈색 줄기가 얼음 아래에서 두 갈래로 퍼지고, 선의 가장자리부터 흰 우유와 섞여 연갈색이 돼요.', 'Stay on the same cube. Two brown trails spread beneath it and soften at the edges as they mix into the milk.'),
-        t('붓기가 멎고 얼음이 잔잔해지면 같은 잔 전체를 담아요. 마지막까지 잔과 음료가 화면의 중심이에요.', 'As the pour stops and the ice settles, widen to the same glass. Hold on the drink through the last frame.')
+        t('수면이 서서히 올라오면 윗테두리 아래에 여유를 남기고 붓기를 멈춰요. 같은 잔 전체를 담아요. 마지막까지 잔과 음료가 화면의 중심이에요.', 'Let the level rise and stop pouring while a gap remains below the rim. Widen to the same glass. Hold on the drink through the last frame.')
       ]
     : [
         t('검은 후드에 쌓인 눈을 가까이 잡아요. 바람에 눈가루가 번쩍이며 흩어지고 그 사이로 버스 전조등이 드러나요.', 'Start tight on snow on the black hood. Wind scatters the backlit powder and bus headlights emerge behind it.'),
