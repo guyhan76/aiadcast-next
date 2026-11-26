@@ -255,25 +255,28 @@ test('a product photo and brief make a reviewable AI prompt before the video is 
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
  await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,assistant:{available:true},generation:{enabled:false},wallet:{unlimited:true,available:0,reserved:0},budget:{limitMicros:0}}}));
  let drafts=0,videoRequests=0;
+ const frameLayout={mode:'crop',source:1,regions:[[{x:180,y:100},{x:760,y:740}]]};
  await page.route('**/api/assistant',async r=>{
    const body=r.request().postDataJSON();drafts++;
    expect(body.kind).toBe('video-prompt');
-   expect(body.planVersion).toBe(2);
+   expect(body.planVersion).toBe(3);
    expect(body.references).toHaveLength(1);
    expect(body.references[0]).toMatch(/^data:image\/jpeg;base64,/);
    expect(body.brief.title).toBe('하이브리드 롱코트');
-   await r.fulfill({json:{requestId:body.requestId,shots:['전신 구도','다운 퀼팅에 초점을 맞춘다.','제품 컷으로 마무리'],audio:{musicMood:'잔잔한 피아노',narration:'하이브리드 롱코트를 만나보세요.',recommendVoice:true}}});
+   await r.fulfill({json:{requestId:body.requestId,frameLayout,shots:['전신 구도','다운 퀼팅에 초점을 맞춘다.','제품 컷으로 마무리'],audio:{musicMood:'잔잔한 피아노',narration:'하이브리드 롱코트를 만나보세요.',recommendVoice:true}}});
  });
  await page.route('**/api/videos',r=>{
    const body=r.request().postDataJSON();
    if(videoRequests===0){
      expect(body.promptMode).toBe('auto');
+     expect(body.frameLayout).toEqual(frameLayout);
      expect(body.shots[1]).toBe('어깨 봉제선을 따라 천천히 이동한다.');
      expect(body).not.toHaveProperty('manualPrompt');
      expect(body).toMatchObject({music:true,musicStyle:'잔잔한 피아노',voice:true,narration:'하이브리드 롱코트를 만나보세요.'});
    }else{
      expect(body.promptMode).toBe('manual');
      expect(body.manualPrompt).toBe('별도의 수동 연출');
+     expect(body).not.toHaveProperty('frameLayout');
      expect(body).toMatchObject({promptPolicy:'owner-only',brief:{title:'',description:'',emphasis:''},musicStyle:'',narration:''});
      expect(body).not.toHaveProperty('shots');
    }
