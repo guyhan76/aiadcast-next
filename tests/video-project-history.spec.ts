@@ -13,7 +13,7 @@ test('member can reopen an existing video in projects without submitting a gener
   if(path==='/api/videos/history-example/file'){
    expect(request.headers().authorization).toBe('Bearer '+token);
    downloads++;
-   return route.fulfill({contentType:'video/mp4',body:Buffer.from([0,0,0,12,102,116,121,112,105,115,111,109])});
+   return route.fulfill({contentType:'video/mp4',body:Buffer.from([0,0,0,16,102,116,121,112,105,115,111,109,0,0,0,0])});
   }
   const body=path==='/api/videos'?{videos:[{id:'history-example',expires_at:Date.now()+60000}]}:
    path==='/api/auth/session'?{user}:path==='/api/generations'?{jobs:[]}:{downloads:[],backups:[],projects:[],items:[]};
@@ -46,6 +46,17 @@ test('member can reopen an existing video in projects without submitting a gener
  await unselected(image);
  await page.getByRole('button',{name:'영상 보기'}).click();
  await expect(page.getByRole('button',{name:'원본 저장'})).toBeVisible();
+ await page.evaluate(()=>{
+  Object.assign(window,{AiadcastNative:{postMessage:(message:string)=>{
+   const request=JSON.parse(message);
+   if(request.type!=='batch-export')return;
+   const ok=request.op!=='file'||(/^aiadcast-[0-9a-f]{8}-01\.mp4$/.test(request.name)
+    &&request.base64==='AAAAEGZ0eXBpc29tAAAAAA==');
+   window.dispatchEvent(new CustomEvent('aiadcast-batch-export',{detail:{id:request.id,ok}}));
+  }}});
+ });
+ await page.getByRole('button',{name:'원본 저장'}).click();
+ await expect(page.getByText('저장을 요청했습니다.')).toBeVisible();
  expect(downloads).toBe(1);
  expect(submits).toBe(0);
  await image.click();
