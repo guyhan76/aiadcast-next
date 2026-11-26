@@ -176,7 +176,7 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,available
       controller.signal.throwIfAborted();
       const script=draft.voiceText||idea.audio?.narration||videoPlan(brief,caption,'').voice;
       change({...draft,file:undefined,review:{
-        shots:idea.shots,briefKey,sources,
+        shots:idea.shots,frameLayout:idea.frameLayout,briefKey,sources,
         captions:sceneCaptions(brief,caption),showCaptions:review?.showCaptions??false,contact:brief.contact,
         music:review?.music??draft.aiMusic,musicMood:draft.musicStyle||idea.audio?.musicMood||(style==='unboxing'?t('경쾌한 리듬','Upbeat rhythm'):t('차분한 연주곡','Soft instrumental')),
         narration:script.slice(0,600),voice:review?.voice??(draft.aiVoice&&!!draft.voiceText.trim())

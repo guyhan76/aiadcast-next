@@ -308,7 +308,7 @@ export class GenerationService {
       if(!quotePolicy.customerFunded&&!limit)fail('BUDGET_UNAVAILABLE',409);
       let images,quote;
       try{
-        images=await provider.upload(key,plan.content);
+        images=await provider.upload(key,plan.content,plan);
         quote=await provider.estimate(key,provider.input(plan,images));
       }catch(error){
         if(error.videoPreflightCode)fail(error.videoPreflightCode,503);

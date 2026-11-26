@@ -1,13 +1,13 @@
 import {useId,useState} from 'react';
 import {useUiLanguage} from './ui-language';
 import {sceneStops} from './video-style';
-import {manualPromptLimit,type VideoPromptMode,shotLimit,timedShots,type VideoShots} from './video-prompt';
+import {manualPromptLimit,type PhotoFrameLayout,type VideoPromptMode,shotLimit,timedShots,type VideoShots} from './video-prompt';
 import type {VideoSource} from './video-duration';
 
 export type VideoReview={
   musicMood:string; narration:string;
   shots:VideoShots; captions:VideoShots; showCaptions:boolean; music:boolean; voice:boolean; contact:string;
-  briefKey:string; sources:VideoSource[];
+  briefKey:string; sources:VideoSource[]; frameLayout?:PhotoFrameLayout;
 };
 type Props={
   mode:VideoPromptMode;manualText:string;onMode:(mode:VideoPromptMode)=>void;onManual:(value:string)=>void;
@@ -23,7 +23,7 @@ export function VideoPromptReview({mode,manualText,onMode,onManual,seconds,ratio
     if(!review)return;
     const updated:VideoShots=[...review[field]];
     updated[index]=value;
-    onChange({[field]:updated});
+    onChange({[field]:updated,...(field==='shots'&&index===0?{frameLayout:undefined}:{})});
   }
   async function copy(){
     if(!review)return;
