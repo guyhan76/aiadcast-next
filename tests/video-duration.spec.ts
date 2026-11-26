@@ -272,7 +272,7 @@ test('a product photo and brief make a reviewable AI prompt before the video is 
      expect(body.frameLayout).toEqual(frameLayout);
      expect(body.shots[1]).toBe('어깨 봉제선을 따라 천천히 이동한다.');
      expect(body).not.toHaveProperty('manualPrompt');
-     expect(body).toMatchObject({music:true,musicStyle:'잔잔한 피아노',voice:true,narration:'하이브리드 롱코트를 만나보세요.'});
+     expect(body).toMatchObject({music:true,musicStyle:'잔잔한 피아노',voice:false,narration:''});
    }else{
      expect(body.promptMode).toBe('manual');
      expect(body.manualPrompt).toBe('별도의 수동 연출');
