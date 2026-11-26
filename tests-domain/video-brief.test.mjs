@@ -114,7 +114,7 @@ test('photo-aware prompt requests use the text assistant budget and retain only 
   assert.equal(response_format.json_schema.name,'video_shot_directions');
   assert.equal(messages[1].content[1].image_url.url,photo);
   assert.deepEqual(JSON.parse(messages[1].content[0].text).sceneBoundariesSeconds,[0,3,7,10]);
-  return Response.json({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify({opening:'설산 앞 코트를 전신 구도로 잡는다.',detail:'가슴 로고로 다가간다.',closing:'눈발을 배경으로 정지한다.'})}}],usage:{prompt_tokens:500,completion_tokens:100}});
+  return Response.json({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify({sceneRecipes:{opening:['landscape'],detail:['macro'],closing:['freeze-frame']},opening:'설산 앞 코트를 전신 구도로 잡는다.',detail:'가슴 로고로 다가간다.',closing:'눈발을 배경으로 정지한다.'})}}],usage:{prompt_tokens:500,completion_tokens:100}});
  }})});t.after(()=>service.close());
  const first=await service.assist(request);
  assert.equal(first.shots.length,3);assert.deepEqual(await service.assist(request),JSON.parse(JSON.stringify(first)));assert.equal(calls,1);
@@ -178,7 +178,7 @@ test('a product plan requires a first-frame event and a distinct visible respons
  const latte={kind:'product',style:'product',ratio:'9:16',seconds:10,field:'',industry:'',title:'아이스라떼',description:'사진 속 유리잔',highlight:'',caption:'',contact:'',music:true,voice:false,musicStyle:'',voiceStyle:'',narration:''};
  assert.match(productDirection(latte,'ko')[0],/흰 우유/);
  const request={kind:'video-prompt',planVersion:2,requestId:'opening-beats-001',targetLocale:'ko',brief:latte,references:[photo]};
- const proposal={opening:'얼음과 흰 우유가 담긴 잔으로 에스프레소가 떨어진다.',reaction:'흰 표면에 첫 갈색 실선이 생긴다.',detail:'잔 옆면의 우유 층',closing:'완성된 한 잔',musicMood:'타악기',narration:'',recommendVoice:false};
+ const proposal={sceneRecipes:{opening:['flowing-liquid'],detail:['macro'],closing:['packshot']},opening:'얼음과 흰 우유가 담긴 잔으로 에스프레소가 떨어진다.',reaction:'흰 표면에 첫 갈색 실선이 생긴다.',detail:'잔 옆면의 우유 층',closing:'완성된 한 잔',musicMood:'타악기',narration:'',recommendVoice:false};
  async function draft(answer){
   return assistCopy({request,apiKey:'fixture',fetchImpl:async(_url,options)=>{
    const schema=JSON.parse(options.body).response_format.json_schema;

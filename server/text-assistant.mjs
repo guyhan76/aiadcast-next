@@ -1,6 +1,5 @@
-import {openingRecipes} from './video-photo-opening.mjs';
 import {validVideoAudio} from '../src/video-prompt.ts';
-import {normalizeVideoPromptRequest,videoPromptMessages,videoPromptSchema,videoPlanSchema,productVideoPlanSchema,photoVideoPlanSchema} from './video-prompt-assistant.mjs';
+import {normalizeVideoPromptRequest,videoPromptMessages,videoResponseSchema,photoShotDirections} from './video-prompt-assistant.mjs';
 import { ProviderFailure } from './openai-image-adapter.mjs';
 
 // Server-owned, pinned configuration; callers cannot choose a model or a price.
@@ -84,8 +83,8 @@ export async function assistCopy({ request: raw, fetchImpl = globalThis.fetch, a
   const input = JSON.stringify({ kind: request.kind, sourceLocale: request.sourceLocale, targetLocale: request.targetLocale, productName: request.productName, description: request.description, copy: request.copy,cta:request.cta });
   const payload = {
     model, store: false, n: 1, messages: video?videoPromptMessages(request):[{ role: 'developer', content: instructions }, { role: 'user', content: input }],
-    max_completion_tokens: video && request.planVersion===3 ? 1700 : MAX_OUTPUT_TOKENS,
-    response_format: { type: 'json_schema', json_schema: video?(request.planVersion===3?photoVideoPlanSchema:request.planVersion===2?productVideoPlanSchema:request.planVersion===1?videoPlanSchema:videoPromptSchema):{ name: 'advertising_copy', strict: true, schema: { type: 'object', properties: { title: { type: 'string', maxLength: 180 }, description: { type: 'string', maxLength: 240 } }, required: ['title', 'description'], additionalProperties: false } } },
+    max_completion_tokens: video && request.references.length ? 1900 : MAX_OUTPUT_TOKENS,
+    response_format: { type: 'json_schema', json_schema: video?videoResponseSchema(request):{ name: 'advertising_copy', strict: true, schema: { type: 'object', properties: { title: { type: 'string', maxLength: 180 }, description: { type: 'string', maxLength: 240 } }, required: ['title', 'description'], additionalProperties: false } } },
   };
   let response;
   try {
@@ -107,7 +106,7 @@ export async function assistCopy({ request: raw, fetchImpl = globalThis.fetch, a
   let proposal;
   try { proposal = JSON.parse(choice.message.content); } catch { throw new ProviderFailure('PROVIDER_INVALID_RESPONSE'); }
   if(video){
-    const shots=['opening','detail','closing'].map(key=>proposal?.[key]);
+    let shots=['opening','detail','closing'].map(key=>proposal?.[key]);
     const openingBeats=request.planVersion>=2;
     const full=openingBeats||request.planVersion===1;
     if(openingBeats){
@@ -118,16 +117,18 @@ export async function assistCopy({ request: raw, fetchImpl = globalThis.fetch, a
         : 'First frame · '+beats[0].trim()+'\nWithin 0.8s · '+beats[1].trim();
     }
     if(request.planVersion===3){
-      const recipe=openingRecipes.get(proposal.openingTechnique);
       const detail=proposal.photoDetail;
-      if(!recipe || typeof detail!=='string' || !detail.trim() || detail.length>64 || proposal.opening.length>330){
+      if(typeof detail!=='string' || !detail.trim() || detail.length>64 || proposal.opening.length>330){
         throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
       }
-      // Keep the selected direction inside the editable shot so WAN receives exactly what was reviewed.
-      const technique=request.targetLocale==='ko' ? recipe.label : recipe.id.replaceAll('-',' ');
-      shots[0]=technique+' · '+detail.trim()+'\n'+shots[0];
+      shots[0]=detail.trim()+'\n'+shots[0];
     }
-    if(!proposal||Object.keys(proposal).length!==(request.planVersion===3?10:openingBeats?7:full?6:3)||(full&&!validVideoAudio(proposal))||shots.some(s=>typeof s!=='string'||!s.trim()||s.length>900))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
+    if(request.references.length){
+      shots=photoShotDirections(shots,proposal?.sceneRecipes,request.targetLocale);
+      if(!shots) throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
+    }
+    const expectedKeys=(request.planVersion===3?9:openingBeats?7:full?6:3)+(request.references.length?1:0);
+    if(!proposal||Object.keys(proposal).length!==expectedKeys||(full&&!validVideoAudio(proposal))||shots.some(s=>typeof s!=='string'||!s.trim()||s.length>900))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
     return {requestId:request.requestId,kind:request.kind,targetLocale:request.targetLocale,shots,...(request.planVersion===3?{frameLayout:proposal.frameLayout}:{}),...(full?{audio:{musicMood:proposal.musicMood,narration:proposal.narration,recommendVoice:proposal.recommendVoice}}:{}),usage,cost:textUsageCost(usage),model};
   }
   if (!proposal || typeof proposal !== 'object' || Array.isArray(proposal) || Object.keys(proposal).sort().join(',') !== 'description,title' || typeof proposal.title !== 'string' || typeof proposal.description !== 'string' || proposal.title.length > 180 || proposal.description.length > 240 || !proposal.title.trim()) throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
