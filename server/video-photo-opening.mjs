@@ -1,12 +1,21 @@
-import {findImageSkill} from '../src/image-skills.ts';
+import {imageRecipes} from '../src/image-skills.ts';
 import {getVideoFormat} from '../src/video-formats.ts';
 
-const skills = ['macro','product-explosion','freeze-frame','closeup','practical-light'];
+// These image recipes can be staged as moving product shots without inventing internal parts.
+const techniqueIds = ['macro','product-explosion','freeze-frame','closeup','practical-light','fabric-texture',
+  'flowing-liquid','floating-product','slow-motion','backlighting-glow','wet-glossy','motion-blur'];
+export const openingRecipes = new Map(techniqueIds.map(id => {
+  const recipe = imageRecipes.find(item => item.id === id);
+  return [id, recipe];
+}));
+
 export const photoDirection = [
-  'Inspect the actual photos before choosing one opening technique. Pick the visible product feature that best demonstrates the customer highlight. Honor explicit shot order and exclusions.',
-  ...skills.map(id => id + ': ' + findImageSkill(id).visualDirection),
-  'Translate the chosen technique into a single filmable opening and its visible consequence. Write the feature, its appearance and motion directly into the reviewed shots, without skill names. Match material, silhouette, toppings or markings across the cut. Ignore viewer controls and text around screenshots.',
-  'For example, a cheese emphasis may motivate a slice lifting with strands attached at both ends. A topping emphasis may motivate an exploded arrangement of identifiable ingredients. Apply either only when the actual photo and brief support it.'
+  'Use the title to identify this product, the detailed description to establish its use or sequence, and the highlight to prioritize the benefit or respect exclusions. Examine every supplied photo for visible evidence. Use only the fields supplied.',
+  'Choose one image technique from the following catalog after comparing those inputs. A static original frame is also directed with a technique. Make the product itself perform a legible action from the first frame, then follow its visible consequence. If the customer specifies quiet pacing, direct a small but immediately readable change.',
+  ...Array.from(openingRecipes, ([id,recipe]) => id + ': ' + recipe.instruction),
+  'Use one physically connected sequence: catch attention with the opening action, build interest and desire by revealing the highlighted detail, and repeat a recognizable product cue near the close. Use the approved call to action when present. Do not convert these stages into captions.',
+  'A pizza topping can lift, rotate, and return to the same pizza. For a layered latte, show the interface where coffee meets milk curling around a visible ice cube. For a coat, let a moving fold catch light along the actual quilting before revealing its silhouette. These are conditional examples. The supplied product, requested order, and exclusions govern the choice.',
+  'Ignore titles, buttons and viewer controls over screenshots. Preserve markings printed on the product. Keep forbidden people, hands and text out of the action.'
 ].join(' ');
 
 export const layoutInstructions = 'Also return frameLayout for this opening. Use mode original when a supplied photo already shows the opening, the action needs no still, boundaries are unclear, or the source is unsuitable. Use mode crop for a useful close-up; outline the desired crop with two opposite corners. Use mode layers only when the approved opening calls for separated, clearly identifiable components: trace 2 to 4 distinct visible components in top-to-bottom output order, each as a polygon of 4 to 10 vertices inside its visible silhouette. Never include screen chrome. Use one source photo, one-based source index, and integer x,y coordinates from 0 to 1000 relative to that entire photo. For original use an empty regions array.';

@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import {videoPromptMessages} from '../server/video-prompt-assistant.mjs';
+import {assistCopy} from '../server/text-assistant.mjs';
+import {seedancePayload} from '../server/seedance-video.mjs';
 import {openingReference} from '../server/video-photo-opening.mjs';
 import {quotedVideoProvider} from '../server/quoted-video.mjs';
 
@@ -36,4 +38,32 @@ test('pizza photo and selling point reach the director, approved opening reaches
   assert.equal(await openingReference(layout,Array(10).fill(ref),'9:16'),undefined);
   assert.equal(quotedVideoProvider('topview','topview/alibaba/wan-3.0/subject-framing-v7').preparePlan(base,body).frameLayout,undefined);
   assert.deepEqual(wan.preparePlan(base,{...body,promptPolicy:'owner-only',manualPrompt:'own'}),base);
+});
+
+test('a reviewed hook carries the selected recipe and photographed detail to the provider',async()=>{
+  const photo='data:image/jpeg;base64,/9j/2Q==';
+  const brief={kind:'product',style:'product',title:'아이스 카페라떼',description:'유리잔에 우유와 커피가 층을 이룬다.',
+    highlight:'얼음 옆에서 갈색 소용돌이가 생기는 순간',ratio:'9:16',seconds:20,field:'',industry:'',
+    caption:'',contact:'',music:false,voice:false,musicStyle:'',voiceStyle:'',narration:''};
+  const request={kind:'video-prompt',requestId:'photo-skill-latte',targetLocale:'ko',planVersion:3,brief,references:[photo]};
+  const idea={openingTechnique:'flowing-liquid',photoDetail:'투명한 유리잔 속 각얼음',opening:'커피가 우유에 닿는다.',
+    reaction:'얼음 아래에서 갈색 소용돌이가 번진다.',detail:'우유와 커피가 섞이는 경계를 따라간다.',closing:'잔 전체를 보여준다.',
+    musicMood:'조용한 피아노',narration:'',recommendVoice:false,frameLayout:{mode:'original',source:1,regions:[]}};
+  const draft=answer=>assistCopy({request,apiKey:'fixture',fetchImpl:async(_,options)=>{
+    const payload=JSON.parse(options.body);
+    const schema=payload.response_format.json_schema.schema;
+    assert.ok(schema.required.includes('openingTechnique') && schema.required.includes('photoDetail'));
+    for (const id of ['product-explosion','flowing-liquid','fabric-texture']) assert.ok(schema.properties.openingTechnique.enum.includes(id));
+    assert.deepEqual(JSON.parse(payload.messages[1].content[0].text).brief,brief);
+    assert.equal(payload.messages[1].content[1].image_url.url,photo);
+    return Response.json({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify(answer)}}]});
+  }});
+  const {shots}=await draft(idea);
+  const body={requestId:request.requestId,seconds:20,brief:{...brief,emphasis:brief.highlight},references:[photo],shots,music:false,voice:false,musicStyle:'',voiceStyle:'',narration:''};
+  const provider=quotedVideoProvider('topview');
+  const wire=provider.input(provider.preparePlan(seedancePayload(body,provider.model),body),['https://example.org/reference.jpg']).input.input.prompt;
+  assert.ok(wire.includes(shots[0]));
+  for (const cue of ['흐르는 액체',idea.photoDetail,idea.opening,idea.reaction]) assert.ok(shots[0].includes(cue));
+  for (const change of [{openingTechnique:'unknown'},{openingTechnique:undefined},{photoDetail:' '}])
+    await assert.rejects(draft({...idea,...change}),/PROVIDER_INVALID_RESPONSE/);
 });

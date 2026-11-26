@@ -1,3 +1,4 @@
+import {openingRecipes} from './video-photo-opening.mjs';
 import {validVideoAudio} from '../src/video-prompt.ts';
 import {normalizeVideoPromptRequest,videoPromptMessages,videoPromptSchema,videoPlanSchema,productVideoPlanSchema,photoVideoPlanSchema} from './video-prompt-assistant.mjs';
 import { ProviderFailure } from './openai-image-adapter.mjs';
@@ -116,7 +117,17 @@ export async function assistCopy({ request: raw, fetchImpl = globalThis.fetch, a
         ? '첫 프레임 · '+beats[0].trim()+'\n0.8초 이내 · '+beats[1].trim()
         : 'First frame · '+beats[0].trim()+'\nWithin 0.8s · '+beats[1].trim();
     }
-    if(!proposal||Object.keys(proposal).length!==(request.planVersion===3?8:openingBeats?7:full?6:3)||(full&&!validVideoAudio(proposal))||shots.some(s=>typeof s!=='string'||!s.trim()||s.length>900))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
+    if(request.planVersion===3){
+      const recipe=openingRecipes.get(proposal.openingTechnique);
+      const detail=proposal.photoDetail;
+      if(!recipe || typeof detail!=='string' || !detail.trim() || detail.length>64 || proposal.opening.length>330){
+        throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
+      }
+      // Keep the selected direction inside the editable shot so WAN receives exactly what was reviewed.
+      const technique=request.targetLocale==='ko' ? recipe.label : recipe.id.replaceAll('-',' ');
+      shots[0]=technique+' · '+detail.trim()+'\n'+shots[0];
+    }
+    if(!proposal||Object.keys(proposal).length!==(request.planVersion===3?10:openingBeats?7:full?6:3)||(full&&!validVideoAudio(proposal))||shots.some(s=>typeof s!=='string'||!s.trim()||s.length>900))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
     return {requestId:request.requestId,kind:request.kind,targetLocale:request.targetLocale,shots,...(request.planVersion===3?{frameLayout:proposal.frameLayout}:{}),...(full?{audio:{musicMood:proposal.musicMood,narration:proposal.narration,recommendVoice:proposal.recommendVoice}}:{}),usage,cost:textUsageCost(usage),model};
   }
   if (!proposal || typeof proposal !== 'object' || Array.isArray(proposal) || Object.keys(proposal).sort().join(',') !== 'description,title' || typeof proposal.title !== 'string' || typeof proposal.description !== 'string' || proposal.title.length > 180 || proposal.description.length > 240 || !proposal.title.trim()) throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
