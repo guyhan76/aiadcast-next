@@ -53,7 +53,10 @@ export function timedShots(shots:VideoShots,seconds:number){
 }
 
 export type VideoAudioIdea = {musicMood:string; narration:string; recommendVoice:boolean};
-export type VideoPlanIdea = {shots:VideoShots; audio?:VideoAudioIdea};
+export type PhotoFrameLayout = {
+  mode:'original'|'crop'|'layers'; source:number; regions:{x:number;y:number}[][];
+};
+export type VideoPlanIdea = {shots:VideoShots;frameLayout?:PhotoFrameLayout; audio?:VideoAudioIdea};
 export function validVideoAudio(value:unknown):value is VideoAudioIdea {
   if (!value || typeof value!=='object') return false;
   const audio=value as Partial<VideoAudioIdea>;

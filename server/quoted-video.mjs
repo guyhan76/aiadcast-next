@@ -1,3 +1,4 @@
+import {openingReference} from './video-photo-opening.mjs';
 import {framingRule,lattePreparation} from '../src/video-subject-framing.ts';
 import {formatBeats} from '../src/video-format-direction.ts';
 import {higgsfieldModel,higgsfieldKey,higgsfieldInput,uploadHiggsfieldImages,estimateHiggsfield,submitHiggsfield,pollHiggsfield} from './higgsfield-video.mjs';
@@ -37,7 +38,38 @@ const firstCutWan = {...providers.topview, revision:'topview/'+topviewModel+'/cu
 const originalWan = {...providers.topview, revision:'topview/'+topviewModel, preparePlan:topviewCleanFramePlan};
 const legacyTopview = {...originalWan, model:legacyTopviewModel, revision:legacyTopviewModel, input:legacyTopviewInput};
 
+
+const photoWan = {
+  ...providers.topview,
+  revision:'topview/'+topviewModel+'/photo-opening-v8',
+  preparePlan(plan,body) {
+    const reviewed=subjectReviewedPlan(plan,body);
+    if (!body?.shots || body.manualPrompt!==undefined || body.brief?.kind!=='product' ||
+        (body.brief.style??'product')!=='product' || reviewed.content.length<2) return reviewed;
+    const [direction,...media]=reviewed.content;
+    const text=direction.text+'\nStage the reviewed photo-based opening. Keep the actual product details recognizable from the first visible change into the final product shot. Reference screenshots supply food or object appearance only; omit app controls.';
+    const layout=body.frameLayout;
+    return {...reviewed,content:[{...direction,text},...media],
+      ...(layout && ['crop','layers'].includes(layout.mode) && media.length<10 ? {frameLayout:layout} : {})};
+  },
+  async upload(key,content,plan) {
+    if (!plan?.frameLayout) return uploadTopviewImages(key,content);
+    const refs=content.slice(1).map(item=>item.image_url.url);
+    const guide=await openingReference(plan.frameLayout,refs,plan.ratio);
+    if (!guide) return uploadTopviewImages(key,content);
+    return uploadTopviewImages(key,[...content,{image_url:{url:guide}}]);
+  },
+  input(plan,urls) {
+    const payload=topviewInput(plan,urls);
+    if (plan.frameLayout && urls.length===plan.content.length) {
+      payload.input.input.prompt+='\nThe LAST reference is a composition guide for the opening only. Render those details in the original product lighting and move immediately. The preceding photos establish true appearance and the finished product.';
+    }
+    return payload;
+  }
+};
+
 export function quotedVideoProvider(name, savedRevision){
+  if(name==='topview' && (!savedRevision || savedRevision===photoWan.revision)) return photoWan;
   if(name==='topview' && savedRevision===formatWan.revision) return formatWan;
   if(name==='topview' && savedRevision===reviewedWan.revision) return reviewedWan;
   if(name==='topview' && savedRevision===legacyTopviewModel) return legacyTopview;
