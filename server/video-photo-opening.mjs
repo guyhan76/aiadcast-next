@@ -1,18 +1,13 @@
 import {imageRecipes} from '../src/image-skills.ts';
 import {getVideoFormat} from '../src/video-formats.ts';
 
-// These image recipes can be staged as moving product shots without inventing internal parts.
-const techniqueIds = ['macro','product-explosion','freeze-frame','closeup','practical-light','fabric-texture',
-  'flowing-liquid','floating-product','slow-motion','backlighting-glow','wet-glossy','motion-blur'];
-export const openingRecipes = new Map(techniqueIds.map(id => {
-  const recipe = imageRecipes.find(item => item.id === id);
-  return [id, recipe];
-}));
+export const videoRecipes = new Map(imageRecipes.map(recipe => [recipe.id, recipe]));
 
 export const photoDirection = [
-  'Use the title to identify this product, the detailed description to establish its use or sequence, and the highlight to prioritize the benefit or respect exclusions. Examine every supplied photo for visible evidence. Use only the fields supplied.',
-  'Choose one image technique from the following catalog after comparing those inputs. A static original frame is also directed with a technique. Make the product itself perform a legible action from the first frame, then follow its visible consequence. If the customer specifies quiet pacing, direct a small but immediately readable change.',
-  ...Array.from(openingRecipes, ([id,recipe]) => id + ': ' + recipe.instruction),
+  'Use the title to identify the advertised product or service, the detailed description to establish its use or sequence, and the highlight to prioritize the benefit or respect exclusions. Examine every supplied photo for visible evidence. Use only the fields supplied.',
+  'For each of opening, detail and closing, choose a primary image recipe and up to two complementary recipes from this catalog. Choose only what contributes to the specific shot: for example combine a viewpoint, material treatment and lighting. Keep a recurring visual cue across shots when it serves the story. Give the actual recipe IDs in sceneRecipes. Describe how each selection changes framing, light, movement or transition in the corresponding editable shot. Start with an identifiable product or service action in progress and follow its visible consequence. If the customer specifies quiet pacing, direct a small but immediately readable change.',
+  'Adapt still-image recipes to the selected video format. An editorial or poster treatment can supply framing and rhythm; render its design as moving imagery. Do not render headlines, interface overlays, invented settings, clients, new people, or unverified features merely because a recipe mentions them. Owner exclusions, actual photo content, casting and packaging order take precedence over every recipe.',
+  imageRecipes.map(recipe => recipe.id + ': ' + recipe.instruction).join('\n'),
   'Use one physically connected sequence: catch attention with the opening action, build interest and desire by revealing the highlighted detail, and repeat a recognizable product cue near the close. Use the approved call to action when present. Do not convert these stages into captions.',
   'A pizza topping can lift, rotate, and return to the same pizza. For a layered latte, show the interface where coffee meets milk curling around a visible ice cube. For a coat, let a moving fold catch light along the actual quilting before revealing its silhouette. These are conditional examples. The supplied product, requested order, and exclusions govern the choice.',
   'Ignore titles, buttons and viewer controls over screenshots. Preserve markings printed on the product. Keep forbidden people, hands and text out of the action.'

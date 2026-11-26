@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
-import {videoPromptMessages} from '../server/video-prompt-assistant.mjs';
+import {imageRecipes} from '../src/image-skills.ts';
+import {videoResponseSchema,videoPromptMessages} from '../server/video-prompt-assistant.mjs';
 import {assistCopy} from '../server/text-assistant.mjs';
 import {seedancePayload} from '../server/seedance-video.mjs';
 import {openingReference} from '../server/video-photo-opening.mjs';
@@ -46,14 +47,16 @@ test('a reviewed hook carries the selected recipe and photographed detail to the
     highlight:'얼음 옆에서 갈색 소용돌이가 생기는 순간',ratio:'9:16',seconds:20,field:'',industry:'',
     caption:'',contact:'',music:false,voice:false,musicStyle:'',voiceStyle:'',narration:''};
   const request={kind:'video-prompt',requestId:'photo-skill-latte',targetLocale:'ko',planVersion:3,brief,references:[photo]};
-  const idea={openingTechnique:'flowing-liquid',photoDetail:'투명한 유리잔 속 각얼음',opening:'커피가 우유에 닿는다.',
+  const sceneRecipes={opening:['flowing-liquid','natural-window-light'],detail:['birds-eye','frozen-crystalline'],closing:['showcase']};
+  const idea={sceneRecipes,photoDetail:'투명한 유리잔 속 각얼음',opening:'커피가 우유에 닿는다.',
     reaction:'얼음 아래에서 갈색 소용돌이가 번진다.',detail:'우유와 커피가 섞이는 경계를 따라간다.',closing:'잔 전체를 보여준다.',
     musicMood:'조용한 피아노',narration:'',recommendVoice:false,frameLayout:{mode:'original',source:1,regions:[]}};
   const draft=answer=>assistCopy({request,apiKey:'fixture',fetchImpl:async(_,options)=>{
     const payload=JSON.parse(options.body);
     const schema=payload.response_format.json_schema.schema;
-    assert.ok(schema.required.includes('openingTechnique') && schema.required.includes('photoDetail'));
-    for (const id of ['product-explosion','flowing-liquid','fabric-texture']) assert.ok(schema.properties.openingTechnique.enum.includes(id));
+    assert.ok(schema.required.includes('sceneRecipes') && schema.required.includes('photoDetail'));
+    assert.deepEqual(new Set(schema.$defs.shotRecipes.items.enum),new Set(imageRecipes.map(recipe=>recipe.id)));
+    assert.equal(schema.properties.sceneRecipes.properties.closing.$ref,'#/$defs/shotRecipes');
     assert.deepEqual(JSON.parse(payload.messages[1].content[0].text).brief,brief);
     assert.equal(payload.messages[1].content[1].image_url.url,photo);
     return Response.json({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify(answer)}}]});
@@ -62,8 +65,23 @@ test('a reviewed hook carries the selected recipe and photographed detail to the
   const body={requestId:request.requestId,seconds:20,brief:{...brief,emphasis:brief.highlight},references:[photo],shots,music:false,voice:false,musicStyle:'',voiceStyle:'',narration:''};
   const provider=quotedVideoProvider('topview');
   const wire=provider.input(provider.preparePlan(seedancePayload(body,provider.model),body),['https://example.org/reference.jpg']).input.input.prompt;
-  assert.ok(wire.includes(shots[0]));
+  for (const [i,ids] of Object.values(sceneRecipes).entries()) {
+    assert.ok(wire.includes(shots[i]));
+    for (const id of ids) assert.ok(shots[i].includes(imageRecipes.find(recipe=>recipe.id===id).label));
+  }
   for (const cue of ['흐르는 액체',idea.photoDetail,idea.opening,idea.reaction]) assert.ok(shots[0].includes(cue));
-  for (const change of [{openingTechnique:'unknown'},{openingTechnique:undefined},{photoDetail:' '}])
+  for (const change of [{sceneRecipes:{...sceneRecipes,detail:['unknown']}},{sceneRecipes:undefined},{sceneRecipes:{...sceneRecipes,closing:['showcase','showcase']}},{photoDetail:' '}])
     await assert.rejects(draft({...idea,...change}),/PROVIDER_INVALID_RESPONSE/);
+});
+
+test('every automatic format with photos gets the catalog, including unboxing and service UGC',()=>{
+  for(const [kind,style,planVersion] of [['product','product',3],['product','unboxing',2],['product','presenter',2],['service','service',1],['service','presenter',1]]){
+    const brief={kind,style,title:'테스트',description:'',highlight:'',seconds:15};
+    const request={brief,planVersion,references:['photo'],targetLocale:'ko'};
+    const schema=videoResponseSchema(request).schema;
+    assert.ok(schema.required.includes('sceneRecipes'));
+    const director=videoPromptMessages(request)[0].content;
+    for (const recipe of imageRecipes) assert.ok(director.includes(recipe.id+': '+recipe.instruction));
+  }
+  assert.ok(!videoResponseSchema({planVersion:1,references:[]}).schema.required.includes('sceneRecipes'));
 });
