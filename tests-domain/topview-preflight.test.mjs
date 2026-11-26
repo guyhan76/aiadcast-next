@@ -28,7 +28,7 @@ test('WAN requests preserve reference order, timing, ratio and audio; old jobs r
       input:{duration,ratio:'9:16',resolution:'720p',generate_audio:audio,
         content:[plan.content[0],{type:'image_url',role:'reference_image',image_url:{url:urls[0]}}]}
     });
-    assert.equal(quotedVideoProvider('topview').revision,'topview/alibaba/wan-3.0/hook-cta-v4');
+    assert.equal(quotedVideoProvider('topview').revision,'topview/alibaba/wan-3.0/photo-opening-v8');
   }
 });
 
@@ -91,10 +91,10 @@ test('WAN upload fits a transparent small PNG into the allowed frame without cro
   await uploadTopviewImages('test',[{}, {image_url:{url:'data:image/png;base64,'+tiny.toString('base64')}}]);
 });
 
-test('WAN hooks new auto and manual product requests while retaining the old revision for retries',()=>{
+test('stored v4 quotes reproduce their original opening and manual-format cues',()=>{
   const body={brief:{kind:'product'},shots:['ice tips','milk marbles','glass rests']};
   const plan={content:[{type:'text',text:body.shots.join('\n')}],resolution:'720p',duration:10,ratio:'9:16',generate_audio:false};
-  const current=quotedVideoProvider('topview');
+  const current=quotedVideoProvider('topview','topview/alibaba/wan-3.0/hook-cta-v4');
   const old=quotedVideoProvider('topview','topview/alibaba/wan-3.0');
   const text=current.input(current.preparePlan(plan,body),[]).input.input.prompt;
   assert.match(text,/By 0\.8 seconds/);assert.match(text,/At 3s switch/);assert.match(text,/At 7s switch/);
@@ -122,19 +122,19 @@ test('WAN hooks new auto and manual product requests while retaining the old rev
 test('iced latte gets impact, swirl and a whole-glass finish in both the fallback and planner input',()=>{
   const brief={kind:'product',style:'product',field:'식품',title:'아이스라떼',description:'에스프레소, 얼음과 우유',highlight:'강렬한 시작',seconds:10};
   const [opening,detail,closing]=basicVideoShots(brief,'ko');
-  assert.match(opening,/얼음이 부딪/);assert.match(detail,/잔 옆면으로 컷/);assert.match(closing,/잔 전체/);
+  assert.match(opening,/흰 우유/);assert.match(detail,/갈색 무늬/);assert.match(closing,/라떼 전체/);
   const [instructions]=videoPromptMessages({brief,references:[],targetLocale:'ko'});
-  assert.match(instructions.content,/Two ice cubes collide at frame one/);
+  assert.match(instructions.content,/still-white milk/);
   const presenter={...brief,style:'presenter'};
-  assert.match(basicVideoShots(presenter,'ko')[0],/잔 벽을 치고/);
-  assert.match(videoPromptMessages({brief:presenter,references:[],targetLocale:'ko'})[0].content,/Ice slides into the glass wall/);
+  assert.ok(basicVideoShots(presenter,'ko')[0].trim());
+  assert.doesNotMatch(videoPromptMessages({brief:presenter,references:[],targetLocale:'ko'})[0].content,/Subject-only framing throughout/);
   for(const change of [{title:'아이스 말차라떼'},{description:'에스프레소 캡슐 밀봉'},{style:'unboxing'},{style:'presenter'}]){
-    assert.doesNotMatch(basicVideoShots({...brief,...change},'ko')[0],/얼음이 부딪/);
+    assert.doesNotMatch(basicVideoShots({...brief,...change},'ko')[0],/첫 갈색 선/);
   }
 });
 
-test('quote payload connects a mute opening, proof and one closing action in both modes',()=>{
-  const provider=quotedVideoProvider('topview');
+test('v4 replay connects its original mute opening, proof and closing action in both modes',()=>{
+  const provider=quotedVideoProvider('topview','topview/alibaba/wan-3.0/hook-cta-v4');
   for(const style of ['product','presenter','unboxing'])for(const manual of [false,true]){
     const brief={kind:'product',style,title:'아이스라떼',description:'얼음과 커피',highlight:''};
     const shots=basicVideoShots(brief,'ko');
