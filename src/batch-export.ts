@@ -37,7 +37,10 @@ async function nativeExport(bridge:NativeBridge,files:File[],mode:'save'|'share'
  try{
   for(const [index,file] of files.entries()){
    const encoded=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(Error('FILE_READ'));reader.readAsDataURL(file);});
-   await send({op:'file',index,name:file.name,base64:encoded});
+   // MediaStore's bridge accepts one video per batch with an eight-digit hex ID.
+   const videoExtension=file.type==='video/mp4'?'mp4':file.type==='video/webm'?'webm':undefined;
+   const name=videoExtension?'aiadcast-'+id.slice(0,8)+'-01.'+videoExtension:file.name;
+   await send({op:'file',index,name,base64:encoded});
   }
   await send({op:'finish'});
  }catch(e){bridge.postMessage(JSON.stringify({type:'batch-export',id,owner,op:'cancel'}));throw e;}
