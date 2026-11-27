@@ -25,7 +25,7 @@ export const geminiOmni={
   model,revision:'gemini/'+model+'/pilot-v1',singleSubmit:true,
   key:()=>process.env.GEMINI_API_KEY?.trim(),
   accepts:body=>body.seconds===10 && body.ratio==='9:16' && body.promptMode==='auto' &&
-    body.references?.length===1 && body.brief?.kind==='product' && ['product','presenter'].includes(body.brief.style),
+    body.references?.length===1 && body.brief?.kind==='product' && ['product','presenter'].includes(body.brief.style??body.brief.kind),
   upload:async()=>[],
   // Budget reservation per 10-second pilot, including input and output headroom.
   estimate:async()=>1_000_000,

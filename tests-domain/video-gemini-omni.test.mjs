@@ -42,3 +42,20 @@ test('an explicit provider rejection retains its HTTP status',async t=>{
   t.mock.method(globalThis,'fetch',async()=>new Response(null,{status:403}));
   await assert.rejects(provider.submit('unit-test',{}),e=>e.providerStatus===403);
 });
+
+test('a lost create response cannot charge again when the same ad is retried',async t=>{
+  const prev=process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY='unit-test';
+  t.after(()=>{if(prev===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=prev;});
+  const service=new GenerationService({budgetMicros:5_000_000});
+  service.adminTestUnlimited=true;
+  t.after(()=>service.close());
+  let posts=0;
+  t.mock.method(globalThis,'fetch',async()=>{posts++;throw Error('response lost');});
+  const ad={...body,shots:['피자 조각을 든다.','접힌 도우를 보여준다.','추가 주문한다.'],music:false,voice:false,
+    musicStyle:'',voiceStyle:'',narration:'',brief:{...body.brief,title:'피자',description:'치즈 피자',emphasis:'도우'}};
+  await assert.rejects(service.startVideo(ad),e=>e.code==='VIDEO_SUBMISSION_UNCERTAIN');
+  assert.deepEqual(await service.startVideo(ad),{id:ad.requestId});
+  assert.deepEqual(await service.videoResult(ad.requestId),{state:'uncertain'});
+  assert.equal(posts,1);
+});
