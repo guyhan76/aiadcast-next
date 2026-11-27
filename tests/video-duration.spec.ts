@@ -131,7 +131,7 @@ test('unavailable AI permits plan review but never offers a slideshow',async({pa
 test('a reference clip stays in AI creation and a captioned provider result can be saved',async({page})=>{
   await protectedScreen(page,mockSession('clip-reference','admin'));
   await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
-  await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,assistant:{available:true},generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}}));
+  await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,assistant:{available:true},generation:{enabled:false},wallet:{unlimited:true,available:0,reserved:0},budget:{limitMicros:0}}}));
   await page.route('**/api/assistant',r=>{
     const body=r.request().postDataJSON();
     expect(body.references).toHaveLength(1);
@@ -193,6 +193,7 @@ test('service brief, grey reference upload and exact caption settings feed AI ge
  await expect(ai).toBeDisabled();
  await editor.getByRole('button',{name:'영상 구성안 만들기'}).click();
  await editor.locator('summary').filter({hasText:'내레이션'}).click();
+ await editor.getByRole('checkbox',{name:'한국어 내레이션 넣기'}).check();
  await editor.getByLabel('읽을 문장').fill('한 달 최대 삼백육십구만 원입니다.');
  await editor.locator('summary').filter({hasText:'배경음악'}).click();
  await editor.getByLabel('음악 넣기',{exact:true}).uncheck();
@@ -215,7 +216,7 @@ test('service brief, grey reference upload and exact caption settings feed AI ge
 
 test('unboxing uses two photos and shows the selected story and total before creation',async({page})=>{
   await protectedScreen(page,mockSession('unboxing-ad','admin'));
-  await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,videoProvider:'topview',generation:{enabled:false},wallet:{available:0,reserved:0},budget:{limitMicros:0}}}));
+  await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,videoProvider:'topview',generation:{enabled:false},wallet:{unlimited:true,available:0,reserved:0},budget:{limitMicros:0}}}));
   await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
   await page.goto('/#video');
   const editor=page.getByRole('region',{name:'광고 영상 편집'});
@@ -230,7 +231,7 @@ test('unboxing uses two photos and shows the selected story and total before cre
   await editor.getByRole('button',{name:'영상 구성안 만들기'}).click();
   const reveal=editor.locator('.vd-review-scene').nth(1);
   await expect(reveal).toContainText('3–7초');
-  await expect(editor.getByLabel('중간 장면 연출')).toHaveValue(/개봉 후/);
+  await expect(editor.getByLabel('중간 장면 연출')).toHaveValue(/두 번째 참조 사진.*제품이 드러나는/);
   expect(await editor.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
   await create.click();
   const dialog=page.getByRole('dialog',{name:'제작 전 확인'});
@@ -245,7 +246,7 @@ test('unboxing uses two photos and shows the selected story and total before cre
   await editor.getByRole('button',{name:'UGC',exact:true}).click();
   await expect(create).toBeDisabled();
   await editor.getByRole('button',{name:'변경된 정보로 구성안 다시 만들기'}).click();
-  await expect(editor.getByLabel('첫 장면 연출')).toHaveValue(/눈높이/);
+  await expect(editor.getByLabel('첫 장면 연출')).toHaveValue(/사용자의 휴대폰 시점/);
   await create.click();
   await expect(dialog).toContainText('UGC');
 });

@@ -22,6 +22,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: node --experimental-strip-types --test tests-domain/video-commercial-repair.test.mjs tests-domain/video-subject-framing.test.mjs tests-domain/video-photo-opening.test.mjs
       - run: npm run build
+      - run: node native/prepare-android.mjs
       - run: npx playwright install --with-deps chromium
       - name: Test finished-video repair and video planning
         run: |
