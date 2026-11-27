@@ -20,7 +20,8 @@ export function VideoCostDialog({style,ratio,seconds,credits,admin,provider,prom
       <div><dt>{t('영상 규격','Video format')}</dt><dd>{ratio} · {seconds}{t('초','s')}</dd></div>
       <div><dt>{t('적용할 프롬프트','Selected prompt')}</dt><dd>{promptMode==='manual'?t('직접 입력','Enter manually'):t('자동 작성','Auto draft')}</dd></div>
     </dl>
-    {provider==='topview'&&<p className="vd-data-policy"><a href="/video-privacy.html" target="_blank" rel="noreferrer">{t('영상 자료 처리 안내','Video data policy')}</a></p>}
+    {provider==='gemini'&&<p>{t('Google에 사진과 구성안을 전송합니다. 10초 영상 출력 약 $0.70, 입력 비용 별도.','Your photo and plan go to Google. Estimated 10s output $0.70, plus input.')}</p>}
+    {['topview','gemini'].includes(provider??'')&&<p className="vd-data-policy"><a href="/video-privacy.html" target="_blank" rel="noreferrer">{t('영상 자료 처리 안내','Video data policy')}</a></p>}
     <footer><button type="button" className="vd-library" autoFocus onClick={onCancel}>{t('취소','Cancel')}</button>
       <button type="button" className="vd-primary" onClick={onConfirm}>{t('제작 시작','Start creation')}</button></footer>
   </dialog>;

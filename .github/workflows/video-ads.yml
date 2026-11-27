@@ -20,7 +20,8 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: node --experimental-strip-types --test tests-domain/video-commercial-repair.test.mjs tests-domain/video-subject-framing.test.mjs tests-domain/video-photo-opening.test.mjs
+      - run: npm run check:cloud || (node scripts/build-cloud-variants.mjs && git diff -- server/cloud && exit 1)
+      - run: node --experimental-strip-types --test tests-domain/video-gemini-omni.test.mjs tests-domain/video-commercial-repair.test.mjs tests-domain/video-subject-framing.test.mjs tests-domain/video-photo-opening.test.mjs
       - run: npm run build
       - run: node native/prepare-android.mjs
       - run: npx playwright install --with-deps chromium

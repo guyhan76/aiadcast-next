@@ -42,7 +42,7 @@ async function timedVideoRequest<T>(signal:AbortSignal,ms:number,work:(requestSi
   finally{clearTimeout(timer);signal.removeEventListener('abort',abort);}
 }
 
-export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,signal:AbortSignal,onState:(s:VideoRequestStage)=>void,scenes:LoadedVideoScene[],expectedCredits?:number){
+export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,signal:AbortSignal,onState:(s:VideoRequestStage)=>void,scenes:LoadedVideoScene[],expectedCredits?:number,pilot?:'gemini'){
   const session=betaSession();
   const references:string[]=[];let bytes=0;
   for(const [index,source] of draft.sources.entries()){
@@ -73,13 +73,14 @@ export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,sign
   }
   const review=draft.review;
   const manual=promptMode==='manual';
-  const payload=manual
+  const creativePayload=manual
     ? {...directions,promptPolicy:'owner-only',brief:{kind:draft.brief.kind,style:draft.brief.style,title:'',description:'',emphasis:''},seconds,
        music:true,voice:true,musicStyle:'',voiceStyle:'',narration:'',suggestedVoice:'',references}
     : {...directions,...(review?.frameLayout && review.frameLayout.mode!=='original'?{frameLayout:review.frameLayout}:{}),brief:draft.brief,seconds,music:review!.music,voice:review!.voice,
        musicStyle:review!.music?review!.musicMood:'',voiceStyle:review!.voice?draft.voiceStyle:'',
        narration:review!.voice?review!.narration:'',suggestedVoice:'',references};
   const ratio=draft.ratio??defaultVideoRatio;
+  const payload=pilot?{...creativePayload,pilot}:creativePayload;
   // Preserve the request key for vertical jobs already submitted by older clients.
   const id=await requestId(JSON.stringify(ratio===defaultVideoRatio?payload:{...payload,ratio}));
   signal.throwIfAborted();

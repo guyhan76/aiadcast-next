@@ -194,7 +194,14 @@ export class GenerationService {
         // Existing quoted jobs keep their original model across provider changes.
         const saved = await this.db.prepare('SELECT v.*,j.model_revision FROM higgsfield_video_jobs v JOIN jobs j ON v.id=j.id WHERE v.id=?').get(body.requestId);
         const legacy = await this.db.prepare('SELECT j.model_revision FROM video_trials v JOIN jobs j ON j.id=v.id WHERE v.id=?').get(body.requestId);
-        const provider = quotedVideoProvider(saved ? saved.model_revision.split('/')[0] : activeVideoProvider(), saved?.model_revision);
+        const pilot = body.pilot === 'gemini';
+        if (body.pilot !== undefined && (!pilot || !this.adminTestUnlimited))
+            fail('VIDEO_TRIAL_UNAVAILABLE', 403);
+        if (pilot && !quotedVideoProvider('gemini').accepts(body))
+            fail('INVALID_VIDEO');
+        if ((saved && saved.model_revision.startsWith('gemini/') !== pilot) || (pilot && legacy))
+            fail('IDEMPOTENCY_CONFLICT', 409);
+        const provider = quotedVideoProvider(saved ? saved.model_revision.split('/')[0] : pilot ? 'gemini' : activeVideoProvider(), saved?.model_revision);
         if (!legacy && provider)
             return this.startQuotedVideo(body, saved, provider);
         const config = seedanceConfig();
@@ -300,7 +307,7 @@ export class GenerationService {
             return { id };
         const now = this.now();
         const claim = await this.db.prepare(`UPDATE higgsfield_video_jobs SET lease_until=?,submissions=submissions+1
-      WHERE id=? AND provider_id IS NULL AND images_json IS NOT NULL AND lease_until<=? RETURNING submissions`).get(now + 60000, id, now);
+      WHERE id=? AND provider_id IS NULL AND images_json IS NOT NULL AND lease_until<=? AND (submissions=0 OR ?=0) RETURNING submissions`).get(now + 60000, id, now, provider.singleSubmit ? 1 : 0);
         if (!claim)
             return { id };
         // Keep the original image URLs and key across timeouts, server restarts and concurrent clients.
@@ -314,7 +321,7 @@ export class GenerationService {
                     await this.ledger.settleAttempt(id, 0, 'failed');
                     await this.ledger.release(id, LOCAL_USER, 'system_error');
                     await this.db.prepare('UPDATE higgsfield_video_jobs SET images_json=NULL WHERE id=?').run(id);
-                    if (provider.revision.startsWith('topview/')) {
+                    if (provider.revision.startsWith('topview/') || provider.singleSubmit) {
                         const reason = { 400: 'VIDEO_PROVIDER_INPUT', 401: 'VIDEO_PROVIDER_AUTH', 402: 'VIDEO_PROVIDER_BALANCE', 403: 'VIDEO_PROVIDER_PERMISSION', 404: 'VIDEO_PROVIDER_MODEL', 422: 'VIDEO_PROVIDER_INPUT', 423: 'VIDEO_PROVIDER_PAUSED', 429: 'VIDEO_PROVIDER_LIMIT' }[error.providerStatus];
                         await this.db.prepare('INSERT INTO video_submission_errors(id,code) VALUES(?,?) ON CONFLICT(id) DO NOTHING').run(id, reason);
                     }
@@ -344,7 +351,7 @@ export class GenerationService {
         const key = provider?.key();
         if (!key)
             fail('VIDEO_TRIAL_UNAVAILABLE', 403);
-        const result = await provider.poll(key, row.provider_id);
+        const result = await provider.poll(key, row.provider_id, download);
         if (result.state === 'payment_required')
             fail('VIDEO_PROVIDER_BALANCE', 503);
         if (result.state === 'running')
@@ -361,7 +368,7 @@ export class GenerationService {
             }
         });
         if (result.state === 'ready' && download) {
-            const file = await seedanceMovie(result.url);
+            const file = result.file ?? await seedanceMovie(result.url);
             if (!job.creditExempt)
                 await this.ledger.markReady(row.id, row.provider_id);
             return file;
@@ -477,7 +484,7 @@ export class GenerationService {
         const wallet = await readinessMeasure('wallet', async () => await this.wallet());
         const reason = !this.enabled ? 'GENERATION_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : !customer && ((cumulative?.limitMicros ?? limit) < MODEL_COST_HOLD_MICROS || available < MODEL_COST_HOLD_MICROS) ? 'BUDGET_NOT_AVAILABLE' : !this.adminTestUnlimited && wallet.available < 1 && wallet.credits.available < imageCredits ? 'NO_TEST_CREDITS' : null;
         const assistantReason = customer || !this.assistantEnabled || (this.ledger.sharedBudget && !this.adminTestUnlimited) ? 'ASSISTANT_DISABLED' : !this.providerConfigured ? 'PROVIDER_NOT_CONFIGURED' : (cumulative?.availableMicros ?? (this.budgetMicros - (budget?.spent_micros ?? 0) - (budget?.held_micros ?? 0))) < TEXT_MAX_HOLD_MICROS ? 'BUDGET_NOT_AVAILABLE' : null;
-        return { mode: 'local-development', commercialReady: false, videoTrial: (this.adminTestUnlimited || (this.sharedWalletReady && this.enabled && Object.keys(videoDurationPrices()).length > 0)) && (activeVideoProvider() === 'byteplus' ? !!seedanceConfig() : !!quotedVideoProvider(activeVideoProvider())?.key()), videoProvider: activeVideoProvider(), videoDurationPrices: videoDurationPrices(), generation: { batchVersion: 1, selectiveEditProofVersion: 1, selectiveEdit: this.selectiveEditingEnabled === true && this.adapter?.selectiveEditReady === true, creditQuote: await this.creditQuote(wallet), enabled: reason === null, exactAdText: false, plannedAdText: false, manualDimensionOverlay: true, aiDimensionDisplay: true, photoPurposes: true, textExamples: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet, budget: customer ? { scope: 'customer-entitlement', limitMicros: 0, spentMicros: 0, heldMicros: 0 } : { currency: 'USD', period, limitMicros: limit, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false, ...(cumulative ? { scope: cumulative.scope, historyMode: cumulative.historyMode, activatedAt: cumulative.activatedAt, limitMicros: cumulative.limitMicros, spentMicros: cumulative.spentMicros, heldMicros: cumulative.heldMicros, availableMicros: cumulative.availableMicros } : {}) }, limitations: ['local-single-user', 'no-live-payment', 'no-automatic-quality-approval', 'no-background-removal', 'no-region-edit', 'no-production-auth'] };
+        return { mode: 'local-development', commercialReady: false, omniPilot: this.adminTestUnlimited && !!quotedVideoProvider('gemini').key(), videoTrial: (this.adminTestUnlimited || (this.sharedWalletReady && this.enabled && Object.keys(videoDurationPrices()).length > 0)) && (activeVideoProvider() === 'byteplus' ? !!seedanceConfig() : !!quotedVideoProvider(activeVideoProvider())?.key()), videoProvider: activeVideoProvider(), videoDurationPrices: videoDurationPrices(), generation: { batchVersion: 1, selectiveEditProofVersion: 1, selectiveEdit: this.selectiveEditingEnabled === true && this.adapter?.selectiveEditReady === true, creditQuote: await this.creditQuote(wallet), enabled: reason === null, exactAdText: false, plannedAdText: false, manualDimensionOverlay: true, aiDimensionDisplay: true, photoPurposes: true, textExamples: true, planarControl: true, dimensionVariants: true, model: IMAGE_MODEL, revision: IMAGE_REVISION, quality: 'high', reason, perRequestReservationUsd: MODEL_COST_HOLD_MICROS / 1e6 }, assistant: { available: assistantReason === null, reason: assistantReason, model: TEXT_MODEL }, wallet, budget: customer ? { scope: 'customer-entitlement', limitMicros: 0, spentMicros: 0, heldMicros: 0 } : { currency: 'USD', period, limitMicros: limit, spentMicros: budget?.spent_micros ?? 0, heldMicros: budget?.held_micros ?? 0, availableMicros: Math.max(0, available), enforcedByProvider: false, ...(cumulative ? { scope: cumulative.scope, historyMode: cumulative.historyMode, activatedAt: cumulative.activatedAt, limitMicros: cumulative.limitMicros, spentMicros: cumulative.spentMicros, heldMicros: cumulative.heldMicros, availableMicros: cumulative.availableMicros } : {}) }, limitations: ['local-single-user', 'no-live-payment', 'no-automatic-quality-approval', 'no-background-removal', 'no-region-edit', 'no-production-auth'] };
     }
     async storeAsset(asset) {
         await this.db.prepare('INSERT INTO generation_assets VALUES (?,?,?,?,?) ON CONFLICT(hash) DO NOTHING').run(asset.sha256, asset.mime, asset.width, asset.height, asset.bytes);
