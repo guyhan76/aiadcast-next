@@ -9,12 +9,14 @@ import {styleForBrief} from './video-style';
 
 type Generator=(draft:VideoDraft,seconds:number,signal:AbortSignal,onState:(stage:VideoRequestStage)=>void,scenes:LoadedVideoScene[])=>Promise<Blob>;
 type Props={file:File;draft:VideoDraft;seconds:number;admin:boolean;availableCredits:number;prices?:Partial<Record<number,number>>;
-  generate?:Generator;provider?:string;busy:boolean;onBusy:(busy:boolean)=>void;onApply:(file:File)=>void};
+  generate?:Generator;canReview:boolean;provider?:string;busy:boolean;onBusy:(busy:boolean)=>void;onApply:(file:File)=>void};
 
-export function VideoShotRepair({file,draft,seconds,admin,availableCredits,prices,generate,provider,busy,onBusy,onApply}:Props){
+export function VideoShotRepair({file,draft,seconds,admin,availableCredits,prices,generate,canReview,provider,busy,onBusy,onApply}:Props){
   const {t,language}=useUiLanguage();
   const [from,setFrom]=useState(0),[to,setTo]=useState(Math.min(seconds,3));
   const [mode,setMode]=useState<RepairMode>('clip'),[replacement,setReplacement]=useState<File>();
+  const [keepAudio,setKeepAudio]=useState(true),[preview,setPreview]=useState('');
+  useEffect(()=>{if(!replacement){setPreview('');return;}const url=URL.createObjectURL(replacement);setPreview(url);return()=>URL.revokeObjectURL(url);},[replacement]);
   const [note,setNote]=useState(''),[status,setStatus]=useState(''),[issues,setIssues]=useState<ReviewIssue[]>();
   const [confirm,setConfirm]=useState(false);
   const controller=useRef<AbortController|null>(null);
@@ -44,10 +46,10 @@ export function VideoShotRepair({file,draft,seconds,admin,availableCredits,price
     signal.throwIfAborted();setReplacement(new File([clip],'replacement.mp4',{type:'video/mp4'}));setStatus(t('교체할 장면이 준비됐어요. 구간 적용을 눌러 주세요.','Replacement ready. Apply it to the interval.'));
   }
   return <details className="vd-prompt"><summary>{t('완성본 검수 · 구간 수정','Review and repair finished video')}</summary>
-    <fieldset disabled={busy}><button type="button" className="vd-library" onClick={()=>void run(t('장면 확인 중…','Reviewing frames…'),async signal=>{
+    <fieldset disabled={busy}>{canReview&&<button type="button" className="vd-library" onClick={()=>void run(t('장면 확인 중…','Reviewing frames…'),async signal=>{
       const found=await reviewMovie(file,seconds,prompt,language,signal);signal.throwIfAborted();setIssues(found);
       setStatus(t('샘플 화면 검수가 끝났어요. 대사와 소리는 재생해 확인해 주세요.','Frame review complete. Play the video to check speech and sound.'));
-    })}>{t('AI 화면 검수','Review sampled frames')}</button>
+    })}>{t('AI 화면 검수','Review sampled frames')}</button>}
     {issues?.length===0&&<p>{t('샘플 화면에서 지적된 문제가 없어요.','No issue reported in the sampled frames.')}</p>}
     {issues?.map((item,i)=><button type="button" key={i} onClick={()=>{setFrom(Math.max(0,Math.floor(item.time)-1));setTo(Math.min(seconds,Math.ceil(item.time)+2));setNote(item.note);setReplacement(undefined);}}>{item.time}s · {item.note}</button>)}
     <label>{t('시작(초)','From (s)')}<input type="number" step=".1" min="0" max={seconds} value={Number.isFinite(from)?from:''} onChange={e=>{setFrom(e.currentTarget.valueAsNumber);setReplacement(undefined);}}/></label>
@@ -58,9 +60,10 @@ export function VideoShotRepair({file,draft,seconds,admin,availableCredits,price
     {mode==='clip'&&generate&&<><label>{t('AI 장면 수정 지시','AI shot direction')}<textarea maxLength={1500} value={note} onChange={e=>setNote(e.target.value)} /></label>
       <button type="button" disabled={!supported||!valid||!note.trim()||cost===undefined||availableCredits<(cost??0)} onClick={()=>setConfirm(true)}>
         {t('교체 장면 생성','Generate replacement')} · {length}{t('초','s')} · {cost??'–'}{t('크레딧',' credits')}</button></>}
-    {replacement&&<small>{replacement.name}</small>}
+    {preview&&(mode==='clip'?<video src={preview} controls playsInline style={{maxWidth:'100%',maxHeight:240}}/>:<audio src={preview} controls/>)}
+    {mode==='clip'&&<label><input type="checkbox" checked={keepAudio} onChange={e=>setKeepAudio(e.target.checked)}/>{t('원본 소리 유지','Keep original audio')}</label>}
     <button type="button" className="vd-library" disabled={!supported||!valid||(mode!=='mute'&&!replacement)} onClick={()=>void run(t('구간 적용 중…','Applying edit…'),async signal=>{
-      const edited=await renderRepair(file,seconds,from,to,mode,replacement,signal);signal.throwIfAborted();onApply(edited);
+      const edited=await renderRepair(file,seconds,from,to,mode,replacement,signal,keepAudio);signal.throwIfAborted();onApply(edited);
     })}>{t('구간 적용','Apply edit')}</button>
     {!supported&&<p>{t('구간 저장을 지원하는 Chrome에서 열어 주세요.','Open in Chrome with video export support.')}</p>}</fieldset>
     {status&&<p role="status">{status}</p>}

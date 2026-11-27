@@ -1,3 +1,4 @@
+import {openReviewVideo} from './video-shot-repair';
 import {VideoShotRepair} from './VideoShotRepair';
 import type {VideoRequestStage} from './video-ai-client';
 import {VideoPromptReview,type VideoReview} from './VideoPromptReview';
@@ -232,6 +233,21 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,available
       if(task.current===controller){task.current=null;setRun(null);}
     }
   }
+  async function openFinished(file:File|undefined){
+    if(!file||task.current||repairBusy)return;
+    const controller=new AbortController();task.current=controller;setRun('save');
+    let dispose:(()=>void)|undefined;
+    try{
+      const scene=await openReviewVideo(file,controller.signal);dispose=scene.dispose;
+      const {duration,videoWidth,videoHeight}=scene.video;
+      if(!Number.isFinite(duration)||duration<9.5||duration>30.5||!videoWidth||!videoHeight)throw Error('INVALID_CLIP');
+      const ratio=videoFormats.reduce((best,item)=>Math.abs(item.width/item.height-videoWidth/videoHeight)<Math.abs(best.width/best.height-videoWidth/videoHeight)?item:best).ratio;
+      controller.signal.throwIfAborted();
+      change({...draft,file,ratio,manual:Math.min(30,Math.max(10,Math.round(duration)))});
+      setBeforeRepair(undefined);setShowResult(true);setMessage('');setSaved(false);
+    }catch{if(!controller.signal.aborted)setMessage(t('재생 가능한 10~30초 광고 영상을 선택해 주세요.','Select a playable 10–30 second ad.'));}
+    finally{dispose?.();if(task.current===controller){task.current=null;setRun(null);}}
+  }
   const step=result||run==='ai'||confirm?3:currentReview||useManual||run==='prompt'?2:1;
   const durationText=seconds+t('초','s');
   const uploadHelp=<div className="reference-file-info vd-upload-help" id={uploadHelpId}>
@@ -279,7 +295,8 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,available
       </button>
       {uploadHelp}
     </div>}
-    {(sources.length>0||textOnly||servicePromptOnly) && <>
+    {!result&&<details className="vd-prompt"><summary>{t('기존 광고 영상 수정','Edit an existing ad')}</summary><input aria-label={t('완성 영상 파일','Finished video file')} type="file" accept="video/*" disabled={!!run||repairBusy} onChange={e=>{void openFinished(e.target.files?.[0]);e.target.value='';}}/></details>}
+    {(result||sources.length>0||textOnly||servicePromptOnly) && <>
       <div className="vd-stage" hidden={servicePromptOnly&&!textOnly&&!result&&run!=='ai'} style={{'--vd-aspect':width/height} as CSSProperties}>
         <canvas width={width} height={height} ref={canvas} hidden={!!result && showResult} aria-label={t('영상 미리보기','Video preview')}/>
         {result && showResult && finishedUrl && <video key={finishedUrl} src={finishedUrl} controls playsInline aria-label={t('완성한 영상','Finished video')}/>}
@@ -327,7 +344,7 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,available
     {message&&<p role="status">{message}</p>}
     {generateAi&&currentReview?.showCaptions&&!format&&ready&&<p role="status">{t('파일 제작은 최신 Chrome에서 열어주세요.','Open in a current Chrome browser to export.')}</p>}
     {result&&<VideoShotRepair key={result.name+'-'+result.lastModified} file={result} seconds={seconds} draft={draft} prices={aiPrices}
-      generate={generateAi} provider={provider} admin={admin} availableCredits={availableCredits} busy={!!run||repairBusy} onBusy={setRepairBusy}
+      generate={generateAi} canReview={!!draftPrompt} provider={provider} admin={admin} availableCredits={availableCredits} busy={!!run||repairBusy} onBusy={setRepairBusy}
       onApply={file=>{setBeforeRepair(result);setRepairBusy(false);setSaved(false);setShowResult(true);change({...draft,file});}}/>}
     {result&&beforeRepair&&<button type="button" className="vd-library" disabled={repairBusy||!!run} onClick={()=>{change({...draft,file:beforeRepair});setBeforeRepair(undefined);setShowResult(true);setSaved(false);}}>{t('직전 수정 되돌리기','Undo last edit')}</button>}
     {result?<button type="button" className="vd-primary" disabled={!!run||repairBusy} onClick={()=>void saveVideo()}><Download size={18}/>{t('영상 저장','Save video')}</button>

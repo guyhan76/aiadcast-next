@@ -49,7 +49,7 @@ export async function reviewMovie(file:File,seconds:number,brief:string,language
 }
 
 export type RepairMode='clip'|'audio'|'mute';
-export async function renderRepair(original:File,seconds:number,from:number,to:number,mode:RepairMode,replacement:File|undefined,signal:AbortSignal):Promise<File>{
+export async function renderRepair(original:File,seconds:number,from:number,to:number,mode:RepairMode,replacement:File|undefined,signal:AbortSignal,keepClipAudio=false):Promise<File>{
   if(!Number.isFinite(from)||!Number.isFinite(to)||from<0||to<=from||to>seconds||(!replacement&&mode!=='mute'))throw Error('INVALID_RANGE');
   const mime=videoFormat(true);
   if(!mime)throw Error('UNSUPPORTED');
@@ -70,7 +70,7 @@ export async function renderRepair(original:File,seconds:number,from:number,to:n
       insert=media.video;
       if(Number.isFinite(insert.duration)&&insert.duration+.08<to-from)throw Error('CLIP_TOO_SHORT');
       if(mode==='clip'&&!media.video.videoWidth)throw Error('INVALID_CLIP');
-      audio.createMediaElementSource(insert).connect(output);insert.muted=false;
+      if(mode==='audio'||!keepClipAudio){audio.createMediaElementSource(insert).connect(output);insert.muted=false;}
     }
     const canvas=document.createElement('canvas');canvas.width=base.videoWidth;canvas.height=base.videoHeight;
     const ctx=canvas.getContext('2d',{alpha:false});if(!ctx)throw Error('NO_CANVAS');
@@ -94,7 +94,7 @@ export async function renderRepair(original:File,seconds:number,from:number,to:n
       function paint(){
         try{
           const t=base.currentTime,inside=t>=from&&t<to;
-          baseGain.gain.value=inside?0:1;
+          baseGain.gain.value=inside&&!(mode==='clip'&&keepClipAudio)?0:1;
           if(inside!==active){
             active=inside;
             if(insert){if(inside)void insert.play().catch(fail);else insert.pause();}
