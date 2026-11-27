@@ -1,3 +1,4 @@
+import {geminiOmni} from './gemini-omni-video.mjs';
 import {commercialDirection,excludesPour} from '../src/video-commercial-direction.ts';
 import {openingReference} from './video-photo-opening.mjs';
 import {framingRule,lattePreparation} from '../src/video-subject-framing.ts';
@@ -98,6 +99,7 @@ const commercialWan = {
 };
 
 export function quotedVideoProvider(name, savedRevision){
+  if(name==='gemini' && (!savedRevision || savedRevision===geminiOmni.revision)) return {...geminiOmni,preparePlan:commercialWan.preparePlan};
   if(name==='topview' && (!savedRevision || savedRevision===commercialWan.revision)) return commercialWan;
   if(name==='topview' && savedRevision===photoWan.revision) return photoWan;
   if(name==='topview' && savedRevision===formatWan.revision) return formatWan;

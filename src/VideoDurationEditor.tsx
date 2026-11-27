@@ -24,8 +24,10 @@ export type VideoDraft = {productUrl?:string; sources:VideoSource[]; ratio:Video
 export function videoDraft(sources:VideoSource[]=[],brief:VideoBrief=emptyVideoBrief):VideoDraft {return {sources,promptMode:'auto',manualPrompt:'',ratio:defaultVideoRatio,manual:null,brief,caption:brief.savedCaption??'',voiceText:'',musicStyle:'',voiceStyle:'',aiMusic:true,aiVoice:true};}
 type Props = {
   draft:VideoDraft; change:(draft:VideoDraft)=>void; onNew?:()=>void;
-  generateAi?:(draft:VideoDraft,seconds:VideoDuration,signal:AbortSignal,onState:(s:VideoRequestStage)=>void,scenes:LoadedVideoScene[])=>Promise<Blob>;
+  generateAi?:(draft:VideoDraft,seconds:VideoDuration,signal:AbortSignal,onState:(s:VideoRequestStage)=>void,scenes:LoadedVideoScene[],pilot?:'gemini')=>Promise<Blob>;
   draftPrompt?:(brief:PromptBrief,scenes:LoadedVideoScene[],language:'ko'|'en',signal:AbortSignal)=>Promise<VideoPlanIdea>;
+  omniPilot?:boolean;
+  primaryUnavailable?:boolean;
   admin:boolean; availableCredits:number;
   checkingAccess:boolean;
   provider?:string;
@@ -49,7 +51,7 @@ function SceneThumbnail({scene}:{scene?:LoadedVideoScene}) {
   return <canvas ref={ref} width={240} height={200} aria-hidden="true"/>;
 }
 
-export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,availableCredits,provider,generateAi,draftPrompt,checkingAccess}:Props) {
+export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,omniPilot,primaryUnavailable,availableCredits,provider,generateAi,draftPrompt,checkingAccess}:Props) {
   const {t,text,language}=useUiLanguage(), {sources,manual,brief,caption,file:result}=draft;
   const {ratio,width,height}=getVideoFormat(draft.ratio);
   const input=useRef<HTMLInputElement>(null),canvas=useRef<HTMLCanvasElement>(null);
@@ -66,7 +68,7 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,available
   const [message,setMessage]=useState('');
   const [finishedUrl,setFinishedUrl]=useState(''),[selected,setSelected]=useState(0);
   const task=useRef<AbortController|null>(null);
-  const [confirm,setConfirm]=useState(false);
+  const [confirm,setConfirm]=useState<boolean|'gemini'>(false);
   const industryId=useId(), uploadHelpId=useId();
   const style=styleForBrief(brief), service=brief.kind==='service';
   const styles:VideoStyle[]=service?['service','presenter']:['product','unboxing','presenter'];
@@ -189,13 +191,13 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,available
       if(!controller.signal.aborted)setPromptError(t('구성안을 작성하지 못했어요. 잠시 후 다시 시도해 주세요.','Could not draft the plan. Please try again.'));
     }finally{if(task.current===controller){task.current=null;setRun(null);}}
   }
-  async function makeAiVideo(){
+  async function makeAiVideo(pilot?:'gemini'){
     if(!generateAi||task.current||!canGenerateAi)return;
     const controller=new AbortController();
     task.current=controller;setRun('ai');setMessage('');setAiStage('prepare');setShowResult(false);
     let scene:LoadedVideoScene|undefined;
     try{
-      const movie=await generateAi(draft,seconds,controller.signal,setAiStage,loaded);
+      const movie=await generateAi(draft,seconds,controller.signal,setAiStage,loaded,pilot);
       controller.signal.throwIfAborted();
       if(!captions.some(line=>line.trim())){
         change({...draft,file:new File([movie],'aiadcast-'+crypto.randomUUID()+'.mp4',{type:'video/mp4'})});
@@ -344,18 +346,21 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,available
     {message&&<p role="status">{message}</p>}
     {generateAi&&currentReview?.showCaptions&&!format&&ready&&<p role="status">{t('파일 제작은 최신 Chrome에서 열어주세요.','Open in a current Chrome browser to export.')}</p>}
     {result&&<VideoShotRepair key={result.name+'-'+result.lastModified} file={result} seconds={seconds} draft={draft} prices={aiPrices}
-      generate={generateAi} canReview={!!draftPrompt} provider={provider} admin={admin} availableCredits={availableCredits} busy={!!run||repairBusy} onBusy={setRepairBusy}
+      generate={primaryUnavailable?undefined:generateAi} canReview={!!draftPrompt} provider={provider} admin={admin} availableCredits={availableCredits} busy={!!run||repairBusy} onBusy={setRepairBusy}
       onApply={file=>{setBeforeRepair(result);setRepairBusy(false);setSaved(false);setShowResult(true);change({...draft,file});}}/>}
     {result&&beforeRepair&&<button type="button" className="vd-library" disabled={repairBusy||!!run} onClick={()=>{change({...draft,file:beforeRepair});setBeforeRepair(undefined);setShowResult(true);setSaved(false);}}>{t('직전 수정 되돌리기','Undo last edit')}</button>}
     {result?<button type="button" className="vd-primary" disabled={!!run||repairBusy} onClick={()=>void saveVideo()}><Download size={18}/>{t('영상 저장','Save video')}</button>
-      :<button type="button" className="vd-primary" disabled={!!run||shortfall||charge===undefined||!canGenerateAi||(captions.some(line=>line.trim())&&!format)} onClick={()=>setConfirm(true)}>
+      :<button type="button" className="vd-primary" disabled={primaryUnavailable||!!run||shortfall||charge===undefined||!canGenerateAi||(captions.some(line=>line.trim())&&!format)} onClick={()=>setConfirm(true)}>
         <Clapperboard size={18}/>{run==='ai'?(aiStage==='prepare'?t('사진과 프롬프트 준비 중…','Preparing media and prompt…'):aiStage==='submit'?t('제작 요청 보내는 중…','Sending video request…'):aiStage==='check'?t('요청 접수 확인 중…','Checking submission…'):aiStage==='queue'?t('AI 영상 생성 중…','Generating AI video…'):aiStage==='download'?t('영상 받는 중…','Downloading video…'):t('자막 입히는 중…','Adding captions…')):t('AI 영상 생성','Generate AI video')}</button>}
+    {admin&&omniPilot&&!result&&<button type="button" className="vd-library"
+      disabled={!!run||!canGenerateAi||!currentReview||seconds!==10||ratio!=='9:16'||clips>0||sources.length!==1||service||!['product','presenter'].includes(style)||(captions.some(line=>line.trim())&&!format)}
+      onClick={()=>setConfirm('gemini')}>{t('Gemini 비교 제작 · 세로 10초 · 사진 1장','Gemini pilot · vertical 10s · one photo')}</button>}
     {result&&onNew&&<button type="button" className="vd-library" disabled={!!run||repairBusy} onClick={onNew}>{t('새 광고','New ad')}</button>}
     {run==='ai'&&<button className="vd-cancel" type="button" onClick={()=>task.current?.abort()}>{t('대기 닫기','Stop waiting')}</button>}
     {saved&&<p role="status">{t('저장 요청을 완료했어요.','Video sent to your downloads.')}</p>}
-    {confirm&&charge!==undefined&&<VideoCostDialog credits={charge} admin={admin} provider={provider} style={style} promptMode={promptMode} ratio={ratio} seconds={seconds} onCancel={()=>setConfirm(false)} onConfirm={()=>{
+    {confirm&&charge!==undefined&&<VideoCostDialog credits={charge} admin={admin} provider={confirm==='gemini'?'gemini':provider} style={style} promptMode={promptMode} ratio={ratio} seconds={seconds} onCancel={()=>setConfirm(false)} onConfirm={()=>{
       setConfirm(false);
-      void makeAiVideo();
+      void makeAiVideo(confirm==='gemini'?'gemini':undefined);
     }}/>}
   </section>;
 }

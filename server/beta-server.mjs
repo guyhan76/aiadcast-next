@@ -263,6 +263,7 @@ async function main(){
   const {startCloudServer}=await import('./cloud/runtime.mjs');
   const app=await startCloudServer(c);
   console.log('Supabase-backed beta server started; real payments disabled.');
+  console.info('Gemini video pilot credentials:',process.env.GEMINI_API_KEY?.trim()?'configured':'missing');
   const {activeVideoProvider,higgsfieldConnection}=await import('./higgsfield-video.mjs');
   if(activeVideoProvider()==='topview'){
     const {topviewConnection}=await import('./topview-video.mjs');
