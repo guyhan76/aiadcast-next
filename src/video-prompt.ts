@@ -1,3 +1,4 @@
+import {excludesPour,finishedLatte} from './video-commercial-direction.ts';
 import {framingRule,lattePreparation} from './video-subject-framing.ts';
 import {formatBeats} from './video-format-direction.ts';
 import {productDirection} from './video-product-direction.ts';
@@ -32,7 +33,7 @@ export type PromptBrief=ReturnType<typeof promptBrief>;
 export function basicVideoShots(b:PromptBrief,language:'ko'|'en'):VideoShots {
   const beats = formatBeats(b,language);
   const context = [b.field, b.industry, b.title].filter(Boolean).join(' · ');
-  const specific = lattePreparation(b,language) ?? (b.kind === 'product' && b.style === 'product' ? productDirection(b,language) : undefined);
+  const specific = (excludesPour(b) ? undefined : lattePreparation(b,language)) ?? finishedLatte(b,language) ?? (b.kind === 'product' && b.style === 'product' ? productDirection(b,language) : undefined);
   const framing = framingRule(b,language);
   const description = (b.description || '').trim();
   // Keep a complete sentence when the description is too long for one editable shot.

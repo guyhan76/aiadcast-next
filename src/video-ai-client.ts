@@ -124,8 +124,8 @@ export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,sign
 export async function requestVideoPrompt(brief:PromptBrief,scenes:LoadedVideoScene[],language:'ko'|'en',signal:AbortSignal):Promise<VideoPlanIdea>{
   const session=betaSession();
   const references=scenes.map(({visual})=>referenceJpeg(visual,512));
-  const input={kind:'video-prompt',planVersion:brief.kind==='product'?(brief.style==='product'&&references.length?3:2):1,targetLocale:language,brief,references};
-  const planIdentity=['photo-opening-v8',input];
+  const input={kind:'video-prompt',planVersion:brief.kind==='product'?(['product','presenter'].includes(brief.style)&&references.length?4:2):1,targetLocale:language,brief,references};
+  const planIdentity=['shot-direction-v9',input];
   const id=await requestId(JSON.stringify(planIdentity),'aiadcast.video-prompt.');
   signal.throwIfAborted();
   const result=await apiRequest<{requestId:string;shots:unknown;audio?:unknown;frameLayout?:PhotoFrameLayout}>('/api/assistant',{...input,requestId:id},signal).catch(error=>{

@@ -1,0 +1,30 @@
+name: Video ad verification
+on:
+  pull_request:
+    paths:
+      - "src/*ideo*"
+      - "server/*video*"
+      - "server/text-assistant.mjs"
+      - "tests*/video-*"
+      - ".github/workflows/video-ads.yml"
+permissions:
+  contents: read
+jobs:
+  video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: node --experimental-strip-types --test tests-domain/video-commercial-repair.test.mjs tests-domain/video-subject-framing.test.mjs tests-domain/video-photo-opening.test.mjs
+      - run: npm run build
+      - run: node native/prepare-android.mjs
+      - run: npx playwright install --with-deps chromium
+      - name: Test finished-video repair and video planning
+        run: |
+          export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="$(node --input-type=module -e "import {chromium} from '@playwright/test'; process.stdout.write(chromium.executablePath())")"
+          npm test -- tests/video-shot-repair.spec.ts tests/video-duration.spec.ts

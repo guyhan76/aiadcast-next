@@ -1,3 +1,5 @@
+import {openReviewVideo} from './video-shot-repair';
+import {VideoShotRepair} from './VideoShotRepair';
 import type {VideoRequestStage} from './video-ai-client';
 import {VideoPromptReview,type VideoReview} from './VideoPromptReview';
 import {promptBrief,basicVideoShots,validManualPrompt,validVideoShots,type VideoPromptMode,type VideoPlanIdea,type PromptBrief} from './video-prompt';
@@ -58,6 +60,7 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,available
   }),[sources,scenes]);
   const [run,setRun]=useState<'save'|'ai'|'prompt'|null>(null);
   const [aiStage,setAiStage]=useState<VideoRequestStage|'finish'>('prepare');
+  const [repairBusy,setRepairBusy]=useState(false),[beforeRepair,setBeforeRepair]=useState<File>();
   const [saved,setSaved]=useState(false), [showResult,setShowResult]=useState(!!result);
   const [promptError,setPromptError]=useState('');
   const [message,setMessage]=useState('');
@@ -124,7 +127,8 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,available
     drawAdFrame(ctx,visual,sceneCaptionAt(captions,selected*seconds/Math.max(1,sources.length),seconds));
   },[scenes,selected,brief,caption,review,stale,useManual,textOnly,run,result,showResult,sources,ratio,seconds]);
   function edit(fields:Partial<VideoDraft>) {
-    if(task.current)return;
+    if(task.current||repairBusy)return;
+    setBeforeRepair(undefined);
     if(fields.sources){
       const index=fields.sources.indexOf(sources[selected]);
       setSelected(Math.max(0,index));
@@ -229,6 +233,21 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,available
       if(task.current===controller){task.current=null;setRun(null);}
     }
   }
+  async function openFinished(file:File|undefined){
+    if(!file||task.current||repairBusy)return;
+    const controller=new AbortController();task.current=controller;setRun('save');
+    let dispose:(()=>void)|undefined;
+    try{
+      const scene=await openReviewVideo(file,controller.signal);dispose=scene.dispose;
+      const {duration,videoWidth,videoHeight}=scene.video;
+      if(!Number.isFinite(duration)||duration<9.5||duration>30.5||!videoWidth||!videoHeight)throw Error('INVALID_CLIP');
+      const ratio=videoFormats.reduce((best,item)=>Math.abs(item.width/item.height-videoWidth/videoHeight)<Math.abs(best.width/best.height-videoWidth/videoHeight)?item:best).ratio;
+      controller.signal.throwIfAborted();
+      change({...draft,file,ratio,manual:Math.min(30,Math.max(10,Math.round(duration)))});
+      setBeforeRepair(undefined);setShowResult(true);setMessage('');setSaved(false);
+    }catch{if(!controller.signal.aborted)setMessage(t('재생 가능한 10~30초 광고 영상을 선택해 주세요.','Select a playable 10–30 second ad.'));}
+    finally{dispose?.();if(task.current===controller){task.current=null;setRun(null);}}
+  }
   const step=result||run==='ai'||confirm?3:currentReview||useManual||run==='prompt'?2:1;
   const durationText=seconds+t('초','s');
   const uploadHelp=<div className="reference-file-info vd-upload-help" id={uploadHelpId}>
@@ -238,12 +257,12 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,available
     <p>{t('영상은 첫 장면만 용량에 포함됩니다.','Only the first frame of each clip counts toward this limit.')}</p>
   </div>;
   return <section className="video-draft" aria-label={t('광고 영상 편집','Video ad editor')}>
-    <div className="vd-heading"><h1>{t('광고 영상 만들기','Create an ad video')}</h1>{!result&&onNew&&<button type="button" className="fresh-ad-button" disabled={!!run} onClick={onNew}>{t('새 광고','New ad')}</button>}</div>
+    <div className="vd-heading"><h1>{t('광고 영상 만들기','Create an ad video')}</h1>{!result&&onNew&&<button type="button" className="fresh-ad-button" disabled={!!run||repairBusy} onClick={onNew}>{t('새 광고','New ad')}</button>}</div>
     <ol className="vd-steps" aria-label={t('영상 제작 단계','Video creation steps')}>
       {[t('정보 입력','Add details'),t('구성안 확인','Review plan'),t('영상 생성','Create video')].map((label,index)=>
         <li key={label} aria-current={step===index+1?'step':undefined}>{label}</li>)}
     </ol>
-    <fieldset className="vd-industry" disabled={!!run}><legend>{t('광고할 분야','Your industry')}</legend>
+    <fieldset className="vd-industry" disabled={!!run||repairBusy}><legend>{t('광고할 분야','Your industry')}</legend>
       <AdIndustryFields id={industryId} kind={brief.kind} fieldId={brief.fieldId??''} saved={selectedIndustry}
         legacy={brief.category&&!selectedIndustry?text(industryLabel(brief.category)):undefined}
         onKind={kind=>edit({brief:{...brief,kind,style:style==='presenter'?'presenter':undefined,fieldId:undefined,category:undefined,industryDetail:undefined}})}
@@ -251,17 +270,17 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,available
         onItem={(item,custom)=>edit({brief:{...brief,category:item.category,industryDetail:formatIndustryDetail(item,custom)}})}/>
     </fieldset>
     <div className="vd-brief-block"><h2>{service?t('서비스 정보','Service details'):t('상품 정보','Product details')}</h2>
-      {!service&&<VideoProductImport initialUrl={draft.productUrl??''} disabled={!!run} hasInfo={!!(brief.title||brief.description||brief.emphasis||caption||draft.voiceText)}
+      {!service&&<VideoProductImport initialUrl={draft.productUrl??''} disabled={!!run||repairBusy} hasInfo={!!(brief.title||brief.description||brief.emphasis||caption||draft.voiceText)}
         photoRoom={sources.filter(source=>!source.importedProduct).length<10} onApply={applyProduct}/>}
-      <VideoBriefFields value={brief} disabled={!!run} change={brief=>edit({brief})}/></div>
-    <fieldset className="vd-style" disabled={!!run}><legend>{t('영상 형식','Video style')}</legend>
+      <VideoBriefFields value={brief} disabled={!!run||repairBusy} change={brief=>edit({brief})}/></div>
+    <fieldset className="vd-style" disabled={!!run||repairBusy}><legend>{t('영상 형식','Video style')}</legend>
       <div>{styles.map(key=>{
         const Icon=styleIcons[key], label=videoStyles[key].label;
         return <button type="button" key={key} aria-pressed={style===key} onClick={()=>edit({brief:{...brief,style:key}})}>
           <Icon size={19} aria-hidden="true"/>{t(label[0],label[1])}</button>;
       })}</div>
     </fieldset>
-    <fieldset className="vd-duration vd-ratios" disabled={!!run}><legend>{t('영상 규격','Video aspect ratio')}</legend>
+    <fieldset className="vd-duration vd-ratios" disabled={!!run||repairBusy}><legend>{t('영상 규격','Video aspect ratio')}</legend>
       <div>{videoFormats.map(option=><button key={option.ratio} type="button" aria-pressed={ratio===option.ratio}
         onClick={()=>{if(ratio!==option.ratio)edit({ratio:option.ratio});}}>
         <span aria-hidden="true" style={{width:18*option.width/Math.max(option.width,option.height),height:18*option.height/Math.max(option.width,option.height)}}/>{option.ratio}
@@ -271,12 +290,13 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,available
     <input type="file" ref={input} className="vd-file" aria-describedby={uploadHelpId} aria-label={t('사진·영상 파일','Media files')} accept="image/*,video/*" multiple disabled={!!run||sources.length>=10}
       onChange={e=>{addFiles(Array.from(e.target.files??[]));e.target.value='';}}/>
     {!sources.length && <div className="reference-upload-zone vd-upload-zone">
-      <button type="button" className="reference-add vd-upload" disabled={!!run} aria-describedby={uploadHelpId} onClick={()=>input.current?.click()}>
+      <button type="button" className="reference-add vd-upload" disabled={!!run||repairBusy} aria-describedby={uploadHelpId} onClick={()=>input.current?.click()}>
         <ImagePlus size={36} aria-hidden="true"/><span>{t('이미지·영상 첨부','Attach images or clips')}</span>
       </button>
       {uploadHelp}
     </div>}
-    {(sources.length>0||textOnly||servicePromptOnly) && <>
+    {!result&&<details className="vd-prompt"><summary>{t('기존 광고 영상 수정','Edit an existing ad')}</summary><input aria-label={t('완성 영상 파일','Finished video file')} type="file" accept="video/*" disabled={!!run||repairBusy} onChange={e=>{void openFinished(e.target.files?.[0]);e.target.value='';}}/></details>}
+    {(result||sources.length>0||textOnly||servicePromptOnly) && <>
       <div className="vd-stage" hidden={servicePromptOnly&&!textOnly&&!result&&run!=='ai'} style={{'--vd-aspect':width/height} as CSSProperties}>
         <canvas width={width} height={height} ref={canvas} hidden={!!result && showResult} aria-label={t('영상 미리보기','Video preview')}/>
         {result && showResult && finishedUrl && <video key={finishedUrl} src={finishedUrl} controls playsInline aria-label={t('완성한 영상','Finished video')}/>}
@@ -285,14 +305,14 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,available
       {result&&!showResult&&<button type="button" className="vd-library" onClick={()=>setShowResult(true)}>{t('완성 영상 보기','View finished video')}</button>}
       {bad&&<p role="alert">{t('열 수 없는 소재를 삭제하거나 교체해 주세요.','Remove or replace this unreadable file.')} {bad}</p>}
       {sources.length>0&&<div className="vd-tray"><div className="vd-tray-label"><strong>{t('소재','Media')} <small>{sources.length}/10</small></strong>
-        {sources.length<10&&<button type="button" aria-describedby={uploadHelpId} disabled={!!run} onClick={()=>input.current?.click()}><Plus size={16}/>{t('추가','Add')}</button>}</div>
+        {sources.length<10&&<button type="button" aria-describedby={uploadHelpId} disabled={!!run||repairBusy} onClick={()=>input.current?.click()}><Plus size={16}/>{t('추가','Add')}</button>}</div>
         <ol>{sources.map((source,index)=><li key={index}>
-          <button type="button" className="vd-scene" aria-pressed={index===selected} disabled={!!run}
+          <button type="button" className="vd-scene" aria-pressed={index===selected} disabled={!!run||repairBusy}
             onClick={()=>{setSelected(index);setShowResult(false);}} title={source.name}>
             <SceneThumbnail scene={scenes.get(source)}/>
             <span className="vd-scene-name">{index+1} · {source.name}</span>
           </button>
-          <button type="button" className="vd-remove vd-delete" disabled={!!run} aria-label={source.name+' '+t('삭제','Remove')}
+          <button type="button" className="vd-remove vd-delete" disabled={!!run||repairBusy} aria-label={source.name+' '+t('삭제','Remove')}
             onClick={()=>edit({sources:sources.filter((_,n)=>n!==index)})}><X size={15}/></button>
         </li>)}</ol>
         {sources.length>1&&<div className="vd-order">
@@ -304,7 +324,7 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,available
     {sources.length>0&&uploadHelp}
     {needOpenBox&&sources.length===1&&<p role="status">{t('열린 박스 사진을 한 장 더 추가해 주세요.','Add one more photo showing the open box.')}</p>}
     {clips>0&&<small>{t('첨부 영상의 첫 장면을 AI 참조 이미지로 사용해요.','The first frame of each clip is used as a reference image.')}</small>}
-    <fieldset className="vd-duration" disabled={!!run}><legend>{t('영상 길이','Video length')}</legend>
+    <fieldset className="vd-duration" disabled={!!run||repairBusy}><legend>{t('영상 길이','Video length')}</legend>
       <div>{videoDurations.map(value=><button key={value} type="button" aria-pressed={seconds===value}
         onClick={()=>edit({manual:value})}>{value}{t('초','s')}</button>)}</div>
       <label>{t('길이 조절','Adjust length')} · {durationText}
@@ -315,7 +335,7 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,available
     </fieldset>
     <VideoPromptReview mode={promptMode} manualText={manualPrompt} seconds={seconds} ratio={ratio}
       onMode={promptMode=>edit({promptMode})} onManual={manualPrompt=>edit({manualPrompt})}
-      review={review} ready={ready} busy={!!run} planning={run==='prompt'}
+      review={review} ready={ready} busy={!!run||repairBusy} planning={run==='prompt'}
       stale={stale} onBuild={()=>void buildPrompt()} error={promptError}
       onChange={patch=>{if(review)edit({review:{...review,...patch}});}}/>
     {!generateAi&&!checkingAccess&&<p className="vd-format-note">{t('이 계정에서는 구성안까지 작성할 수 있어요. 현재 AI 영상 생성 연결을 사용할 수 없습니다.','You can prepare a plan. AI video generation is currently unavailable.')}</p>}
@@ -323,10 +343,14 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,available
       {shortfall&&<a className="vd-library" href="#checkout">{t('크레딧 충전','Top up credits')} · {t('현재 잔액','Balance')} {availableCredits}</a>}
     {message&&<p role="status">{message}</p>}
     {generateAi&&currentReview?.showCaptions&&!format&&ready&&<p role="status">{t('파일 제작은 최신 Chrome에서 열어주세요.','Open in a current Chrome browser to export.')}</p>}
-    {result?<button type="button" className="vd-primary" disabled={!!run} onClick={()=>void saveVideo()}><Download size={18}/>{t('영상 저장','Save video')}</button>
+    {result&&<VideoShotRepair key={result.name+'-'+result.lastModified} file={result} seconds={seconds} draft={draft} prices={aiPrices}
+      generate={generateAi} canReview={!!draftPrompt} provider={provider} admin={admin} availableCredits={availableCredits} busy={!!run||repairBusy} onBusy={setRepairBusy}
+      onApply={file=>{setBeforeRepair(result);setRepairBusy(false);setSaved(false);setShowResult(true);change({...draft,file});}}/>}
+    {result&&beforeRepair&&<button type="button" className="vd-library" disabled={repairBusy||!!run} onClick={()=>{change({...draft,file:beforeRepair});setBeforeRepair(undefined);setShowResult(true);setSaved(false);}}>{t('직전 수정 되돌리기','Undo last edit')}</button>}
+    {result?<button type="button" className="vd-primary" disabled={!!run||repairBusy} onClick={()=>void saveVideo()}><Download size={18}/>{t('영상 저장','Save video')}</button>
       :<button type="button" className="vd-primary" disabled={!!run||shortfall||charge===undefined||!canGenerateAi||(captions.some(line=>line.trim())&&!format)} onClick={()=>setConfirm(true)}>
         <Clapperboard size={18}/>{run==='ai'?(aiStage==='prepare'?t('사진과 프롬프트 준비 중…','Preparing media and prompt…'):aiStage==='submit'?t('제작 요청 보내는 중…','Sending video request…'):aiStage==='check'?t('요청 접수 확인 중…','Checking submission…'):aiStage==='queue'?t('AI 영상 생성 중…','Generating AI video…'):aiStage==='download'?t('영상 받는 중…','Downloading video…'):t('자막 입히는 중…','Adding captions…')):t('AI 영상 생성','Generate AI video')}</button>}
-    {result&&onNew&&<button type="button" className="vd-library" disabled={!!run} onClick={onNew}>{t('새 광고','New ad')}</button>}
+    {result&&onNew&&<button type="button" className="vd-library" disabled={!!run||repairBusy} onClick={onNew}>{t('새 광고','New ad')}</button>}
     {run==='ai'&&<button className="vd-cancel" type="button" onClick={()=>task.current?.abort()}>{t('대기 닫기','Stop waiting')}</button>}
     {saved&&<p role="status">{t('저장 요청을 완료했어요.','Video sent to your downloads.')}</p>}
     {confirm&&charge!==undefined&&<VideoCostDialog credits={charge} admin={admin} provider={provider} style={style} promptMode={promptMode} ratio={ratio} seconds={seconds} onCancel={()=>setConfirm(false)} onConfirm={()=>{
