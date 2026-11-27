@@ -51,3 +51,52 @@ test('replace an interval in an existing ad and undo without requesting video ge
   await page.getByRole('button',{name:'직전 수정 되돌리기'}).click();
   await expect(page.getByRole('button',{name:'직전 수정 되돌리기'})).toHaveCount(0);
 });
+
+function toneWav(seconds:number){
+  const rate=16000, samples=rate*seconds, bytes=samples*2;
+  const wav=Buffer.alloc(44+bytes);
+  wav.write('RIFF',0);wav.writeUInt32LE(36+bytes,4);wav.write('WAVEfmt ',8);
+  wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);
+  wav.writeUInt32LE(rate,24);wav.writeUInt32LE(rate*2,28);
+  wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(bytes,40);
+  for(let i=0;i<samples;i++)wav.writeInt16LE(Math.round(12000*Math.sin(2*Math.PI*440*i/rate)),44+2*i);
+  return wav;
+}
+
+test('replace sound and mute a smaller interval while preserving surrounding audio',async({page})=>{
+  test.setTimeout(90000);
+  await protectedScreen(page,mockSession('repair-audio','admin'));
+  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
+  await page.goto('/#video');
+  await page.getByText('기존 광고 영상 수정',{exact:true}).click();
+  await page.getByLabel('완성 영상 파일').setInputFiles({name:'silent.webm',mimeType:'video/webm',buffer:await solidMovie('red')});
+  async function apply(mode:'audio'|'mute',from:number,to:number){
+    const preview=page.getByLabel('완성한 영상');
+    await expect(preview).toBeVisible();
+    const previous=await preview.getAttribute('src');
+    await page.getByText('완성본 검수 · 구간 수정',{exact:true}).click();
+    await page.getByLabel('시작(초)').fill(String(from));await page.getByLabel('끝(초)').fill(String(to));
+    await page.getByLabel('수정 방식').selectOption(mode);
+    if(mode==='audio')await page.getByLabel('교체 파일').setInputFiles({name:'tone.wav',mimeType:'audio/wav',buffer:toneWav(7)});
+    await page.getByRole('button',{name:'구간 적용',exact:true}).click();
+    await expect(preview).not.toHaveAttribute('src',previous!,{timeout:30000});
+    await expect(preview).toHaveAttribute('src',/^blob:/);
+  }
+  await apply('audio',2,8);
+  await apply('mute',4,6);
+  const audible=await page.getByLabel('완성한 영상').evaluate(async (video:HTMLVideoElement)=>{
+    const ctx=new AudioContext(),analyser=ctx.createAnalyser();analyser.fftSize=1024;
+    const node=ctx.createMediaElementSource(video);node.connect(analyser);await ctx.resume();
+    const data=new Float32Array(analyser.fftSize),out=[];
+    try{
+      for(const t of [1,3,5,7,9]){
+        await new Promise<void>(resolve=>{video.addEventListener('seeked',()=>resolve(),{once:true});video.currentTime=t;});
+        await video.play();await new Promise(resolve=>setTimeout(resolve,220));
+        analyser.getFloatTimeDomainData(data);video.pause();
+        out.push(data.some(v=>Math.abs(v)>.03));
+      }
+    }finally{video.pause();node.disconnect();await ctx.close();}
+    return out;
+  });
+  expect(audible).toEqual([false,true,false,true,false]);
+});
