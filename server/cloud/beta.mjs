@@ -21,6 +21,8 @@ import {createBetaServer} from './http-base.mjs';
 import {OpenAIImageAdapter,hashBytes} from '../openai-image-adapter.mjs';
 import {ApiFailure} from '../generation-service.mjs';
 import {assistCopy} from '../text-assistant.mjs';
+import {reviewAV} from '../gemini-video-review.mjs';
+import {ProviderFailure} from '../openai-image-adapter.mjs';
 import {accountConfiguration} from '../account-providers.mjs';
 import {providerGate,guardedImageAdapter} from '../beta-server.mjs';
 export {guardedImageAdapter} from '../beta-server.mjs';
@@ -183,7 +185,7 @@ export async function createCloudBackend(config,env=process.env,{pool:injectedPo
    s.customerImagesEnabled=store.customerGeneration && Boolean(await accountsDb.prepare(
     'SELECT 1 FROM email_identities e WHERE e.user_id=? AND NOT EXISTS(SELECT 1 FROM test_passwords t WHERE t.user_id=e.user_id)'
    ).get(user.id));
-   await readinessMeasure('generation_initialize',()=>s.initialize({db,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:config.enabled,assistantEnabled:config.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter),adapter:guardedImageAdapter(adapter,()=>instance?.assert(),gate),assistantAdapter:options=>{instance?.assert();return gate(()=>assistCopy({...options,apiKey:config.key}));}}));
+   await readinessMeasure('generation_initialize',()=>s.initialize({db,managedBudgetIncrease:true,budgetForPeriod:period=>store.effectiveBudget(user.id,period),enabled:config.enabled,assistantEnabled:config.assistantEnabled,budgetMicros:user.budget,testCredits:user.credits,providerConfigured:Boolean(config.key)||Boolean(injectedAdapter),adapter:guardedImageAdapter(adapter,()=>instance?.assert(),gate),assistantAdapter:options=>{instance?.assert();return gate(()=>{if(options.request.kind==='video-av-review'){if(!s.adminTestUnlimited)throw new ProviderFailure('ASSISTANT_DISABLED',{uncertain:false});return reviewAV({request:options.request});}return assistCopy({...options,apiKey:config.key});});}}));
    s.ledger.recordDelivery=async(job,customer)=>{
     if(await db.prepare('SELECT job_id FROM previous_beta_jobs WHERE job_id=?').get(job.id))return;
     const funds=customer?await db.prepare(customerBalanceSql('','?')).get(user.id):await s.ledger.wallet(job.user_id,'credit-v2');
