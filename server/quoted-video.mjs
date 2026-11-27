@@ -1,3 +1,4 @@
+import {commercialDirection,excludesPour} from '../src/video-commercial-direction.ts';
 import {openingReference} from './video-photo-opening.mjs';
 import {framingRule,lattePreparation} from '../src/video-subject-framing.ts';
 import {formatBeats} from '../src/video-format-direction.ts';
@@ -68,8 +69,37 @@ const photoWan = {
   }
 };
 
+const commercialWan = {
+  ...photoWan, revision:'topview/'+topviewModel+'/commercial-v9',
+  preparePlan(plan,body) {
+    if (!body?.brief || body.manualPrompt!==undefined || !body.shots) return photoWan.preparePlan(plan,body);
+    let reviewed=photoWan.preparePlan(plan,body);
+    if(excludesPour(body.brief)){
+      reviewed=formatReviewedPlan(plan,body,'');
+      const [direction,...images]=reviewed.content;
+      reviewed={...reviewed,content:[{...direction,text:direction.text+'\n'+framingRule(body.brief,'en')},...images]};
+    }
+    const [direction,...images]=reviewed.content;
+    const layout=body.frameLayout;
+    const useLayout=body.brief.kind==='product' && images.length>0 && images.length<10 &&
+      (layout?.mode==='crop'||(layout?.mode==='layers' && body.brief.style!=='presenter'));
+    return {...reviewed,content:[{...direction,text:direction.text+'\n'+commercialDirection(body.brief)},...images],
+      ...(useLayout?{frameLayout:layout}:{})};
+  },
+  input(plan,urls) {
+    if(plan.frameLayout?.mode==='crop' && plan.content.length===2 && urls.length===2){
+      const payload=topviewInput(plan,[]);
+      payload.modelKey=topviewModel+'/image-to-video';
+      payload.input.input.media=[{type:'first_frame',url:urls[1]}];
+      return payload;
+    }
+    return photoWan.input(plan,urls);
+  }
+};
+
 export function quotedVideoProvider(name, savedRevision){
-  if(name==='topview' && (!savedRevision || savedRevision===photoWan.revision)) return photoWan;
+  if(name==='topview' && (!savedRevision || savedRevision===commercialWan.revision)) return commercialWan;
+  if(name==='topview' && savedRevision===photoWan.revision) return photoWan;
   if(name==='topview' && savedRevision===formatWan.revision) return formatWan;
   if(name==='topview' && savedRevision===reviewedWan.revision) return reviewedWan;
   if(name==='topview' && savedRevision===legacyTopviewModel) return legacyTopview;
