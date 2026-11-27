@@ -412,7 +412,7 @@ test('rebuilding the same ad plan preserves disabled captions and narration',asy
 test('administrator compares a reviewed pizza plan with Gemini after confirming the external cost',async({page})=>{
   await protectedScreen(page,mockSession('omni-comparison','admin'));
   await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
-  await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:false,omniPilot:true,assistant:{available:true},wallet:{unlimited:true}}}));
+  await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:false,omniPilot:true,assistant:{available:true},generation:{enabled:false},wallet:{unlimited:true,available:0,reserved:0},budget:{limitMicros:5000000}}}));
   const shots=['피자 조각을 들어 올린다.','치즈와 도우의 단면을 본다.','한 판 더 주문한다.'];
   await page.route('**/api/assistant',r=>r.fulfill({json:{requestId:r.request().postDataJSON().requestId,shots}}));
   let submitted;
