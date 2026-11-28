@@ -1,3 +1,4 @@
+import {withCarouselCopy} from './story-carousel.mjs';
 import {reviewPoseResult,editCorrectionPrompt} from './edit-vision.mjs';
 import {locateEditRegion,poseRequested} from './locate-edit-region.mjs';
 import {selectiveEditForm,validateSelectiveOriginal,prepareSelectiveProviderInput,restoreSelectiveProviderResult,verifyPreparedSelectiveInput} from './selective-image-edit.mjs';
@@ -325,6 +326,7 @@ MEASUREMENT CONTRACT: ${JSON.stringify(contract)}\n`;
 
 // Explicit customer placement wins over style references and generic layout suggestions.
 export function promptFor(request){
+ request=withCarouselCopy(request);
  let prompt=generationPrompt(request);
  if(request.mode==='creative'&&request.source&&request.subjectType==='physical-product'&&!request.dimensionPlan&&!request.proportionControl){
   prompt=prompt.replace('Reconcile named width, depth, height or diameter with the reference silhouette using supplied millimetres and normalized ratios.','Keep the reference photograph silhouette and visible component proportions; numeric dimensions are display labels only.').replace('Supplied internal dimensions are for proportions only and are not visible advertising copy.','Hidden dimensions are not visible advertising copy and must not reshape the photographed product.').replace('A supplied size is guidance for generation, not evidence of reconstructed physical 3D accuracy.','A supplied size is label content, not a target for reconstructing product geometry.').replace('Use supplied width/depth/height by named axes and normalized ratios as proportional guidance, not proof of true 3D reconstruction.','Use the supplied photograph for visible shape and proportions; do not reshape it from numeric dimensions.').replace('If dimensions are supplied, jointly reference the source photo, axis values and normalizedRatios as proportional guidance, not proof of exact reconstructed physical geometry.','Use the supplied photograph for visible shape and proportions; do not reshape it from numeric dimensions.');

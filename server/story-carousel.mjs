@@ -7,18 +7,25 @@ export function validCarouselBatch(plan,request,count) {
 export function carouselRequests(request,plan) {
   const scenes=plan.cards.map(card=>card.scene);
   return plan.cards.map((card,index)=>{
-    const final=index===plan.cards.length-1;
-    return {...request,copy:{...request.copy,title:card.caption,description:''},
-      creativeDirection:{...request.creativeDirection,copyMode:'manual',
-        ctaPolicy:final?'customer-requested':'omit',
-        direction:{...request.creativeDirection.direction,callToAction:final?card.caption:''}},
-      batchDirection:{position:index+1,count:plan.cards.length,role:'story',locked:true,
+    return {...request,
+      batchDirection:{position:index+1,count:plan.cards.length,role:'story',locked:true,caption:card.caption,
         direction:'Create one Instagram feed carousel card. Show only the current instant as a single full-bleed scene. '+
           'Use the identical product identity, people, setting, palette and type family described in continuity. '+
           'Use the caption in publicCopy.title exactly once. Never print planning text, page numbers, UI or adjacent scenes. '+
           'Use only the approved caption and enabled business contacts for new lettering; do not typeset the brief or add a separate product-name heading. The other scenes are continuity context only. Approved storyboard data: '+
           JSON.stringify({continuity:plan.continuity,sequence:scenes,currentScene:card.scene})}};
   });
+}
+
+// Keep the customer request fingerprint stable for result verification and export.
+export function withCarouselCopy(request) {
+  const slot=request.batchDirection;
+  if(slot?.role!=='story')return request;
+  const final=slot.position===slot.count;
+  return {...request,copy:{...request.copy,title:slot.caption,description:''},
+    creativeDirection:{...request.creativeDirection,copyMode:'manual',
+      ctaPolicy:final?'customer-requested':'omit',
+      direction:{...request.creativeDirection.direction,callToAction:final?slot.caption:''}}};
 }
 
 export function normalizeCarouselPlanning(body){

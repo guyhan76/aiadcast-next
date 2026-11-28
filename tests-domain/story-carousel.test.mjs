@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
+import {generationMatchKey} from '../src/generation-match.ts';
+import {withCarouselCopy} from '../server/story-carousel.mjs';
+import {promptFor} from '../server/openai-image-adapter.mjs';
 import {assistCopy,normalizeAssistantRequest} from '../server/text-assistant.mjs';
 import {validCarouselBatch,planAdBatch,finishedAdSkillBrief} from '../server/automatic-image-skills.mjs';
 const plan={continuity:'Two friends, one white plate, warm window light.',cards:[
@@ -7,15 +10,20 @@ const plan={continuity:'Two friends, one white plate, warm window light.',cards:
   {scene:'One friend lifts the slice; the central plate is empty.',caption:'All yours.'},
   {scene:'Close up of basil and cheese on the slice in her hand.',caption:'Basil in every bite.'},
   {scene:'The other friend turns to the server; the plate stays empty.',caption:'Order another pizza.'}]};
-const request={output:{format:'4:5'},subjectType:'service',copy:{title:'Original',description:'Original'},creativeDirection:{copyMode:'ai',direction:{id:'brand'}}};
+const request={mode:'creative',productProfile:{category:'services'},output:{format:'4:5',locale:'en',compositionKey:'approved'},subjectType:'service',copy:{title:'Original',description:'Original'},creativeDirection:{visual:{id:'auto'},copyMode:'ai',direction:{id:'brand'}}};
 test('each feed card receives the approved caption, the same reference context and its ordered scene',()=>{
   const slots=planAdBatch(request,4,plan);
   for(const [i,slot] of slots.entries()){
     assert.equal(slot.batchDirection.position,i+1);
-    assert.equal(slot.copy.title,plan.cards[i].caption);
-    assert.equal(slot.copy.description,'');
-    assert.equal(slot.creativeDirection.copyMode,'manual');
-    assert.equal(slot.creativeDirection.ctaPolicy,i===3?'customer-requested':'omit');
+    assert.equal(generationMatchKey(slot),generationMatchKey(request));
+    const rendered=withCarouselCopy(slot);
+    assert.equal(rendered.copy.title,plan.cards[i].caption);
+    assert.equal(rendered.copy.description,'');
+    assert.equal(rendered.creativeDirection.copyMode,'manual');
+    assert.equal(rendered.creativeDirection.ctaPolicy,i===3?'customer-requested':'omit');
+    const prompt=promptFor(slot);
+    assert.ok(prompt.includes(JSON.stringify(plan.cards[i].caption)));
+    assert.ok(!prompt.includes(JSON.stringify(plan.cards[(i+1)%4].caption)));
     assert.ok(finishedAdSkillBrief(slot).includes(plan.continuity));
     assert.ok(slot.batchDirection.direction.includes(JSON.stringify(plan.cards[i].scene)));
   }

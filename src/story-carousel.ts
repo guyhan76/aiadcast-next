@@ -11,8 +11,8 @@ function shortText(value:unknown, limit:number):value is string {
 export function validStoryPlan(value:unknown):value is StoryPlan {
   if(!value || typeof value!=='object') return false;
   const plan=value as StoryPlan;
-  return shortText(plan.continuity,320) && Array.isArray(plan.cards) &&
-    plan.cards.length===carouselCount && plan.cards.every(card=>card &&
+  return Object.keys(plan).length===2 && shortText(plan.continuity,320) && Array.isArray(plan.cards) &&
+    plan.cards.length===carouselCount && plan.cards.every(card=>card && Object.keys(card).length===2 &&
       shortText(card.scene,360) && shortText(card.caption,80)) &&
     new Set(plan.cards.map(card=>card.scene.trim())).size===carouselCount;
 }
