@@ -21,7 +21,7 @@ export function normalizeVideoPromptRequest(raw){
     if(typeof brief[key]!=='string'||brief[key].length>limit)invalid();
     facts[key]=brief[key];
   }
-  if(!references.length&&(facts.kind==='product'||!facts.title.trim()||!facts.description.trim()))invalid();
+  if(!references.length&&(facts.kind==='product'||!facts.description.trim()))invalid();
   for(const ref of references)if(typeof ref!=='string'||ref.length>300000||!/^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]+={0,2}$/.test(ref))invalid();
   if(raw.planVersion!==undefined&&raw.planVersion!==1&&!(raw.planVersion===4&&facts.kind==='product'&&['presenter','product'].includes(facts.style)&&references.length)&&!(raw.planVersion===2&&facts.kind==='product')&&!(raw.planVersion===3&&facts.kind==='product'&&facts.style==='product'&&references.length))invalid();
   if(raw.segmented!==undefined&&typeof raw.segmented!=='boolean')invalid();

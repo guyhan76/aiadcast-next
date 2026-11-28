@@ -10,12 +10,12 @@ export const videoStyles = {
     scenes: [['개봉 전', 'Closed box'], ['개봉 장면', 'The reveal'], ['구성품 전체', 'Contents']],
   },
   presenter: {
-    label: ['UGC', 'UGC'],
+    label: ['UGC 광고', 'UGC ad'],
     media: ['제품을 직접 소개하거나 사용하는 영상 또는 상품 사진', 'Footage introducing or using the product, or product photos'],
     scenes: [['오프닝', 'Introduction'], ['상품 소개', 'Product walkthrough'], ['마무리 안내', 'Closing message']],
   },
   service: {
-    label: ['서비스 소개', 'Service introduction'],
+    label: ['서비스 광고', 'Service ad'],
     media: ['사진이 없어도 서비스명과 설명으로 시작할 수 있어요.', 'Start with a service name and description, or add photos.'],
     scenes: [['서비스 소개', 'Introduce service'], ['주요 특징', 'Key detail'], ['마무리 안내', 'Closing message']],
   },

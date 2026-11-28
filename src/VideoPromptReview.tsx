@@ -65,7 +65,7 @@ export function VideoPromptReview({mode,manualText,onMode,onManual,seconds,ratio
       {manualText.length>manualPromptLimit&&<p role="alert">{t('프롬프트를 8,000자 이내로 줄여 주세요.','Keep your prompt within 8,000 characters.')}</p>}
     </>:<>
       {(!review||stale)&&<button type="button" className="vd-primary" disabled={busy||!ready} onClick={()=>{setCopyMessage('');onBuild();}}>
-        {planning?t('구성안 작성 중…','Drafting…'):review?t('변경된 정보로 구성안 다시 만들기','Update plan from brief'):t('영상 구성안 만들기','Create video plan')}</button>}
+        {planning?t('영상 프롬프트 작성 중…','Drafting video prompt…'):review?t('영상 프롬프트 다시 만들기','Rebuild video prompt'):t('영상 프롬프트 만들기','Create video prompt')}</button>}
       {error&&<p role="alert">{error}</p>}
       {review&&<>
         {stale&&<p role="status">{t('입력 정보가 바뀌었어요. 새 구성안을 확인한 뒤 제작해 주세요.','Your inputs changed. Update the plan before creating the video.')}</p>}

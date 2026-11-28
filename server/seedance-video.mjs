@@ -38,7 +38,7 @@ export function seedancePayload(input,model){
   if(input.promptMode!==undefined&&input.promptMode!==(manual?'manual':'auto'))throw Error('INVALID_VIDEO');
   if(manual&&(!validManualPrompt(input.manualPrompt)||hasShots))throw Error('INVALID_VIDEO');
   if((hasShots||input.promptMode==='auto')&&!validVideoShots(input.shots))throw Error('INVALID_VIDEO');
-  if(!references.length&&(manual?brief.kind==='product':!brief.title.trim()||!brief.description.trim()))throw Error('INVALID_VIDEO');
+  if(!references.length&&(manual?brief.kind==='product':!brief.description.trim()||(brief.kind==='product'&&!brief.title.trim())))throw Error('INVALID_VIDEO');
   let total=0;
   for(const data of references){
     if(typeof data!=='string'||!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(data))throw Error('INVALID_VIDEO');

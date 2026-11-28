@@ -141,3 +141,9 @@
 .vd-steps {display:flex;gap:8px;align-items:center;list-style:none;padding:0;margin:-4px 0 4px;color:#64696d;font-size:13px;}
 .vd-steps li+li::before {content:'›';margin-right:8px;color:#8b8f91;}
 .vd-steps [aria-current=step] {color:#242629;font-weight:700;}
+
+.vd-quick-request {display:grid;gap:6px;font-weight:650;}
+.vd-quick-request textarea {width:100%;resize:vertical;font:inherit;font-weight:400;padding:9px 11px;border:1px solid #cdd0d2;border-radius:8px;}
+.vd-advanced>summary {padding:10px 0;font-weight:650;}
+.vd-advanced[open]>fieldset,.vd-advanced[open]>.vd-brief-block {margin:12px 0;}
+.vd-upload-help summary {font-size:13px;}
