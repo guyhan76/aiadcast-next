@@ -1,4 +1,4 @@
-import {omniTurns,omniBudget} from '../src/video-omni.ts';
+import {omniTurns,omniBudget,omniSceneTiming} from '../src/video-omni.ts';
 
 const endpoint='https://generativelanguage.googleapis.com/v1beta/interactions';
 const model='gemini-omni-1.2-flash';
@@ -23,6 +23,44 @@ async function interaction(key,path,body){
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
+// Keep each approved voice-over sentence intact and speak it once.
+function voiceByTurn(narration,stops,seconds){
+  const lines=narration.split(/(?<=[.!?。！？])\s+|\r?\n+/u).map(line=>line.trim()).filter(Boolean);
+  const result=stops.map(() => []);
+  const length=lines.reduce((n,line)=>n+line.length,0);
+  let consumed=0;
+  for(const line of lines){
+    const time=seconds*consumed/length;
+    const i=stops.findIndex(end=>time<end);
+    result[i].push(line);consumed+=line.length;
+  }
+  return result.map(group=>group.join(' '));
+}
+
+export function geminiScriptPlan(plan,body){
+  const {groups,stops}=omniSceneTiming(plan.duration);
+  const ends=groups.map(group=>stops[group[group.length-1]+1]);
+  const narration=voiceByTurn(body.voice?body.narration:'',ends,plan.duration);
+  const scripts=groups.map((group,turn)=>{
+    const first=group[0],last=group[group.length-1];
+    return [
+      'Film only part '+(turn+1)+' of '+groups.length+' of the same '+plan.duration+'s ad, covering '+stops[first]+'–'+stops[last+1]+'s. Use the approved scene directions below.',
+      'Subject: '+body.brief.title+'. Style: '+(body.brief.style??body.brief.kind)+'. Preserve reference appearance, people, voices, props and location. Keep app UI and added lettering out of frame.',
+      first?'Start from this exact previous end frame: '+body.sceneCues[first-1].endFrame:'Begin immediately on the approved opening action.',
+      ...group.map(i=>[
+        'Ad time '+stops[i]+'–'+stops[i+1]+'s: '+body.shots[i],
+        'On-camera speech: '+(body.sceneCues[i].dialogue.trim()||'none')+'. Match the named speaker and visible action.',
+        'Location sound: '+body.sceneCues[i].sound,
+        'End frame: '+body.sceneCues[i].endFrame
+      ].join('\n')),
+      body.music?'Instrumental bed: '+body.musicStyle:'No background music.',
+      narration[turn]?'Off-camera voice: '+narration[turn]+'. '+body.voiceStyle:'No off-camera voice.',
+      turn===groups.length-1?'Finish on the approved closing action.':'End on the specified frame, ready for the next part.'
+    ].join('\n');
+  });
+  return {...plan,turnScripts:scripts};
+}
+
 export const geminiOmni={
   model,revision:'gemini/'+model+'/pilot-v1',singleSubmit:true,
   key:()=>process.env.GEMINI_API_KEY?.trim(),
@@ -39,10 +77,10 @@ export const geminiOmni={
       const uri=reference.image_url.url;
       return {type:'image',mime_type:uri.slice(5,uri.indexOf(';')),data:uri.slice(uri.indexOf(',')+1)};
     });
-    const text=turns.length===1?direction.text:direction.text+'\nProduction timing: this is a '+plan.duration+'-second plan. Generate only 0–'+turns[0]+'s now; reserve subsequent actions and dialogue for the continuation.';
+    const text=plan.turnScripts?.[0]??(turns.length===1?direction.text:direction.text+'\nProduction timing: this is a '+plan.duration+'-second plan. Generate only 0–'+turns[0]+'s now; reserve subsequent actions and dialogue for the continuation.');
     return {model,background:true,store:true,input:[...images,{type:'text',text}],
       response_format:{type:'video',aspect_ratio:plan.ratio,resolution:'720p',duration:turns[0]+'s'},
-      ...(turns.length>1?{localExtension:{total:plan.duration,ratio:plan.ratio}}:{})};
+      ...(turns.length>1?{localExtension:{total:plan.duration,ratio:plan.ratio,...(plan.turnScripts?{remaining:plan.turnScripts.slice(1)}:{})}}:{})};
   },
   async submit(key,{localExtension,...input}){
     const id=await submitInteraction(key,input);
@@ -68,7 +106,7 @@ export const geminiOmni={
     let id;
     try{
       id=await submitInteraction(key,{model,background:true,store:true,previous_interaction_id:state.id,
-        input:'Extend this video. Continue the approved storyboard from '+elapsed+'s through '+(elapsed+next)+'s. Preserve voices, people, setting and product. Perform only the next actions and dialogue, without repeating earlier actions.'+(elapsed+next===state.total?' Finish the approved closing action.':' Reserve the ending for the next turn.'),
+        input:state.remaining?.length?'Extend the previous video. '+state.remaining[0]:'Extend this video. Continue the approved storyboard from '+elapsed+'s through '+(elapsed+next)+'s. Preserve voices, people, setting and product. Perform only the next actions and dialogue, without repeating earlier actions.'+(elapsed+next===state.total?' Finish the approved closing action.':' Reserve the ending for the next turn.'),
         response_format:{type:'video',resolution:'720p',aspect_ratio:state.ratio,duration:next+'s'}});
     }catch(error){
       if([400,401,402,403,404,422,423,429].includes(error.providerStatus)){
@@ -77,7 +115,7 @@ export const geminiOmni={
       }
       return {state:'uncertain'};
     }
-    await replace(claim,JSON.stringify({...state,id,turn:state.turn+1,cost}));
+    await replace(claim,JSON.stringify({...state,id,turn:state.turn+1,cost,...(state.remaining?{remaining:state.remaining.slice(1)}:{})}));
     return {state:'running'};
   }
 };

@@ -1,5 +1,6 @@
 import {useId,useState} from 'react';
 import {useUiLanguage} from './ui-language';
+import {omniSceneTiming,type SceneCue} from './video-omni';
 import {sceneStops} from './video-style';
 import {manualPromptLimit,type PhotoFrameLayout,type VideoPromptMode,shotLimit,timedShots,type VideoShots} from './video-prompt';
 import type {VideoSource} from './video-duration';
@@ -7,7 +8,7 @@ import type {VideoSource} from './video-duration';
 export type VideoReview={
   musicMood:string; narration:string;
   shots:VideoShots; captions:VideoShots; showCaptions:boolean; music:boolean; voice:boolean; contact:string;
-  briefKey:string; sources:VideoSource[]; frameLayout?:PhotoFrameLayout;
+  briefKey:string; sources:VideoSource[]; sceneCues?:SceneCue[]; frameLayout?:PhotoFrameLayout;
 };
 type Props={
   mode:VideoPromptMode;manualText:string;onMode:(mode:VideoPromptMode)=>void;onManual:(value:string)=>void;
@@ -18,7 +19,17 @@ export function VideoPromptReview({mode,manualText,onMode,onManual,seconds,ratio
   const {t}=useUiLanguage(), [copyMessage,setCopyMessage]=useState('');
   const modeGroup=useId();
   const labels=[t('첫 장면','Opening shot'),t('중간 장면','Middle shot'),t('마지막 장면','Closing shot')];
-  const times=sceneStops(seconds);
+  const timing=omniSceneTiming(seconds);
+  const times=review?.sceneCues?timing.stops:sceneStops(seconds);
+  function editCue(index:number,field:keyof SceneCue,value:string){
+    if(review?.sceneCues)onChange({sceneCues:review.sceneCues.map((cue,i)=>i===index?{...cue,[field]:value}:cue)});
+  }
+  function turnLabel(i:number){
+    const group=timing.groups.findIndex(indices=>indices[0]===i);
+    if(group<0)return '';
+    const indices=timing.groups[group],last=indices[indices.length-1];
+    return t('Gemini '+(group+1)+'차','Gemini part '+(group+1))+' · '+times[i]+'–'+times[last+1]+t('초','s');
+  }
   function editScene(field:'shots'|'captions',index:number,value:string){
     if(!review)return;
     const updated:VideoShots=[...review[field]];
@@ -27,7 +38,9 @@ export function VideoPromptReview({mode,manualText,onMode,onManual,seconds,ratio
   }
   async function copy(){
     if(!review)return;
-    const lines=[ratio,timedShots(review.shots,seconds)];
+    const lines=review.sceneCues?[ratio,...review.shots.flatMap((shot,i)=>{
+      const cue=review.sceneCues![i];return [turnLabel(i),times[i]+'–'+times[i+1]+'s · '+shot,cue.dialogue,cue.sound,cue.endFrame];
+    })]:[ratio,timedShots(review.shots,seconds)];
     if(review.showCaptions)lines.push(...review.captions,review.contact);
     lines.push(review.music?review.musicMood:t('배경음악 없음','No music'));
     lines.push(review.voice?review.narration:t('내레이션 없음','No narration'));
@@ -59,9 +72,14 @@ export function VideoPromptReview({mode,manualText,onMode,onManual,seconds,ratio
           <legend>{t('구성안 확인','Review your plan')} · {ratio} · {seconds}{t('초','s')}</legend>
           <label className="vd-plan-toggle"><input type="checkbox" checked={review.showCaptions} onChange={e=>onChange({showCaptions:e.target.checked})}/>{t('자막 넣기','Include captions')}</label>
           {review.shots.map((shot,i)=><div className="vd-review-scene" key={i}>
+            {review.sceneCues&&turnLabel(i)&&<strong>{turnLabel(i)}</strong>}
             <h3>{labels[i]} <small>{times[i]}–{times[i+1]}{t('초','s')}</small></h3>
             <label>{t('장면 연출','Shot direction')}
               <textarea rows={2} aria-label={labels[i]+' '+t('연출','direction')} maxLength={shotLimit} value={shot} onChange={e=>editScene('shots',i,e.target.value)}/></label>
+            {review.sceneCues&&<details className="vd-details"><summary>{t('대사·현장음·마지막 화면','Dialogue, sound and end frame')}</summary>
+              {(['dialogue','sound','endFrame'] as const).map((key,k)=><label key={key}>{[t('인물 대사','Character dialogue'),t('현장음','Location sound'),t('마지막 화면','End frame')][k]}
+                <textarea rows={2} maxLength={[180,140,200][k]} value={review.sceneCues![i][key]} onChange={e=>editCue(i,key,e.target.value)}/></label>)}
+            </details>}
             {review.showCaptions&&<label>{t('자막','Caption')}<textarea rows={2} maxLength={1000} value={review.captions[i]} aria-label={labels[i]+' '+t('자막','caption')}
               onChange={e=>editScene('captions',i,e.target.value)}/></label>}
           </div>)}

@@ -1,3 +1,4 @@
+import {assistCopy} from '../server/text-assistant.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {quotedVideoProvider} from '../server/quoted-video.mjs';
@@ -123,4 +124,45 @@ test('a lost continuation response leaves one claim and prevents duplicate paid 
   stored=JSON.stringify({...claim,claimed:Date.now()-70000});
   assert.deepEqual(await provider.poll('key',stored,false,replace),{state:'uncertain'});
   assert.equal(posts,1);
+});
+
+test('one planning call creates the reviewed actions, dialogue, sounds and continuity for every Google turn',async t=>{
+  const shots=['마지막 조각을 함께 본다.','민지가 한 입 먹는다.','손님이 추가 주문한다.'];
+  const sceneCues=[
+    {endFrame:'민지가 마지막 조각을 든다.',dialogue:'준: 내 거였는데!',sound:'접시가 살짝 울린다.'},
+    {endFrame:'빈 판은 왼쪽에 놓여 있다.',dialogue:'',sound:'조용한 매장 소음.'},
+    {endFrame:'직원이 고개를 끄덕인다.',dialogue:'준: 한 판 더 주세요.',sound:'직원이 다가오는 발소리.'}];
+  for(const [seconds,ends] of [[10,[10]],[20,[10,20]],[30,[10,20,30]]]){
+    const brief={kind:'service',style:'presenter',title:'피자 매장',description:'친구와 피자를 먹는다.',highlight:'지금 추가 주문',
+      seconds,ratio:'9:16',field:'',industry:'',caption:'',contact:'',music:false,voice:false,musicStyle:'',voiceStyle:'',narration:''};
+    const approved=await assistCopy({apiKey:'unit-test',request:{kind:'video-prompt',requestId:'pizza-restaurant',targetLocale:'ko',segmented:true,planVersion:1,references:[],brief},
+      fetchImpl:async(_url,opts)=>{
+        const req=JSON.parse(opts.body);
+        assert.ok(req.response_format.json_schema.schema.required.includes('sceneCues'));
+        const spec=JSON.parse(req.messages[1].content[0].text);
+        assert.equal(spec.turnSceneGroups.length,ends.length);
+        const proposal={opening:shots[0],detail:shots[1],closing:shots[2],musicMood:'잔잔함',narration:'',recommendVoice:false,sceneCues};
+        return Response.json({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify(proposal)}}],usage:{prompt_tokens:100,completion_tokens:100}});
+      }});
+    assert.deepEqual(approved.sceneCues,sceneCues);
+    const plan=provider.preparePlan({duration:seconds,ratio:'9:16',content:[{type:'text',text:'approved plan'}]},
+      {...brief,brief,shots:approved.shots,sceneCues:approved.sceneCues,voice:false});
+    const first=provider.input(plan),posts=[];
+    const mock=t.mock.method(globalThis,'fetch',async(url,options)=>{
+      if(options.method==='POST'){posts.push(JSON.parse(options.body));return Response.json({id:'clip'+posts.length});}
+      return Response.json({status:'completed',steps:[{type:'model_output',content:[{type:'video',mime_type:'video/mp4',data:sampleMp4(ends[Number(url.slice(-1))-1]).toString('base64')}]}]});
+    });
+    let state=await provider.submit('key',first);
+    const change=async(previous,next)=>{assert.equal(state,previous);state=next;return true;};
+    for(let i=1;i<ends.length;i++)assert.equal((await provider.poll('key',state,false,change)).state,'running');
+    assert.equal((await provider.poll('key',state,true,change)).state,'ready');
+    const prompts=posts.map(x=>typeof x.input==='string'?x.input:x.input.at(-1).text);
+    assert.equal(posts.length,ends.length);
+    assert.ok(prompts[0].includes(sceneCues[0].dialogue));
+    assert.ok(prompts.at(-1).includes(sceneCues[2].dialogue));
+    assert.equal(prompts.filter(x=>x.includes(sceneCues[2].dialogue)).length,1);
+    if(seconds>=20)assert.ok(prompts.at(-1).includes(sceneCues[1].endFrame));
+    if(seconds===30)assert.ok(prompts[1].includes(shots[1])&&prompts[1].includes(sceneCues[0].endFrame)&&prompts[1].includes(sceneCues[1].sound));
+    mock.mock.restore();
+  }
 });
