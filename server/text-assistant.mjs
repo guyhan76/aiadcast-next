@@ -1,6 +1,7 @@
 import {validSceneCues} from '../src/video-omni.ts';
 import {validVideoAudio} from '../src/video-prompt.ts';
 import {normalizeVideoPromptRequest,videoPromptMessages,videoResponseSchema,photoShotDirections} from './video-prompt-assistant.mjs';
+import {normalizeAVReview} from './gemini-video-review.mjs';
 import { ProviderFailure } from './openai-image-adapter.mjs';
 
 // Server-owned, pinned configuration; callers cannot choose a model or a price.
@@ -14,6 +15,7 @@ const locales = new Set(['ko', 'en']);
 
 export function normalizeAssistantRequest(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw Error('INVALID_ASSISTANT_REQUEST');
+  if(body.kind==='video-av-review')return normalizeAVReview(body);
   if(body.kind==='video-review'){
     const {requestId,targetLocale,frames,brief}=body;
     if(typeof requestId!=='string'||!/^[a-zA-Z0-9_-]{8,100}$/.test(requestId)||!locales.has(targetLocale)||
@@ -86,6 +88,7 @@ async function readLimitedJson(response) {
 
 export async function assistCopy({ request: raw, fetchImpl = globalThis.fetch, apiKey, model = TEXT_MODEL, attemptId, timeoutMs = 45_000 }) {
   const request = normalizeAssistantRequest(raw);
+  if(request.kind==='video-av-review')throw new ProviderFailure('ASSISTANT_DISABLED',{uncertain:false});
   if (!apiKey) throw new ProviderFailure('PROVIDER_NOT_CONFIGURED', { uncertain: false });
   if (model !== TEXT_MODEL) throw new ProviderFailure('ASSISTANT_MODEL_NOT_APPROVED', { uncertain: false });
   const video=request.kind==='video-prompt';

@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import type {VideoDraft} from './VideoDurationEditor';
-import {openReviewVideo,renderRepair,reviewMovie,sampleFrame,type ReviewIssue,type RepairMode} from './video-shot-repair';
+import {openReviewVideo,renderRepair,reviewMovie,reviewAudiovisual,sampleFrame,type AVReview,type ReviewIssue,type RepairMode} from './video-shot-repair';
 import {videoFormat,type LoadedVideoScene} from './video-compose';
 import type {VideoRequestStage} from './video-ai-client';
 import {useUiLanguage} from './ui-language';
@@ -18,6 +18,8 @@ export function VideoShotRepair({file,draft,seconds,admin,availableCredits,price
   const [keepAudio,setKeepAudio]=useState(true),[preview,setPreview]=useState('');
   useEffect(()=>{if(!replacement){setPreview('');return;}const url=URL.createObjectURL(replacement);setPreview(url);return()=>URL.revokeObjectURL(url);},[replacement]);
   const [note,setNote]=useState(''),[status,setStatus]=useState(''),[issues,setIssues]=useState<ReviewIssue[]>();
+  const [av,setAv]=useState<AVReview>(),[avConsent,setAvConsent]=useState(false);
+  useEffect(()=>{setAv(undefined);setIssues(undefined);setAvConsent(false);},[file]);
   const [confirm,setConfirm]=useState(false);
   const controller=useRef<AbortController|null>(null);
   useEffect(()=>()=>controller.current?.abort(),[]);
@@ -30,7 +32,7 @@ export function VideoShotRepair({file,draft,seconds,admin,availableCredits,price
     if(controller.current||busy)return;
     const task=new AbortController();controller.current=task;onBusy(true);setStatus(label);
     try{await work(task.signal);}
-    catch(err){if(!task.signal.aborted)setStatus(err instanceof Error&&err.message==='CLIP_TOO_SHORT'?
+    catch(err){if(!task.signal.aborted)setStatus(err instanceof Error&&err.message==='AV_FILE_TOO_LARGE'?t('통합 검수는 9MB 이하 영상만 지원해요.','AV review supports videos up to 9 MB.'):err instanceof Error&&err.message==='CLIP_TOO_SHORT'?
       t('선택한 구간보다 긴 파일을 넣어 주세요.','Choose a file that covers the interval.'):
       t('작업을 완료하지 못했어요. 원본을 다시 확인해 주세요.','Could not finish. The original is still available.'));}
     finally{controller.current=null;if(!task.signal.aborted)onBusy(false);}
@@ -50,6 +52,15 @@ export function VideoShotRepair({file,draft,seconds,admin,availableCredits,price
       const found=await reviewMovie(file,seconds,prompt,language,signal);signal.throwIfAborted();setIssues(found);
       setStatus(t('샘플 화면 검수가 끝났어요. 대사와 소리는 재생해 확인해 주세요.','Frame review complete. Play the video to check speech and sound.'));
     })}>{t('AI 화면 검수','Review sampled frames')}</button>}
+    {admin&&canReview&&<>
+      <label><input type="checkbox" checked={avConsent} onChange={e=>setAvConsent(e.target.checked)}/>{t('개인 식별 정보 없는 영상·음향을 Google AI에 전송하는 데 동의합니다.','I consent to sending video and audio without identifying data to Google AI.')}</label>
+      <button type="button" className="vd-library" disabled={!avConsent} onClick={()=>void run(t('영상·음향 검수 중…','Reviewing video and audio…'),async signal=>{
+        setAv(undefined);const result=await reviewAudiovisual(file,seconds,prompt,language,signal);signal.throwIfAborted();setAv(result);
+        setStatus(t('통합 검수 완료 · 문제 구간을 선택해 주세요.','Review complete. Select an issue to repair.'));
+      })}>{t('AI 영상·음향 검수','Review video and audio')}</button>
+      {av&&<p>{av.audioStatus==='uncertain'?t('음향을 확실히 판단하지 못했어요. 직접 확인해 주세요.','Audio uncertain. Listen manually.'):av.issues.length===0?t('검출된 문제가 없어요. 직접 최종 확인해 주세요.','No defects reported. Review manually.'):t('문제 구간 ','Issues: ')+av.issues.length}</p>}
+      {av?.issues.map((item,i)=><button type="button" key={'av-'+i} onClick={()=>{setFrom(item.from);setTo(item.to);setMode(item.mode);setKeepAudio(false);setNote(item.note);setReplacement(undefined);}}>{item.from}–{item.to}s · {item.note} · {item.evidence}{item.confidence<.75?t(' (직접 확인)',' (verify manually)'):''}</button>)}
+    </>}
     {issues?.length===0&&<p>{t('샘플 화면에서 지적된 문제가 없어요.','No issue reported in the sampled frames.')}</p>}
     {issues?.map((item,i)=><button type="button" key={i} onClick={()=>{setFrom(Math.max(0,Math.floor(item.time)-1));setTo(Math.min(seconds,Math.ceil(item.time)+2));setNote(item.note);setReplacement(undefined);}}>{item.time}s · {item.note}</button>)}
     <label>{t('시작(초)','From (s)')}<input type="number" step=".1" min="0" max={seconds} value={Number.isFinite(from)?from:''} onChange={e=>{setFrom(e.currentTarget.valueAsNumber);setReplacement(undefined);}}/></label>

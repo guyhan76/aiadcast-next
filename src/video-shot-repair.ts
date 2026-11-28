@@ -48,6 +48,28 @@ export async function reviewMovie(file:File,seconds:number,brief:string,language
   }finally{dispose();}
 }
 
+export type AVReviewIssue={from:number;to:number;category:'speech'|'sync'|'sound'|'visual';mode:RepairMode;note:string;evidence:string;confidence:number};
+export type AVReview={requestId:string;audioStatus:'audible'|'silent'|'uncertain';issues:AVReviewIssue[]};
+export async function reviewAudiovisual(file:File,seconds:number,brief:string,language:'ko'|'en',signal:AbortSignal):Promise<AVReview>{
+  signal.throwIfAborted();
+  if(file.size>9*1024*1024)throw Error('AV_FILE_TOO_LARGE');
+  const mime=file.type.split(';')[0];
+  if(!['video/mp4','video/webm'].includes(mime))throw Error('AV_UNSUPPORTED_FILE');
+  const bytes=new Uint8Array(await file.arrayBuffer());
+  signal.throwIfAborted();
+  const chunks:string[]=[];
+  for(let i=0;i<bytes.length;i+=16384)chunks.push(String.fromCharCode(...bytes.subarray(i,i+16384)));
+  const data=btoa(chunks.join(''));
+  const context=brief.slice(0,4000);
+  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([data,mime,seconds,context,language])));
+  const requestId='av-'+Array.from(new Uint8Array(digest),v=>v.toString(16).padStart(2,'0')).join('');
+  signal.throwIfAborted();
+  const reply=await apiRequest<AVReview>('/api/assistant',{requestId,kind:'video-av-review',mime,data,seconds,brief:context,targetLocale:language,consent:true},signal);
+  if(reply.requestId!==requestId||!['audible','silent','uncertain'].includes(reply.audioStatus)||!Array.isArray(reply.issues)||
+    reply.issues.some(i=>!Number.isFinite(i.from)||!Number.isFinite(i.to)||i.from<0||i.to<=i.from||i.to>seconds||!['clip','audio','mute'].includes(i.mode)))throw Error('INVALID_REVIEW');
+  return reply;
+}
+
 export type RepairMode='clip'|'audio'|'mute';
 export async function renderRepair(original:File,seconds:number,from:number,to:number,mode:RepairMode,replacement:File|undefined,signal:AbortSignal,keepClipAudio=false):Promise<File>{
   if(!Number.isFinite(from)||!Number.isFinite(to)||from<0||to<=from||to>seconds||(!replacement&&mode!=='mute'))throw Error('INVALID_RANGE');
