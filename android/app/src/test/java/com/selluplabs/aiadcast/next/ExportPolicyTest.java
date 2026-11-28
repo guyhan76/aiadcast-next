@@ -13,6 +13,14 @@ public class ExportPolicyTest {
         assertTrue(filename.endsWith(".png"));
         assertEquals("광고 피드.png", ExportPolicy.safeFilename("광고 피드.png", "image/png"));
     }
+    @Test public void videoExportsMatchMovieContentAndFilename() {
+        byte[] movie = new byte[24];
+        movie[3]=24; movie[4]='f'; movie[5]='t'; movie[6]='y'; movie[7]='p';
+        assertTrue(ExportPolicy.validBatchMedia("aiadcast-ab12cd34-01.mp4", movie));
+        assertFalse(ExportPolicy.validBatchMedia("aiadcast-ab12cd34-01.webm", movie));
+        assertFalse(ExportPolicy.validBatchImage("aiadcast-ab12cd34-01.mp4", movie));
+        assertFalse(ExportPolicy.validBatchMedia("../aiadcast-ab12cd34-01.mp4", movie));
+    }
     @Test public void onlyExpectedFormatsCanBeExported() {
         assertTrue(ExportPolicy.validContent(new byte[]{(byte)137,80,78,71,13,10,26,10}, "image/png"));
         assertFalse(ExportPolicy.validContent("<html>".getBytes(StandardCharsets.UTF_8), "image/png"));

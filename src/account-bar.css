@@ -1,0 +1,8 @@
+.account-bar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;background:#fff;border-bottom:1px solid #ddd;padding:8px 20px;min-width:0;color:#171717}
+.account-bar-identity{display:flex;align-items:center;flex:1 1 140px;min-width:0;gap:12px}
+.account-bar-identity a{display:inline-flex;align-items:center;min-height:44px;flex-shrink:0;font-weight:700;color:inherit}
+.account-bar-identity span{font-size:13px;overflow-wrap:anywhere;min-width:0}
+.account-bar button{min-height:44px;min-width:88px;padding:8px 12px;border:1px solid #bbb;border-radius:8px;background:#fff;color:#171717;font:inherit;font-weight:600;flex-shrink:0;cursor:pointer}
+.account-bar button:disabled{opacity:.6;cursor:wait}
+.account-bar>p{flex-basis:100%;margin:0;font-size:14px;color:#a11}
+@media(max-width:480px){.account-bar{padding:8px 12px}.account-bar-identity{gap:8px}}

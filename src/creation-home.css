@@ -1,0 +1,83 @@
+.app-page.creation-home {
+  padding: 2rem clamp(1.125rem, 5cqi, 1.5rem) 2.5rem;
+  font-family: 'Noto Sans KR Variable', sans-serif;
+}
+.creation-home h1 {
+  margin: 0 0 1.4rem;
+  font-size: clamp(1.4rem, 6cqi, 1.625rem);
+  font-weight: 650;
+  line-height: 1.4;
+  letter-spacing: -.035em;
+  word-break: keep-all;
+}
+.creation-choices {
+  display: grid;
+  gap: .875rem;
+}
+.creation-choices a {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  min-height: clamp(9.25rem, 42cqi, 11.25rem);
+  overflow: hidden;
+  border: 1px solid #dcdfdf;
+  border-radius: 1rem;
+  background: #f4f6f6;
+  color: #1d2527;
+  text-align: start;
+  text-decoration: none;
+}
+.creation-choices a[href="#video"] {
+  background: #f8f5f1;
+  color: #30261f;
+  border-color: #e4ded7;
+}
+.creation-choice-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 1.125rem clamp(.875rem, 4.5cqi, 1.25rem);
+}
+.creation-choice-icon {
+  flex: none;
+  margin-bottom: auto;
+  color: #52666a;
+  stroke-width: 1.65;
+}
+.creation-choices a[href="#video"] .creation-choice-icon {
+  color: #895334;
+}
+.creation-choice-copy strong {
+  margin: .875rem 0 .25rem;
+  font-size: clamp(1.05rem, 4.6cqi, 1.25rem);
+  line-height: 1.45;
+  font-weight: 650;
+  letter-spacing: -.035em;
+  word-break: keep-all;
+}
+.creation-choice-copy span {
+  color: #515755;
+  font-size: .875rem;
+  line-height: 1.55;
+  word-break: keep-all;
+}
+.creation-choice-cover {
+  position: relative;
+  overflow: hidden;
+}
+.creation-choice-cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 6%;
+}
+.creation-choices a:hover,
+.creation-choices a:focus-visible {
+  border-color: #aa765a;
+}
+.creation-choices a:focus-visible {
+  outline: 2px solid var(--brand-orange);
+  outline-offset: 3px;
+}

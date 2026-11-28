@@ -7,13 +7,23 @@ import './i18n.css';
 export type UiLanguage='ko'|'en';
 export const uiLanguageStorageKey='aiadcast.ui-language';
 export function initialUiLanguage():UiLanguage {
+ const requested = new URLSearchParams(window.location.search).get('lang');
+ if (requested === 'ko' || requested === 'en') return requested;
  try {const saved=localStorage.getItem(uiLanguageStorageKey);if(saved==='ko'||saved==='en')return saved;} catch {/* Browsers may block storage. */}
- return typeof navigator!=='undefined'&&navigator.language.toLowerCase().startsWith('ko')?'ko':'en';
+ return 'en';
 }
 type UiContext={language:UiLanguage;setLanguage:(language:UiLanguage)=>void;t:(ko:string,en:string)=>string;text:(ko:string)=>string};
 const UiLanguageContext=createContext<UiContext|null>(null);
 export function UiLanguageProvider({children}:{children:ReactNode}){
  const [language,setLanguage]=useState<UiLanguage>(initialUiLanguage);
+ useEffect(() => {
+  const url = new URL(window.location.href);
+  const requested = url.searchParams.get('lang');
+  if (requested === 'ko' || requested === 'en') {
+   url.searchParams.delete('lang');
+   window.history.replaceState(window.history.state, '', url.href);
+  }
+ }, []);
  useEffect(()=>{document.documentElement.lang=language;try{localStorage.setItem(uiLanguageStorageKey,language);}catch{/* Keep the choice in memory when storage is unavailable. */}},[language]);
  const value=useMemo<UiContext>(()=>({language,setLanguage,t:(ko,en)=>language==='ko'?ko:en,text:ko=>language==='ko'?ko:(uiEnglish[ko]??(uiEnglish[ko.trim()]!==undefined?ko.replace(ko.trim(),uiEnglish[ko.trim()]):ko))}),[language]);
  return <UiLanguageContext.Provider value={value}>{children}</UiLanguageContext.Provider>;

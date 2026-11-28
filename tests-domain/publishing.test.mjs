@@ -14,8 +14,8 @@ test('search phrases use explicit places and names, not arbitrary price/phone at
  assert.ok(publicationText(suggestedDraft(p,'instagram')).includes('#가을라떼'));assert.ok(!publicationText(suggestedDraft(p,'blog')).includes('#가을라떼'));
 });
 test('recommendations fit B2B, fashion and inquiry goals and every industry gets a usable plan',()=>{
- assert.deepEqual(recommendedChannels(withCategory(sample(),'boxes')),['website','blog']);assert.deepEqual(recommendedChannels(withCategory(sample(),'fashion')),['instagram','lookbook']);
- const p=sample();p.campaign.goal='inquiry';assert.deepEqual(recommendedChannels(p),['blog','website']);
+ assert.deepEqual(recommendedChannels(withCategory(sample(),'boxes')),['website','blog','instagram','youtube','brochure','lookbook']);assert.deepEqual(recommendedChannels(withCategory(sample(),'fashion')),['instagram','lookbook','youtube','website','blog','brochure']);
+ const p=sample();p.campaign.goal='inquiry';assert.deepEqual(recommendedChannels(p),['blog','website','instagram','youtube','brochure']);
  for(const [id] of productCategories)for(const locale of ['ko','en']){const p=withCategory(newProject(),id);p.locale=locale;for(const channel of publishingChannels){assert.ok(channelInfo(channel,locale).steps.length);assert.ok(suggestedDraft(p,channel).body.length<=6000);}}
 });
 test('manual drafts survive information changes and remain stale until explicitly reviewed, while view changes do not invalidate them',()=>{
@@ -33,4 +33,7 @@ test('legacy imports remain compatible and draft parser rejects invalid channels
  assert.equal(parsePublishing(undefined),undefined);const draft=suggestedDraft(sample(),'blog');assert.deepEqual(parsePublishing({version:1,drafts:[draft]}),{version:1,drafts:[draft]});
  for(const d of [{...draft,channel:'__proto__'},{...draft,locale:'fr'},{...draft,body:'x'.repeat(6001)},{...draft,basis:null},{...draft,keywords:34}])assert.throws(()=>parsePublishing({version:1,drafts:[d]}));
  assert.throws(()=>parsePublishing({version:1,drafts:[draft,draft]}));
+ const all=publishingChannels.flatMap(channel=>['ko','en'].map(locale=>({...suggestedDraft(sample(),channel),locale})));
+ assert.equal(parsePublishing({version:1,drafts:all}).drafts.length,publishingChannels.length*2);
 });
+

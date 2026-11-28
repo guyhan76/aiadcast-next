@@ -2,7 +2,7 @@ package com.selluplabs.aiadcast.next;
 
 import java.nio.charset.StandardCharsets;
 
-/** Pure validation logic. Only user-created PNG images and project JSON leave the app. */
+/** Pure validation logic. Checks supported names, media formats, and content before exporting. */
 public final class ExportPolicy {
     public static final int MAX_BYTES = 32 * 1024 * 1024;
     private ExportPolicy() {}
@@ -20,6 +20,32 @@ public final class ExportPolicy {
         if (cleaned.length() > 100) cleaned = cleaned.substring(0, 100);
         if (!cleaned.toLowerCase(java.util.Locale.ROOT).endsWith(extension)) cleaned += extension;
         return cleaned;
+    }
+
+    public static String batchMime(String name) {
+        if (name == null || !name.matches("aiadcast-[0-9a-f]{8}-[0-9]{2}\\.(png|jpg|webp|mp4|webm)")) return null;
+        if (name.endsWith(".mp4")) return "video/mp4";
+        if (name.endsWith(".webm")) return "video/webm";
+        if (name.endsWith(".png")) return "image/png";
+        return name.endsWith(".jpg") ? "image/jpeg" : "image/webp";
+    }
+
+    public static boolean validBatchMedia(String name, byte[] bytes) {
+        String mime = batchMime(name);
+        if (mime == null || bytes == null || bytes.length > MAX_BYTES) return false;
+        if (mime.equals("video/mp4")) return bytes.length >= 16 && bytes[4] == 'f' && bytes[5] == 't' && bytes[6] == 'y' && bytes[7] == 'p';
+        if (mime.equals("video/webm")) return bytes.length >= 8 && (bytes[0]&255)==0x1a && (bytes[1]&255)==0x45 && (bytes[2]&255)==0xdf && (bytes[3]&255)==0xa3;
+        return validBatchImage(name, bytes);
+    }
+
+    public static boolean validBatchImage(String name, byte[] bytes) {
+        String mime = batchMime(name);
+        if (mime == null || !mime.startsWith("image/") || bytes == null || bytes.length > MAX_BYTES) return false;
+        if ("image/png".equals(mime)) return validContent(bytes, mime);
+        if ("image/jpeg".equals(mime)) return bytes.length >= 3 &&
+            (bytes[0] & 255) == 255 && (bytes[1] & 255) == 216 && (bytes[2] & 255) == 255;
+        return bytes.length >= 12 && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F' &&
+            bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P';
     }
 
     public static boolean validContent(byte[] bytes, String mime) {

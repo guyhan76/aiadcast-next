@@ -1,14 +1,15 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {pricingCurrency,formatPrice,pricingCatalog,pricingProposal} from '../src/pricing.ts';
+import {pricingCurrency,formatPrice,pricingCatalog,pricingProposal,checkoutOffers,billingAnniversary} from '../src/pricing.ts';
 import {estimateUnitCost,estimatePackContribution,estimateMixedBreakEven} from '../server/pricing-economics.mjs';
 const assumptions=JSON.parse(readFileSync(new URL('../config/pricing-assumptions.json',import.meta.url),'utf8'));
-const base={pack:pricingCatalog.packs[1],currency:'KRW',unitCostKrw:350,krwPerUsd:1400,vatRate:.1,storeFeeRate:.15,refundReserveRate:.02};
-test('approved catalog uses exact owner prices in won/cents while checkout remains disabled',()=>{
- assert.deepEqual(pricingCatalog.packs.map(p=>[p.credits,p.prices.KRW,p.prices.USD]),[[3,6900,499],[10,19900,1499],[30,49900,3999]]);
- assert.equal(pricingCatalog.status,'approved');assert.equal(pricingCatalog.purchasesEnabled,false);
- assert.equal(pricingCatalog.standardCredits,1);assert.equal('premiumCredits' in pricingCatalog,false);
+const legacyPacks=[{id:'trial',credits:3,prices:{KRW:6900,USD:499}},{id:'basic',credits:10,prices:{KRW:19900,USD:1499}},{id:'bundle',credits:30,prices:{KRW:49900,USD:3999}}];
+const base={pack:legacyPacks[1],currency:'KRW',unitCostKrw:350,krwPerUsd:1400,vatRate:.1,storeFeeRate:.15,refundReserveRate:.02};
+test('Korean launch catalog has four shared top-ups and zero welcome credits',()=>{
+ assert.deepEqual(pricingCatalog.packs.map(p=>[p.credits,p.prices.KRW,p.prices.USD]),[[50,18000,null],[100,33900,null],[250,79900,null],[500,149900,null]]);
+ assert.equal(pricingCatalog.status,'beta');assert.equal(pricingCatalog.purchasesEnabled,false);
+ assert.equal(pricingCatalog.welcomeCredits,0);assert.equal(pricingCatalog.standardCredits,5);assert.equal('premiumCredits' in pricingCatalog,false);
  assert.equal(pricingProposal,pricingCatalog);
  assert.equal(formatPrice(6900,'KRW','ko'),'₩6,900');assert.equal(formatPrice(499,'USD','en'),'$4.99');
  assert.throws(()=>formatPrice(-1,'USD','en'),/Invalid/);
@@ -37,7 +38,7 @@ test('tax, store fees, refund reserve and all purchased ads are reflected once',
  for(const change of [{currency:'EUR'},{refundReserveRate:1.1},{unitCostKrw:-1},{pack:{credits:1.5,prices:{KRW:6900}}}])assert.throws(()=>estimatePackContribution({...base,...change}));
 });
 test('cash break-even covers 22 million cash outflow including unsplit debt repayments',()=>{
- const args={...base,packs:pricingCatalog.packs,mix:assumptions.normalPackMix,monthlyCashOutflowKrw:assumptions.monthlyCashOutflowKrw};
+ const args={...base,packs:legacyPacks,mix:assumptions.normalPackMix,monthlyCashOutflowKrw:assumptions.monthlyCashOutflowKrw};
  const result=estimateMixedBreakEven(args);
  assert.equal(Object.values(assumptions.monthlyCashOutflowBreakdownKrw).reduce((a,b)=>a+b,0),22000000);
  assert.equal(assumptions.loanPrincipalInterestSplitKnown,false);
@@ -48,4 +49,16 @@ test('cash break-even covers 22 million cash outflow including unsplit debt repa
  assert.equal(estimateMixedBreakEven({...args,unitCostKrw:2000}).breakEvenPurchases,null);
  assert.throws(()=>estimateMixedBreakEven({...args,mix:{basic:.7}}),/sum/);
  assert.throws(()=>estimateMixedBreakEven({...args,mix:{unknown:1}}),/Unknown/);
+});
+
+test('new packs count five credits per image without inventing a USD launch price',()=>{const p=pricingCatalog.packs[1];const value=estimatePackContribution({...base,pack:p});assert.equal(value.ads,20);assert.equal(value.variableCost,7000);assert.equal(value.price,33900);assert.equal(formatPrice(p.prices.USD,'USD','en'),'Not priced');assert.throws(()=>estimatePackContribution({...base,pack:p,currency:'USD'}),/Invalid price/);});
+
+test('annual totals and monthly allowances are independent of billing frequency',()=>{
+ const annual=checkoutOffers.filter(o=>o.period==='annual');
+ assert.deepEqual(annual.map(o=>[o.credits,o.prices.KRW]),[[100,310800],[250,742800],[500,1402800]]);
+ assert.deepEqual(checkoutOffers.filter(o=>o.period==='monthly').map(o=>o.prices.KRW),[33900,79900,149900]);
+ assert.equal(new Set(checkoutOffers.map(o=>o.id)).size,10);
+ const jan=Date.parse('2027-01-31T02:00:00+09:00');
+ assert.equal(billingAnniversary(jan,1),Date.parse('2027-02-28T02:00:00+09:00'));
+ assert.equal(billingAnniversary(jan,2),Date.parse('2027-03-31T02:00:00+09:00'));
 });

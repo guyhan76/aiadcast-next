@@ -1,26 +1,71 @@
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {ApiFailure} from './generation-service.mjs';
+import {checkoutOffers,billingAnniversary} from '../src/pricing.ts';
 // Server-owned quote. Never accept a client price, currency, user ID or credit amount.
-const packs={trial:{credits:3,amount:6900},basic:{credits:10,amount:19900},bundle:{credits:30,amount:49900}};
+const packs=Object.fromEntries(checkoutOffers.map(pack=>[pack.id,{credits:pack.credits,amount:pack.prices.KRW}]));
+const retiredPacks=new Set(['credits-v2-30','credits-v2-100','credits-v2-180','trial','basic','bundle']);
+const orderUnit=row=>(row.pack.startsWith('credits-v')||row.pack.startsWith('plan-'))?'credit-v2':'legacy-ticket';
 const digest=s=>createHash('sha256').update(s).digest('hex');
 const fail=(code,status=400)=>{throw new ApiFailure(code,status);};
+const checkoutWindow=30*60_000;
+const providerStates=new Set(['READY','IN_PROGRESS','WAITING_FOR_DEPOSIT','CANCELED','EXPIRED','ABORTED','PARTIAL_CANCELED']);
+const closedStates=new Set(['CANCELED','EXPIRED','ABORTED']);
 export class TestCheckout {
- constructor(store,{provider,clientKey,publicOrigin,creditPurchase,now=()=>Date.now()}={}){
-  Object.assign(this,{store,db:store.db,provider,clientKey,origin:publicOrigin,creditPurchase,now});this.pending=new Map();
+ constructor(store,{provider,clientKey,publicOrigin,creditPurchase,readPurchase,now=()=>Date.now()}={}){
+  Object.assign(this,{store,db:store.db,provider,clientKey,origin:publicOrigin,creditPurchase,readPurchase,now});this.pending=new Map();
   this.db.exec(`CREATE TABLE IF NOT EXISTS test_orders(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),request_id TEXT NOT NULL,pack TEXT NOT NULL,credits INTEGER NOT NULL,amount INTEGER NOT NULL,created INTEGER NOT NULL,ticket_hash TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending',payment_key TEXT UNIQUE,UNIQUE(user_id,request_id));`);
+  const columns=this.db.prepare('PRAGMA table_info(test_orders)').all().map(column=>column.name);
+  if(!columns.includes('annual_choice'))this.db.exec('ALTER TABLE test_orders ADD COLUMN annual_choice TEXT');
+  if(!columns.includes('annual_amount'))this.db.exec('ALTER TABLE test_orders ADD COLUMN annual_amount INTEGER');
+  if(!columns.includes('provider_status'))this.db.exec('ALTER TABLE test_orders ADD COLUMN provider_status TEXT');
+  if(!columns.includes('checked_at'))this.db.exec('ALTER TABLE test_orders ADD COLUMN checked_at INTEGER NOT NULL DEFAULT 0');
  }
  available(){return Boolean(this.provider&&this.clientKey);}
- view(order){return {id:order.id,pack:order.pack,credits:order.credits,amount:order.amount,currency:'KRW',state:order.state,created:order.created,test:true};}
- create(user,{pack,requestId,agreed}={}){
+ view(order){return {id:order.id,pack:order.pack,unit:orderUnit(order),policy:orderUnit(order)==='credit-v2'?'delivered-2026-10-18':'legacy-accept-v1',credits:order.credits,amount:order.amount,currency:'KRW',state:order.state,providerStatus:order.provider_status??undefined,created:order.created,test:true};}
+ annualSwitch(user){
+  const row=this.db.prepare("SELECT id,pack,created,annual_choice,annual_amount FROM test_orders WHERE user_id=? AND pack LIKE 'plan-%' AND state IN ('paid','verified') ORDER BY created DESC,id DESC LIMIT 1").get(user.id);
+  if(!row?.pack.endsWith('-monthly'))return null;
+  const effectiveAt=billingAnniversary(row.created,1);
+  const due=this.now()>=effectiveAt;
+  if(due&&!row.annual_choice)return null;
+  return {sourceId:row.id,effectiveAt,due,pack:row.annual_choice??null,amount:row.annual_amount??null};
+ }
+ changeAnnualSwitch(user,{sourceId,pack,amount,agreed}={}){
   if(!this.available())fail('CHECKOUT_UNAVAILABLE',503);
-  if(!Object.hasOwn(packs,pack??'')||typeof requestId!=='string'||!/^[A-Za-z0-9_-]{8,100}$/.test(requestId)||agreed!==true)fail('INVALID_ORDER');
+  return this.store.transaction(()=>{
+   const current=this.annualSwitch(user);
+   if(!current||sourceId!==current.sourceId)fail('SWITCH_UNAVAILABLE',409);
+   if(pack===null&&current.due&&this.db.prepare("SELECT id FROM test_orders WHERE user_id=? AND pack=? AND state='pending' AND created>? LIMIT 1").get(user.id,current.pack,this.now()-checkoutWindow))fail('SWITCH_CHECKOUT_PENDING',409);
+   if(pack!==null){
+    if(typeof pack!=='string'||!pack.endsWith('-annual')||!Object.hasOwn(packs,pack)||agreed!==true)fail('INVALID_ORDER');
+    if(current.pack===pack&&current.amount===amount)return current;
+    if(current.due||amount!==packs[pack].amount)fail('SWITCH_UNAVAILABLE',409);
+   }
+   this.db.prepare('UPDATE test_orders SET annual_choice=?,annual_amount=? WHERE id=? AND user_id=?').run(pack,pack===null?null:packs[pack].amount,sourceId,user.id);
+   return this.annualSwitch(user);
+  });
+ }
+ create(user,{pack,requestId,agreed,switchSource}={}){
+  if(!this.available())fail('CHECKOUT_UNAVAILABLE',503);
+  if((!Object.hasOwn(packs,pack??'')&&!retiredPacks.has(pack))||typeof requestId!=='string'||!/^[A-Za-z0-9_-]{8,100}$/.test(requestId)||agreed!==true)fail('INVALID_ORDER');
   const ticket=randomBytes(32).toString('base64url');
   const order=this.store.transaction(()=>{
    let row=this.db.prepare('SELECT * FROM test_orders WHERE user_id=? AND request_id=?').get(user.id,requestId);
    if(row&&row.pack!==pack)fail('ORDER_CONFLICT',409);
    if(row&&row.state!=='pending')return row;
-   if(!row){if(this.db.prepare('SELECT COUNT(*) n FROM test_orders WHERE user_id=? AND created>?').get(user.id,this.now()-3600_000).n>=10)fail('ORDER_RATE_LIMIT',429);
-    const id='ad_'+randomUUID();this.db.prepare('INSERT INTO test_orders(id,user_id,request_id,pack,credits,amount,created,ticket_hash) VALUES(?,?,?,?,?,?,?,?)').run(id,user.id,requestId,pack,packs[pack].credits,packs[pack].amount,this.now(),digest(ticket));row=this.db.prepare('SELECT * FROM test_orders WHERE id=?').get(id);
+   if(!row){
+    let amount=packs[pack]?.amount;
+    if(switchSource!==undefined){
+     const reservation=this.annualSwitch(user);
+     if(!reservation?.due||reservation.sourceId!==switchSource||reservation.pack!==pack)fail('SWITCH_UNAVAILABLE',409);
+     amount=reservation.amount;
+    }
+    if(pack.startsWith('plan-')){
+     const previous=this.db.prepare("SELECT pack,state,created FROM test_orders WHERE user_id=? AND pack LIKE 'plan-%' AND state IN ('pending','verified','paid') ORDER BY created DESC").all(user.id);
+     if(previous.some(o=>o.state==='pending'?o.created+checkoutWindow>this.now():billingAnniversary(o.created,o.pack.endsWith('-annual')?12:1)>this.now()))fail('SUBSCRIPTION_ALREADY_ACTIVE',409);
+    }
+    if(retiredPacks.has(pack))fail('SKU_RETIRED',409);if(this.db.prepare('SELECT COUNT(*) n FROM test_orders WHERE user_id=? AND created>?').get(user.id,this.now()-3600_000).n>=10)fail('ORDER_RATE_LIMIT',429);
+    const id='ad_'+randomUUID();this.db.prepare('INSERT INTO test_orders(id,user_id,request_id,pack,credits,amount,created,ticket_hash) VALUES(?,?,?,?,?,?,?,?)').run(id,user.id,requestId,pack,packs[pack].credits,amount,this.now(),digest(ticket));row=this.db.prepare('SELECT * FROM test_orders WHERE id=?').get(id);
    }else this.db.prepare('UPDATE test_orders SET ticket_hash=? WHERE id=?').run(digest(ticket),row.id);
    return row;
   });
@@ -37,42 +82,96 @@ export class TestCheckout {
   if(!this.available())fail('CHECKOUT_UNAVAILABLE',503);
   const row=this.byTicket(orderId,ticket);
   if(row.state!=='pending'||this.now()-row.created>30*60_000)fail('ORDER_EXPIRED',409);
-  return {...this.view(row),clientKey:this.clientKey,customerKey:row.user_id,orderName:`aiadcast ${row.credits}개 광고 테스트 이용권`,successUrl:this.origin+'/?checkout=return',failUrl:this.origin+'/?checkout=return'};
+  return {...this.view(row),clientKey:this.clientKey,customerKey:row.user_id,orderName:row.pack.startsWith('plan-')?`aiadcast ${checkoutOffers.find(x=>x.id===row.pack)?.ko} ${row.pack.endsWith('-annual')?'연간':'월간'} 구독 · 테스트`:`aiadcast ${row.credits}${orderUnit(row)==='credit-v2'?' 크레딧':'개 광고 이용권'} · 테스트`,successUrl:this.origin+'/?checkout=return',failUrl:this.origin+'/?checkout=return'};
+ }
+ async paidView(row){
+  if(row.state!=='paid'||!this.readPurchase)return this.view(row);
+  const receipt=await this.readPurchase(row.user_id,{purchaseId:'toss-test:'+row.id,credits:row.credits,unit:orderUnit(row)});
+  if(receipt.grantedCredits!==row.credits||!Number.isSafeInteger(receipt.balance)||receipt.balance<0)fail('PURCHASE_NOT_VERIFIED',409);
+  return {...this.view(row),receipt:{...receipt,verified:true}};
+ }
+ async receipt({orderId,ticket}={}){
+  const row=this.byTicket(orderId,ticket);
+  if(this.now()-row.created>86400000)fail('ORDER_EXPIRED',409);
+  if(!this.readPurchase)fail('PURCHASE_NOT_VERIFIED',409);
+  const result=await this.status({id:row.user_id},row.id);
+  if(!result.receipt?.verified)fail('PURCHASE_NOT_VERIFIED',409);
+  return result;
  }
  async serialize(id,fn){const previous=this.pending.get(id)??Promise.resolve();const p=previous.catch(()=>{}).then(fn);this.pending.set(id,p);try{return await p;}finally{if(this.pending.get(id)===p)this.pending.delete(id);}}
  async settle(row,payment){
   if(payment.orderId!==row.id||payment.currency!=='KRW'||payment.totalAmount!==row.amount||payment.status!=='DONE'||typeof payment.paymentKey!=='string'||!payment.paymentKey||payment.paymentKey.length>240)fail('PAYMENT_MISMATCH',409);
   if(row.payment_key&&row.payment_key!==payment.paymentKey)fail('PAYMENT_MISMATCH',409);
-  this.db.prepare("UPDATE test_orders SET state='verified',payment_key=? WHERE id=?").run(payment.paymentKey,row.id);
+  this.db.prepare("UPDATE test_orders SET state='verified',payment_key=?,provider_status='DONE',checked_at=? WHERE id=?").run(payment.paymentKey,this.now(),row.id);
   // The ledger is in another SQLite file. Its purchase ID makes replay after a crash safe.
-  await this.creditPurchase(row.user_id,{purchaseId:'toss-test:'+row.id,credits:row.credits});
+  await this.creditPurchase(row.user_id,{purchaseId:'toss-test:'+row.id,credits:row.credits,unit:orderUnit(row),...(row.pack.startsWith('plan-')?{plan:row.pack,startedAt:row.created}:{})});
   this.db.prepare("UPDATE test_orders SET state='paid' WHERE id=?").run(row.id);
-  return this.view({...row,state:'paid'});
+  return this.paidView({...row,state:'paid',provider_status:'DONE'});
  }
  async confirm({orderId,ticket,paymentKey,amount}={}){
   if(!this.available())fail('CHECKOUT_UNAVAILABLE',503);
   const row=this.byTicket(orderId,ticket);
+  if(this.now()-row.created>86400000)fail('ORDER_EXPIRED',409);
   if(!Number.isSafeInteger(amount)||amount!==row.amount||typeof paymentKey!=='string'||!paymentKey||paymentKey.length>240)fail('INVALID_CONFIRMATION');
   return this.serialize(orderId,async()=>{
    const current=this.db.prepare('SELECT * FROM test_orders WHERE id=?').get(orderId);
-   if(current.state==='paid'){if(current.payment_key!==paymentKey)fail('PAYMENT_MISMATCH',409);return this.view(current);}
+   if(current.state==='paid'){if(current.payment_key!==paymentKey)fail('PAYMENT_MISMATCH',409);return this.paidView(current);}
    // Reconcile an earlier confirmation before retrying the same idempotent POST.
-   let payment;try{payment=await this.provider.lookup(orderId);}catch(e){if(e.code!=='PAYMENT_NOT_FOUND')throw e;}
+   let payment;
+   try{payment=await this.provider.lookup(orderId);}
+   catch(error){
+    if(error.code!=='PAYMENT_NOT_FOUND'&&(!['PAYMENT_UNCERTAIN','PAYMENT_LOOKUP_DENIED'].includes(error.code)||this.now()-current.created>checkoutWindow))throw error;
+   }
+   if(payment?.status!=='DONE'&&(closedStates.has(payment?.status)||current.state==='canceled'||this.now()-current.created>checkoutWindow))fail('ORDER_EXPIRED',409);
    if(payment?.status!=='DONE')payment=await this.provider.confirm({orderId,paymentKey,amount:row.amount});
    if(payment.paymentKey!==paymentKey)fail('PAYMENT_MISMATCH',409);
    return this.settle(current,payment);
   });
  }
- async status(user,id){
+ async status(user,id,{cached=false}={}){
   const row=this.db.prepare('SELECT * FROM test_orders WHERE id=? AND user_id=?').get(id,user.id);if(!row)fail('ORDER_NOT_FOUND',404);
-  if(row.state==='paid'||!this.available())return this.view(row);
+  if(row.state==='paid')return this.paidView(row);
+  if(!this.available())return this.view(row);
   return this.serialize(id,async()=>{
    const fresh=this.db.prepare('SELECT * FROM test_orders WHERE id=?').get(id);
-   if(fresh.state==='paid')return this.view(fresh);
-   let payment;try{payment=await this.provider.lookup(id);}catch(e){if(e.code==='PAYMENT_NOT_FOUND')return this.view(row);throw e;}
-   if(payment.status==='DONE')return this.settle(fresh,payment);
-   return this.view(fresh);
+   if(fresh.state==='paid')return this.paidView(fresh);
+   if(fresh.state==='canceled'||(cached&&fresh.checked_at>this.now()-15_000))return this.view(fresh);
+   let payment,observation;
+   try{payment=await this.provider.lookup(id);}
+   catch(error){
+    if(error.code==='PAYMENT_NOT_FOUND')observation='NOT_FOUND';
+    else if(error.code==='PAYMENT_LOOKUP_DENIED')observation='LOOKUP_DENIED';
+    else if(error.code==='PAYMENT_UNCERTAIN')observation='UNAVAILABLE';
+    else throw error;
+   }
+   if(payment?.status==='DONE')return this.settle(fresh,payment);
+   if(payment&&(payment.orderId!==id||payment.currency!=='KRW'||payment.totalAmount!==fresh.amount))fail('PAYMENT_MISMATCH',409);
+   if(!observation)observation=providerStates.has(payment?.status)?payment.status:'UNAVAILABLE';
+   if(observation==='NOT_FOUND'&&this.now()-fresh.created>checkoutWindow)observation='NO_APPROVAL';
+   const state=closedStates.has(observation)&&fresh.state==='pending'?'canceled':fresh.state;
+   this.db.prepare('UPDATE test_orders SET state=?,provider_status=?,checked_at=? WHERE id=?').run(state,observation,this.now(),id);
+   return this.view({...fresh,state,provider_status:observation});
   });
+ }
+ async refreshOutstanding(user){
+  if(!this.available())return;
+  const rows=this.db.prepare(`SELECT id FROM test_orders WHERE user_id=? AND state IN ('verified','pending') AND checked_at<=?
+   AND id IN (SELECT id FROM test_orders WHERE user_id=? ORDER BY created DESC LIMIT 30)
+   ORDER BY checked_at ASC,created DESC LIMIT 3`).all(user.id,this.now()-15_000,user.id);
+  const check=row=>this.status(user,row.id,{cached:true});
+  const results=await Promise.allSettled(rows.map(check));
+  if(results.some(result=>result.status==='rejected'))console.warn('Test checkout order could not be reconciled.');
+ }
+ async recoverOutstanding(){
+  if(!this.available())return;
+  const members=this.db.prepare(`SELECT o.user_id AS id FROM test_orders o JOIN users u ON u.id=o.user_id
+   WHERE u.disabled=0 AND o.state IN ('verified','pending') GROUP BY o.user_id ORDER BY MIN(o.checked_at),MAX(o.created) DESC LIMIT 4`).all();
+  for(const user of members){
+   let release;
+   try{release=await this.store.membership?.enter(user);await this.refreshOutstanding(user);}
+   catch(error){if(error.code!=='AUTH_REQUIRED'&&error.code!=='ACCOUNT_MAINTENANCE')throw error;}
+   finally{release?.();}
+  }
  }
  history(user){return this.db.prepare('SELECT * FROM test_orders WHERE user_id=? ORDER BY created DESC LIMIT 30').all(user.id).map(row=>this.view(row));}
 }

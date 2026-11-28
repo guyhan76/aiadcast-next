@@ -1,0 +1,71 @@
+import {test,expect} from '@playwright/test';
+
+test('member can reopen an existing video in projects without submitting a generation',async({page})=>{
+ const token='a'.repeat(43),user={id:'history-member',label:'Member'};
+ await page.addInitScript(session=>{
+  localStorage.setItem('aiadcast.ui-language','ko');
+  sessionStorage.setItem('aiadcast.beta-session',JSON.stringify(session));
+ },{token,user,expires:Date.now()+86400000});
+ let submits=0,downloads=0;
+ await page.route('**/api/**',async route=>{
+  const request=route.request(),path=new URL(request.url()).pathname;
+  if(path==='/api/videos'&&request.method()==='POST')submits++;
+  if(path==='/api/videos/history-example/file'){
+   expect(request.headers().authorization).toBe('Bearer '+token);
+   downloads++;
+   return route.fulfill({contentType:'video/mp4',body:Buffer.from([0,0,0,16,102,116,121,112,105,115,111,109,0,0,0,0])});
+  }
+  const body=path==='/api/videos'?{videos:[{id:'history-example',expires_at:Date.now()+60000}]}:
+   path==='/api/auth/session'?{user}:path==='/api/generations'?{jobs:[]}:{downloads:[],backups:[],projects:[],items:[]};
+  return route.fulfill({json:body});
+ });
+ await page.goto('/#projects');
+ const image=page.getByRole('button',{name:'이미지',exact:true});
+ const video=page.getByRole('button',{name:'영상',exact:true});
+ const switcher=page.locator('.project-media-switch');
+ const selected=async(button:typeof image)=>{
+  await expect(button).toHaveAttribute('aria-pressed','true');
+  await expect(button).toHaveCSS('background-color','rgb(0, 0, 0)');
+  await expect(button).toHaveCSS('color','rgb(255, 255, 255)');
+ };
+ const unselected=async(button:typeof image)=>{
+  await expect(button).toHaveAttribute('aria-pressed','false');
+  await expect(button).toHaveCSS('background-color','rgb(255, 255, 255)');
+ };
+ await selected(image);
+ await unselected(video);
+ const [left,right,row]=await Promise.all([image.boundingBox(),video.boundingBox(),switcher.boundingBox()]);
+ expect(left&&right&&row).toBeTruthy();
+ expect(Math.abs(left!.width-right!.width)).toBeLessThanOrEqual(1);
+ expect(left!.x).toBeCloseTo(row!.x,0);
+ expect(right!.x+right!.width).toBeCloseTo(row!.x+row!.width,0);
+ expect(left!.height).toBeGreaterThanOrEqual(48);
+ expect(right!.height).toBe(left!.height);
+ await video.click();
+ await selected(video);
+ await unselected(image);
+ await page.getByRole('button',{name:'영상 보기'}).click();
+ await expect(page.getByRole('button',{name:'원본 저장'})).toBeVisible();
+ await page.evaluate(()=>{
+  Object.assign(window,{AiadcastNative:{postMessage:(message:string)=>{
+   const request=JSON.parse(message);
+   if(request.type!=='batch-export')return;
+   const ok=request.op!=='file'||(/^aiadcast-[0-9a-f]{8}-01\.mp4$/.test(request.name)
+    &&request.base64==='AAAAEGZ0eXBpc29tAAAAAA==');
+   window.dispatchEvent(new CustomEvent('aiadcast-batch-export',{detail:{id:request.id,ok}}));
+  }}});
+ });
+ await page.getByRole('button',{name:'원본 저장'}).click();
+ await expect(page.getByText('저장을 요청했습니다.')).toBeVisible();
+ expect(downloads).toBe(1);
+ expect(submits).toBe(0);
+ await image.click();
+ await selected(image);
+ await unselected(video);
+ await expect(page.getByRole('button',{name:'사진·백업 불러와 정밀 편집'})).toBeVisible();
+ await video.click();
+ await page.getByRole('button',{name:'새 광고',exact:true}).click();
+ await expect(page).toHaveURL(/#video$/);
+ await expect(page.getByRole('textbox',{name:'상품명',exact:true})).toHaveValue('');
+ expect(submits).toBe(0);
+});

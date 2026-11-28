@@ -1,0 +1,45 @@
+.credit-offers{margin:16px 0;color:inherit}.offer-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:4px;border-radius:14px;background:#eef0f3;gap:3px}.offer-tabs button{cursor:pointer;min-width:0;border:0;background:transparent;color:#474b55;font:inherit;font-size:14px;font-weight:650;padding:10px 1px;border-radius:11px}.offer-tabs button[aria-pressed=true]{background:#fff;color:#221e39;box-shadow:0 1px 4px #25213428}.credit-offers .offer-grid{display:grid;gap:9px;padding:0;border:0;margin:14px 0}.offer-grid legend{position:absolute;clip-path:inset(50%);height:1px;width:1px;overflow:hidden}.credit-offers .offer-grid label{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;border:1px solid #d7d9e2;border-radius:14px;padding:13px 12px;cursor:pointer}.credit-offers .offer-grid label.selected{border-color:#7354bd;background:#f7f4ff;color:#252032}.offer-grid small{display:block;font-size:12px;line-height:1.6}.offer-amount{text-align:right}.offer-amount b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.credit-offers .checkout-packs label > .offer-choice {
+  position: relative;
+  flex: 0 0 21px;
+  width: 21px;
+  height: 21px;
+  align-self: center;
+}
+.credit-offers .offer-choice input[type="radio"] {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.offer-choice-mark {
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border: 1.5px solid #767676;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.offer-choice-mark svg { visibility: hidden; }
+.offer-choice input:checked + .offer-choice-mark {
+  border-color: #222;
+  background: #222;
+  color: #fff;
+}
+.offer-choice input:checked + .offer-choice-mark svg { visibility: visible; }
+.offer-choice input:focus-visible + .offer-choice-mark {
+  outline: 2px solid currentColor;
+  outline-color: #5355a4;
+  outline-offset: 3px;
+}
+@media (forced-colors: active) {
+  .offer-choice input:checked + .offer-choice-mark { color: HighlightText; background: Highlight; border-color: Highlight; forced-color-adjust: none; }
+}

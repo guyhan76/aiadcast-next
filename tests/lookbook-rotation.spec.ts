@@ -1,4 +1,7 @@
 import {test,expect} from '@playwright/test';
+import {protectedScreen,mockSession} from './helpers/authenticated-session';
+// This spec exercises protected screens; guest/login contracts stay in their dedicated specs.
+test.beforeEach(async({page})=>{await protectedScreen(page,mockSession('protected-lookbook-rotation'));});
 
 test('lookbook advances in order every five seconds and supports pause, manual selection and resume',async({page})=>{
  await page.emulateMedia({reducedMotion:'no-preference'});await page.clock.install();await page.goto('/');

@@ -26,7 +26,7 @@ test('photo-free service ads use copy and background without false identity clai
  for(const category of ['education','insurance','services']){
   const p=withCategory(newProject(),category);p.dimensions.width='';
   assert.deepEqual(exportErrors(p),[]);
-  const request=buildGenerationRequest(p);assert.equal(request.operation,'compose-ad');assert.equal(request.source,null);assert.equal(request.preserveProduct,false);assert.equal(request.claims.sameProduct,false);assert.deepEqual(request.copy,p.copy.ko);
+  const request=buildGenerationRequest(p);assert.equal(request.operation,'compose-ad');assert.equal(request.source,null);assert.equal(request.preserveProduct,false);assert.equal(request.claims.sameProduct,false);assert.deepEqual(request.copy,{...p.copy.ko,email:'',dimensionText:''});
   p.generation.mode='creative';assert.ok(generationIssues(p).some(s=>s.includes('광고의 내용')));
   p.generation.brief='성인 수강생을 위한 차분한 영어 수업 광고';
   const creative=buildGenerationRequest(p);assert.equal(creative.operation,'image-ad-creative');assert.equal(creative.subjectType,'service');assert.deepEqual(creative.specifications,[]);
@@ -49,3 +49,4 @@ test('spec-free photos gain space and service typography fits all seven output f
   }
  }
 });
+

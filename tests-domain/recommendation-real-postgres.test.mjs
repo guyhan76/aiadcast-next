@@ -1,0 +1,43 @@
+import test from 'node:test';import assert from 'node:assert/strict';import pg from 'pg';import {randomUUID} from 'node:crypto';
+import {migrateRecommendations} from '../server/recommendations/migrate.mjs';import {PostgresDatabase} from '../server/cloud/postgres.mjs';import {PostgresRecommendationService} from '../server/recommendations/postgres-service.mjs';import {mockRecommendationAdapter} from '../server/recommendations/mock-adapter.mjs';import {hash} from '../server/recommendations/contracts.mjs';
+const socket=process.env.AIADCAST_LOCAL_PG_SOCKET;
+test('real isolated PostgreSQL: transactional migration, multipool idempotency, restart and accounting preservation',{skip:!socket},async t=>{
+ assert.match(socket,/^\/tmp\/aiadcast-rec-pg-socket$/);const config={host:socket,user:'postgres',database:'postgres',max:4},pool=new pg.Pool(config),other=new pg.Pool(config),schema='aiadcast_user_'+randomUUID().replaceAll('-','');
+ t.after(async()=>{await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);await Promise.all([pool.end(),other.end()]);});
+ await pool.query(`CREATE SCHEMA "${schema}";CREATE TABLE "${schema}".generation_records(id TEXT);CREATE TABLE "${schema}".jobs(id TEXT);CREATE TABLE "${schema}".budgets(id TEXT,held BIGINT,spent BIGINT);INSERT INTO "${schema}".budgets VALUES('prior',1500000,4875600)`);
+ const before=(await pool.query(`SELECT * FROM "${schema}".budgets`)).rows;
+ await assert.rejects(migrateRecommendations({pool,schema,apply:true}),/APPROVAL/);
+ await Promise.all([pool,other].map(pool=>migrateRecommendations({pool,schema,apply:true,approveRlsRevoke:true})));
+ assert.deepEqual((await pool.query(`SELECT * FROM "${schema}".budgets`)).rows,before);
+ assert.equal((await migrateRecommendations({pool,schema,validateOnly:true})).validated,true);
+ const bytes=Buffer.from('synthetic'),mock=mockRecommendationAdapter(),record={ownerId:'owner',media:'image',persisted:true,imageBytes:bytes,artifactHash:hash(bytes),snapshot:{productName:'Fixture',facts:[],directions:'Bright',confirmedCopy:[],adLanguage:'en',purpose:'sales',format:'1:1'}},options={enabled:true,executionMode:'local-test',adapter:mock.adapter,resolveOwnedImage:async()=>record};
+ const s1=await new PostgresRecommendationService().initialize(new PostgresDatabase(pool,schema),options),s2=await new PostgresRecommendationService().initialize(new PostgresDatabase(other,schema),options);
+ const jobs=await Promise.all(Array.from({length:10},(_,i)=>(i%2?s1:s2).request({userId:'owner'},{generationId:'g',requestId:'r'+i,locale:'ko'})));
+ assert.equal(new Set(jobs.map(j=>j.id)).size,1);assert.equal(mock.calls,1);assert.deepEqual(await s1.shared.totals(),{held:0,spent:125});
+ const restart=await new PostgresRecommendationService().initialize(new PostgresDatabase(other,schema),options);assert.equal((await restart.read({userId:'owner'},jobs[0].id)).state,'completed');await assert.rejects(restart.read({userId:'other'},jobs[0].id),/NOT_FOUND/);
+ const attempt=(await pool.query(`SELECT id FROM "${schema}".recommendation_attempts WHERE job_id=$1`,[jobs[0].id])).rows[0].id;await Promise.all([s1.shared.settle(attempt,125),s2.shared.settle(attempt,125)]);
+ assert.deepEqual((await pool.query(`SELECT * FROM "${schema}".budgets`)).rows,before);
+});
+test('real PostgreSQL migration conflict rolls back RLS and leaves unrelated data untouched',{skip:!socket},async t=>{
+ const pool=new pg.Pool({host:socket,user:'postgres',database:'postgres'}),schema='aiadcast_user_'+randomUUID().replaceAll('-','');t.after(async()=>{await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);await pool.end();});
+ await pool.query(`CREATE SCHEMA "${schema}";CREATE TABLE "${schema}".generation_records(id TEXT);CREATE TABLE "${schema}".jobs(id TEXT);CREATE TABLE "${schema}".budgets(id TEXT);CREATE TABLE "${schema}".recommendation_jobs(unexpected TEXT)`);
+ await assert.rejects(migrateRecommendations({pool,schema,apply:true,approveRlsRevoke:true}),/CONFLICT/);
+ assert.equal((await pool.query('SELECT relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2',[schema,'recommendation_jobs'])).rows[0].relrowsecurity,false);
+ assert.equal((await pool.query('SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema=$1',[schema])).rows[0].n,4);
+});
+test('real PostgreSQL existing image ledger: concurrent cap, old-month holds, idempotent late settlement',{skip:!socket},async t=>{
+ const {ExistingImageBudget}=await import('../server/recommendations/existing-image-budget.mjs');const config={host:socket,user:'postgres',database:'postgres'},pool=new pg.Pool(config),other=new pg.Pool(config),schema='aiadcast_user_'+randomUUID().replaceAll('-','');t.after(async()=>{await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);await Promise.all([pool.end(),other.end()]);});
+ await pool.query(`CREATE SCHEMA "${schema}";CREATE TABLE "${schema}".generation_records(id TEXT);CREATE TABLE "${schema}".jobs(id TEXT);CREATE TABLE "${schema}".budgets(period TEXT PRIMARY KEY,limit_micros BIGINT NOT NULL,spent_micros BIGINT NOT NULL DEFAULT 0,held_micros BIGINT NOT NULL DEFAULT 0);INSERT INTO "${schema}".budgets VALUES('2026-10',3000,500,1500)`);await migrateRecommendations({pool,schema,apply:true,approveRlsRevoke:true});
+ let month='2026-10';const make=p=>new ExistingImageBudget({db:new PostgresDatabase(p,schema),owner:'owner',period:()=>month,limit:async()=>3000,recommendationCap:1000}),a=make(pool),b=make(other);
+ const results=await Promise.allSettled([a.reserve({id:'a',owner:'owner',category:'recommendation',amount:1000}),b.reserve({id:'b',owner:'owner',category:'recommendation',amount:1000})]);assert.equal(results.filter(r=>r.status==='fulfilled').length,1);const winner=results[0].status==='fulfilled'?'a':'b';assert.deepEqual(await a.totals(),{held:2500,spent:500});month='2026-11';await b.reserve({id:'next',owner:'owner',category:'recommendation',amount:1000});await Promise.all([a.settle(winner,125),b.settle(winner,125)]);assert.deepEqual(await a.totals(),{held:1000,spent:0});assert.deepEqual((await pool.query(`SELECT held_micros,spent_micros FROM "${schema}".budgets WHERE period='2026-10'`)).rows[0],{held_micros:1500,spent_micros:625});
+ const before=(await pool.query(`SELECT * FROM "${schema}".budgets ORDER BY period`)).rows;await migrateRecommendations({pool:other,schema,apply:true,approveRlsRevoke:true});assert.deepEqual((await pool.query(`SELECT * FROM "${schema}".budgets ORDER BY period`)).rows,before);
+});
+test('real PostgreSQL migration lock wait is bounded and leaves schema unchanged',{skip:!socket},async t=>{
+ const pool=new pg.Pool({host:socket,user:'postgres',database:'postgres',max:2}),schema='aiadcast_user_'+randomUUID().replaceAll('-',''),lock=await pool.connect();t.after(async()=>{await lock.query('ROLLBACK');lock.release();await pool.end();});await lock.query('BEGIN');await lock.query("SELECT pg_advisory_xact_lock(hashtext('aiadcast-next-budget-transactions-v1'))");const start=Date.now();await assert.rejects(migrateRecommendations({pool,schema,apply:true,approveRlsRevoke:true}),e=>e.code==='55P03');assert.ok(Date.now()-start<8000);assert.equal((await lock.query('SELECT COUNT(*) AS n FROM information_schema.schemata WHERE schema_name=$1',[schema])).rows[0].n,0);
+});
+test('real PostgreSQL migration revokes only recommendation grants; public access denied and budget grants preserved',{skip:!socket},async t=>{
+ const pool=new pg.Pool({host:socket,user:'postgres',database:'postgres'}),schema='aiadcast_user_'+randomUUID().replaceAll('-','');t.after(async()=>{await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);await pool.end();});
+ await pool.query(`CREATE SCHEMA "${schema}";CREATE TABLE "${schema}".generation_records(id TEXT);CREATE TABLE "${schema}".jobs(id TEXT);CREATE TABLE "${schema}".budgets(id TEXT);INSERT INTO "${schema}".budgets VALUES('preserved')`);await migrateRecommendations({pool,schema,apply:true,approveRlsRevoke:true});
+ await pool.query("DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon NOLOGIN; END IF; END $$");await pool.query(`GRANT USAGE ON SCHEMA "${schema}" TO anon;GRANT SELECT ON "${schema}".budgets TO anon;GRANT ALL ON "${schema}".recommendation_jobs TO anon;GRANT SELECT ON "${schema}".recommendation_jobs TO PUBLIC`);
+ await migrateRecommendations({pool,schema,apply:true,approveRlsRevoke:true});const c=await pool.connect();try{await c.query('SET ROLE anon');assert.equal((await c.query(`SELECT id FROM "${schema}".budgets`)).rows[0].id,'preserved');await assert.rejects(c.query(`SELECT * FROM "${schema}".recommendation_jobs`),e=>e.code==='42501');}finally{await c.query('RESET ROLE');c.release();}
+});

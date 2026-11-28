@@ -11,7 +11,7 @@ export function estimateUnitCost({plannedUnitCostKrw,krwPerUsd}){
 export function estimatePackContribution({pack,currency,unitCostKrw,krwPerUsd,vatRate,storeFeeRate,refundReserveRate=0}){
  if(currency!=='KRW'&&currency!=='USD')throw Error('Unsupported currency');
  const amount=number(pack.prices[currency],'price',1);
- const ads=number(pack.credits,'new ads',1);
+ const ads=number(pack.credits,'credits',1)/number(pack.creditsPerGeneration??1,'credits per generation',1);
  if(!Number.isInteger(amount)||!Number.isInteger(ads))throw Error('Prices and credits must use integer minor units');
  const price=amount/(currency==='USD'?100:1);
  const fx=number(krwPerUsd,'FX',Number.EPSILON);
