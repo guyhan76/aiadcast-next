@@ -16,7 +16,10 @@ export function VideoAdPage({draft,change,onNew}:{draft:VideoDraft;change:(draft
     const c=new AbortController();
     void apiRequest<{wallet?:{credits?:{available:number};unlimited?:boolean};assistant?:{available:boolean};videoTrial?:boolean;videoProvider?:string;omniPilot?:boolean;videoDurationPrices?:Partial<Record<VideoDuration,number>>}>('/api/status',undefined,c.signal)
       .then(status=>{if(!c.signal.aborted){setAssistant(status.assistant?.available===true);setPrices(status.videoDurationPrices??{});setOmniPilot(status.omniPilot===true);setAdmin(status.wallet?.unlimited===true);setBalance(status.wallet?.credits?.available??0);setTrial(status.videoTrial===true);setProvider(status.videoProvider);}}).catch(()=>{if(!c.signal.aborted)setTrial(false);});
-    return()=>c.abort();
+    const refreshBalance=()=>{void apiRequest<{wallet:{credits?:{available:number}}}>('/api/status',undefined,c.signal)
+      .then(status=>{if(!c.signal.aborted&&status.wallet.credits)setBalance(status.wallet.credits.available);}).catch(()=>{});};
+    window.addEventListener('aiadcast-opening-image-accepted',refreshBalance);
+    return()=>{c.abort();window.removeEventListener('aiadcast-opening-image-accepted',refreshBalance);};
   },[]);
   return <VideoDurationEditor onNew={onNew} draft={draft} change={change} draftPrompt={assistant?requestVideoPrompt:undefined} aiPrices={prices} admin={admin} omniPilot={omniPilot} availableCredits={balance} provider={provider} checkingAccess={trial===null} primaryUnavailable={!trial} generateAi={trial||omniPilot?async(draft,seconds,signal,onState,scenes,pilot)=>{
     const movie=await requestAiVideo(draft,seconds,signal,onState,scenes,admin?0:prices[seconds],pilot);

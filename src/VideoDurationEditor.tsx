@@ -1,3 +1,4 @@
+import {prepareOpeningStill} from './video-opening-still';
 import {openReviewVideo} from './video-shot-repair';
 import {VideoShotRepair} from './VideoShotRepair';
 import type {VideoRequestStage} from './video-ai-client';
@@ -73,8 +74,7 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,omniPilot
   const industryId=useId(), uploadHelpId=useId();
   const [advanced,setAdvanced]=useState(false);
   const style=styleForBrief(brief), service=brief.kind==='service';
-  const styles:VideoStyle[]=['product','service','presenter'];
-  if(style==='unboxing'||advanced)styles.push('unboxing');
+  const styles:VideoStyle[]=['product','service','presenter','unboxing'];
   const selectedIndustry=brief.category?findAdField(brief.category,brief.industryDetail):undefined;
   const mediaHint=service&&style==='presenter'?t('서비스를 소개하는 영상 또는 현장 사진 (선택)','Footage or photos of the service (optional)'):t(videoStyles[style].media[0],videoStyles[style].media[1]);
   const styleIcons={product:Box,unboxing:PackageOpen,presenter:UserRound,service:Store};
@@ -197,6 +197,7 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,omniPilot
       const script=draft.voiceText||idea.audio?.narration||videoPlan(brief,caption,'').voice;
       change({...draft,file:undefined,review:{
         shots:idea.shots,sceneCues:idea.sceneCues,frameLayout:idea.frameLayout,briefKey,sources,
+        openingStill:prepareOpeningStill(loaded,ratio,style==='unboxing'?undefined:idea.frameLayout),
         captions:sceneCaptions(brief,caption),showCaptions:review?.showCaptions??false,contact:brief.contact,
         music:review?.music??draft.aiMusic,musicMood:draft.musicStyle||idea.audio?.musicMood||(style==='unboxing'?t('경쾌한 리듬','Upbeat rhythm'):t('차분한 연주곡','Soft instrumental')),
         narration:script.slice(0,600),voice:review?.voice??(draft.aiVoice&&!!draft.voiceText.trim())

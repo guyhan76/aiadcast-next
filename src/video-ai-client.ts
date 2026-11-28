@@ -46,7 +46,13 @@ async function timedVideoRequest<T>(signal:AbortSignal,ms:number,work:(requestSi
 export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,signal:AbortSignal,onState:(s:VideoRequestStage)=>void,scenes:LoadedVideoScene[],expectedCredits?:number,pilot?:'gemini'){
   const session=betaSession();
   const references:string[]=[];let bytes=0;
-  for(const [index,source] of draft.sources.entries()){
+  const opening=draft.promptMode!=='manual'&&draft.review?.openingStill?.active?draft.review.openingStill:undefined;
+  const ordered=draft.sources.map((source,index)=>({source,index}));
+  if(opening&&ordered[opening.index]){
+    ordered.splice(opening.index,1);
+    ordered.unshift({source:{kind:'image',name:'opening.jpg',media:opening.data},index:opening.index});
+  }
+  for(const {source,index} of ordered){
     let media:Blob;
     if(source.kind==='video'){
       const visual=scenes[index]?.visual;
@@ -77,7 +83,7 @@ export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,sign
   const creativePayload=manual
     ? {...directions,promptPolicy:'owner-only',brief:{kind:draft.brief.kind,style:draft.brief.style,title:'',description:'',emphasis:''},seconds,
        music:true,voice:true,musicStyle:'',voiceStyle:'',narration:'',suggestedVoice:'',references}
-    : {...directions,...(review?.sceneCues?{alignedScenes:true,...(pilot==='gemini'?{sceneCues:review.sceneCues}:{})}:{}),...(review?.frameLayout && review.frameLayout.mode!=='original'?{frameLayout:review.frameLayout}:{}),brief:draft.brief,seconds,music:review!.music,voice:review!.voice,
+    : {...directions,...(review?.sceneCues?{alignedScenes:true,...(pilot==='gemini'?{sceneCues:review.sceneCues}:{})}:{}),...(opening?{reviewedOpening:true}:!review?.openingStill&&review?.frameLayout && review.frameLayout.mode!=='original'?{frameLayout:review.frameLayout}:{}),brief:draft.brief,seconds,music:review!.music,voice:review!.voice,
        musicStyle:review!.music?review!.musicMood:'',voiceStyle:review!.voice?draft.voiceStyle:'',
        narration:review!.voice?review!.narration:'',suggestedVoice:'',references};
   const ratio=draft.ratio??defaultVideoRatio;
@@ -126,8 +132,8 @@ export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,sign
 export async function requestVideoPrompt(brief:PromptBrief,scenes:LoadedVideoScene[],language:'ko'|'en',signal:AbortSignal,segmented=false):Promise<VideoPlanIdea>{
   const session=betaSession();
   const references=scenes.map(({visual})=>referenceJpeg(visual,512));
-  const input={kind:'video-prompt',...(segmented?{segmented:true}:{}),planVersion:brief.kind==='product'?(['product','presenter'].includes(brief.style)&&references.length?4:2):1,targetLocale:language,brief,references};
-  const planIdentity=['shot-direction-v9',input];
+  const input={kind:'video-prompt',...(segmented?{segmented:true}:{}),planVersion:references.length&&(brief.style==='presenter'||brief.style==='product')?4:brief.kind==='product'?2:1,targetLocale:language,brief,references};
+  const planIdentity=['shot-direction-v10',input];
   const id=await requestId(JSON.stringify(planIdentity),'aiadcast.video-prompt.');
   signal.throwIfAborted();
   const result=await apiRequest<{requestId:string;shots:unknown;sceneCues?:SceneCue[];audio?:unknown;frameLayout?:PhotoFrameLayout}>('/api/assistant',{...input,requestId:id},signal).catch(error=>{

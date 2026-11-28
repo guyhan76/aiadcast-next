@@ -47,7 +47,7 @@ async function editImage({file,asset,data=asset?.data,name}:EditInput):Promise<A
  return readEditFile(new File([bytes],name||'aiadcast.png',{type:match[1]}));
 }
 
-export function PrecisionEditAction({getInput,label,disabled}:{getInput?:(signal:AbortSignal)=>EditInput|undefined|Promise<EditInput|undefined>;label?:string;disabled?:boolean}){
+export function PrecisionEditAction({getInput,label,disabled,initialPrompt,onUseImage}:{initialPrompt?:string;onUseImage?:(asset:Asset)=>void;getInput?:(signal:AbortSignal)=>EditInput|undefined|Promise<EditInput|undefined>;label?:string;disabled?:boolean}){
  const {language,t}=useUiLanguage(),picker=useRef<HTMLInputElement>(null),request=useRef<AbortController|null>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState('');
  const [editor,setEditor]=useState<{source:EditSource;project:Project;quote:CreditQuote;image:Asset}>();
@@ -99,5 +99,5 @@ export function PrecisionEditAction({getInput,label,disabled}:{getInput?:(signal
  }
  return <><button className="precision-launch" type="button" disabled={disabled||busy} onClick={()=>getInput?void open(getInput):picker.current?.click()}><Pencil size={18} aria-hidden="true"/>{busy?t('이미지 여는 중…','Opening image…'):label||t('정밀 편집','Precision edit')}</button>
  {!getInput&&<input hidden ref={picker} accept="image/png,image/jpeg,image/webp,application/json,.json" type="file" aria-label={t('편집할 사진 또는 백업 파일','Photo or backup file to edit')} onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void open(()=>precisionFileInput(file));}}/>}
- {error&&<p role="alert">{error}</p>}{editor&&<SelectiveImageEditor source={editor.source} project={editor.project} quote={editor.quote} uploaded={editor.image} onClose={()=>setEditor(undefined)}/>}</>;
+ {error&&<p role="alert">{error}</p>}{editor&&<SelectiveImageEditor source={editor.source} project={editor.project} quote={editor.quote} uploaded={editor.image} initialPrompt={initialPrompt} onUseImage={onUseImage?asset=>{onUseImage(asset);setEditor(undefined);}:undefined} onClose={()=>setEditor(undefined)}/>}</>;
 }
