@@ -96,7 +96,7 @@ export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,sign
     if(!(error instanceof TypeError)&&!(error instanceof Error&&['VIDEO_RESPONSE_TIMEOUT','API_UNAVAILABLE'].includes(error.message)))throw error;
   }
   onState(acknowledged?'queue':'check');
-  const deadline=Date.now()+10*60_000;
+  const deadline=Date.now()+(pilot&&seconds>15?30:10)*60_000;
   for(;;){
     let status:{state:string;code?:string};
     try{

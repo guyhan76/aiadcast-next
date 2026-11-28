@@ -84,7 +84,7 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,omniPilot
   const shortfall=charge!==undefined&&availableCredits!==undefined&&charge>availableCredits;
   const shotBrief=promptBrief(draft,seconds);
   const briefKey=JSON.stringify(shotBrief);
-  const stale=!!draft.review&&(draft.review.briefKey!==briefKey||draft.review.sources!==sources);
+  const stale=!!draft.review&&(draft.review.briefKey!==briefKey||draft.review.sources.length!==sources.length||draft.review.sources.some((s,i)=>s.media!==sources[i].media||s.kind!==sources[i].kind));
   const promptMode=draft.promptMode??'auto';
   const manualPrompt=draft.manualPrompt??'';
   const useManual=promptMode==='manual';
@@ -99,6 +99,11 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,omniPilot
   const planReady=!!currentReview&&validVideoShots(currentReview.shots)&&(!currentReview.voice||!!currentReview.narration.trim());
   const promptReady=useManual?validManualPrompt(manualPrompt):planReady;
   const canGenerateAi=!!generateAi&&promptReady&&(ready||servicePromptOnly);
+  const omniReason=ratio!=='9:16'&&ratio!=='16:9'?t('세로 9:16 또는 가로 16:9를 선택해 주세요.','Choose portrait 9:16 or landscape 16:9.')
+    :sources.length>6?t('Gemini 참조 자료는 최대 6개입니다.','Choose up to six references.')
+    :!ready&&!servicePromptOnly?(bad?t('열 수 없는 자료를 교체해 주세요.','Replace the unreadable reference.'):!sources.length&&!service?t('상품 사진을 첨부해 주세요.','Add a product photo.'):needOpenBox?t('언박싱 사진을 두 장 이상 첨부해 주세요.','Add at least two unboxing photos.'):t('입력 정보와 첨부 자료를 확인해 주세요.','Check the brief and references.'))
+    :!promptReady?(useManual?t('직접 입력한 프롬프트를 확인해 주세요.','Check the manual prompt.'):stale?t('입력 정보가 바뀌었습니다. 구성안을 다시 만들어 주세요.','Rebuild the plan for the changed inputs.'):!review?t('장면 구성안을 만들어 주세요.','Create a scene plan.'):t('장면 연출과 선택한 내레이션을 완성해 주세요.','Complete the shots and selected narration.'))
+    :captions.some(line=>line.trim())&&!format?t('자막을 넣으려면 최신 Chrome에서 열어 주세요.','Open in a current Chrome browser to add captions.'):'';
   useEffect(()=>{
     const controller=new AbortController(),resources:LoadedVideoScene[]=[];
     setScenes(new Map());setBad('');
@@ -352,9 +357,11 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,omniPilot
     {result?<button type="button" className="vd-primary" disabled={!!run||repairBusy} onClick={()=>void saveVideo()}><Download size={18}/>{t('영상 저장','Save video')}</button>
       :<button type="button" className="vd-primary" disabled={primaryUnavailable||!!run||shortfall||charge===undefined||!canGenerateAi||(captions.some(line=>line.trim())&&!format)} onClick={()=>setConfirm(true)}>
         <Clapperboard size={18}/>{run==='ai'?(aiStage==='prepare'?t('사진과 프롬프트 준비 중…','Preparing media and prompt…'):aiStage==='submit'?t('제작 요청 보내는 중…','Sending video request…'):aiStage==='check'?t('요청 접수 확인 중…','Checking submission…'):aiStage==='queue'?t('AI 영상 생성 중…','Generating AI video…'):aiStage==='download'?t('영상 받는 중…','Downloading video…'):t('자막 입히는 중…','Adding captions…')):t('AI 영상 생성','Generate AI video')}</button>}
-    {admin&&omniPilot&&!result&&<button type="button" className="vd-library"
-      disabled={!!run||!canGenerateAi||!currentReview||seconds!==10||ratio!=='9:16'||clips>0||sources.length!==1||service||!['product','presenter'].includes(style)||(captions.some(line=>line.trim())&&!format)}
-      onClick={()=>setConfirm('gemini')}>{t('Gemini 비교 제작 · 세로 10초 · 사진 1장','Gemini pilot · vertical 10s · one photo')}</button>}
+    {admin&&omniPilot&&!result&&<>
+      <button type="button" className="vd-library" disabled={!!run||repairBusy||!canGenerateAi||!!omniReason}
+        onClick={()=>setConfirm('gemini')}>{t('Gemini 비교 제작','Compare with Gemini')} · {durationText}</button>
+      {omniReason&&<small role="status">{omniReason}</small>}
+    </>}
     {result&&onNew&&<button type="button" className="vd-library" disabled={!!run||repairBusy} onClick={onNew}>{t('새 광고','New ad')}</button>}
     {run==='ai'&&<button className="vd-cancel" type="button" onClick={()=>task.current?.abort()}>{t('대기 닫기','Stop waiting')}</button>}
     {saved&&<p role="status">{t('저장 요청을 완료했어요.','Video sent to your downloads.')}</p>}

@@ -351,7 +351,10 @@ export class GenerationService {
         const key = provider?.key();
         if (!key)
             fail('VIDEO_TRIAL_UNAVAILABLE', 403);
-        const result = await provider.poll(key, row.provider_id, download);
+        const replaceProviderId = async (previous, next) => await this.db.prepare('UPDATE higgsfield_video_jobs SET provider_id=? WHERE id=? AND provider_id=? RETURNING id').get(next, row.id, previous);
+        const result = await provider.poll(key, row.provider_id, download, replaceProviderId);
+        if (result.state === 'uncertain')
+            return { state: 'uncertain' };
         if (result.state === 'payment_required')
             fail('VIDEO_PROVIDER_BALANCE', 503);
         if (result.state === 'running')
@@ -360,17 +363,17 @@ export class GenerationService {
             if (result.state === 'ready') {
                 await this.ledger.settleAttempt(row.id, result.actualMicros ?? row.quoted_micros, 'completed');
                 if (job.creditExempt)
-                    await this.ledger.markReady(row.id, row.provider_id);
+                    await this.ledger.markReady(row.id, result.artifactId ?? row.provider_id);
             }
             else {
-                await this.ledger.settleAttempt(row.id, 0, 'failed');
+                await this.ledger.settleAttempt(row.id, result.actualMicros ?? 0, 'failed');
                 await this.ledger.release(row.id, LOCAL_USER, 'system_error');
             }
         });
         if (result.state === 'ready' && download) {
             const file = result.file ?? await seedanceMovie(result.url);
             if (!job.creditExempt)
-                await this.ledger.markReady(row.id, row.provider_id);
+                await this.ledger.markReady(row.id, result.artifactId ?? row.provider_id);
             return file;
         }
         return { state: result.state };

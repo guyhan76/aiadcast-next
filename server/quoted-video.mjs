@@ -99,7 +99,7 @@ const commercialWan = {
 };
 
 export function quotedVideoProvider(name, savedRevision){
-  if(name==='gemini' && (!savedRevision || savedRevision===geminiOmni.revision)) return {...geminiOmni,preparePlan:commercialWan.preparePlan};
+  if(name==='gemini' && (!savedRevision || savedRevision===geminiOmni.revision)) return {...geminiOmni,preparePlan:(plan,body)=>body.manualPrompt!==undefined?plan:commercialWan.preparePlan(plan,body)};
   if(name==='topview' && (!savedRevision || savedRevision===commercialWan.revision)) return commercialWan;
   if(name==='topview' && savedRevision===photoWan.revision) return photoWan;
   if(name==='topview' && savedRevision===formatWan.revision) return formatWan;
