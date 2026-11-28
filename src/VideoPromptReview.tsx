@@ -1,3 +1,5 @@
+import {PrecisionEditAction} from './PrecisionEditAction';
+import type {OpeningStill} from './video-opening-still';
 import {useId,useState} from 'react';
 import {useUiLanguage} from './ui-language';
 import {omniSceneTiming,type SceneCue} from './video-omni';
@@ -8,7 +10,7 @@ import type {VideoSource} from './video-duration';
 export type VideoReview={
   musicMood:string; narration:string;
   shots:VideoShots; captions:VideoShots; showCaptions:boolean; music:boolean; voice:boolean; contact:string;
-  briefKey:string; sources:VideoSource[]; sceneCues?:SceneCue[]; frameLayout?:PhotoFrameLayout;
+  briefKey:string; sources:VideoSource[]; sceneCues?:SceneCue[]; frameLayout?:PhotoFrameLayout; openingStill?:OpeningStill;
 };
 type Props={
   mode:VideoPromptMode;manualText:string;onMode:(mode:VideoPromptMode)=>void;onManual:(value:string)=>void;
@@ -35,7 +37,7 @@ export function VideoPromptReview({mode,manualText,onMode,onManual,seconds,ratio
     if(!review)return;
     const updated:VideoShots=[...review[field]];
     updated[index]=value;
-    onChange({[field]:updated,...(field==='shots'&&index===0?{frameLayout:undefined}:{})});
+    onChange({[field]:updated,...(field==='shots'&&index===0?{frameLayout:undefined,openingStill:review.openingStill?{...review.openingStill,active:false}:undefined}:{})});
   }
   async function copy(){
     if(!review)return;
@@ -75,6 +77,16 @@ export function VideoPromptReview({mode,manualText,onMode,onManual,seconds,ratio
           {review.shots.map((shot,i)=><div className="vd-review-scene" key={i}>
             {review.sceneCues&&turnLabel(i)&&<strong>{turnLabel(i)}</strong>}
             <h3>{labels[i]} <small>{times[i]}–{times[i+1]}{t('초','s')}</small></h3>
+            {i===0&&review.openingStill&&<div className="vd-opening-still">
+              <img src={review.openingStill.data} alt={t('첫 장면 이미지 시안','Opening still preview')}/>
+              <label className="vd-plan-toggle"><input type="checkbox" checked={review.openingStill.active}
+                onChange={e=>onChange({openingStill:{...review.openingStill!,active:e.target.checked}})}/>
+                {t('이 이미지로 시작','Use this opening image')}</label>
+              <PrecisionEditAction disabled={busy||stale} label={t('첫 장면 AI 편집','Edit opening image with AI')}
+                getInput={()=>({data:review.openingStill!.data,name:'opening.png'})}
+                initialPrompt={[t('광고 영상의 첫 순간을 사진 한 장으로 연출하세요. 화면에 실제로 보일 첫 행동을 포착하세요. 원본 상품의 형태와 색상, 토핑과 인쇄 로고를 보존하고 앱 버튼과 안내 글씨는 제거하세요.','Stage the first visible action as one photographic frame. Preserve the product geometry, colors, toppings and printed branding. Remove interface controls and overlay text.'),shot].join('\n')}
+                onUseImage={asset=>onChange({openingStill:{...review.openingStill!,data:asset.data,active:true}})}/>
+            </div>}
             <label>{t('장면 연출','Shot direction')}
               <textarea rows={2} aria-label={labels[i]+' '+t('연출','direction')} maxLength={shotLimit} value={shot} onChange={e=>editScene('shots',i,e.target.value)}/></label>
             {review.sceneCues&&<details className="vd-details"><summary>{t('대사·현장음·마지막 화면','Dialogue, sound and end frame')}</summary>

@@ -98,9 +98,29 @@ const commercialWan = {
   }
 };
 
+const reviewedOpeningWan = {
+  ...commercialWan, revision:'topview/'+topviewModel+'/reviewed-opening-v10',
+  preparePlan(plan,body) {
+    const reviewed=commercialWan.preparePlan(plan,body);
+    if(body?.reviewedOpening!==true || !body.shots || body.manualPrompt!==undefined || reviewed.content.length<2)return reviewed;
+    const [direction,...images]=reviewed.content;
+    const {frameLayout,...base}=reviewed;
+    return {...base,reviewedOpening:true,content:[{...direction,text:direction.text+
+      '\nThe first image is the reviewed opening composition. Start the approved action there. Later references guide the subsequent shots in order.'},...images]};
+  },
+  input(plan,urls) {
+    if(!plan.reviewedOpening||urls.length!==1)return commercialWan.input(plan,urls);
+    const payload=topviewInput(plan,[]);
+    payload.modelKey=topviewModel+'/image-to-video';
+    payload.input.input.media=[{type:'first_frame',url:urls[0]}];
+    return payload;
+  }
+};
+
 export function quotedVideoProvider(name, savedRevision){
   if(name==='gemini' && (!savedRevision || savedRevision===geminiOmni.revision)) return {...geminiOmni,preparePlan:(plan,body)=>body.sceneCues?geminiScriptPlan(plan,body):body.manualPrompt!==undefined?plan:commercialWan.preparePlan(plan,body)};
-  if(name==='topview' && (!savedRevision || savedRevision===commercialWan.revision)) return commercialWan;
+  if(name==='topview' && (!savedRevision || savedRevision===reviewedOpeningWan.revision)) return reviewedOpeningWan;
+  if(name==='topview' && savedRevision===commercialWan.revision) return commercialWan;
   if(name==='topview' && savedRevision===photoWan.revision) return photoWan;
   if(name==='topview' && savedRevision===formatWan.revision) return formatWan;
   if(name==='topview' && savedRevision===reviewedWan.revision) return reviewedWan;

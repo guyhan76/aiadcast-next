@@ -28,7 +28,7 @@ test('WAN requests preserve reference order, timing, ratio and audio; old jobs r
       input:{duration,ratio:'9:16',resolution:'720p',generate_audio:audio,
         content:[plan.content[0],{type:'image_url',role:'reference_image',image_url:{url:urls[0]}}]}
     });
-    assert.equal(quotedVideoProvider('topview').revision,'topview/alibaba/wan-3.0/photo-opening-v8');
+    assert.equal(quotedVideoProvider('topview').revision,'topview/alibaba/wan-3.0/reviewed-opening-v10');
   }
 });
 

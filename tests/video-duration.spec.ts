@@ -8,6 +8,9 @@ test('video examples follow the selected offer and leave the brief empty', async
   await page.addInitScript(() => localStorage.setItem('aiadcast.ui-language', 'ko'));
   await page.goto('/#video');
   const editor = page.getByRole('region', {name:'광고 영상 편집'});
+  await editor.getByRole('button',{name:'언박싱',exact:true}).click();
+  await expect(editor.getByRole('button',{name:'언박싱',exact:true})).toHaveAttribute('aria-pressed','true');
+  await editor.getByRole('button',{name:'상품 광고',exact:true}).click();
   await editor.getByText('상세 설정',{exact:true}).click();
   const description = editor.getByLabel('상세설명', {exact:true});
   const highlight = editor.getByLabel('강조할 점 (선택)', {exact:true});
@@ -259,7 +262,7 @@ test('a product photo and brief make a reviewable AI prompt before the video is 
  await protectedScreen(page,mockSession('photo-prompt','admin'));
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
  await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,assistant:{available:true},generation:{enabled:false},wallet:{unlimited:true,available:0,reserved:0},budget:{limitMicros:0}}}));
- let drafts=0,videoRequests=0;
+ let drafts=0,videoRequests=0,preview='';
  const frameLayout={mode:'crop',source:1,regions:[[{x:180,y:100},{x:760,y:740}]]};
  await page.route('**/api/assistant',async r=>{
    const body=r.request().postDataJSON();drafts++;
@@ -274,7 +277,8 @@ test('a product photo and brief make a reviewable AI prompt before the video is 
    const body=r.request().postDataJSON();
    if(videoRequests===0){
      expect(body.promptMode).toBe('auto');
-     expect(body.frameLayout).toEqual(frameLayout);
+     expect(body.reviewedOpening).toBe(true);
+     expect(body.references[0]).toBe(preview);
      expect(body.shots[1]).toBe('어깨 봉제선을 따라 천천히 이동한다.');
      expect(body).not.toHaveProperty('manualPrompt');
      expect(body).toMatchObject({music:true,musicStyle:'잔잔한 피아노',voice:false,narration:''});
@@ -296,6 +300,10 @@ test('a product photo and brief make a reviewable AI prompt before the video is 
  await page.getByRole('button',{name:'영상 프롬프트 만들기'}).click();
  const middle=page.getByLabel('중간 장면 연출',{exact:true});
  await expect(middle).toHaveValue('다운 퀼팅에 초점을 맞춘다.');
+ const still=page.getByRole('img',{name:'첫 장면 이미지 시안'});
+ await expect(still).toBeVisible();
+ preview=await still.getAttribute('src')??'';
+ expect(preview).toMatch(/^data:image\/jpeg;base64,/);
  await middle.fill('어깨 봉제선을 따라 천천히 이동한다.');
  await page.getByRole('checkbox',{name:'자막 넣기'}).check();
  await expect(page.getByLabel('첫 장면 자막',{exact:true})).toHaveValue('하이브리드 롱코트');

@@ -147,3 +147,7 @@
 .vd-advanced>summary {padding:10px 0;font-weight:650;}
 .vd-advanced[open]>fieldset,.vd-advanced[open]>.vd-brief-block {margin:12px 0;}
 .vd-upload-help summary {font-size:13px;}
+
+.vd-opening-still {display:grid;justify-items:start;gap:8px;margin:8px 0 12px;}
+.vd-opening-still img {max-width:100%;max-height:240px;border-radius:8px;object-fit:contain;}
+@media(max-width:360px){.vd-style>div{grid-auto-flow:row;grid-template-columns:repeat(2,minmax(0,1fr));}}

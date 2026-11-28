@@ -85,3 +85,20 @@ test('every automatic format with photos gets the catalog, including unboxing an
   }
   assert.ok(!videoResponseSchema({planVersion:1,references:[]}).schema.required.includes('sceneRecipes'));
 });
+
+test('a reviewed restaurant UGC still is the WAN first frame and a second photo stays a later reference',()=>{
+  const provider=quotedVideoProvider('topview');
+  const plan={duration:20,ratio:'9:16',resolution:'720p',generate_audio:true,content:[
+    {type:'text',text:'A friend reaches for the last slice.'},{type:'image_url',image_url:{url:'still'}}]};
+  const body={reviewedOpening:true,shots:['Reach','Share','Order'],brief:{kind:'service',style:'presenter',title:'Pizza',description:'Restaurant',emphasis:''}};
+  const one=provider.preparePlan(plan,body);
+  const wire=provider.input(one,['still']);
+  assert.match(wire.modelKey,/image-to-video$/);
+  assert.deepEqual(wire.input.input.media,[{type:'first_frame',url:'still'}]);
+  const two=provider.preparePlan({...plan,content:[...plan.content,{type:'image_url',image_url:{url:'detail'}}]},body);
+  const multi=provider.input(two,['still','detail']);
+  assert.deepEqual(multi.input.input.media.map(x=>x.url),['still','detail']);
+  assert.match(multi.input.input.prompt,/first image is the reviewed opening/);
+  const old=quotedVideoProvider('topview','topview/alibaba/wan-3.0/commercial-v9');
+  assert.equal(old.preparePlan(plan,body).reviewedOpening,undefined);
+});
