@@ -67,6 +67,7 @@ export function seedancePayload(input,model){
       ...(input.shots?['Follow these owner-reviewed shot directions in order, using the timings exactly:',timedShots(input.shots,seconds,input.alignedScenes?omniSceneTiming(seconds).stops:undefined)]:[directions[style]])];
   const prompt=[
     `Create a ${orientation} commercial. Use the supplied facts and reference images only. Preserve product appearance and brand identity. Never invent prices, benefits, guarantees or contact details.`,
+    ...(!manual&&input.appearanceReference===true?['Use the supplied photos for appearance only. Stage the reviewed starting quantity, placement and people in the first shot, then preserve the state left by each action.']:[]),
     ...sceneDirection,
     'Use the industry and its audience as creative context for camera shots and narration. Never treat a category or shot suggestion as a verified product feature or service benefit.',
     JSON.stringify({subject:brief.kind,industryContext:videoIndustry(brief),name:brief.title,description:brief.description,highlight:brief.emphasis}),

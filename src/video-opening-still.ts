@@ -2,9 +2,9 @@ import type {LoadedVideoScene} from './video-compose';
 import {getVideoFormat,type VideoRatio} from './video-formats';
 import type {PhotoFrameLayout} from './video-prompt';
 
-export type OpeningStill={data:string;index:number;active:boolean};
+export type OpeningStill={data:string;index:number;active:boolean;referenceOnly?:boolean};
 
-export function prepareOpeningStill(scenes:LoadedVideoScene[],ratio:VideoRatio,layout?:PhotoFrameLayout):OpeningStill|undefined {
+export function prepareOpeningStill(scenes:LoadedVideoScene[],ratio:VideoRatio,layout?:PhotoFrameLayout,photoFitsOpening=true):OpeningStill|undefined {
   if(!scenes.length)return;
   const index=layout&&Number.isInteger(layout.source)&&scenes[layout.source-1]?layout.source-1:0;
   const visual=scenes[index].visual;
@@ -17,7 +17,7 @@ export function prepareOpeningStill(scenes:LoadedVideoScene[],ratio:VideoRatio,l
   const w=canvas.width=Math.round(format.width*scale),h=canvas.height=Math.round(format.height*scale);
   const ctx=canvas.getContext('2d');
   if(!ctx)return;
-  const boxes=(layout?.regions??[]).map(region=>{
+  const boxes=(photoFitsOpening?layout?.regions??[]:[]).map(region=>{
     if(!Array.isArray(region)||region.length<2||region.some(p=>!p||![p.x,p.y].every(n=>Number.isFinite(n)&&n>=0&&n<=1000)))return;
     const points=region.map(p=>({x:p.x*sw/1000,y:p.y*sh/1000}));
     const xs=points.map(p=>p.x),ys=points.map(p=>p.y);
@@ -49,5 +49,5 @@ export function prepareOpeningStill(scenes:LoadedVideoScene[],ratio:VideoRatio,l
     const dw=box.width*zoom,dh=box.height*zoom;
     ctx.drawImage(visual,box.x,box.y,box.width,box.height,(w-dw)/2,(h-dh)/2,dw,dh);
   }
-  return {data:canvas.toDataURL('image/jpeg',.88),index,active:true};
+  return {data:canvas.toDataURL('image/jpeg',.88),index,active:photoFitsOpening,referenceOnly:!photoFitsOpening};
 }

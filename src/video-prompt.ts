@@ -57,7 +57,7 @@ export type VideoAudioIdea = {musicMood:string; narration:string; recommendVoice
 export type PhotoFrameLayout = {
   mode:'original'|'crop'|'layers'; source:number; regions:{x:number;y:number}[][];
 };
-export type VideoPlanIdea = {shots:VideoShots;sceneCues?:SceneCue[];frameLayout?:PhotoFrameLayout; audio?:VideoAudioIdea};
+export type VideoPlanIdea = {shots:VideoShots;photoFitsOpening?:boolean;sceneCues?:SceneCue[];frameLayout?:PhotoFrameLayout; audio?:VideoAudioIdea};
 export function validVideoAudio(value:unknown):value is VideoAudioIdea {
   if (!value || typeof value!=='object') return false;
   const audio=value as Partial<VideoAudioIdea>;

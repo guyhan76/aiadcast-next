@@ -157,9 +157,10 @@ export async function assistCopy({ request: raw, fetchImpl = globalThis.fetch, a
       if(!shots) throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
     }
     if(request.segmented&&!validSceneCues(proposal?.sceneCues))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
-    const expectedKeys=(request.segmented?1:0)+(request.planVersion===4?10:request.planVersion===3?9:openingBeats?7:full?6:3)+(request.references.length?1:0);
+    if(request.checkOpeningState && typeof proposal?.photoFitsOpening!=='boolean')throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
+    const expectedKeys=(request.checkOpeningState?1:0)+(request.segmented?1:0)+(request.planVersion===4?10:request.planVersion===3?9:openingBeats?7:full?6:3)+(request.references.length?1:0);
     if(!proposal||Object.keys(proposal).length!==expectedKeys||(full&&!validVideoAudio(proposal))||shots.some(s=>typeof s!=='string'||!s.trim()||s.length>900))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
-    return {requestId:request.requestId,kind:request.kind,targetLocale:request.targetLocale,shots,...(request.segmented?{sceneCues:proposal.sceneCues}:{}),...(request.planVersion>=3?{frameLayout:proposal.frameLayout}:{}),...(full?{audio:{musicMood:proposal.musicMood,narration:proposal.narration,recommendVoice:proposal.recommendVoice}}:{}),usage,cost:textUsageCost(usage),model};
+    return {requestId:request.requestId,kind:request.kind,targetLocale:request.targetLocale,shots,...(request.checkOpeningState?{photoFitsOpening:proposal.photoFitsOpening}:{}),...(request.segmented?{sceneCues:proposal.sceneCues}:{}),...(request.planVersion>=3?{frameLayout:proposal.frameLayout}:{}),...(full?{audio:{musicMood:proposal.musicMood,narration:proposal.narration,recommendVoice:proposal.recommendVoice}}:{}),usage,cost:textUsageCost(usage),model};
   }
   if (!proposal || typeof proposal !== 'object' || Array.isArray(proposal) || Object.keys(proposal).sort().join(',') !== 'description,title' || typeof proposal.title !== 'string' || typeof proposal.description !== 'string' || proposal.title.length > 180 || proposal.description.length > 240 || !proposal.title.trim()) throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
   return { requestId: request.requestId, kind: request.kind, targetLocale: request.targetLocale, proposal, review: { required: true, numericChanges: reviewNumericChanges(request, proposal) }, usage, cost: textUsageCost(usage), model, providerRequestId: response.headers.get('x-request-id')?.slice(0, 200) ?? null };

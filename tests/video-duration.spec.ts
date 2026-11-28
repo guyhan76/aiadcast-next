@@ -270,10 +270,11 @@ test('a product photo and brief make a reviewable AI prompt before the video is 
    const body=r.request().postDataJSON();drafts++;
    expect(body.kind).toBe('video-prompt');
    expect(body.planVersion).toBe(4);
+   expect(body.checkOpeningState).toBe(true);
    expect(body.references).toHaveLength(1);
    expect(body.references[0]).toMatch(/^data:image\/jpeg;base64,/);
    expect(body.brief.title).toBe('하이브리드 롱코트');
-   await r.fulfill({json:{requestId:body.requestId,frameLayout,shots:['전신 구도','다운 퀼팅에 초점을 맞춘다.','제품 컷으로 마무리'],audio:{musicMood:'잔잔한 피아노',narration:'하이브리드 롱코트를 만나보세요.',recommendVoice:true}}});
+   await r.fulfill({json:{requestId:body.requestId,frameLayout,photoFitsOpening:true,shots:['전신 구도','다운 퀼팅에 초점을 맞춘다.','제품 컷으로 마무리'],audio:{musicMood:'잔잔한 피아노',narration:'하이브리드 롱코트를 만나보세요.',recommendVoice:true}}});
  });
  await page.route('**/api/videos',r=>{
    const body=r.request().postDataJSON();
@@ -527,4 +528,32 @@ test('a one-line service UGC brief reaches prompt review without advanced settin
   await editor.getByRole('button',{name:'영상 프롬프트 만들기'}).click();
   await expect(editor.getByLabel('첫 장면 연출',{exact:true})).toHaveValue('두 친구가 마지막 조각을 집는다.');
   expect(videoCalls).toBe(0);
+});
+
+test('a brief with a mismatched reference stages the requested scene without requiring an image edit',async({page})=>{
+  await protectedScreen(page,mockSession('quick-pizza','admin'));
+  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
+  await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,assistant:{available:true},generation:{enabled:false},wallet:{unlimited:true,available:0,reserved:0},budget:{limitMicros:0}}}));
+  const brief='친구들이 마지막 조각을 먹고 피자를 더 주문하는 광고';
+  await page.route('**/api/assistant',r=>{
+    const body=r.request().postDataJSON();
+    expect(body.brief.description).toBe(brief);
+    expect(body.checkOpeningState).toBe(true);
+    return r.fulfill({json:{requestId:body.requestId,photoFitsOpening:false,shots:['가운데 접시에 마지막 조각 하나.','친구가 그 조각을 집는다.','같은 접시가 비자 한 판 더 주문한다.']}});
+  });
+  let payload:Record<string,unknown>|undefined;
+  await page.route('**/api/videos',r=>{payload=r.request().postDataJSON();return r.fulfill({json:{id:payload!.requestId}});});
+  await page.route('**/api/videos/*',r=>r.fulfill({json:{state:'failed'}}));
+  await page.goto('/#video');
+  const editor=page.getByRole('region',{name:'광고 영상 편집'});
+  await editor.getByRole('button',{name:'UGC 광고',exact:true}).click();
+  await editor.getByLabel('사진·영상 파일').setInputFiles('src/assets/premium-beauty-generated.png');
+  await editor.getByLabel('원하는 광고 한 줄').fill(brief);
+  await editor.getByRole('button',{name:'영상 프롬프트 만들기'}).click();
+  await expect(editor.getByRole('img',{name:'제품·장소 참고 사진'})).toBeVisible();
+  await expect(editor.getByLabel('이 이미지로 시작')).not.toBeChecked();
+  await editor.getByRole('button',{name:'AI 영상 생성',exact:true}).click();
+  await page.getByRole('dialog').getByRole('button',{name:'제작 시작'}).click();
+  await expect.poll(()=>payload).toMatchObject({appearanceReference:true});
+  expect(payload).not.toHaveProperty('reviewedOpening');
 });

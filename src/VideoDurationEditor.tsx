@@ -197,7 +197,7 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,omniPilot
       const script=draft.voiceText||idea.audio?.narration||videoPlan(brief,caption,'').voice;
       change({...draft,file:undefined,review:{
         shots:idea.shots,sceneCues:idea.sceneCues,frameLayout:idea.frameLayout,briefKey,sources,
-        openingStill:prepareOpeningStill(loaded,ratio,style==='unboxing'?undefined:idea.frameLayout),
+        openingStill:prepareOpeningStill(loaded,ratio,style==='unboxing'?undefined:idea.frameLayout,idea.photoFitsOpening??!!draftPrompt),
         captions:sceneCaptions(brief,caption),showCaptions:review?.showCaptions??false,contact:brief.contact,
         music:review?.music??draft.aiMusic,musicMood:draft.musicStyle||idea.audio?.musicMood||(style==='unboxing'?t('경쾌한 리듬','Upbeat rhythm'):t('차분한 연주곡','Soft instrumental')),
         narration:script.slice(0,600),voice:review?.voice??(draft.aiVoice&&!!draft.voiceText.trim())
@@ -319,7 +319,7 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,omniPilot
     {clips>0&&<small>{t('첨부 영상의 첫 장면을 AI 참조 이미지로 사용해요.','The first frame of each clip is used as a reference image.')}</small>}
     {!useManual&&!advanced&&<label className="vd-quick-request">{t('원하는 광고 한 줄','Describe your ad')}
       <textarea rows={2} maxLength={2000} value={brief.description} disabled={!!run||repairBusy}
-        placeholder={t('예) 친구 둘이 마지막 피자 한 조각을 나누고 한 판 더 주문하는 광고','e.g. Two friends share the last slice and order another pizza.')}
+        placeholder={t('예) 친구들이 마지막 조각을 먹고 피자를 더 주문하는 광고','e.g. Two friends share the last slice and order another pizza.')}
         onChange={e=>edit({brief:{...brief,description:e.target.value}})}/></label>}
     <fieldset className="vd-style" disabled={!!run||repairBusy}><legend>{t('광고 유형','Ad type')}</legend>
       <div>{styles.map(key=>{
