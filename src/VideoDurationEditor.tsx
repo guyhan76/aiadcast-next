@@ -72,7 +72,7 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,omniPilot
   const [confirm,setConfirm]=useState<boolean|'gemini'>(false);
   const industryId=useId(), uploadHelpId=useId();
   const style=styleForBrief(brief), service=brief.kind==='service';
-  const styles:VideoStyle[]=service?['service','presenter']:['product','unboxing','presenter'];
+  const styles:VideoStyle[]=service?['service','presenter']:['product','presenter','unboxing'];
   const selectedIndustry=brief.category?findAdField(brief.category,brief.industryDetail):undefined;
   const mediaHint=service&&style==='presenter'?t('서비스를 소개하는 영상 또는 현장 사진 (선택)','Footage or photos of the service (optional)'):t(videoStyles[style].media[0],videoStyles[style].media[1]);
   const styleIcons={product:Box,unboxing:PackageOpen,presenter:UserRound,service:Store};
@@ -103,7 +103,7 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,omniPilot
   const omniReason=ratio!=='9:16'&&ratio!=='16:9'?t('세로 9:16 또는 가로 16:9를 선택해 주세요.','Choose portrait 9:16 or landscape 16:9.')
     :sources.length>6?t('Gemini 참조 자료는 최대 6개입니다.','Choose up to six references.')
     :!ready&&!servicePromptOnly?(bad?t('열 수 없는 자료를 교체해 주세요.','Replace the unreadable reference.'):!sources.length&&!service?t('상품 사진을 첨부해 주세요.','Add a product photo.'):needOpenBox?t('언박싱 사진을 두 장 이상 첨부해 주세요.','Add at least two unboxing photos.'):t('입력 정보와 첨부 자료를 확인해 주세요.','Check the brief and references.'))
-    :!promptReady?(useManual?t('직접 입력한 프롬프트를 확인해 주세요.','Check the manual prompt.'):stale?t('입력 정보가 바뀌었습니다. 구성안을 다시 만들어 주세요.','Rebuild the plan for the changed inputs.'):!review?t('장면 구성안을 만들어 주세요.','Create a scene plan.'):t('장면 연출과 선택한 내레이션을 완성해 주세요.','Complete the shots and selected narration.'))
+    :!promptReady?(useManual?t('직접 입력한 프롬프트를 확인해 주세요.','Check the manual prompt.'):stale?t('입력 정보가 바뀌었어요. 영상 프롬프트를 다시 만들어 주세요.','Rebuild the video prompt for the changed inputs.'):!review?t('영상 프롬프트를 만들어 주세요.','Create a video prompt.'):t('장면 연출과 선택한 내레이션을 완성해 주세요.','Complete the shots and selected narration.'))
     :currentReview?.sceneCues&&!validSceneCues(currentReview.sceneCues)?t('각 장면의 현장음과 마지막 화면을 입력해 주세요.','Complete the sound and end frame of each scene.')
     :captions.some(line=>line.trim())&&!format?t('자막을 넣으려면 최신 Chrome에서 열어 주세요.','Open in a current Chrome browser to add captions.'):'';
   useEffect(()=>{
@@ -278,17 +278,17 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,omniPilot
         onField={fieldId=>edit({brief:{...brief,fieldId,category:undefined,industryDetail:undefined}})}
         onItem={(item,custom)=>edit({brief:{...brief,category:item.category,industryDetail:formatIndustryDetail(item,custom)}})}/>
     </fieldset>
-    <div className="vd-brief-block"><h2>{service?t('서비스 정보','Service details'):t('상품 정보','Product details')}</h2>
-      {!service&&<VideoProductImport initialUrl={draft.productUrl??''} disabled={!!run||repairBusy} hasInfo={!!(brief.title||brief.description||brief.emphasis||caption||draft.voiceText)}
-        photoRoom={sources.filter(source=>!source.importedProduct).length<10} onApply={applyProduct}/>}
-      <VideoBriefFields value={brief} disabled={!!run||repairBusy} change={brief=>edit({brief})}/></div>
-    <fieldset className="vd-style" disabled={!!run||repairBusy}><legend>{t('영상 형식','Video style')}</legend>
+    <fieldset className="vd-style" disabled={!!run||repairBusy}><legend>{t('광고 유형','Ad type')}</legend>
       <div>{styles.map(key=>{
         const Icon=styleIcons[key], label=videoStyles[key].label;
         return <button type="button" key={key} aria-pressed={style===key} onClick={()=>edit({brief:{...brief,style:key}})}>
           <Icon size={19} aria-hidden="true"/>{t(label[0],label[1])}</button>;
       })}</div>
     </fieldset>
+    <div className="vd-brief-block"><h2>{service?t('서비스 정보','Service details'):t('상품 정보','Product details')}</h2>
+      {!service&&<VideoProductImport initialUrl={draft.productUrl??''} disabled={!!run||repairBusy} hasInfo={!!(brief.title||brief.description||brief.emphasis||caption||draft.voiceText)}
+        photoRoom={sources.filter(source=>!source.importedProduct).length<10} onApply={applyProduct}/>}
+      <VideoBriefFields value={brief} disabled={!!run||repairBusy} change={brief=>edit({brief})}/></div>
     <fieldset className="vd-duration vd-ratios" disabled={!!run||repairBusy}><legend>{t('영상 규격','Video aspect ratio')}</legend>
       <div>{videoFormats.map(option=><button key={option.ratio} type="button" aria-pressed={ratio===option.ratio}
         onClick={()=>{if(ratio!==option.ratio)edit({ratio:option.ratio});}}>
