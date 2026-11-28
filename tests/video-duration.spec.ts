@@ -430,11 +430,14 @@ test('administrator compares a reviewed pizza plan with Gemini after confirming 
   await editor.getByLabel('상품명',{exact:true}).fill('피자');
   await editor.getByRole('button',{name:'10초',exact:true}).click();
   await editor.getByRole('button',{name:'영상 구성안 만들기'}).click();
+  const closing=editor.locator('.vd-review-scene').nth(2);
+  await closing.locator('summary').filter({hasText:'대사·현장음·마지막 화면'}).click();
+  await closing.getByLabel('인물 대사',{exact:true}).fill('손님: 지금 한 판 더 주세요.');
   await editor.getByRole('button',{name:/Gemini 비교 제작/}).click();
   await expect(page.getByRole('dialog')).toContainText('$0.70');
   expect(submitted).toBeUndefined();
   await page.getByRole('dialog').getByRole('button',{name:'제작 시작'}).click();
-  await expect.poll(()=>submitted).toMatchObject({pilot:'gemini',seconds:10,ratio:'9:16',promptMode:'auto',shots,expectedCredits:0});
+  await expect.poll(()=>submitted).toMatchObject({pilot:'gemini',seconds:10,ratio:'9:16',promptMode:'auto',shots,sceneCues:[pizzaSceneCues[0],pizzaSceneCues[1],{...pizzaSceneCues[2],dialogue:'손님: 지금 한 판 더 주세요.'}],expectedCredits:0});
 });
 
 test('restaurant service UGC allows both Gemini prompt modes and shows the paid turn count',async({page})=>{
