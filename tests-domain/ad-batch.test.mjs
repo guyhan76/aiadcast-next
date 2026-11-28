@@ -49,3 +49,22 @@ test('legacy first and unlimited administrator reserve the agreed units',async t
  const {s,body,release}=fixture(t,{tickets:1,credits:10});const r=await s.create(body(2));assert.equal(r.wallet.reserved,1);assert.equal(r.wallet.credits.reserved,5);
  release();await s.waitForIdle();const other=fixture(t,{credits:0});other.s.adminTestUnlimited=true;const admin=await other.s.create(other.body(10));assert.ok(admin.jobs.every(j=>j.creditCost===0));assert.equal(admin.wallet.reserved,0);other.release();await other.s.waitForIdle();
 });
+
+test('a retried carousel reuses four ordered jobs that the customer can open and export',async t=>{
+ const {s,body,release,sent}=fixture(t);
+ const b=body(4);b.request={...b.request,output:{...b.request.output,format:'4:5'}};
+ b.batch.storyPlan={continuity:'Same cafe and white plate.',cards:['Last slice','Lift it','Basil closeup','One more'].map((caption,i)=>({caption,scene:'Moment '+i}))};
+ const accepted=await s.create(b);
+ assert.equal(accepted.jobs.length,4);
+ assert.equal(accepted.wallet.credits.reserved,20);
+ assert.equal((await s.create(b)).reused,true);
+ const changed=structuredClone(b);changed.batch.storyPlan.cards[0].caption='Another headline';
+ await assert.rejects(s.create(changed),/IDEMPOTENCY_CONFLICT/);
+ release();await s.waitForIdle();
+ assert.deepEqual(sent.map(r=>r.batchDirection.caption),b.batch.storyPlan.cards.map(c=>c.caption));
+ for(const j of s.batchSummary(batchId).jobs){
+   assert.equal(j.state,'ready');
+   assert.equal(j.requestFingerprint,hashBytes(Buffer.from(generationMatchKey(sent[0]))));
+ }
+ assert.equal(s.wallet().credits.reserved,0);
+});

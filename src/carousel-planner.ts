@@ -15,7 +15,7 @@ export async function planCarousel(project:Project){
   const key='aiadcast.carousel.'+await dimensionInputHash(JSON.stringify([betaSession()?.user.id,project.id,input]));
   const requestId=sessionStorage.getItem(key)??crypto.randomUUID();
   sessionStorage.setItem(key,requestId);
-  const result=await apiRequest<{requestId:string;plan:unknown}>('/api/assistant',{...input,requestId}).catch(error=>{
+  const result=await apiRequest<{requestId:string;plan:unknown}>('/api/assistant',{...input,requestId},AbortSignal.timeout(65_000)).catch(error=>{
     if(error instanceof ApiRequestFailure && error.code==='PROVIDER_RATE_LIMITED' && sessionStorage.getItem(key)===requestId)sessionStorage.removeItem(key);
     throw error;
   });

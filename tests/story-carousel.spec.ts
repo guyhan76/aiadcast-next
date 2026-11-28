@@ -6,7 +6,7 @@ test('customer edits one card before authorizing a single four-image batch',asyn
   await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
   const cards=['마지막 한 조각','이번엔 네 차례','바질 향 가득','한 판 더 주세요'].map((caption,i)=>({caption,scene:'피자 매장 장면 '+(i+1)}));
   let submitted=0;
-  await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,batchVersion:1},wallet:{available:0,credits:{available:100}},assistant:{available:true}}}));
+  await page.route('**/api/status',r=>r.fulfill({json:{generation:{enabled:true,batchVersion:1},wallet:{available:0,reserved:0,credits:{available:100,reserved:0}},budget:{limitMicros:1000000},assistant:{available:true}}}));
   await page.route('**/api/assistant',r=>r.fulfill({json:{requestId:r.request().postDataJSON().requestId,plan:{continuity:'같은 매장의 흰 접시 한 개',cards}}}));
   await page.route('**/api/generations',r=>{
     if(r.request().method()!=='POST')return r.fulfill({json:{jobs:[]}});

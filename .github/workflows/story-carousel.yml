@@ -21,7 +21,7 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run check:cloud
-      - run: node --experimental-strip-types --test tests-domain/story-carousel.test.mjs tests-domain/batch-art-direction.test.mjs
+      - run: node --experimental-strip-types --test tests-domain/story-carousel.test.mjs tests-domain/batch-art-direction.test.mjs tests-domain/ad-batch.test.mjs
       - run: npm run build
       - run: node native/prepare-android.mjs
       - run: npx playwright install --with-deps chromium
