@@ -430,3 +430,32 @@ test('administrator compares a reviewed pizza plan with Gemini after confirming 
   await page.getByRole('dialog').getByRole('button',{name:'제작 시작'}).click();
   await expect.poll(()=>submitted).toMatchObject({pilot:'gemini',seconds:10,ratio:'9:16',promptMode:'auto',shots,expectedCredits:0});
 });
+
+test('restaurant service UGC allows both Gemini prompt modes and shows the paid turn count',async({page})=>{
+  await protectedScreen(page,mockSession('omni-restaurant','admin'));
+  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
+  await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:false,omniPilot:true,assistant:{available:true},wallet:{unlimited:true,available:0,reserved:0}}}));
+  await page.route('**/api/assistant',r=>r.fulfill({json:{requestId:r.request().postDataJSON().requestId,shots:['한 조각을 든다.','맛을 본다.','한 판 더 주문한다.']}}));
+  await page.goto('/#video');
+  const editor=page.getByRole('region',{name:'광고 영상 편집'});
+  await editor.getByRole('button',{name:'서비스',exact:true}).click();
+  await editor.getByRole('button',{name:'UGC',exact:true}).click();
+  await editor.getByLabel('서비스명',{exact:true}).fill('매장에서 먹는 피자');
+  await editor.getByLabel('상세설명',{exact:true}).fill('친구와 함께 피자를 먹고 추가 주문한다.');
+  await editor.getByLabel('사진·영상 파일').setInputFiles('src/assets/premium-beauty-generated.png');
+  const gemini=editor.getByRole('button',{name:/Gemini 비교 제작/});
+  await editor.getByRole('button',{name:'15초',exact:true}).click();
+  await editor.getByRole('button',{name:'영상 구성안 만들기'}).click();
+  await expect(gemini).toBeEnabled();
+  await editor.getByRole('button',{name:'20초',exact:true}).click();
+  await expect(gemini).toBeDisabled();
+  await editor.getByRole('button',{name:'변경된 정보로 구성안 다시 만들기'}).click();
+  await gemini.click();
+  await expect(page.getByRole('dialog')).toContainText('유료 요청 2회');
+  await page.getByRole('button',{name:'취소',exact:true}).click();
+  await editor.getByRole('button',{name:'30초',exact:true}).click();
+  await editor.getByRole('radio',{name:'내 프롬프트 사용'}).check();
+  await editor.getByLabel('내 프롬프트',{exact:true}).fill('손님이 마지막 한 조각을 먹고 한 판 더 주문한다.');
+  await gemini.click();
+  await expect(page.getByRole('dialog')).toContainText('유료 요청 3회');
+});
