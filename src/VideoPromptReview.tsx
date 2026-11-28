@@ -53,8 +53,9 @@ export function VideoPromptReview({mode,manualText,onMode,onManual,seconds,ratio
       {(!review||stale)&&<button type="button" className="vd-primary" disabled={busy||!ready} onClick={()=>{setCopyMessage('');onBuild();}}>
         {planning?t('구성안 작성 중…','Drafting…'):review?t('변경된 정보로 구성안 다시 만들기','Update plan from brief'):t('영상 구성안 만들기','Create video plan')}</button>}
       {error&&<p role="alert">{error}</p>}
-      {review&&!stale&&<>
-        <fieldset className="vd-review-fields" disabled={busy}>
+      {review&&<>
+        {stale&&<p role="status">{t('입력 정보가 바뀌었어요. 새 구성안을 확인한 뒤 제작해 주세요.','Your inputs changed. Update the plan before creating the video.')}</p>}
+        <fieldset className="vd-review-fields" disabled={busy||stale}>
           <legend>{t('구성안 확인','Review your plan')} · {ratio} · {seconds}{t('초','s')}</legend>
           <label className="vd-plan-toggle"><input type="checkbox" checked={review.showCaptions} onChange={e=>onChange({showCaptions:e.target.checked})}/>{t('자막 넣기','Include captions')}</label>
           {review.shots.map((shot,i)=><div className="vd-review-scene" key={i}>

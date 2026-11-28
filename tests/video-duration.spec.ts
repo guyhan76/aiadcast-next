@@ -434,7 +434,7 @@ test('administrator compares a reviewed pizza plan with Gemini after confirming 
 test('restaurant service UGC allows both Gemini prompt modes and shows the paid turn count',async({page})=>{
   await protectedScreen(page,mockSession('omni-restaurant','admin'));
   await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
-  await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:false,omniPilot:true,assistant:{available:true},wallet:{unlimited:true,available:0,reserved:0}}}));
+  await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:false,omniPilot:true,assistant:{available:true},generation:{enabled:false},wallet:{unlimited:true,available:0,reserved:0},budget:{limitMicros:8000000}}}));
   await page.route('**/api/assistant',r=>r.fulfill({json:{requestId:r.request().postDataJSON().requestId,shots:['한 조각을 든다.','맛을 본다.','한 판 더 주문한다.']}}));
   await page.goto('/#video');
   const editor=page.getByRole('region',{name:'광고 영상 편집'});
@@ -444,6 +444,7 @@ test('restaurant service UGC allows both Gemini prompt modes and shows the paid 
   await editor.getByLabel('상세설명',{exact:true}).fill('친구와 함께 피자를 먹고 추가 주문한다.');
   await editor.getByLabel('사진·영상 파일').setInputFiles('src/assets/premium-beauty-generated.png');
   const gemini=editor.getByRole('button',{name:/Gemini 비교 제작/});
+  await expect(gemini).toBeVisible();
   await editor.getByRole('button',{name:'15초',exact:true}).click();
   await editor.getByRole('button',{name:'영상 구성안 만들기'}).click();
   await expect(gemini).toBeEnabled();
