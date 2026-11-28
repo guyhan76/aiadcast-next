@@ -46,6 +46,7 @@ export function geminiScriptPlan(plan,body){
     return [
       'Film only part '+(turn+1)+' of '+groups.length+' of the same '+plan.duration+'s ad, covering '+stops[first]+'–'+stops[last+1]+'s. Use the approved scene directions below.',
       'Subject: '+body.brief.title+'. Style: '+(body.brief.style??body.brief.kind)+'. Preserve reference appearance, people, voices, props and location. Keep app UI and added lettering out of frame.',
+      ...(body.appearanceReference===true && !first?['Use photos for appearance only. Film the scripted starting quantity, placement and people. Track the same objects through the shot.']:[]),
       first?'Start from this exact previous end frame: '+body.sceneCues[first-1].endFrame:'Begin immediately on the approved opening action.',
       ...group.map(i=>[
         'Ad time '+stops[i]+'–'+stops[i+1]+'s: '+body.shots[i],

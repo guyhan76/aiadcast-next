@@ -46,9 +46,9 @@ test('a reviewed hook carries the selected recipe and photographed detail to the
   const brief={kind:'product',style:'product',title:'아이스 카페라떼',description:'유리잔에 우유와 커피가 층을 이룬다.',
     highlight:'얼음 옆에서 갈색 소용돌이가 생기는 순간',ratio:'9:16',seconds:20,field:'',industry:'',
     caption:'',contact:'',music:false,voice:false,musicStyle:'',voiceStyle:'',narration:''};
-  const request={kind:'video-prompt',requestId:'photo-skill-latte',targetLocale:'ko',planVersion:3,brief,references:[photo]};
+  const request={kind:'video-prompt',requestId:'photo-skill-latte',targetLocale:'ko',planVersion:3,checkOpeningState:true,brief,references:[photo]};
   const sceneRecipes={opening:['flowing-liquid','natural-window-light'],detail:['birds-eye','frozen-crystalline'],closing:['showcase']};
-  const idea={sceneRecipes,photoDetail:'투명한 유리잔 속 각얼음',opening:'커피가 우유에 닿는다.',
+  const idea={photoFitsOpening:false,sceneRecipes,photoDetail:'투명한 유리잔 속 각얼음',opening:'커피가 우유에 닿는다.',
     reaction:'얼음 아래에서 갈색 소용돌이가 번진다.',detail:'우유와 커피가 섞이는 경계를 따라간다.',closing:'잔 전체를 보여준다.',
     musicMood:'조용한 피아노',narration:'',recommendVoice:false,frameLayout:{mode:'original',source:1,regions:[]}};
   const draft=answer=>assistCopy({request,apiKey:'fixture',fetchImpl:async(_,options)=>{
@@ -61,7 +61,9 @@ test('a reviewed hook carries the selected recipe and photographed detail to the
     assert.equal(payload.messages[1].content[1].image_url.url,photo);
     return Response.json({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify(answer)}}]});
   }});
-  const {shots}=await draft(idea);
+  const {shots,photoFitsOpening}=await draft(idea);
+  assert.equal(photoFitsOpening,false);
+  await assert.rejects(draft({...idea,photoFitsOpening:undefined}),/PROVIDER_INVALID_RESPONSE/);
   const body={requestId:request.requestId,seconds:20,brief:{...brief,emphasis:brief.highlight},references:[photo],shots,music:false,voice:false,musicStyle:'',voiceStyle:'',narration:''};
   const provider=quotedVideoProvider('topview');
   const wire=provider.input(provider.preparePlan(seedancePayload(body,provider.model),body),['https://example.org/reference.jpg']).input.input.prompt;
