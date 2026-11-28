@@ -503,8 +503,10 @@ test('a one-line service UGC brief reaches prompt review without advanced settin
   const editor=page.getByRole('region',{name:'광고 영상 편집'});
   await expect(editor.getByLabel('세부 업종')).toBeHidden();
   await editor.getByLabel('원하는 광고 한 줄').fill(request);
+  await editor.getByRole('button',{name:'서비스 광고',exact:true}).click();
   await editor.getByRole('button',{name:'UGC 광고',exact:true}).click();
-  await editor.getByRole('button',{name:'서비스',exact:true}).click();
+  await expect(editor.getByRole('button',{name:'UGC 광고',exact:true})).toHaveAttribute('aria-pressed','true');
+  for(const name of ['상품','서비스'])await expect(editor.getByRole('button',{name,exact:true})).toBeHidden();
   await expect(editor.getByRole('button',{name:'20초',exact:true})).toHaveAttribute('aria-pressed','true');
   await editor.getByRole('button',{name:'영상 프롬프트 만들기'}).click();
   await expect(editor.getByLabel('첫 장면 연출',{exact:true})).toHaveValue('두 친구가 마지막 조각을 집는다.');

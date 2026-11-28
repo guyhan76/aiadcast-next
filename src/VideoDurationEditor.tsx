@@ -327,11 +327,6 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,omniPilot
           <Icon size={19} aria-hidden="true"/>{t(label[0],label[1])}</button>;
       })}</div>
     </fieldset>
-    {style==='presenter'&&!advanced&&<div className="ad-field-kinds" role="group" aria-label={t('UGC 광고 대상','UGC subject')}>
-      {(['product','service'] as const).map(kind=><button type="button" key={kind} aria-pressed={brief.kind===kind} disabled={!!run||repairBusy}
-        onClick={()=>{if(kind!==brief.kind)edit({brief:{...brief,kind,fieldId:undefined,category:undefined,industryDetail:undefined}});}}>
-        {kind==='product'?t('상품','Product'):t('서비스','Service')}</button>)}
-    </div>}
     <fieldset className="vd-duration" disabled={!!run||repairBusy}><legend>{t('영상 길이','Video length')}</legend>
       <div>{videoDurations.map(value=><button key={value} type="button" aria-pressed={seconds===value}
         onClick={()=>edit({manual:value})}>{value}{t('초','s')}</button>)}</div>
