@@ -363,7 +363,7 @@ export class GenerationService {
             if (result.state === 'ready') {
                 await this.ledger.settleAttempt(row.id, result.actualMicros ?? row.quoted_micros, 'completed');
                 if (job.creditExempt)
-                    await this.ledger.markReady(row.id, row.provider_id);
+                    await this.ledger.markReady(row.id, result.artifactId ?? row.provider_id);
             }
             else {
                 await this.ledger.settleAttempt(row.id, result.actualMicros ?? 0, 'failed');
@@ -373,7 +373,7 @@ export class GenerationService {
         if (result.state === 'ready' && download) {
             const file = result.file ?? await seedanceMovie(result.url);
             if (!job.creditExempt)
-                await this.ledger.markReady(row.id, row.provider_id);
+                await this.ledger.markReady(row.id, result.artifactId ?? row.provider_id);
             return file;
         }
         return { state: result.state };

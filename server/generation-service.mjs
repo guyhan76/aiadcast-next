@@ -390,7 +390,7 @@ export class GenerationService {
     this.ledger.transaction(()=>{
       if(result.state==='ready'){
         this.ledger.settleAttempt(row.id,result.actualMicros??row.quoted_micros,'completed');
-        if(job.creditExempt)this.ledger.markReady(row.id,row.provider_id);
+        if(job.creditExempt)this.ledger.markReady(row.id,result.artifactId??row.provider_id);
       }else{
         this.ledger.settleAttempt(row.id,result.actualMicros??0,'failed');
         this.ledger.release(row.id,LOCAL_USER,'system_error');
@@ -398,7 +398,7 @@ export class GenerationService {
     });
     if(result.state==='ready'&&download){
       const file=result.file??await seedanceMovie(result.url);
-      if(!job.creditExempt)this.ledger.markReady(row.id,row.provider_id);
+      if(!job.creditExempt)this.ledger.markReady(row.id,result.artifactId??row.provider_id);
       return file;
     }
     return {state:result.state};

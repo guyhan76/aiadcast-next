@@ -105,3 +105,22 @@ test('a short final file cannot be delivered as a 20s ad',async t=>{
   t.mock.method(globalThis,'fetch',async()=>Response.json({status:'completed',steps:[{type:'model_output',content:[{type:'video',mime_type:'video/mp4',data:sampleMp4(10).toString('base64')}]}]}));
   assert.equal((await provider.poll('key',state,true)).state,'failed');
 });
+
+test('a lost continuation response leaves one claim and prevents duplicate paid posts',async t=>{
+  let stored=JSON.stringify({total:20,ratio:'9:16',id:'first',turn:0,cost:0}),posts=0;
+  const replace=async(previous,next)=>{
+    if(previous!==stored)return false;
+    stored=next;return true;
+  };
+  t.mock.method(globalThis,'fetch',async(_url,options)=>{
+    if(options.method==='POST'){posts++;throw Error('response lost');}
+    return Response.json({status:'completed',steps:[{type:'model_output',content:[{type:'video',mime_type:'video/mp4',data:sampleMp4(10).toString('base64')}]}]});
+  });
+  const before=stored;
+  const states=await Promise.all([provider.poll('key',before,false,replace),provider.poll('key',before,false,replace)]);
+  assert.ok(states.some(x=>x.state==='uncertain'));
+  const claim=JSON.parse(stored);
+  stored=JSON.stringify({...claim,claimed:Date.now()-70000});
+  assert.deepEqual(await provider.poll('key',stored,false,replace),{state:'uncertain'});
+  assert.equal(posts,1);
+});

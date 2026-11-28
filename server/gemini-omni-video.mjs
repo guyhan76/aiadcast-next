@@ -59,7 +59,7 @@ export const geminiOmni={
     const result=await readVideo(key,state.id,download&&final,elapsed);
     if(result.state==='running')return result;
     const cost=state.cost+(result.actualMicros??(result.state==='ready'?elapsed*100000:0));
-    if(result.state==='failed'||final)return {...result,actualMicros:cost};
+    if(result.state==='failed'||final)return {...result,actualMicros:cost,artifactId:'gemini-'+state.id.slice(0,120)};
     // Persist the claim before sending a billable continuation. An ambiguous network result
     // stays claimed across concurrent polls, restarts and retries.
     const claim=JSON.stringify({...state,claimed:Date.now()});
