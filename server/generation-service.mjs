@@ -3,7 +3,7 @@ import {activeVideoProvider} from './higgsfield-video.mjs';
 import {quotedVideoProvider} from './quoted-video.mjs';
 import {seedanceConfig,seedancePayload,seedanceTask,seedanceMovie} from './seedance-video.mjs';
 import {videoDurationPrices} from './video-duration-prices.mjs';
-import {planAdBatch} from './automatic-image-skills.mjs';
+import {planAdBatch,validCarouselBatch} from './automatic-image-skills.mjs';
 import {batchPrice,validBatch} from '../src/batch-price.ts';
 import {verifiedPreservation} from '../src/selective-preservation.ts';
 import {prepareSelectiveEdit,finalizeSelectiveEdit} from './selective-image-edit.mjs';
@@ -545,7 +545,9 @@ export class GenerationService {
   async createBatch(body,request,source,references) {
     const {id,count,quote}=body.batch??{};
     if(!validBatch({id,count})||body.projectId!==id||body.requestId!==id||!quote||request.mode!=='creative'||request.inputMode||request.proportionControl||request.selectiveEdit||request.output?.exactText||request.creativeDirection?.visual?.id!=='auto'||!request.output.compositionKey)fail('INVALID_BATCH');
-    const fingerprint=hashBytes(JSON.stringify({count,request,revision:IMAGE_REVISION}));
+    const storyPlan=body.batch.storyPlan;
+    if(!validCarouselBatch(storyPlan,request,count))fail('INVALID_BATCH');
+    const fingerprint=hashBytes(JSON.stringify({count,request,revision:IMAGE_REVISION,storyPlan}));
     const existing=this.db.prepare('SELECT fingerprint FROM ad_batches WHERE id=?').get(id);
     if(existing){
       if(existing.fingerprint!==fingerprint)fail('IDEMPOTENCY_CONFLICT',409);
@@ -556,7 +558,7 @@ export class GenerationService {
     const images=[...(source?[source]:[]),...references];
     await this.assertOutputCapacity(request,images);
     for(const image of images) this.storeAsset(image);
-    const plannedRequests=planAdBatch(request,count);
+    const plannedRequests=planAdBatch(request,count,storyPlan);
     const jobIds=[];
     this.ledger.transaction(()=>{
       const duplicate=this.db.prepare('SELECT fingerprint FROM ad_batches WHERE id=?').get(id);

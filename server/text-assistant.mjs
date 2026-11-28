@@ -1,3 +1,5 @@
+import {validStoryPlan} from '../src/story-carousel.ts';
+import {normalizeCarouselPlanning,carouselPlanningPayload} from './story-carousel.mjs';
 import {validSceneCues} from '../src/video-omni.ts';
 import {validVideoAudio} from '../src/video-prompt.ts';
 import {normalizeVideoPromptRequest,videoPromptMessages,videoResponseSchema,photoShotDirections} from './video-prompt-assistant.mjs';
@@ -22,6 +24,7 @@ export function normalizeAssistantRequest(body) {
          typeof f?.image!=='string'||f.image.length>300000||!/^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]+={0,2}$/.test(f.image))) throw Error('INVALID_ASSISTANT_REQUEST');
     return {kind:body.kind,requestId,targetLocale,brief,frames:frames.map(({time,image})=>({time,image}))};
   }
+  if(body.kind==='carousel-plan')return normalizeCarouselPlanning(body);
   if(body.kind==='video-prompt')return normalizeVideoPromptRequest(body);
   const string = (value, maximum, optional = false) => {
     if (optional && value === undefined) return '';
@@ -100,6 +103,7 @@ export async function assistCopy({ request: raw, fetchImpl = globalThis.fetch, a
       {role:'user',content:[{type:'text',text:JSON.stringify({language:request.targetLocale,brief:request.brief})},...request.frames.flatMap(f=>[{type:'text',text:f.time+'s'},{type:'image_url',image_url:{url:f.image,detail:'low'}}])]}];
     payload.response_format.json_schema={name:'video_review',strict:true,schema:{type:'object',additionalProperties:false,required:['issues'],properties:{issues:{type:'array',maxItems:4,items:{type:'object',additionalProperties:false,required:['time','note'],properties:{time:{type:'number',enum:request.frames.map(f=>f.time)},note:{type:'string',maxLength:220}}}}}}};
   }
+  if(request.kind==='carousel-plan')Object.assign(payload,carouselPlanningPayload(request),{max_completion_tokens:1800});
   let response;
   try {
     response = await fetchImpl(TEXT_ENDPOINT, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'X-Client-Request-Id': attemptId ?? request.requestId }, body: JSON.stringify(payload), redirect: 'error', signal: AbortSignal.timeout(timeoutMs) });
@@ -122,6 +126,10 @@ export async function assistCopy({ request: raw, fetchImpl = globalThis.fetch, a
   if(request.kind==='video-review'){
     if(!Array.isArray(proposal?.issues)||proposal.issues.length>4||proposal.issues.some(issue=>!request.frames.some(f=>f.time===issue?.time)||typeof issue.note!=='string'||!issue.note.trim()||issue.note.length>220))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
     return {kind:request.kind,requestId:request.requestId,issues:proposal.issues,usage,cost:textUsageCost(usage),model};
+  }
+  if(request.kind==='carousel-plan'){
+    if(!validStoryPlan(proposal))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
+    return {kind:request.kind,requestId:request.requestId,plan:proposal,usage,cost:textUsageCost(usage),model};
   }
   if(video){
     let shots=['opening','detail','closing'].map(key=>proposal?.[key]);

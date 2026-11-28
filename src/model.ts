@@ -23,6 +23,7 @@ import type {ReferenceCheck} from './specification.ts';
 import {parseConversation} from './conversation.ts';
 import type {Conversation} from './conversation.ts';
 import {hasUsableCreative,parseGenerated} from './generated.ts';
+import {validStoryPlan,type StoryPlan} from './story-carousel.ts';
 import type {GeneratedAsset} from './generated.ts';
 import {boxProjectionError,parseBoxProjection} from './box-projection.ts';
 import type {BoxProjection} from './box-projection.ts';
@@ -38,6 +39,7 @@ export type Copy = {title:string;description:string;company:string;contact:strin
 export type FooterField = 'company'|'contact'|'email'|'website';
 export type Project = {
  adBatch?:AdBatch;
+ storyCarousel?:boolean;storyPlan?:StoryPlan;
  requestedImageCount?:number;resultSet?:ResultSet;
  exactTextVersion?:1|2;textEdit?:TextEdit;version:1;id:string;name:string;updatedAt:string;locale:Locale;format:ImageFormat;
  product:Asset|null;references?:Asset[];referenceRoles?:Record<string,PhotoRole>;footer?:Record<FooterField,boolean>;presentation?:'campaign';productName:string;productProfile:ProductProfile;generation:GenerationSettings;scale:number;
@@ -93,6 +95,8 @@ export async function importProject(raw:unknown):Promise<Project> {
  const p:Project={...base,...(r.adBatch?{adBatch:{id:r.adBatch.id,count:r.adBatch.count},id:r.adBatch.id}:{}),campaign:r.campaign===undefined?defaultCampaign():parseCampaign(r.campaign),referenceCheck:r.referenceCheck===undefined?defaultReferenceCheck():parseReferenceCheck(r.referenceCheck),name:string(r.name,80),productName:string(r.productName,100),productProfile:parseProfile(r.productProfile),generation:parseGeneration(r.generation),locale:r.locale,format:r.format,ink:r.ink,scale:r.scale,background:{color:r.background.color,image:await asset(r.background.image)},product:await asset(r.product)};
  for(const lang of ['ko','en'] as const){if(!r.copy[lang])throw new Error('언어별 문구가 누락되었습니다.');for(const field of ['title','description','company','contact','website'] as const)p.copy[lang][field]=string(r.copy[lang][field]);}
  for(const axis of axes){p.dimensions[axis]=string(r.dimensions[axis],20);const points=r.dimensions.anchors?.[axis];if(!Array.isArray(points)||points.length!==2||points.some(pt=>!pt||!Number.isFinite(pt.x)||!Number.isFinite(pt.y)||pt.x<0||pt.x>1||pt.y<0||pt.y>1))throw new Error('치수선 위치가 올바르지 않습니다.');p.dimensions.anchors[axis]=points.map(pt=>({x:pt.x,y:pt.y})) as [Point,Point];}
+ if(r.storyCarousel===true)p.storyCarousel=true;
+ if(r.storyPlan!==undefined){if(!p.storyCarousel||!validStoryPlan(r.storyPlan))throw Error('INVALID_STORY_PLAN');p.storyPlan=r.storyPlan;}
  if(r.requestedImageCount!==undefined){if(!imageCounts.includes(r.requestedImageCount as typeof imageCounts[number]))throw Error('INVALID_IMAGE_COUNT');p.requestedImageCount=r.requestedImageCount;}
  parseResultSet(r.resultSet,r.id);
  p.references=[];if(r.references!==undefined){if(!Array.isArray(r.references)||r.references.length>9)throw Error('참조사진은 최대 10장입니다.');for(const ref of r.references){const a=await asset(ref);if(!a)throw Error('참조사진을 확인해주세요.');p.references.push(a);}}

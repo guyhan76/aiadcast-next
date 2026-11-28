@@ -39,3 +39,10 @@
 .gallery-close { display:block; margin-left:auto; }
 .gallery-options { justify-content:center; flex-wrap:wrap; }
 @media(min-width:800px){ .gallery-actions { bottom:0; } }
+
+.carousel-mode { margin-block:12px; }
+.batch-confirm:has(.carousel-editor) { width:min(520px,calc(100vw - 24px)); max-height:88dvh; overflow:auto; }
+.carousel-editor { min-width:0; margin:0; border:0; padding:0; }
+.carousel-editor section { border-top:1px solid #ddd; margin-top:14px; }
+.carousel-editor label { display:grid; gap:4px; margin:8px 0; }
+.carousel-editor textarea,.carousel-editor input { box-sizing:border-box; width:100%; padding:8px; font:inherit; }
