@@ -1,8 +1,9 @@
 import {CarouselEditor} from './CarouselEditor';
 import {planCarousel} from './carousel-planner';
-import {validStoryPlan,carouselCount,carouselFormat} from './story-carousel';
+import {validStoryPlan,isCarouselCount,carouselCounts,carouselCount,carouselFormat} from './story-carousel';
 import {BatchConfirmation} from './BatchConfirmation';
 import {batchPrice,type BatchPrice} from './batch-price';
+import {imageCredits} from './pricing';
 import {offlineDemo} from './demo-mode';
 import './ad-batch.css';
 import {imageCounts} from './result-set';
@@ -64,10 +65,12 @@ export function CreateCampaign({initialKind,onReady,onNew,draft,onDraft,active=t
  const examples=campaignFieldExamples[language][service?'service':'product'];
  const axes=dimensionAxes(project.productProfile),settings=creativeSettings(project),copy=project.copy[project.locale];
  const carousel=!!project.storyCarousel&&!project.dimensionControl&&!offlineDemo();
+ const selectedCount=carousel?(isCarouselCount(project.requestedImageCount)?project.requestedImageCount:carouselCount):(project.requestedImageCount??1);
+ const previewPrice=(()=>{try{return creditStatus?batchPrice(creditStatus.wallet,selectedCount):undefined;}catch{return undefined;}})();
  const copyMode=carousel?'ai':settings.copyMode??'ai';
  const aiDimensionChoice=!project.dimensionControl&&project.generation.mode==='creative';
  const dimensionsVisible=aiDimensionChoice?(project.dimensionAnnotation?.mode??'none')!=='none':project.dimensions.visible;
- function change(fn:(p:Project)=>Project){if(submitting.current)return;setProject(fn);setError('');}
+ function change(fn:(p:Project)=>Project){if(submitting.current)return;setProject(fn);setConfirmation(undefined);setError('');}
  function photoBusyChanged(value:boolean){photoImporting.current=value;setPhotosBusy(value);}
  function setCopy(field:'title'|'description'|FooterField,value:string){change(p=>({...p,copy:{...p.copy,[p.locale]:{...p.copy[p.locale],[field]:value}}}));}
  function setDimensionUse(on:boolean){
@@ -90,7 +93,7 @@ export function CreateCampaign({initialKind,onReady,onNew,draft,onDraft,active=t
   if(!regulatoryOk){setError(t('1번 광고 분야의 법규 안내를 확인해주세요.','Review the industry notice in step 1.'));return;}
   if((!carousel&&!project.productName.trim())||!project.productProfile.material.trim()){setError(carousel?t('원하는 광고를 한 줄로 입력해주세요.','Describe your ad in one line.'):t('상품·서비스 이름과 상세설명을 입력해주세요.','Enter the name and description.'));document.getElementById(id+(!carousel&&!project.productName.trim()?'-name':'-description'))?.focus();return;}
   if(copyMode==='manual'&&!copy.title.trim()){setError(t('직접 사용할 광고 제목을 입력해주세요.','Enter your advertising headline.'));document.getElementById(id+'-headline')?.focus();return;}
-  const input:Project=carousel?{...project,productName:project.productName.trim()||project.productProfile.material.trim().slice(0,60),format:carouselFormat,requestedImageCount:carouselCount,storyPlan:undefined}:{...project,storyCarousel:undefined,storyPlan:undefined};
+  const input:Project=carousel?{...project,productName:project.productName.trim()||project.productProfile.material.trim().slice(0,60),format:carouselFormat,requestedImageCount:selectedCount,storyPlan:undefined}:{...project,storyCarousel:undefined,storyPlan:undefined};
   const prepared=prepareCampaign(photoGenerationDraft(withCreative(input,{copyMode}))),issues=newGenerationIssues(prepared);
   if(issues.length){setError(!prepared.product&&photoImportIssue?photoImportIssue:issues.map(text).join(' '));if(!prepared.product)document.getElementById(id+'-photos')?.focus();return;}
   submitting.current=true;setSubmittingBusy(true);setError('');
@@ -102,9 +105,12 @@ export function CreateCampaign({initialKind,onReady,onNew,draft,onDraft,active=t
    if(status.generation.batchVersion!==1)throw Error('BATCH_UNAVAILABLE');
    if(!status.generation.enabled&&status.generation.reason!=='NO_TEST_CREDITS')throw Error(status.generation.reason??'GENERATION_DISABLED');
    setCreditStatus(status);
-   const storyPlan=carousel?await planCarousel(project):undefined;
+   const price=batchPrice(status.wallet,prepared.requestedImageCount??1);
+   if(carousel&&price.creditsAfter<0){setConfirmation({project:prepared,price,token});return;}
+   if(carousel&&status.assistant?.available===false)throw Error(status.assistant.reason??'ASSISTANT_DISABLED');
+   const storyPlan=carousel?await planCarousel(prepared):undefined;
    if(token!==betaSession()?.token||!live.current)return;
-   setConfirmation({project:{...prepared,...(storyPlan?{storyPlan}:{})},price:batchPrice(status.wallet,prepared.requestedImageCount??1),token});
+   setConfirmation({project:{...prepared,...(storyPlan?{storyPlan}:{})},price,token});
   }catch(e){showError(e);}finally{submitting.current=false;setSubmittingBusy(false);}
  }
  function showError(e:unknown){
@@ -115,6 +121,12 @@ export function CreateCampaign({initialKind,onReady,onNew,draft,onDraft,active=t
    GENERATION_ALREADY_RUNNING:['다른 광고를 생성 중입니다. 완료 후 다시 시도해주세요.','Another generation is running. Try again when it finishes.'],
    STORAGE_CAPACITY_UNAVAILABLE:['이미지를 저장할 서버 공간이 부족합니다. 관리자에게 문의해주세요.','Server storage is full. Contact your administrator.'],
    NO_TEST_CREDITS:['잔여 크레딧이 부족합니다.','Insufficient credits.'],
+   ASSISTANT_DISABLED:['캐러셀 구성 기능을 준비 중입니다. 관리자에게 문의해주세요.','Carousel planning is not available yet. Contact your administrator.'],
+   PROVIDER_NOT_CONFIGURED:['AI 연결을 준비 중입니다. 관리자에게 문의해주세요.','The AI connection is not ready. Contact your administrator.'],
+   ASSISTANT_ALREADY_RUNNING:['구성안을 만들고 있습니다. 잠시 후 다시 확인해주세요.','Your plan is being prepared. Please check again shortly.'],
+   PROVIDER_RATE_LIMITED:['요청이 많아 잠시 지연되고 있습니다. 잠시 후 다시 시도해주세요.','The service is busy. Please retry shortly.'],
+   PROVIDER_INVALID_RESPONSE:['구성안을 받지 못했습니다. 다시 시도해주세요.','Could not read the plan. Please retry.'],
+   PROVIDER_INCOMPLETE_RESPONSE:['구성안이 완성되지 않았습니다. 다시 시도해주세요.','The plan was incomplete. Please retry.'],
    INVALID_STORY_PLAN:['장별 구성안을 확인하지 못했습니다. 다시 시도해주세요.','Could not validate the carousel plan. Please retry.'],
    BATCH_UNAVAILABLE:['서버가 아직 일괄 생성을 지원하지 않습니다.','The server does not yet support batch generation.'],
    AUTH_REQUIRED:['이미지를 생성하려면 로그인해주세요.','Sign in to generate images.'],
@@ -124,7 +136,7 @@ export function CreateCampaign({initialKind,onReady,onNew,draft,onDraft,active=t
  }
  async function confirm(){
   if(!active||!confirmation||submitting.current||confirmation.token!==betaSession()?.token||confirmation.price.creditsAfter<0)return;
-  if(confirmation.project.storyCarousel&&!validStoryPlan(confirmation.project.storyPlan))return;
+  if(confirmation.project.storyCarousel&&(confirmation.project.requestedImageCount!==confirmation.price.count||!validStoryPlan(confirmation.project.storyPlan,confirmation.price.count)))return;
   submitting.current=true;setSubmittingBusy(true);setError('');
   try{await onReady(confirmation.project,confirmation.price);}catch(e){showError(e);}
   finally{setConfirmation(undefined);submitting.current=false;setSubmittingBusy(false);}
@@ -135,10 +147,10 @@ export function CreateCampaign({initialKind,onReady,onNew,draft,onDraft,active=t
   <form aria-busy={busy} onSubmit={e=>{e.preventDefault();void submit();}}>
    <fieldset disabled={submittingBusy} style={{border:0,padding:0,margin:0,minWidth:0}}>
    {!offlineDemo()&&!project.dimensionControl&&<div className="simple-choice carousel-mode" role="group" aria-label={t('이미지 형식','Image format')}>
-    <button type="button" aria-pressed={!carousel} onClick={()=>change(p=>({...p,storyCarousel:false,storyPlan:undefined}))}>{t('일반 광고','Standard ad')}</button>
-    <button type="button" aria-pressed={carousel} onClick={()=>change(p=>({...p,storyCarousel:true}))}>{t('스토리형 캐러셀','Story carousel')}</button>
+    <button type="button" aria-pressed={!carousel} onClick={()=>change(p=>({...p,storyCarousel:false,storyPlan:undefined,resultSet:undefined}))}>{t('일반 광고','Standard ad')}</button>
+    <button type="button" aria-pressed={carousel} onClick={()=>change(p=>({...p,storyCarousel:true,requestedImageCount:isCarouselCount(p.requestedImageCount)?p.requestedImageCount:carouselCount,storyPlan:undefined,resultSet:undefined}))}>{t('인스타 피드 캐러셀','Instagram feed carousel')}</button>
    </div>}
-   {carousel&&<p className="help">{t('인스타그램 피드용 4:5 이미지 4장이 하나의 이야기로 이어집니다.','Four 4:5 images tell one story for the Instagram feed.')}</p>}
+   {carousel&&<p className="carousel-intro">{t('넘겨보는 4:5 광고, 하나의 이야기로.','One story across swipeable 4:5 ads.')}</p>}
    <section className="creation-section" data-order="1"><h2><span>1</span>{t('광고할 분야','Your industry')}</h2>
     <AdFieldPicker id={id+'-industry'} kind={kind} onKind={setKind} project={project} chosen={chosen} onChosen={setChosen} change={change}/>
     
@@ -171,13 +183,15 @@ export function CreateCampaign({initialKind,onReady,onNew,draft,onDraft,active=t
    {!carousel&&<section className="creation-section" data-order="7"><h2><span>7</span>{t('광고 목적','Ad purpose')}<small>{t('선택','Optional')}</small></h2><label className="field">{t('목적 선택','Choose a purpose')}<select value={settings.directionId} onChange={e=>change(p=>withCreative(p,{directionId:e.target.value as 'brand'|'offer'|'trust'}))}><option value="brand">{t('AI가 정하기','Let AI decide')}</option><option value="offer">{t('상품·서비스 홍보','Promote the offer')}</option><option value="trust">{t('브랜드·신뢰 강조','Build brand trust')}</option></select></label></section>
    }
    <section className="creation-section" data-order="8"><h2><span>8</span>{t('광고 이미지 비율','Image ratio')}<small>{t('선택','Optional')}</small></h2><label className="field">{t('출력 비율','Output ratio')}<select disabled={carousel} value={carousel?carouselFormat:project.format} onChange={e=>change(p=>({...p,format:e.target.value as Project['format']}))}>{imageFormats.map(f=><option key={f.id} value={f.id}>{f.id} · {text(f.use)}</option>)}</select></label><label className="field">{t('광고 문구 언어','Ad copy language')}<select value={project.locale} onChange={e=>change(p=>({...p,locale:e.target.value as 'ko'|'en'}))}><option value="ko">한국어</option><option value="en">English</option></select></label></section>
-   {!carousel&&!project.dimensionControl&&<section className="creation-section" data-order="9"><h2><span>9</span><strong>{t('생성 장수','Number of images')}</strong></h2><div className="image-count-options" role="group" aria-label={t('생성 장수','Number of images')}>{imageCounts.map(count=><button type="button" key={count} aria-pressed={(project.requestedImageCount??1)===count} onClick={()=>change(p=>({...p,requestedImageCount:count,resultSet:undefined}))}>{count}</button>)}</div></section>}
+   {!project.dimensionControl&&<section className={'creation-section'+(carousel?' carousel-count-section':'')} data-order="9"><h2><span>9</span><strong>{t('생성 장수','Number of images')}</strong></h2><div className="image-count-options" role="group" aria-label={t('생성 장수','Number of images')}>{(carousel?carouselCounts:imageCounts).map(count=><button type="button" key={count} aria-pressed={selectedCount===count} onClick={()=>change(p=>({...p,requestedImageCount:count,storyPlan:undefined,resultSet:undefined}))}>{carousel?t(`${count}장`,`${count} cards`):count}</button>)}</div>
+    {carousel&&<p className="carousel-count-summary" aria-live="polite"><span>{t(`${selectedCount}장 · 인스타 피드 4:5`,`${selectedCount} cards · Instagram feed 4:5`)}</span><strong>{previewPrice?.admin?t('관리자 · 차감 없음','Admin · no charge'):previewPrice?t(`${previewPrice.creditsUsed}크레딧${previewPrice.ticketsUsed?` + 이용권 ${previewPrice.ticketsUsed}장`:''}`,`${previewPrice.creditsUsed} credits${previewPrice.ticketsUsed?` + ${previewPrice.ticketsUsed} legacy tickets`:''}`):t(`장당 ${imageCredits}크레딧`,`${imageCredits} credits per card`)}</strong></p>}
+   </section>}
    </fieldset>
    {error&&<p className={'wizard-error'+(photoImportIssue&&error===photoImportIssue?' photo-upload-error':'')} role="alert">{error}</p>}
    {!regulatoryOk&&<p className="help">{t('1번 광고할 분야의 법규 안내를 확인하면 광고를 만들 수 있습니다.','Confirm the industry notice in step 1 to generate the ad.')}</p>}
    <div className="wizard-actions"><button className="primary-action" type="submit" disabled={busy||!active||!regulatoryOk}><Sparkles size={18}/>{photosBusy?t('사진 불러오는 중…','Loading photos…'):submittingBusy?t('준비 중…','Preparing…'):carousel?t('캐러셀 구성 만들기','Plan carousel'):project.dimensionControl?t('기하 검증 이미지 만들기','Create geometry proof'):t('광고 생성','Generate ad')}</button></div>{!project.dimensionControl&&creditStatus?.wallet?.unlimited&&<p className="help submit-help">{t('관리자 테스트 · 차감 없음','Administrator test · no charge')}</p>}
   </form>
-  {confirmation&&active&&<BatchConfirmation price={confirmation.price} busy={busy} onConfirm={()=>void confirm()} onClose={()=>setConfirmation(undefined)} canConfirm={!confirmation.project.storyCarousel||validStoryPlan(confirmation.project.storyPlan)}>
+  {confirmation&&active&&<BatchConfirmation price={confirmation.price} carousel={!!confirmation.project.storyCarousel} busy={busy} onConfirm={()=>void confirm()} onClose={()=>setConfirmation(undefined)} canConfirm={!confirmation.project.storyCarousel||(confirmation.project.requestedImageCount===confirmation.price.count&&validStoryPlan(confirmation.project.storyPlan,confirmation.price.count))}>
    {confirmation.project.storyPlan&&<CarouselEditor plan={confirmation.project.storyPlan} busy={busy} onChange={storyPlan=>setConfirmation(current=>current?{...current,project:{...current.project,storyPlan}}:current)}/>}
   </BatchConfirmation>}
  </div>;
