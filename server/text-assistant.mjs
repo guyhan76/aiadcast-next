@@ -1,4 +1,4 @@
-import {validStoryPlan} from '../src/story-carousel.ts';
+import {validStoryPlan,carouselCount} from '../src/story-carousel.ts';
 import {normalizeCarouselPlanning,carouselPlanningPayload} from './story-carousel.mjs';
 import {validSceneCues} from '../src/video-omni.ts';
 import {validVideoAudio} from '../src/video-prompt.ts';
@@ -103,7 +103,7 @@ export async function assistCopy({ request: raw, fetchImpl = globalThis.fetch, a
       {role:'user',content:[{type:'text',text:JSON.stringify({language:request.targetLocale,brief:request.brief})},...request.frames.flatMap(f=>[{type:'text',text:f.time+'s'},{type:'image_url',image_url:{url:f.image,detail:'low'}}])]}];
     payload.response_format.json_schema={name:'video_review',strict:true,schema:{type:'object',additionalProperties:false,required:['issues'],properties:{issues:{type:'array',maxItems:4,items:{type:'object',additionalProperties:false,required:['time','note'],properties:{time:{type:'number',enum:request.frames.map(f=>f.time)},note:{type:'string',maxLength:220}}}}}}};
   }
-  if(request.kind==='carousel-plan')Object.assign(payload,carouselPlanningPayload(request),{max_completion_tokens:1800});
+  if(request.kind==='carousel-plan')Object.assign(payload,carouselPlanningPayload(request));
   let response;
   try {
     response = await fetchImpl(TEXT_ENDPOINT, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'X-Client-Request-Id': attemptId ?? request.requestId }, body: JSON.stringify(payload), redirect: 'error', signal: AbortSignal.timeout(timeoutMs) });
@@ -128,7 +128,7 @@ export async function assistCopy({ request: raw, fetchImpl = globalThis.fetch, a
     return {kind:request.kind,requestId:request.requestId,issues:proposal.issues,usage,cost:textUsageCost(usage),model};
   }
   if(request.kind==='carousel-plan'){
-    if(!validStoryPlan(proposal))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
+    if(!validStoryPlan(proposal,request.count??carouselCount))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
     return {kind:request.kind,requestId:request.requestId,plan:proposal,usage,cost:textUsageCost(usage),model};
   }
   if(video){

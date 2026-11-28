@@ -2,14 +2,15 @@ import {useEffect,useRef,type ReactNode} from 'react';
 import type {BatchPrice} from './batch-price';
 import {useUiLanguage} from './ui-language';
 
-export function BatchConfirmation({price,busy,onConfirm,onClose,children,canConfirm=true}:{children?:ReactNode;canConfirm?:boolean;price:BatchPrice;busy:boolean;onConfirm:()=>void;onClose:()=>void}){
+export function BatchConfirmation({price,busy,onConfirm,onClose,children,carousel=false,canConfirm=true}:{children?:ReactNode;carousel?:boolean;canConfirm?:boolean;price:BatchPrice;busy:boolean;onConfirm:()=>void;onClose:()=>void}){
  const insufficientCredits=price.creditsAfter<0;
+ const isCarousel=carousel||!!children;
  const dialog=useRef<HTMLDialogElement>(null),{t}=useUiLanguage();
  useEffect(()=>{const el=dialog.current!;el.showModal();return()=>el.close();},[]);
- return <dialog className="batch-confirm" aria-labelledby="batch-confirm-title" ref={dialog} onCancel={e=>{e.preventDefault();if(!busy)onClose();}}>
-  <h2 id="batch-confirm-title">{children?t('캐러셀 구성 확인','Review carousel'):t('광고 생성 확인','Confirm generation')}</h2>
-  <p>{t(`광고 이미지 ${price.count}장을 생성합니다.`,`Generate ${price.count} ad image(s).`)}</p>
-  {children}
+ return <dialog className={'batch-confirm'+(isCarousel?' carousel-confirm':'')} aria-labelledby="batch-confirm-title" ref={dialog} onCancel={e=>{e.preventDefault();if(!busy)onClose();}}>
+  <h2 id="batch-confirm-title">{isCarousel?t('캐러셀 구성 확인','Review carousel'):t('광고 생성 확인','Confirm generation')}</h2>
+  <p className="batch-summary">{isCarousel?<><span>{t(`인스타 피드 · 4:5 · ${price.count}장`,`Instagram feed · 4:5 · ${price.count} cards`)}</span><strong>{price.admin?t('차감 없음','No charge'):t(`${price.creditsUsed}크레딧`,`${price.creditsUsed} credits`)}</strong></>:t(`광고 이미지 ${price.count}장을 생성합니다.`,`Generate ${price.count} ad image(s).`)}</p>
+  <div className="batch-confirm-body">
   <dl>
    <dt>{t('현재 크레딧','Current credits')}</dt><dd>{price.credits.toLocaleString()}</dd>
    <dt>{t('차감 예정','Credits to use')}</dt><dd>{price.creditsUsed.toLocaleString()}</dd>
@@ -19,9 +20,11 @@ export function BatchConfirmation({price,busy,onConfirm,onClose,children,canConf
   {price.admin&&<p>{t('관리자 테스트 · 차감 없음','Administrator test · no charge')}</p>}
   {insufficientCredits?<p role="alert">{t(`${-price.creditsAfter}크레딧이 부족합니다. 장수를 줄이거나 크레딧을 충전해주세요.`,`You need ${-price.creditsAfter} more credits. Choose fewer images or add credits.`)}</p>:
    !price.admin&&<p>{t('확인하면 사용 가능 잔액에서 예약됩니다. 생성 실패분은 복원됩니다.','Confirmation reserves the amount from your available balance. Failed images are credited back.')}</p>}
+  {children}
+  </div>
   <div className="batch-actions">
    <button type="button" disabled={busy} onClick={onClose}>{t('취소','Cancel')}</button>
-   <button type="button" disabled={busy||insufficientCredits||!canConfirm} onClick={onConfirm}>{busy?t('접수 중…','Submitting…'):children?t('캐러셀 4장 생성','Generate 4 cards'):t('확인','Confirm')}</button>
+   <button type="button" disabled={busy||insufficientCredits||!canConfirm} onClick={onConfirm}>{busy?t('접수 중…','Submitting…'):isCarousel?t(`캐러셀 ${price.count}장 생성`,`Generate ${price.count} cards`):t('확인','Confirm')}</button>
    {insufficientCredits&&<button type="button" disabled={busy} onClick={()=>{
     onClose();
     location.hash='checkout?from=generation';

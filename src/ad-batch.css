@@ -41,8 +41,25 @@
 @media(min-width:800px){ .gallery-actions { bottom:0; } }
 
 .carousel-mode { margin-block:12px; }
-.batch-confirm:has(.carousel-editor) { width:min(520px,calc(100vw - 24px)); max-height:88dvh; overflow:auto; }
+.carousel-mode button { text-wrap:balance; }
+.carousel-intro { padding:14px 16px; border-radius:10px; background:#f4f4f4; line-height:1.5; }
+.carousel-count-section .image-count-options { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; }
+.carousel-count-section .image-count-options button { min-width:0; min-height:48px; padding:8px 2px; font-size:15px; }
+.carousel-count-summary { display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; padding:14px 16px; border-radius:10px; background:#f4f4f4; line-height:1.5; }
+.carousel-count-summary strong { font-weight:700; }
+.batch-confirm.carousel-confirm { box-sizing:border-box; width:min(560px,calc(100vw - 24px)); max-height:88dvh; max-height:min(88dvh,900px); overflow:hidden; }
+.batch-confirm.carousel-confirm[open] { display:flex; flex-direction:column; }
+.carousel-confirm h2,.carousel-confirm .batch-summary,.carousel-confirm .batch-actions { flex-shrink:0; }
+.carousel-confirm .batch-summary { display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px 12px; margin:0 0 12px; padding:12px; border-radius:10px; background:#f4f4f4; }
+.carousel-confirm .batch-confirm-body { min-height:0; overflow:auto; overscroll-behavior:contain; padding-right:4px; }
+.carousel-confirm .batch-actions { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,2fr); margin:14px 0 0; padding-top:14px; border-top:1px solid #ddd; }
+.carousel-confirm .batch-actions button { min-height:48px; padding-inline:8px; }
+.carousel-confirm .batch-actions button:nth-child(3) { grid-column:1/-1; }
 .carousel-editor { min-width:0; margin:0; border:0; padding:0; }
-.carousel-editor section { border-top:1px solid #ddd; margin-top:14px; }
-.carousel-editor label { display:grid; gap:4px; margin:8px 0; }
-.carousel-editor textarea,.carousel-editor input { box-sizing:border-box; width:100%; padding:8px; font:inherit; }
+.carousel-editor section { padding:16px; border-radius:12px; background:#f4f4f4; margin-top:16px; }
+.carousel-editor h3 { display:flex; align-items:center; gap:12px; margin:0 0 12px; font-size:1rem; }
+.carousel-editor h3 span { padding:5px 8px; border-radius:7px; background:#171717; color:white; font-size:.88rem; white-space:nowrap; }
+.carousel-editor label { display:grid; gap:6px; margin:12px 0; line-height:1.45; }
+.carousel-editor textarea,.carousel-editor input { box-sizing:border-box; width:100%; min-width:0; min-height:44px; padding:10px; border:1px solid #ccc; border-radius:8px; background:white; color:#171717; font:inherit; line-height:1.5; }
+.carousel-editor textarea { resize:vertical; }
+@media (max-width:400px) { .batch-confirm.carousel-confirm { padding:18px 14px; } .carousel-editor section { padding:12px; } }
