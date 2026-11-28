@@ -1,6 +1,7 @@
 import {openReviewVideo} from './video-shot-repair';
 import {VideoShotRepair} from './VideoShotRepair';
 import type {VideoRequestStage} from './video-ai-client';
+import {validSceneCues} from './video-omni';
 import {VideoPromptReview,type VideoReview} from './VideoPromptReview';
 import {promptBrief,basicVideoShots,validManualPrompt,validVideoShots,type VideoPromptMode,type VideoPlanIdea,type PromptBrief} from './video-prompt';
 import {AdIndustryFields} from './AdIndustryFields';
@@ -25,7 +26,7 @@ export function videoDraft(sources:VideoSource[]=[],brief:VideoBrief=emptyVideoB
 type Props = {
   draft:VideoDraft; change:(draft:VideoDraft)=>void; onNew?:()=>void;
   generateAi?:(draft:VideoDraft,seconds:VideoDuration,signal:AbortSignal,onState:(s:VideoRequestStage)=>void,scenes:LoadedVideoScene[],pilot?:'gemini')=>Promise<Blob>;
-  draftPrompt?:(brief:PromptBrief,scenes:LoadedVideoScene[],language:'ko'|'en',signal:AbortSignal)=>Promise<VideoPlanIdea>;
+  draftPrompt?:(brief:PromptBrief,scenes:LoadedVideoScene[],language:'ko'|'en',signal:AbortSignal,segmented?:boolean)=>Promise<VideoPlanIdea>;
   omniPilot?:boolean;
   primaryUnavailable?:boolean;
   admin:boolean; availableCredits:number;
@@ -103,6 +104,7 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,omniPilot
     :sources.length>6?t('Gemini 참조 자료는 최대 6개입니다.','Choose up to six references.')
     :!ready&&!servicePromptOnly?(bad?t('열 수 없는 자료를 교체해 주세요.','Replace the unreadable reference.'):!sources.length&&!service?t('상품 사진을 첨부해 주세요.','Add a product photo.'):needOpenBox?t('언박싱 사진을 두 장 이상 첨부해 주세요.','Add at least two unboxing photos.'):t('입력 정보와 첨부 자료를 확인해 주세요.','Check the brief and references.'))
     :!promptReady?(useManual?t('직접 입력한 프롬프트를 확인해 주세요.','Check the manual prompt.'):stale?t('입력 정보가 바뀌었습니다. 구성안을 다시 만들어 주세요.','Rebuild the plan for the changed inputs.'):!review?t('장면 구성안을 만들어 주세요.','Create a scene plan.'):t('장면 연출과 선택한 내레이션을 완성해 주세요.','Complete the shots and selected narration.'))
+    :currentReview?.sceneCues&&!validSceneCues(currentReview.sceneCues)?t('각 장면의 현장음과 마지막 화면을 입력해 주세요.','Complete the sound and end frame of each scene.')
     :captions.some(line=>line.trim())&&!format?t('자막을 넣으려면 최신 Chrome에서 열어 주세요.','Open in a current Chrome browser to add captions.'):'';
   useEffect(()=>{
     const controller=new AbortController(),resources:LoadedVideoScene[]=[];
@@ -183,11 +185,11 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,omniPilot
     const controller=new AbortController();
     task.current=controller;setRun('prompt');setPromptError('');
     try{
-      const idea:VideoPlanIdea=draftPrompt?await draftPrompt(shotBrief,loaded,language,controller.signal):{shots:basicVideoShots(shotBrief,language)};
+      const idea:VideoPlanIdea=draftPrompt?await draftPrompt(shotBrief,loaded,language,controller.signal,!!admin&&!!omniPilot):{shots:basicVideoShots(shotBrief,language)};
       controller.signal.throwIfAborted();
       const script=draft.voiceText||idea.audio?.narration||videoPlan(brief,caption,'').voice;
       change({...draft,file:undefined,review:{
-        shots:idea.shots,frameLayout:idea.frameLayout,briefKey,sources,
+        shots:idea.shots,sceneCues:idea.sceneCues,frameLayout:idea.frameLayout,briefKey,sources,
         captions:sceneCaptions(brief,caption),showCaptions:review?.showCaptions??false,contact:brief.contact,
         music:review?.music??draft.aiMusic,musicMood:draft.musicStyle||idea.audio?.musicMood||(style==='unboxing'?t('경쾌한 리듬','Upbeat rhythm'):t('차분한 연주곡','Soft instrumental')),
         narration:script.slice(0,600),voice:review?.voice??(draft.aiVoice&&!!draft.voiceText.trim())
@@ -340,6 +342,7 @@ export function VideoDurationEditor({draft,change,onNew,aiPrices,admin,omniPilot
       <button type="button" className="vd-recommend" aria-pressed={manual===null}
         onClick={()=>edit({manual:null})}>{manual===null&&<Check size={14}/>} {t('자동 추천','Recommended')} · {recommended}{t('초','s')}</button>
     </fieldset>
+    {admin&&omniPilot&&draftPrompt&&currentReview&&!currentReview.sceneCues&&<button type="button" className="vd-library" disabled={!!run||!ready} onClick={()=>void buildPrompt()}>{t('Gemini 구간 대본 만들기','Draft Gemini segment scripts')}</button>}
     <VideoPromptReview mode={promptMode} manualText={manualPrompt} seconds={seconds} ratio={ratio}
       onMode={promptMode=>edit({promptMode})} onManual={manualPrompt=>edit({manualPrompt})}
       review={review} ready={ready} busy={!!run||repairBusy} planning={run==='prompt'}

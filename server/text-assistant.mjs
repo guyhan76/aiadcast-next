@@ -1,3 +1,4 @@
+import {validSceneCues} from '../src/video-omni.ts';
 import {validVideoAudio} from '../src/video-prompt.ts';
 import {normalizeVideoPromptRequest,videoPromptMessages,videoResponseSchema,photoShotDirections} from './video-prompt-assistant.mjs';
 import { ProviderFailure } from './openai-image-adapter.mjs';
@@ -91,7 +92,7 @@ export async function assistCopy({ request: raw, fetchImpl = globalThis.fetch, a
   const input = JSON.stringify({ kind: request.kind, sourceLocale: request.sourceLocale, targetLocale: request.targetLocale, productName: request.productName, description: request.description, copy: request.copy,cta:request.cta });
   const payload = {
     model, store: false, n: 1, messages: video?videoPromptMessages(request):[{ role: 'developer', content: instructions }, { role: 'user', content: input }],
-    max_completion_tokens: video && request.references.length ? 1900 : MAX_OUTPUT_TOKENS,
+    max_completion_tokens: video && request.segmented ? 2500 : video && request.references.length ? 1900 : MAX_OUTPUT_TOKENS,
     response_format: { type: 'json_schema', json_schema: video?videoResponseSchema(request):{ name: 'advertising_copy', strict: true, schema: { type: 'object', properties: { title: { type: 'string', maxLength: 180 }, description: { type: 'string', maxLength: 240 } }, required: ['title', 'description'], additionalProperties: false } } },
   };
   if(request.kind==='video-review'){
@@ -155,9 +156,10 @@ export async function assistCopy({ request: raw, fetchImpl = globalThis.fetch, a
       shots=photoShotDirections(shots,proposal?.sceneRecipes,request.targetLocale);
       if(!shots) throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
     }
-    const expectedKeys=(request.planVersion===4?10:request.planVersion===3?9:openingBeats?7:full?6:3)+(request.references.length?1:0);
+    if(request.segmented&&!validSceneCues(proposal?.sceneCues))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
+    const expectedKeys=(request.segmented?1:0)+(request.planVersion===4?10:request.planVersion===3?9:openingBeats?7:full?6:3)+(request.references.length?1:0);
     if(!proposal||Object.keys(proposal).length!==expectedKeys||(full&&!validVideoAudio(proposal))||shots.some(s=>typeof s!=='string'||!s.trim()||s.length>900))throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
-    return {requestId:request.requestId,kind:request.kind,targetLocale:request.targetLocale,shots,...(request.planVersion>=3?{frameLayout:proposal.frameLayout}:{}),...(full?{audio:{musicMood:proposal.musicMood,narration:proposal.narration,recommendVoice:proposal.recommendVoice}}:{}),usage,cost:textUsageCost(usage),model};
+    return {requestId:request.requestId,kind:request.kind,targetLocale:request.targetLocale,shots,...(request.segmented?{sceneCues:proposal.sceneCues}:{}),...(request.planVersion>=3?{frameLayout:proposal.frameLayout}:{}),...(full?{audio:{musicMood:proposal.musicMood,narration:proposal.narration,recommendVoice:proposal.recommendVoice}}:{}),usage,cost:textUsageCost(usage),model};
   }
   if (!proposal || typeof proposal !== 'object' || Array.isArray(proposal) || Object.keys(proposal).sort().join(',') !== 'description,title' || typeof proposal.title !== 'string' || typeof proposal.description !== 'string' || proposal.title.length > 180 || proposal.description.length > 240 || !proposal.title.trim()) throw new ProviderFailure('PROVIDER_INVALID_RESPONSE');
   return { requestId: request.requestId, kind: request.kind, targetLocale: request.targetLocale, proposal, review: { required: true, numericChanges: reviewNumericChanges(request, proposal) }, usage, cost: textUsageCost(usage), model, providerRequestId: response.headers.get('x-request-id')?.slice(0, 200) ?? null };

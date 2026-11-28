@@ -409,12 +409,18 @@ test('rebuilding the same ad plan preserves disabled captions and narration',asy
  await expect.poll(()=>request).toMatchObject({voice:false,narration:'',music:true});
 });
 
+const pizzaSceneCues=[
+  {endFrame:'마지막 조각이 들려 있다.',dialogue:'',sound:'식당 소리'},
+  {endFrame:'빈 접시가 보인다.',dialogue:'',sound:'작은 접시 소리'},
+  {endFrame:'직원이 주문을 받는다.',dialogue:'손님: 한 판 더 주세요.',sound:'매장 소리'}
+];
+
 test('administrator compares a reviewed pizza plan with Gemini after confirming the external cost',async({page})=>{
   await protectedScreen(page,mockSession('omni-comparison','admin'));
   await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
   await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:false,omniPilot:true,assistant:{available:true},generation:{enabled:false},wallet:{unlimited:true,available:0,reserved:0},budget:{limitMicros:5000000}}}));
   const shots=['피자 조각을 들어 올린다.','치즈와 도우의 단면을 본다.','한 판 더 주문한다.'];
-  await page.route('**/api/assistant',r=>r.fulfill({json:{requestId:r.request().postDataJSON().requestId,shots}}));
+  await page.route('**/api/assistant',r=>r.fulfill({json:{requestId:r.request().postDataJSON().requestId,shots,sceneCues:pizzaSceneCues}}));
   let submitted;
   await page.route('**/api/videos',r=>{submitted=r.request().postDataJSON();return r.fulfill({json:{id:submitted.requestId}});});
   await page.route('**/api/videos/*',r=>r.fulfill({json:{state:'failed'}}));
@@ -424,18 +430,21 @@ test('administrator compares a reviewed pizza plan with Gemini after confirming 
   await editor.getByLabel('상품명',{exact:true}).fill('피자');
   await editor.getByRole('button',{name:'10초',exact:true}).click();
   await editor.getByRole('button',{name:'영상 구성안 만들기'}).click();
+  const closing=editor.locator('.vd-review-scene').nth(2);
+  await closing.locator('summary').filter({hasText:'대사·현장음·마지막 화면'}).click();
+  await closing.getByLabel('마지막 장면 인물 대사',{exact:true}).fill('손님: 지금 한 판 더 주세요.');
   await editor.getByRole('button',{name:/Gemini 비교 제작/}).click();
   await expect(page.getByRole('dialog')).toContainText('$0.70');
   expect(submitted).toBeUndefined();
   await page.getByRole('dialog').getByRole('button',{name:'제작 시작'}).click();
-  await expect.poll(()=>submitted).toMatchObject({pilot:'gemini',seconds:10,ratio:'9:16',promptMode:'auto',shots,expectedCredits:0});
+  await expect.poll(()=>submitted).toMatchObject({pilot:'gemini',seconds:10,ratio:'9:16',promptMode:'auto',shots,sceneCues:[pizzaSceneCues[0],pizzaSceneCues[1],{...pizzaSceneCues[2],dialogue:'손님: 지금 한 판 더 주세요.'}],expectedCredits:0});
 });
 
 test('restaurant service UGC allows both Gemini prompt modes and shows the paid turn count',async({page})=>{
   await protectedScreen(page,mockSession('omni-restaurant','admin'));
   await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
   await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:false,omniPilot:true,assistant:{available:true},generation:{enabled:false},wallet:{unlimited:true,available:0,reserved:0},budget:{limitMicros:8000000}}}));
-  await page.route('**/api/assistant',r=>r.fulfill({json:{requestId:r.request().postDataJSON().requestId,shots:['한 조각을 든다.','맛을 본다.','한 판 더 주문한다.']}}));
+  await page.route('**/api/assistant',r=>r.fulfill({json:{requestId:r.request().postDataJSON().requestId,shots:['한 조각을 든다.','맛을 본다.','한 판 더 주문한다.'],sceneCues:pizzaSceneCues}}));
   await page.goto('/#video');
   const editor=page.getByRole('region',{name:'광고 영상 편집'});
   await editor.getByRole('button',{name:'서비스',exact:true}).click();
@@ -451,6 +460,7 @@ test('restaurant service UGC allows both Gemini prompt modes and shows the paid 
   await editor.getByRole('button',{name:'20초',exact:true}).click();
   await expect(gemini).toBeDisabled();
   await editor.getByRole('button',{name:'변경된 정보로 구성안 다시 만들기'}).click();
+  await expect(editor.getByText('Gemini 2차 · 10–20초',{exact:true})).toBeVisible();
   await gemini.click();
   await expect(page.getByRole('dialog')).toContainText('유료 요청 2회');
   await page.getByRole('button',{name:'취소',exact:true}).click();

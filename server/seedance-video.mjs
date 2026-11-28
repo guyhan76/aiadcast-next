@@ -1,3 +1,4 @@
+import {omniSceneTiming,validSceneCues} from '../src/video-omni.ts';
 import {validVideoDuration} from '../src/video-duration.ts';
 import {validManualPrompt,validVideoShots,timedShots} from '../src/video-prompt.ts';
 import {getVideoFormat} from '../src/video-formats.ts';
@@ -30,6 +31,7 @@ export function seedancePayload(input,model){
     typeof music!=='boolean'||typeof voice!=='boolean'||!Array.isArray(references)||references.length>10)throw Error('INVALID_VIDEO');
   for(const [value,max] of [[brief.title,100],[brief.description,2000],[brief.emphasis,600],[narration,3000],[musicStyle,140],[voiceStyle,140],[input.suggestedVoice??'',3000]])
     if(typeof value!=='string'||value.length>max)throw Error('INVALID_VIDEO');
+  if(input.sceneCues!==undefined&&(input.pilot!=='gemini'||input.promptMode!=='auto'||!validSceneCues(input.sceneCues)))throw Error('INVALID_VIDEO');
   const manual=input.manualPrompt!==undefined;
   const hasShots=input.shots!==undefined;
   // New clients declare the selected mode. Older clients used the presence of each field.
@@ -62,7 +64,7 @@ export function seedancePayload(input,model){
   const sceneDirection=manual
     ? ['Follow the owner’s creative direction, including their shot sequence and timing. Leave room for app-added captions.',input.manualPrompt]
     : ['Plan a clear opening, a demonstration or service scene, and a final hold. Leave space for captions, which the app adds separately. Do not draw lettering, numbers or contact cards.',
-      ...(input.shots?['Follow these owner-reviewed shot directions in order, using the timings exactly:',timedShots(input.shots,seconds)]:[directions[style]])];
+      ...(input.shots?['Follow these owner-reviewed shot directions in order, using the timings exactly:',timedShots(input.shots,seconds,input.alignedScenes?omniSceneTiming(seconds).stops:undefined)]:[directions[style]])];
   const prompt=[
     `Create a ${orientation} commercial. Use the supplied facts and reference images only. Preserve product appearance and brand identity. Never invent prices, benefits, guarantees or contact details.`,
     ...sceneDirection,

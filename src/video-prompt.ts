@@ -1,3 +1,4 @@
+import type {SceneCue} from './video-omni.ts';
 import {excludesPour,finishedLatte} from './video-commercial-direction.ts';
 import {framingRule,lattePreparation} from './video-subject-framing.ts';
 import {formatBeats} from './video-format-direction.ts';
@@ -48,8 +49,7 @@ export function basicVideoShots(b:PromptBrief,language:'ko'|'en'):VideoShots {
   ];
 }
 
-export function timedShots(shots:VideoShots,seconds:number){
-  const stops=sceneStops(seconds);
+export function timedShots(shots:VideoShots,seconds:number,stops=sceneStops(seconds)){
   return shots.map((shot,i)=>stops[i]+'–'+stops[i+1]+'s · '+shot).join('\n');
 }
 
@@ -57,7 +57,7 @@ export type VideoAudioIdea = {musicMood:string; narration:string; recommendVoice
 export type PhotoFrameLayout = {
   mode:'original'|'crop'|'layers'; source:number; regions:{x:number;y:number}[][];
 };
-export type VideoPlanIdea = {shots:VideoShots;frameLayout?:PhotoFrameLayout; audio?:VideoAudioIdea};
+export type VideoPlanIdea = {shots:VideoShots;sceneCues?:SceneCue[];frameLayout?:PhotoFrameLayout; audio?:VideoAudioIdea};
 export function validVideoAudio(value:unknown):value is VideoAudioIdea {
   if (!value || typeof value!=='object') return false;
   const audio=value as Partial<VideoAudioIdea>;

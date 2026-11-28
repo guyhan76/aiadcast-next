@@ -1,3 +1,4 @@
+import {validSceneCues,type SceneCue} from './video-omni';
 import {validManualPrompt,validVideoShots,validVideoAudio,type VideoPlanIdea,type PhotoFrameLayout,type VideoShots,type PromptBrief} from './video-prompt';
 import type {LoadedVideoScene} from './video-compose';
 import {ApiRequestFailure,apiRequest,apiUrl} from './generation-client';
@@ -76,7 +77,7 @@ export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,sign
   const creativePayload=manual
     ? {...directions,promptPolicy:'owner-only',brief:{kind:draft.brief.kind,style:draft.brief.style,title:'',description:'',emphasis:''},seconds,
        music:true,voice:true,musicStyle:'',voiceStyle:'',narration:'',suggestedVoice:'',references}
-    : {...directions,...(review?.frameLayout && review.frameLayout.mode!=='original'?{frameLayout:review.frameLayout}:{}),brief:draft.brief,seconds,music:review!.music,voice:review!.voice,
+    : {...directions,...(review?.sceneCues?{alignedScenes:true,...(pilot==='gemini'?{sceneCues:review.sceneCues}:{})}:{}),...(review?.frameLayout && review.frameLayout.mode!=='original'?{frameLayout:review.frameLayout}:{}),brief:draft.brief,seconds,music:review!.music,voice:review!.voice,
        musicStyle:review!.music?review!.musicMood:'',voiceStyle:review!.voice?draft.voiceStyle:'',
        narration:review!.voice?review!.narration:'',suggestedVoice:'',references};
   const ratio=draft.ratio??defaultVideoRatio;
@@ -122,14 +123,14 @@ export async function requestAiVideo(draft:VideoDraft,seconds:VideoDuration,sign
   return downloadVideoOriginal(id,signal,session?.token);
 }
 
-export async function requestVideoPrompt(brief:PromptBrief,scenes:LoadedVideoScene[],language:'ko'|'en',signal:AbortSignal):Promise<VideoPlanIdea>{
+export async function requestVideoPrompt(brief:PromptBrief,scenes:LoadedVideoScene[],language:'ko'|'en',signal:AbortSignal,segmented=false):Promise<VideoPlanIdea>{
   const session=betaSession();
   const references=scenes.map(({visual})=>referenceJpeg(visual,512));
-  const input={kind:'video-prompt',planVersion:brief.kind==='product'?(['product','presenter'].includes(brief.style)&&references.length?4:2):1,targetLocale:language,brief,references};
+  const input={kind:'video-prompt',...(segmented?{segmented:true}:{}),planVersion:brief.kind==='product'?(['product','presenter'].includes(brief.style)&&references.length?4:2):1,targetLocale:language,brief,references};
   const planIdentity=['shot-direction-v9',input];
   const id=await requestId(JSON.stringify(planIdentity),'aiadcast.video-prompt.');
   signal.throwIfAborted();
-  const result=await apiRequest<{requestId:string;shots:unknown;audio?:unknown;frameLayout?:PhotoFrameLayout}>('/api/assistant',{...input,requestId:id},signal).catch(error=>{
+  const result=await apiRequest<{requestId:string;shots:unknown;sceneCues?:SceneCue[];audio?:unknown;frameLayout?:PhotoFrameLayout}>('/api/assistant',{...input,requestId:id},signal).catch(error=>{
     // A rate-limited attempt is recorded as failed with no provider charge.
     const key=storageKey('aiadcast.video-prompt.');
     if(error instanceof ApiRequestFailure&&error.code==='PROVIDER_RATE_LIMITED'&&sessionStorage.getItem(key)?.endsWith(':'+id))sessionStorage.removeItem(key);
@@ -137,7 +138,8 @@ export async function requestVideoPrompt(brief:PromptBrief,scenes:LoadedVideoSce
   });
   if(session?.token!==betaSession()?.token||result.requestId!==id||!validVideoShots(result.shots))throw Error('INVALID_VIDEO_PROMPT');
   if(result.audio!==undefined&&!validVideoAudio(result.audio))throw Error('INVALID_VIDEO_PROMPT');
-  return {shots:result.shots,audio:result.audio,frameLayout:result.frameLayout};
+  if(segmented&&!validSceneCues(result.sceneCues))throw Error('INVALID_VIDEO_PROMPT');
+  return {shots:result.shots,sceneCues:result.sceneCues,audio:result.audio,frameLayout:result.frameLayout};
 }
 
 export async function downloadVideoOriginal(id:string,signal:AbortSignal,token:string|undefined){
