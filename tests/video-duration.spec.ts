@@ -432,7 +432,7 @@ test('administrator compares a reviewed pizza plan with Gemini after confirming 
   await editor.getByRole('button',{name:'영상 구성안 만들기'}).click();
   const closing=editor.locator('.vd-review-scene').nth(2);
   await closing.locator('summary').filter({hasText:'대사·현장음·마지막 화면'}).click();
-  await closing.getByLabel('인물 대사',{exact:true}).fill('손님: 지금 한 판 더 주세요.');
+  await closing.getByLabel('마지막 장면 인물 대사',{exact:true}).fill('손님: 지금 한 판 더 주세요.');
   await editor.getByRole('button',{name:/Gemini 비교 제작/}).click();
   await expect(page.getByRole('dialog')).toContainText('$0.70');
   expect(submitted).toBeUndefined();

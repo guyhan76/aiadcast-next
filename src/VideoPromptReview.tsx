@@ -20,6 +20,7 @@ export function VideoPromptReview({mode,manualText,onMode,onManual,seconds,ratio
   const modeGroup=useId();
   const labels=[t('첫 장면','Opening shot'),t('중간 장면','Middle shot'),t('마지막 장면','Closing shot')];
   const timing=omniSceneTiming(seconds);
+  const cueLabels={dialogue:t('인물 대사','Character dialogue'),sound:t('현장음','Location sound'),endFrame:t('마지막 화면','End frame')};
   const times=review?.sceneCues?timing.stops:sceneStops(seconds);
   function editCue(index:number,field:keyof SceneCue,value:string){
     if(review?.sceneCues)onChange({sceneCues:review.sceneCues.map((cue,i)=>i===index?{...cue,[field]:value}:cue)});
@@ -77,8 +78,8 @@ export function VideoPromptReview({mode,manualText,onMode,onManual,seconds,ratio
             <label>{t('장면 연출','Shot direction')}
               <textarea rows={2} aria-label={labels[i]+' '+t('연출','direction')} maxLength={shotLimit} value={shot} onChange={e=>editScene('shots',i,e.target.value)}/></label>
             {review.sceneCues&&<details className="vd-details"><summary>{t('대사·현장음·마지막 화면','Dialogue, sound and end frame')}</summary>
-              {(['dialogue','sound','endFrame'] as const).map((key,k)=><label key={key}>{[t('인물 대사','Character dialogue'),t('현장음','Location sound'),t('마지막 화면','End frame')][k]}
-                <textarea rows={2} maxLength={[180,140,200][k]} value={review.sceneCues![i][key]} onChange={e=>editCue(i,key,e.target.value)}/></label>)}
+              {(['dialogue','sound','endFrame'] as const).map((key,k)=><label key={key}>{cueLabels[key]}
+                <textarea rows={2} aria-label={labels[i]+' '+cueLabels[key]} maxLength={[180,140,200][k]} value={review.sceneCues![i][key]} onChange={e=>editCue(i,key,e.target.value)}/></label>)}
             </details>}
             {review.showCaptions&&<label>{t('자막','Caption')}<textarea rows={2} maxLength={1000} value={review.captions[i]} aria-label={labels[i]+' '+t('자막','caption')}
               onChange={e=>editScene('captions',i,e.target.value)}/></label>}
