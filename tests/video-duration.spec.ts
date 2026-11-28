@@ -8,6 +8,7 @@ test('video examples follow the selected offer and leave the brief empty', async
   await page.addInitScript(() => localStorage.setItem('aiadcast.ui-language', 'ko'));
   await page.goto('/#video');
   const editor = page.getByRole('region', {name:'광고 영상 편집'});
+  await editor.getByText('상세 설정',{exact:true}).click();
   const description = editor.getByLabel('상세설명', {exact:true});
   const highlight = editor.getByLabel('강조할 점 (선택)', {exact:true});
   const guide = editor.locator('.vd-brief details');
@@ -61,6 +62,7 @@ test('a saved ad opens with reference framing and honors the chosen duration', a
   await page.getByRole('button',{name:'영상으로 만들기'}).click();
   await expect(page).toHaveURL(/#video$/);
   const editor=page.getByRole('region',{name:'광고 영상 편집'});
+  await editor.getByText('상세 설정',{exact:true}).click();
   const length=editor.getByRole('group',{name:'영상 길이'});
   const chosen=(n:number)=>length.getByRole('button',{name:n+'초',exact:true});
   const ratios=editor.getByRole('group',{name:'영상 규격'});
@@ -176,6 +178,7 @@ test('service brief, grey reference upload and exact caption settings feed AI ge
  await page.route('**/api/videos/*',r=>r.fulfill({json:{state:'failed'}}));
  await page.goto('/#video');
  const editor=page.getByRole('region',{name:'광고 영상 편집'});
+  await editor.getByText('상세 설정',{exact:true}).click();
  await expect(editor.getByRole('button',{name:/이미지·영상 첨부/})).toHaveCSS('background-color','rgb(243, 244, 245)');
  await expect(editor.locator('.vd-upload-help')).toContainText('최대 10개 · AI 참조 이미지 합계 10MB');
  await editor.getByRole('button',{name:'서비스',exact:true}).click();
@@ -190,7 +193,7 @@ test('service brief, grey reference upload and exact caption settings feed AI ge
  await expect(editor.getByRole('button',{name:'15초',exact:true})).toHaveAttribute('aria-pressed','true');
  await editor.getByRole('button',{name:'3:4',exact:true}).click();
  const ai=editor.getByRole('button',{name:'AI 영상 생성',exact:true});
- await expect(ai).toBeDisabled();
+ await expect(ai).toHaveCount(0);
  await editor.getByRole('button',{name:'영상 프롬프트 만들기'}).click();
  await editor.locator('summary').filter({hasText:'내레이션'}).click();
  await editor.getByRole('checkbox',{name:'한국어 내레이션 넣기'}).check();
@@ -220,12 +223,13 @@ test('unboxing uses two photos and shows the selected story and total before cre
   await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
   await page.goto('/#video');
   const editor=page.getByRole('region',{name:'광고 영상 편집'});
+  await editor.getByText('상세 설정',{exact:true}).click();
   await editor.getByRole('button',{name:'언박싱',exact:true}).click();
   const file=editor.getByLabel('사진·영상 파일');
   await file.setInputFiles('src/assets/premium-beauty-generated.png');
   await expect(editor.getByRole('status')).toContainText('열린 박스 사진');
   const create=editor.getByRole('button',{name:'AI 영상 생성',exact:true});
-  await expect(create).toBeDisabled();
+  await expect(create).toHaveCount(0);
   await file.setInputFiles('src/assets/premium-beauty-generated.png');
   await editor.getByRole('button',{name:'10초',exact:true}).click();
   await editor.getByRole('button',{name:'영상 프롬프트 만들기'}).click();
@@ -287,6 +291,7 @@ test('a product photo and brief make a reviewable AI prompt before the video is 
  await page.route('**/api/videos/*',r=>r.fulfill({json:{state:'failed'}}));
  await page.goto('/#video');
  await page.getByLabel('사진·영상 파일').setInputFiles('src/assets/premium-beauty-generated.png');
+ await page.getByText('상세 설정',{exact:true}).click();
  await page.getByRole('region',{name:'광고 영상 편집'}).getByLabel('상품명',{exact:true}).fill('하이브리드 롱코트');
  await page.getByRole('button',{name:'영상 프롬프트 만들기'}).click();
  const middle=page.getByLabel('중간 장면 연출',{exact:true});
@@ -337,7 +342,7 @@ test('manual prompts retain pasted directions, skip the drafting call, and submi
  const text='  [ONE TAKE]\n\n포장 상자를 보여주며 끝낸다.  ';
  await field.fill(text);
  await expect(ai).toBeDisabled();
- await editor.getByRole('button',{name:'서비스',exact:true}).click();
+ await editor.getByRole('button',{name:'서비스 광고',exact:true}).click();
  await expect(ai).toBeEnabled();
  await field.fill('x'.repeat(8001));
  await expect(field).toHaveAttribute('aria-invalid','true');
@@ -353,7 +358,7 @@ test('manual prompts retain pasted directions, skip the drafting call, and submi
  await expect(editor.getByRole('button',{name:'영상 프롬프트 만들기'})).toHaveCount(0);
  await editor.getByRole('button',{name:'example.mp4 삭제'}).click();
  await auto.click();
- await expect(ai).toBeDisabled();
+ await expect(ai).toHaveCount(0);
  await manual.click();
  await expect(field).toHaveValue(text);
  await ai.click();
@@ -390,6 +395,7 @@ test('rebuilding the same ad plan preserves disabled captions and narration',asy
  await page.route('**/api/videos/*',r=>r.fulfill({json:{state:'failed'}}));
  await page.goto('/#video');
  const editor=page.getByRole('region',{name:'광고 영상 편집'});
+  await editor.getByText('상세 설정',{exact:true}).click();
  await editor.getByLabel('사진·영상 파일').setInputFiles('src/assets/premium-beauty-generated.png');
  await editor.getByLabel('상품명',{exact:true}).fill('아이스라떼');
  await editor.getByRole('button',{name:'영상 프롬프트 만들기'}).click();
@@ -427,6 +433,7 @@ test('administrator compares a reviewed pizza plan with Gemini after confirming 
   await page.goto('/#video');
   await page.getByLabel('사진·영상 파일').setInputFiles('src/assets/premium-beauty-generated.png');
   const editor=page.getByRole('region',{name:'광고 영상 편집'});
+  await editor.getByText('상세 설정',{exact:true}).click();
   await editor.getByLabel('상품명',{exact:true}).fill('피자');
   await editor.getByRole('button',{name:'10초',exact:true}).click();
   await editor.getByRole('button',{name:'영상 프롬프트 만들기'}).click();
@@ -447,6 +454,7 @@ test('restaurant service UGC allows both Gemini prompt modes and shows the paid 
   await page.route('**/api/assistant',r=>r.fulfill({json:{requestId:r.request().postDataJSON().requestId,shots:['한 조각을 든다.','맛을 본다.','한 판 더 주문한다.'],sceneCues:pizzaSceneCues}}));
   await page.goto('/#video');
   const editor=page.getByRole('region',{name:'광고 영상 편집'});
+  await editor.getByText('상세 설정',{exact:true}).click();
   const adType=editor.getByRole('group',{name:'광고 유형',exact:true});
   await expect(adType.getByRole('button',{name:'상품 광고',exact:true})).toBeVisible();
   const ugc=adType.getByRole('button',{name:'UGC 광고',exact:true});
@@ -461,7 +469,7 @@ test('restaurant service UGC allows both Gemini prompt modes and shows the paid 
   await editor.getByLabel('상세설명',{exact:true}).fill('친구와 함께 피자를 먹고 추가 주문한다.');
   await editor.getByLabel('사진·영상 파일').setInputFiles('src/assets/premium-beauty-generated.png');
   const gemini=editor.getByRole('button',{name:/Gemini 비교 제작/});
-  await expect(gemini).toBeVisible();
+  await expect(gemini).toHaveCount(0);
   await editor.getByRole('button',{name:'15초',exact:true}).click();
   await editor.getByRole('button',{name:'영상 프롬프트 만들기'}).click();
   await expect(gemini).toBeEnabled();
@@ -477,4 +485,28 @@ test('restaurant service UGC allows both Gemini prompt modes and shows the paid 
   await editor.getByLabel('내 프롬프트',{exact:true}).fill('손님이 마지막 한 조각을 먹고 한 판 더 주문한다.');
   await gemini.click();
   await expect(page.getByRole('dialog')).toContainText('유료 요청 3회');
+});
+
+test('a one-line service UGC brief reaches prompt review without advanced settings or a video charge',async({page})=>{
+  await protectedScreen(page,mockSession('quick-ad','admin'));
+  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
+  await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,assistant:{available:true},generation:{enabled:false},wallet:{unlimited:true,available:0,reserved:0},budget:{limitMicros:0}}}));
+  const request='친구 둘이 마지막 피자를 나누고 한 판 더 주문하는 20초 UGC 광고';
+  let videoCalls=0;
+  await page.route('**/api/videos',r=>{videoCalls++;return r.abort();});
+  await page.route('**/api/assistant',r=>{
+    const body=r.request().postDataJSON();
+    expect(body.brief).toMatchObject({kind:'service',style:'presenter',description:request,title:'',seconds:20});
+    return r.fulfill({json:{requestId:body.requestId,shots:['두 친구가 마지막 조각을 집는다.','웃으며 반씩 나눈다.','한 판 더 주문한다.']}});
+  });
+  await page.goto('/#video');
+  const editor=page.getByRole('region',{name:'광고 영상 편집'});
+  await expect(editor.getByLabel('세부 업종')).toBeHidden();
+  await editor.getByLabel('원하는 광고 한 줄').fill(request);
+  await editor.getByRole('button',{name:'UGC 광고',exact:true}).click();
+  await editor.getByRole('button',{name:'서비스',exact:true}).click();
+  await expect(editor.getByRole('button',{name:'20초',exact:true})).toHaveAttribute('aria-pressed','true');
+  await editor.getByRole('button',{name:'영상 프롬프트 만들기'}).click();
+  await expect(editor.getByLabel('첫 장면 연출',{exact:true})).toHaveValue('두 친구가 마지막 조각을 집는다.');
+  expect(videoCalls).toBe(0);
 });

@@ -17,6 +17,7 @@ test('an unreadable link can use a screenshot and editable facts before a prompt
   await page.route('**/api/videos',r=>{submissions++;return r.abort();});
   await page.goto('/#video');
   const editor=page.getByRole('region',{name:'광고 영상 편집'});
+  await editor.getByText('상세 설정',{exact:true}).click();
   await editor.getByLabel('상품명',{exact:true}).fill('기존 상품');
   await editor.getByRole('button',{name:'상품 링크에서 불러오기'}).click();
   await editor.getByLabel('상품 링크',{exact:true}).fill('https://shop.example/item?itemId=1');
