@@ -13,12 +13,13 @@ export async function submitAdBatch(project:Project,price:BatchPrice,owner:strin
  const check=()=>{if(owner!==storageNamespace())throw Error('SESSION_CHANGED');};
  const request=buildNewGenerationRequest(project);
  if((await preflightProportions(project))?.status==='mismatch')throw Error('PROPORTION_MISMATCH');
- const id='ads-'+await dimensionInputHash(JSON.stringify([owner,project.id,price.count,generationMatchKey(request)]));
+ const id='ads-'+await dimensionInputHash(JSON.stringify([owner,project.id,price.count,generationMatchKey(request),...(project.storyCarousel?[project.storyPlan]:[])]));
+ if(project.storyCarousel&&!project.storyPlan)throw Error('INVALID_STORY_PLAN');
  const batch:AdBatch={id,count:price.count};
  const entry={...project,id,generated:undefined,resultSet:undefined,adBatch:batch};
  check();await saveProject(entry,owner);check();
  try {
-  const result=await apiRequest<{id:string}>('/api/generations',{batch:{...batch,quote:price},projectId:id,requestId:id,request,...generationInputs(project)});
+  const result=await apiRequest<{id:string}>('/api/generations',{batch:{...batch,quote:price,...(project.storyCarousel?{storyPlan:project.storyPlan}:{})},projectId:id,requestId:id,request,...generationInputs(project)});
   if(result.id!==id)throw Error('INVALID_RESPONSE');
  }catch(error){
   check();

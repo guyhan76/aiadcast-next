@@ -4,7 +4,7 @@ import { activeVideoProvider } from '../higgsfield-video.mjs';
 import { quotedVideoProvider } from '../quoted-video.mjs';
 import { seedanceConfig, seedancePayload, seedanceTask, seedanceMovie } from '../seedance-video.mjs';
 import { videoDurationPrices } from '../video-duration-prices.mjs';
-import { planAdBatch } from '../automatic-image-skills.mjs';
+import { planAdBatch, validCarouselBatch } from '../automatic-image-skills.mjs';
 import { verifiedPreservation } from '../../src/selective-preservation.ts';
 import { batchPrice, validBatch } from '../../src/batch-price.ts';
 import { prepareSelectiveEdit, finalizeSelectiveEdit } from '../selective-image-edit.mjs';
@@ -554,7 +554,10 @@ export class GenerationService {
         const { id, count, quote } = body.batch ?? {};
         if (!validBatch({ id, count }) || body.projectId !== id || body.requestId !== id || !quote || request.mode !== 'creative' || request.inputMode || request.proportionControl || request.selectiveEdit || request.output?.exactText || request.creativeDirection?.visual?.id !== 'auto' || !request.output.compositionKey)
             fail('INVALID_BATCH');
-        const fingerprint = hashBytes(JSON.stringify({ count, request, revision: IMAGE_REVISION }));
+        const storyPlan = body.batch.storyPlan;
+        if (!validCarouselBatch(storyPlan, request, count))
+            fail('INVALID_BATCH');
+        const fingerprint = hashBytes(JSON.stringify({ count, request, revision: IMAGE_REVISION, storyPlan }));
         const existing = await this.db.prepare('SELECT fingerprint FROM ad_batches WHERE id=?').get(id);
         if (existing) {
             if (existing.fingerprint !== fingerprint)
@@ -568,7 +571,7 @@ export class GenerationService {
         await this.assertOutputCapacity(request, images);
         for (const image of images)
             await this.storeAsset(image);
-        const plannedRequests = planAdBatch(request, count);
+        const plannedRequests = planAdBatch(request, count, storyPlan);
         const jobIds = [];
         await this.ledger.transaction(async () => {
             const duplicate = await this.db.prepare('SELECT fingerprint FROM ad_batches WHERE id=?').get(id);

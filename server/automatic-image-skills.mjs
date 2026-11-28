@@ -112,7 +112,10 @@ const fixedLayout = /(?:같은|똑같은|동일한?)\s*(?:구도|레이아웃|�
 const colorOnly = /(?:색상|색깔|컬러|색)(?:만|으로만)\s*(?:바꿔|바꾸|다르|다른|다르게|변경|변화|변주|달리|교체|조정|수정)|(?:only\s+(?:(?:change|vary|the)\s+)*(?:colou?rs?|palette)|(?:colou?rs?|palette)\s+only)/i;
 const otherOnly = /(?:문구|카피|배경|제목|헤드라인|조명|글꼴)(?:만|만을)\s*(?:바꿔|바꾸|다르|다른|다르게|변경|변화|변주|달리|교체|조정|수정)|only\s+(?:change|vary)\s+(?:the\s+)?(?:copy|headline|background|lighting|font)/i;
 
-export function planAdBatch(request, count) {
+export {validCarouselBatch} from './story-carousel.mjs';
+import {carouselRequests} from './story-carousel.mjs';
+export function planAdBatch(request, count, storyPlan) {
+  if(storyPlan)return carouselRequests(request,storyPlan);
   if (count === 1) return [request];
   const notes = [request.creativeDirection?.additionalInstructions, request.brief].filter(Boolean).join('\n');
   const service = request.subjectType === 'service';

@@ -1,14 +1,15 @@
-import {useEffect,useRef} from 'react';
+import {useEffect,useRef,type ReactNode} from 'react';
 import type {BatchPrice} from './batch-price';
 import {useUiLanguage} from './ui-language';
 
-export function BatchConfirmation({price,busy,onConfirm,onClose}:{price:BatchPrice;busy:boolean;onConfirm:()=>void;onClose:()=>void}){
+export function BatchConfirmation({price,busy,onConfirm,onClose,children,canConfirm=true}:{children?:ReactNode;canConfirm?:boolean;price:BatchPrice;busy:boolean;onConfirm:()=>void;onClose:()=>void}){
  const insufficientCredits=price.creditsAfter<0;
  const dialog=useRef<HTMLDialogElement>(null),{t}=useUiLanguage();
  useEffect(()=>{const el=dialog.current!;el.showModal();return()=>el.close();},[]);
  return <dialog className="batch-confirm" aria-labelledby="batch-confirm-title" ref={dialog} onCancel={e=>{e.preventDefault();if(!busy)onClose();}}>
-  <h2 id="batch-confirm-title">{t('광고 생성 확인','Confirm generation')}</h2>
+  <h2 id="batch-confirm-title">{children?t('캐러셀 구성 확인','Review carousel'):t('광고 생성 확인','Confirm generation')}</h2>
   <p>{t(`광고 이미지 ${price.count}장을 생성합니다.`,`Generate ${price.count} ad image(s).`)}</p>
+  {children}
   <dl>
    <dt>{t('현재 크레딧','Current credits')}</dt><dd>{price.credits.toLocaleString()}</dd>
    <dt>{t('차감 예정','Credits to use')}</dt><dd>{price.creditsUsed.toLocaleString()}</dd>
@@ -20,7 +21,7 @@ export function BatchConfirmation({price,busy,onConfirm,onClose}:{price:BatchPri
    !price.admin&&<p>{t('확인하면 사용 가능 잔액에서 예약됩니다. 생성 실패분은 복원됩니다.','Confirmation reserves the amount from your available balance. Failed images are credited back.')}</p>}
   <div className="batch-actions">
    <button type="button" disabled={busy} onClick={onClose}>{t('취소','Cancel')}</button>
-   <button type="button" disabled={busy||insufficientCredits} onClick={onConfirm}>{busy?t('접수 중…','Submitting…'):t('확인','Confirm')}</button>
+   <button type="button" disabled={busy||insufficientCredits||!canConfirm} onClick={onConfirm}>{busy?t('접수 중…','Submitting…'):children?t('캐러셀 4장 생성','Generate 4 cards'):t('확인','Confirm')}</button>
    {insufficientCredits&&<button type="button" disabled={busy} onClick={()=>{
     onClose();
     location.hash='checkout?from=generation';
