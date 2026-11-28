@@ -85,7 +85,7 @@ export function VideoPromptReview({mode,manualText,onMode,onManual,seconds,ratio
               <PrecisionEditAction disabled={busy||stale} label={t('첫 장면 AI 편집','Edit opening image with AI')}
                 getInput={()=>({data:review.openingStill!.data,name:'opening.png'})}
                 initialPrompt={[t('광고 영상의 첫 순간을 사진 한 장으로 연출하세요. 화면에 실제로 보일 첫 행동을 포착하세요. 원본 상품의 형태와 색상, 토핑과 인쇄 로고를 보존하고 앱 버튼과 안내 글씨는 제거하세요.','Stage the first visible action as one photographic frame. Preserve the product geometry, colors, toppings and printed branding. Remove interface controls and overlay text.'),shot].join('\n')}
-                onUseImage={asset=>onChange({openingStill:{...review.openingStill!,data:asset.data,active:true}})}/>
+                onUseImage={asset=>{onChange({openingStill:{...review.openingStill!,data:asset.data,active:true}});window.dispatchEvent(new Event('aiadcast-opening-image-accepted'));}}/>
             </div>}
             <label>{t('장면 연출','Shot direction')}
               <textarea rows={2} aria-label={labels[i]+' '+t('연출','direction')} maxLength={shotLimit} value={shot} onChange={e=>editScene('shots',i,e.target.value)}/></label>

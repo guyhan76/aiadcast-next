@@ -261,7 +261,9 @@ test('unboxing uses two photos and shows the selected story and total before cre
 test('a product photo and brief make a reviewable AI prompt before the video is submitted',async({page})=>{
  await protectedScreen(page,mockSession('photo-prompt','admin'));
  await page.addInitScript(()=>localStorage.setItem('aiadcast.ui-language','ko'));
- await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,assistant:{available:true},generation:{enabled:false},wallet:{unlimited:true,available:0,reserved:0},budget:{limitMicros:0}}}));
+ await page.route('**/api/status',r=>r.fulfill({json:{videoTrial:true,assistant:{available:true},generation:{enabled:true,selectiveEdit:true,creditQuote:{unit:'credit-v2',amount:0,policy:'delivered-2026-10-18'}},wallet:{unlimited:true,available:0,reserved:0,credits:{available:0,reserved:0}},budget:{limitMicros:0}}}));
+ let imageRequests=0;
+ await page.route('**/api/selective-edits/upload',r=>{imageRequests++;return r.abort();});
  let drafts=0,videoRequests=0,preview='';
  const frameLayout={mode:'crop',source:1,regions:[[{x:180,y:100},{x:760,y:740}]]};
  await page.route('**/api/assistant',async r=>{
@@ -304,6 +306,12 @@ test('a product photo and brief make a reviewable AI prompt before the video is 
  await expect(still).toBeVisible();
  preview=await still.getAttribute('src')??'';
  expect(preview).toMatch(/^data:image\/jpeg;base64,/);
+ await page.getByRole('button',{name:'첫 장면 AI 편집'}).click();
+ const editDialog=page.getByRole('dialog',{name:'정밀 편집'});
+ await expect(editDialog.getByRole('textbox')).toHaveValue(/전신 구도/);
+ await expect(editDialog.getByRole('button',{name:/수정하기.*0 크레딧/})).toBeEnabled();
+ await editDialog.getByRole('button',{name:'닫기'}).click();
+ expect(imageRequests).toBe(0);
  await middle.fill('어깨 봉제선을 따라 천천히 이동한다.');
  await page.getByRole('checkbox',{name:'자막 넣기'}).check();
  await expect(page.getByLabel('첫 장면 자막',{exact:true})).toHaveValue('하이브리드 롱코트');
